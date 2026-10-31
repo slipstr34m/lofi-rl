@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BLOCKED = ("mido", "soundfile", "scipy", "pedalboard",
            "torch", "trl", "vllm", "transformers", "peft", "datasets", "accelerate")
 MODULES = ("lofi_rl.dsl", "lofi_rl.compile", "lofi_rl.compile.compiler", "lofi_rl.theory", "lofi_rl.brief",
-           "lofi_rl.palette", "lofi_rl.rl.curriculum", "lofi_rl.rl.reward", "lofi_rl.rl.config",
+           "lofi_rl.palette", "lofi_rl.grammar", "lofi_rl.rl.curriculum", "lofi_rl.rl.reward", "lofi_rl.rl.config",
            "lofi_rl.rl.train", "lofi_rl.rl.smoke_check")
 OTHER_BUILDERS = ("lofi_rl.prompt", "lofi_rl.verify")
 
