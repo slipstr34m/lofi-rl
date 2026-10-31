@@ -652,6 +652,26 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
      within 0.1 LU (`-m cluster`, two loops).
   7. A changed base-palette sha or compiled digest makes `--prior` re-measure, and both values are recorded.
   8. A value outside −40 … +40, or a field on an unknown key, is a `PaletteError`.
+- **Built (2026-10-31, the tool only; the palette fields and tests 1–3 and 8 wait for the frozen palette):**
+  `src/lofi_rl/shootout/levels.py`, tests 4–7 in `tests/test_shootout_levels.py` (6 is `-m cluster`). Choices the
+  spec left open:
+  - **P is read 40 dB up** (`input_lufs`). BS.1770's −70 LUFS absolute gate is its only level-dependent part. Plain,
+    the VSCO 2 pizz bass input reads −inf on L4 and L6 and up to 7.37 LU high on the other loops (the gate keeps only
+    its loudest blocks), and the sparse GU drums 0.38 LU high on L1. L and the post-fader levels stay plain, as the
+    render manifest measures them.
+  - **Check (b), "each loop within 0.1 LU"** is read as each loop's post-fader loudness within 0.1 LU of its own
+    L + F. Its median must still be within 0.05 LU of S\* + T.
+  - **GU instruments get t = 0** for every instrument of the anchor's source (`levels.zero_trim_source: gu`), so
+    the GU organ and the GU alto too.
+  - **One run per variant.** Run m1 measures the four anchors, and each later run one new variant per bus. A
+    variant is measured only in its first run: a bus whose variant repeats is not rendered.
+  - **`--prior`** compares the stamp, the base sha256, every (run, loop) compiled digest and each variant's source
+    and kit-map sha256. Equal keys reuse every value. Any difference re-measures everything and records the prior's
+    keys, the changed ones, and each variant's prior t and F and its move; moves above 0.1 dB are listed.
+  - **Loops** are those that `--loops`'s briefs.yaml lists. The stamp is `<repo>/.sync-stamp` (null on the laptop).
+  - **Checked against the real banks** (laptop, 9 loops, dev band and every converted and FreePats bank, the two
+    file kits left out until §7.4 lands): every linear-range and post-fader check passes. A render of a generated
+    palette reports the tool's L on every bus exactly (`-m cluster`).
 
 ### 7.2 One-time 48 → 44.1 kHz conversion, and the rain excerpt picker
 - **For:** the Virtuosity one-shots (720 files, 48 kHz 24-bit: A) via the importer, and the rain file. The sampler
@@ -814,6 +834,26 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   texts differ only in the candidate's block, trim and fader (a test diffs them), which is §2.1's "one thing only";
   every substitution a round makes keeps G1–G6 and f_new = 1 (the `vamp:` lines of its mood); every candidate is
   heard in ≥ 2 distinct loops on distinct tiles within its stage.
+- **Built (2026-10-31, Day 1 / job 1):** `shootouts/plan.yaml` (all of §4 and §6, every day), its loader
+  `src/lofi_rl/shootout/plan.py`, `shootouts/palettes/base.yaml` and `src/lofi_rl/shootout/palettes.py`. Tests:
+  `tests/test_shootout_plan.py` (the doc's tables written out a second time, and the design properties) and
+  `tests/test_shootout_palettes.py`. Choices the spec left open:
+  - **CLI:** `--stage day1|day2|day3` was added, and `--draw` is optional. The palettes do not depend on the draw:
+    Day 1 writes all 26, one per (stage, option), and R2's as `r2/<kit>/<bass>.yaml`, since each R2 round plays
+    one kit. With `--draw`, `clips.json` is also written, the render list. The draw is read as `{"stage": "day1",
+    "symbols": {stage: {symbol: option}}}` and checked against each stage's rule (K1 family pairs, S1 registers,
+    `central` for the vamps). Only day1 is built; day2 and day3 exit 2.
+  - **The base** is a loadable palette: the dev band under `ep`, `dusty` and `tenor`, and every SoundFont
+    candidate's source, pinned as in assets/MANIFEST.yaml. Each pitched chain starts with a trim slot,
+    `[Gain, {gain_db: 0.0}]`, which leaves the output bit-identical at 0 dB. A palette's id names its stage and
+    option, the one difference the round diff allows besides the candidate's block, trim and fader.
+  - **The §7.4 kits** are read from `$LOFI_ASSETS`: `derived/kits/<kit>.tar` and the importer's printed `lanes:`
+    and `choke:` blocks saved as `derived/kits/<kit>.yaml` (plan.yaml `archive`). Every one-shot must name one
+    source, the tar, which is added to every palette with its sha256; the plan's `archive.sha256` pin is checked
+    once it is set. `--without` leaves an unbuilt kit out and records it.
+  - **Measuring palettes** (`--levels none`): `measure/m1.yaml` … `m8.yaml` and `measure/index.json`.
+  - **YAML** is written by libyaml when PyYAML has it; a test checks that it gives the same bytes as the
+    pure-Python dumper. Two runs give identical bytes.
 
 ### 7.9 Tally tool (laptop)
 - **Interface:** `python -m lofi_rl.shootout.tally --votes data/votes --inbox inbox [--batch <name> ...]` reads the
