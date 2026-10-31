@@ -6,8 +6,30 @@ Newest entry first. Every number cites the file or command output it was read fr
 - **SU used:** 298.5 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 04:08).
 - **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target (entry below). Phase 1 (instrument) is next: the compiler, then the shootout batches.
 - **Waiting on Shresth:**
-  - download OKs for the Phase-1 shootout assets (sax, keys, drums, basses; the Freesound rain file is his to download);
+  - the download OK for `docs/SHOOTOUT_ASSETS.md` (14 sources, 944 MB, all free licenses), and the Freesound rain file, which needs his login;
   - whether `scancel` may be used on our own jobs. It matters only for 13624408, which waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots.
+
+---
+
+## 2026-10-31 (morning): shootout asset list; Phase-1 builds running
+
+**What was done**
+- **Asset research** (workflow `wf_57c1b524-c49`: 4 researchers, each re-checked by an independent verifier; HEAD requests, pages and APIs only, no asset downloaded). It pinned the exact file, source, version, size and license of every shootout candidate in instrument.md §6.
+  - **The request** is `docs/SHOOTOUT_ASSETS.md`: 14 sources, 944,168,732 bytes, plus the Freesound rain file that Shresth downloads himself.
+  - **Hand spot-checks matched:** 2 sizes by HEAD (FreePats tenor 25,757,059; FM Piano #1 13,727,542) and the jRhodes3d, Weresax, Swirly, MTG and Greg Sullivan license texts. macOS `tar` (libarchive 3.7.4 with liblzma) opens the `.7z` archives, so no extractor is needed.
+- **Findings that change the plan:**
+  - **Polyphone cannot do the conversion as planned.** Its CLI builds a Qt GUI application before parsing options, so it cannot run headless on the cluster; its Homebrew cask was disabled on 2026-09-01; and the 2.6.0 app is ad-hoc signed, so installing it needs a Gatekeeper override. The default is now our own deterministic SFZ → SF2 converter in Python, with Polyphone as Shresth's fallback.
+  - **License versions matter.** Weresax is CC0 only from v1.002 (v1.001 was CC BY 4.0), and Swirly only from v1.104. MTG needs attribution: CC BY 4.0 for the mapping, CC BY 3.0 for the samples. Its Zenodo dataset page contradicts itself (CC BY vs CC BY-NC), so the attribution chain rests on the Freesound packs.
+  - **Content.** Swirly has no rim click or shaker. The FreePats bass covers MIDI 26–45. The rain recording also has a suburban hum, birds and thunder, so the excerpt needs an ear check.
+  - **Route.** Every new asset is fetch-only: it goes to `assets/big/` and is rsynced to `$REMOTE_KEEP/assets/`. Git gets the manifest and `ATTRIBUTION.md`.
+- **Side effects of the research.** The agents used the laptop's authenticated `gh` for read-only GitHub API calls after the anonymous limit (60 an hour per IP) ran out. WebFetch saved two documentation PDFs (the Virtuosity manual and the Swirly user guide) in this session's tool-results folder.
+- **Running:** the compiler + renderer workflow (`wf_189b194e-1e1`) and the rating UI workflow (`wf_2d3622ca-180`), both started on the laptop at 04:21.
+
+**Failed approaches and why:** none this unit.
+
+**SU spent:** 0.
+
+**Next:** on Shresth's OK: fetch, verify each hash, write `assets/MANIFEST.yaml` entries and `ATTRIBUTION.md`, and rsync to the cluster. Then build the converter, then the shootout renders.
 
 ---
 
