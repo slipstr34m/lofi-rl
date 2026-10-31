@@ -114,7 +114,9 @@ def _launch(run: Path, name: str, cfg: RunConfig, steps_want: list[int], start_s
         warnings.append(f"launch {name}: TRL's logging hooks failed: {hooks[:3]}")
     info = {"ran": True, "status": meta.get("status"), "resume_from": meta.get("resume_from"),
             "start_step": meta.get("start_step"), "final_global_step": meta.get("final_global_step"),
-            "profile": meta.get("profile"), "dropped_optional_fields": meta.get("dropped_optional_fields"),
+            "profile": meta.get("profile"), "gpu": meta.get("gpu"), "versions": meta.get("versions"),
+            "verified_trl_fields": meta.get("verified_trl_fields"),
+            "dropped_optional_fields": meta.get("dropped_optional_fields"), "prompt_tokens": (meta.get("prompt") or {}).get("tokens"),
             "first_step": trained[0] if trained else None, "steps": len(trained), "trained": trained,
             "reward_steps": sorted(s for s in by_step if isinstance(s, int)), "completions": len(rewards),
             "reward_errors": errors, "step_sources": sources}

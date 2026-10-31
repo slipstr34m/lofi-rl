@@ -202,6 +202,30 @@ def test_a_verifier_error_scores_zero_and_is_logged_unless_strict(tmp_path):
         _call(strict, ["raise"])
 
 
+def test_numpy_scalars_from_the_verifier_are_read_as_numbers(tmp_path):
+    np = pytest.importorskip("numpy")
+    reward, fake = _reward(tmp_path)
+    plain = fake.score
+
+    def numpy_score(text, brief, palette):
+        s = plain(text, brief, palette)
+        return dataclasses.replace(s, gate_ok=np.bool_(s.gate_ok), theory=np.float32(s.theory), p_fix=np.float64(s.p_fix),
+                                   penalties={k: np.float32(v) for k, v in s.penalties.items()})
+    fake.score = numpy_score
+    out = _call(reward, ["theory=0.5 knobs=0.6 p_fix=0.04 bars=0.25", "gate=G4 bars=0.25"])
+    assert out == pytest.approx([.5 * .5 + .15 * .6 - .29, -.25])
+    recs = _lines(tmp_path)
+    assert [r["gate"] for r in recs] == [None, "G4"] and isinstance(recs[0]["r"]["theory"], float)
+
+
+def test_a_failed_gate_without_an_id_is_still_counted(tmp_path):
+    reward, fake = _reward(tmp_path)
+    plain = fake.score
+    fake.score = lambda t, b, p: dataclasses.replace(plain(t, b, p), gate_ok=False, gate=None)
+    _call(reward, [FULL])
+    assert _lines(tmp_path)[0]["gate"] == "unknown" and reward.stats[0]["gate_counts"] == {"unknown": 1}
+
+
 def test_the_reward_carries_the_name_trl_logs_it_under(tmp_path):
     reward, _ = _reward(tmp_path)
     assert reward.__name__ == NAME == "lofi_reward"

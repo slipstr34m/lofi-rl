@@ -35,6 +35,7 @@ import hashlib
 import importlib
 import json
 import math
+import numbers
 import statistics
 import time
 from collections import Counter
@@ -112,16 +113,21 @@ def is_truncated(ids: Iterable[int] | None, max_len: int | None, eos_ids: frozen
     return not ids or ids[-1] not in eos_ids
 
 
+def _real(v: Any) -> bool:
+    """A real number, numpy scalars included (numbers.Real), but not a bool."""
+    return isinstance(v, numbers.Real) and not isinstance(v, bool) and type(v).__name__ != "bool_"
+
+
 def _finite(name: str, v: Any) -> float:
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+    if not _real(v) or not math.isfinite(float(v)):
         raise ValueError(f"verify.score returned {name}={v!r}, which is not finite")
     return float(v)
 
 
 def _checked(s: Any) -> Any:
     """The score itself, after checking that every number entering R is finite (a NaN would poison TRL's group
-    statistics) and that the gate is a bool."""
-    if not isinstance(s.gate_ok, bool):
+    statistics) and that the gate is a bool (numpy's bool_ too)."""
+    if not (isinstance(s.gate_ok, bool) or type(s.gate_ok).__name__ == "bool_"):
         raise ValueError(f"verify.score returned gate_ok={s.gate_ok!r}, not a bool")
     for name in ("theory", "knobs", "p_sax", "p_fix"):
         _finite(name, getattr(s, name))
@@ -133,8 +139,7 @@ def _checked(s: Any) -> Any:
 def _parts(d: Any) -> dict[str, Any]:
     out = {}
     for k, v in dict(d or {}).items():
-        ok = isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
-        out[str(k)] = float(v) if ok else repr(v)
+        out[str(k)] = float(v) if _real(v) and math.isfinite(float(v)) else repr(v)
     return out
 
 
@@ -245,7 +250,7 @@ class LofiReward:
         rewards = [float(r["reward"]) for r in records]
         with self.log_path.open("a", encoding="utf-8") as f:
             for r in records:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+                f.write(json.dumps(r, ensure_ascii=False, default=str) + "\n")
         st = self._summary(step, source, n, len(members), w, records, rewards, trunc, errors)
         st["t_ms"] = round(1000 * (time.perf_counter() - t0), 2)
         st["hook_errors"] = self._hooks(kwargs, st, records)
@@ -271,8 +276,9 @@ class LofiReward:
                        reward=0.0, digest=None, error=error)
         else:
             g2 = trunc is True
-            gate_ok = s.gate_ok and not g2
+            gate_ok = bool(s.gate_ok) and not g2
             G = 1 if gate_ok else 0
+            gate = "G2" if g2 else (None if s.gate_ok else (s.gate or "unknown"))
             live = {"theory": float(s.theory), "knobs": float(s.knobs)}
             r = {k: live.get(k, 0.0) for k in TERMS}          # taste, ce, theme: 0 (module docstring, TODO)
             pens = {str(k): 0.0 if g2 else float(v) for k, v in dict(s.penalties).items()}
@@ -280,13 +286,13 @@ class LofiReward:
             p_fix = 0.0 if g2 else float(s.p_fix)
             positive = G * sum(w[k] * r[k] for k in TERMS)
             penalty = p_sax + sum(pens.values()) + p_group + p_fix
-            rec.update(gate_ok=gate_ok, gate="G2" if g2 else (None if s.gate_ok else s.gate), G=G, r=r,
+            rec.update(gate_ok=gate_ok, gate=gate, G=G, r=r,
                        theory_parts=_parts(s.theory_parts), knob_parts=_parts(s.knob_parts), p_sax=p_sax,
                        penalties=pens, p_group=p_group, p_fix=p_fix, repairs=0 if g2 else int(s.repairs),
                        positive=positive, penalty=penalty, reward=positive - penalty,
                        digest=None if g2 else s.digest)
             if g2:
-                rec["raw_gate"] = None if s.gate_ok else s.gate     # what the verifier made of the cut text
+                rec["raw_gate"] = None if s.gate_ok else (s.gate or "unknown")   # the verifier's view of the cut text
         rec["text_sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
         rec["text"] = text
         return rec

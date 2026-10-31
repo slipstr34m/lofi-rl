@@ -316,7 +316,7 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
         kw, dropped = fit_fields(resolve(cfg, prof), GRPOConfig, cfg.optional_fields)
         start_step = checkpoint_step(resume_from) if resume_from else 0
         man.update(gpu={"name": props.name, "total_gib": round(gib, 2)}, profile=prof, trainer=kw,
-                   dropped_optional_fields=dropped, start_step=start_step)
+                   verified_trl_fields=sorted(kw), dropped_optional_fields=dropped, start_step=start_step)
         _write_json(summary_dir / "run.json", man)
 
         snap = resolve_pinned(cfg.model_repo, cfg.model_revision, SNAPSHOT_FILES)
@@ -324,7 +324,7 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
         prompts = prompt_module()
         rows = build_rows(cfg, palette, prompts)
         tok = AutoTokenizer.from_pretrained(snap)
-        tok.truncation_side = "left"                        # as TRL loads it; no prompt is cut (checked next)
+        tok.padding_side = tok.truncation_side = "left"     # as TRL loads it; no prompt is cut (checked next)
         lengths = [_prompt_tokens(tok, r["prompt"]) for r in rows]
         _check_lengths(lengths, kw)
         eos = _eos_ids(tok, GenerationConfig.from_pretrained(snap))
