@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.laptop   # uses git: never on a compute node (CLAUDE.md §1)
+
 ROOT = Path(__file__).resolve().parents[1]
 
 

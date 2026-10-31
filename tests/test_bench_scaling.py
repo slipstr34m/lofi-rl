@@ -19,6 +19,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import scaling_study  # noqa: E402
 from scaling_study import merge_node_stats, scaling_table  # noqa: E402
 
+pytestmark = pytest.mark.laptop   # plots need matplotlib (laptop venv only): never on a compute node (CLAUDE.md §1)
+
 
 def test_bench_runs_a_task_and_writes_stats(tmp_path):
     s = run("kit.bench:demo_task", 8, 2, tmp_path / "w2")

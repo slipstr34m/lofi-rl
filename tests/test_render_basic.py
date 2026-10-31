@@ -1,10 +1,11 @@
 """Render primitives (docs/design/instrument.md §4):
-- FluidSynth is the pinned 2.6.1, and the same MIDI renders to the same bytes in two fresh processes;
+- FluidSynth is the pinned 2.6.1, and the same MIDI renders to the same PCM in two fresh processes;
 - normalize_loop hits -14 ± 0.1 LUFS with true peak at or below -1 dBTP, and keeps the loop length exactly.
 Runs wherever FluidSynth is on PATH (the laptop, and the cluster through the tools wrapper). Bit identity is
 checked on one machine only: the cluster render is canonical (LESSONS 38)."""
 import hashlib
 import shutil
+import time
 from pathlib import Path
 
 import mido
@@ -13,6 +14,7 @@ import pytest
 
 from lofi_rl.render import fluid
 from lofi_rl.render.loudness import CEILING_DBTP, lufs, normalize_loop, true_peak_dbtp
+from lofi_rl.render.wavio import pcm_sha256, read_float, write_float
 
 ROOT = Path(__file__).resolve().parents[1]
 SF2 = ROOT / "assets" / "soundfonts" / "generaluser-gs" / "GeneralUser-GS.sf2"
@@ -38,13 +40,25 @@ def test_fluidsynth_is_the_pinned_version():
 
 
 @needs_fluidsynth
-def test_same_midi_renders_to_identical_bytes_in_fresh_processes(tmp_path):
+def test_same_midi_renders_to_identical_pcm_in_fresh_processes(tmp_path):
+    # Identity is the PCM: libsndfile stamps the wall-clock time into the PEAK chunk of float WAVs, so
+    # file bytes differ in one header byte between renders a second apart (found 2026-10-30).
     midi = _scale_midi(tmp_path / "scale.mid")
-    a = fluid.render_midi(SF2, midi, tmp_path / "a.wav")
-    b = fluid.render_midi(SF2, midi, tmp_path / "b.wav")
-    da, db = a.read_bytes(), b.read_bytes()
-    assert len(da) > 44 + 4 * 44100, "about 2 s of float audio expected"
-    assert hashlib.sha256(da).hexdigest() == hashlib.sha256(db).hexdigest()
+    a, sr_a = read_float(fluid.render_midi(SF2, midi, tmp_path / "a.wav"))
+    time.sleep(1.1)
+    b, sr_b = read_float(fluid.render_midi(SF2, midi, tmp_path / "b.wav"))
+    assert sr_a == sr_b == 44100 and a.shape[0] == 2 and a.shape[1] > 2 * 44100, "about 2+ s of stereo audio expected"
+    assert pcm_sha256(a) == pcm_sha256(b)
+
+
+def test_our_wav_writer_is_byte_deterministic(tmp_path):
+    x = _loop()
+    p1, p2 = write_float(tmp_path / "1.wav", x, 44100), write_float(tmp_path / "2.wav", x, 44100)
+    time.sleep(1.1)
+    p3 = write_float(tmp_path / "3.wav", x, 44100)
+    assert hashlib.sha256(p1.read_bytes()).digest() == hashlib.sha256(p2.read_bytes()).digest() == hashlib.sha256(p3.read_bytes()).digest()
+    y, sr = read_float(p1)
+    assert sr == 44100 and np.array_equal(x, y) and pcm_sha256(x) == pcm_sha256(y)
 
 
 def _loop(sr: int = 44100, bpm: float = 82.0) -> np.ndarray:

@@ -5,6 +5,9 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
+import pytest
+
+pytestmark = pytest.mark.laptop   # creates git repos: never on a compute node (CLAUDE.md §1)
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -7,6 +7,9 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
+import pytest
+
+pytestmark = pytest.mark.laptop   # runs stamp.sh, which calls git: never on a compute node (CLAUDE.md §1)
 
 ROOT = Path(__file__).resolve().parents[1]
 

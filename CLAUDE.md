@@ -109,7 +109,7 @@ Rules:
 - **docs/DECISIONS.md** records irreversible and pre-registered choices (palette freeze, base model, reward weights, gates) with date and rationale.
 - **Test oracle:** `pytest -q` (`make test`) runs before every commit. It covers:
   - the parser and compiler;
-  - determinism: the same LoopScript gives a bit-identical WAV on the same machine (the cluster render is canonical, LESSONS 38);
+  - determinism: the same LoopScript gives bit-identical PCM (`pcm_sha256`) on the same machine. The cluster render is canonical (LESSONS 38). Hash the samples, not the file: libsndfile writes a timestamp into float WAV headers (`src/lofi_rl/render/wavio.py`);
   - verifiers on hand-built cases;
   - the guard and sync safety.
 
