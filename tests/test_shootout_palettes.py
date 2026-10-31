@@ -19,7 +19,7 @@ from helpers_shootout import BASE_PATH, FILE_KITS, PLAN_PATH, ROOT, kit_archive,
 from lofi_rl.dsl import parse
 from lofi_rl.dsl.vocab import LANES
 from lofi_rl.palette import LAYERS, load_palette
-from lofi_rl.shootout.palettes import GenerateError, generate, main
+from lofi_rl.shootout.palettes import GenerateError, generate, main, yaml_load, yaml_text
 from lofi_rl.shootout.plan import load_plan
 
 DEV = ROOT / "palettes" / "dev_gu.yaml"
@@ -71,7 +71,7 @@ def flat(node, prefix=""):
 
 
 def doc_of(env, entry) -> dict:
-    return yaml.safe_load((env["out"] / entry["file"]).read_text())
+    return yaml_load((env["out"] / entry["file"]).read_text())
 
 
 # ------------------------------------------------------------------------------------- the base
@@ -221,6 +221,18 @@ def test_trims_and_faders_are_carried_as_cd51_says(env):
     assert {s["src"] for lane in doc_of(env, k)["kits"]["dusty"]["lanes"].values()
             for layer in LAYERS for s in lane[layer]} == {"kit_swirly"}
     assert doc_of(env, k)["sources"]["kit_swirly"]["sha256"] == env["tars"]["kit_swirly"]
+
+
+def test_libyaml_and_the_pure_python_dumper_write_the_same_palette_bytes(env):
+    # The generator uses libyaml when PyYAML has it; a palette's sha256 must not depend on that.
+    for e in env["stage"].index["palettes"][::5] + [dict(env["measure"].index["runs"][1], file="measure/m2.yaml")]:
+        text = (env["out"] / e["file"]).read_text()
+        body = text.split("\n", 1)[1]
+        doc = yaml.safe_load(text)
+        assert yaml_text(doc, yaml.SafeDumper) == body, e["file"]
+        if hasattr(yaml, "CSafeDumper"):
+            assert yaml_text(doc, yaml.CSafeDumper) == body, e["file"]
+        assert yaml_load(text) == doc
 
 
 def test_generation_is_byte_deterministic(env, tmp_path):

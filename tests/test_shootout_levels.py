@@ -89,21 +89,21 @@ def test_the_post_fader_check_holds_the_median_to_005_and_each_loop_to_01():
 @needs_fluidsynth
 def test_the_linear_range_check_passes_a_gu_stem_and_flags_an_input_that_drives_the_compressor():
     base = load_palette(BASE_PATH, verify=False)
-    b = yaml.safe_load((ROOT / "shootouts" / "loops" / "briefs.yaml").read_text())["loops"]["l5_wistful_mid"]
+    b = yaml.safe_load((ROOT / "shootouts" / "loops" / "briefs.yaml").read_text())["loops"]["l9_hopeful_high"]
     brief = Brief(energy=b["energy"], mood=b["mood"], bpm=b["bpm"], tonic=b["tonic"])
-    res = parse((ROOT / "shootouts" / "loops" / "l5_wistful_mid.ls").read_text(), vocab=base.vocab(), mode=brief.mode)
+    res = parse((ROOT / "shootouts" / "loops" / "l9_hopeful_high.ls").read_text(), vocab=base.vocab(), mode=brief.mode)
     c = compile_loop(res.ast, brief, base)
     c = replace(c, bass=replace(c.bass, notes=()), sax=replace(c.sax, notes=()))    # one FluidSynth process
     stem = fluid_stems(c, base, 2, workers=1)["keys"]
     chain, n = base.mix.buses["keys"], c.n
     L, _ = chain_lufs(chain, stem, 0.0, n)
     L_low, _ = chain_lufs(chain, stem, -6.02, n)
-    gu = linear_check({"l5": L}, {"l5": L_low})
+    gu = linear_check({"l9": L}, {"l9": L_low})
     assert gu["ok"] and abs(gu["median_drop_db"] - 6.02) <= 0.1
-    k = np.arange(2 * n)
+    k = np.arange(2 * 44100)                                                        # two 1 s cycles
     hot = np.tile(np.sin(2 * np.pi * 220.0 * k / 44100.0).astype(np.float32), (2, 1))   # 0 dBFS, 18 dB over
-    L, _ = chain_lufs(chain, hot, 0.0, n)
-    L_low, _ = chain_lufs(chain, hot, -6.02, n)
+    L, _ = chain_lufs(chain, hot, 0.0, 44100)
+    L_low, _ = chain_lufs(chain, hot, -6.02, 44100)
     flagged = linear_check({"hot": L}, {"hot": L_low})
     assert not flagged["ok"] and flagged["median_drop_db"] < 5.0, "the compressor takes part of the 6.02 dB"
 

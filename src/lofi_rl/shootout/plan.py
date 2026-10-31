@@ -30,6 +30,7 @@ _STAGE = re.compile(r"[A-Z][A-Za-z0-9_]*")
 _SLOT = re.compile(r"[A-Z][A-Za-z0-9_]*\.\d+")
 _LOOP = re.compile(r"L[1-9]")
 _SHA = re.compile(r"[0-9a-f]{64}")
+_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)     # libyaml when present; the same documents
 
 
 class PlanError(ValueError):
@@ -177,7 +178,7 @@ class Plan:
 
 
 def read_briefs(loops_dir: Path) -> dict[str, Brief]:
-    doc = yaml.safe_load((Path(loops_dir) / "briefs.yaml").read_text(encoding="utf-8"))
+    doc = yaml.load((Path(loops_dir) / "briefs.yaml").read_text(encoding="utf-8"), Loader=_LOADER)
     if not isinstance(doc, dict) or not isinstance(doc.get("loops"), dict):
         raise PlanError(f"{loops_dir}/briefs.yaml: expected a mapping with `loops`")
     out = {}
@@ -209,7 +210,7 @@ def load_plan(path: Path | str, root: Path = ROOT) -> Plan:
     path = Path(path)
     data = path.read_bytes()
     try:
-        doc = yaml.safe_load(data.decode("utf-8"))
+        doc = yaml.load(data.decode("utf-8"), Loader=_LOADER)
     except (UnicodeDecodeError, yaml.YAMLError) as err:
         raise PlanError(f"{path}: not a UTF-8 YAML document ({err})") from err
     return parse_plan(doc, path, root=root, sha256=hashlib.sha256(data).hexdigest())
