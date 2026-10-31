@@ -113,14 +113,19 @@ def step_scorer(rec: Recorder, out_dir: Path) -> None:
         from lofi_rl.render.loudness import lufs, true_peak_dbtp
         from lofi_rl.render.wavio import pcm_sha256, write_float
         info = {}
-        try:
-            from lofi_rl.dsl import parse  # the parser lands in Phase 0/1; report its gate on the example loop
-            res = parse(EXAMPLE.read_text())
-            info["loopscript_gate"] = {"ok": res.gate.ok, "code": res.gate.code, "repairs": len(res.repairs)}
-        except Exception as e:  # noqa: BLE001
-            info["loopscript_gate"] = f"pending: {type(e).__name__}: {e}"
         n = stub.loop_samples(82)
         notes, programs, hits = _hello_notes(n)
+        info["source"] = "stand-in loop (LoopScript render pending: the Phase-0 gate needs a rerun)"
+        try:
+            from lofi_rl.compile.stub_from_loop import notes_from_loop
+            from lofi_rl.dsl import parse
+            res = parse(EXAMPLE.read_text())
+            info["loopscript_gate"] = {"ok": res.gate.ok, "code": res.gate.code, "repairs": len(res.repairs)}
+            if res.gate.ok:
+                notes, programs, hits = notes_from_loop(res.ast, tonic_pc=2, mode="dorian", n=n)
+                info["source"] = "LoopScript tests/fixtures/loops/example.ls (D dorian, 82 BPM, Phase-0 stub voicing)"
+        except Exception as e:  # noqa: BLE001: the parser may not have landed yet
+            info["loopscript_gate"] = f"pending: {type(e).__name__}: {e}"
         y, li = stub.mix_and_normalize([(stub.render_stems(notes, programs, n, SF2), 1.0), (stub.render_drums(hits, n), 0.5)])
         y2, _ = stub.mix_and_normalize([(stub.render_stems(notes, programs, n, SF2), 1.0), (stub.render_drums(hits, n), 0.5)])
         assert y.shape == (2, n), f"length {y.shape[1]} != N {n}"

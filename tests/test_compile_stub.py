@@ -67,3 +67,33 @@ def test_hello_loop_renders_exact_length_at_target_loudness_and_repeats_identica
     assert abs(lufs(y, 44100) + 14) <= 0.1 and true_peak_dbtp(y) <= CEILING_DBTP
     y2, _ = stub.mix_and_normalize([(stub.render_stems(notes, programs, n, SF2), 1.0), (stub.render_drums(hits, n), 0.5)])
     assert pcm_sha256(y) == pcm_sha256(y2)
+
+
+# ---------------- the Phase-0 adapter: a parsed LoopScript -> stub notes (compile/stub_from_loop.py) ----------------
+EXAMPLE = ROOT / "tests" / "fixtures" / "loops" / "example.ls"
+
+
+def _example_notes(n):
+    from lofi_rl.compile.stub_from_loop import notes_from_loop
+    from lofi_rl.dsl import parse
+    res = parse(EXAMPLE.read_text())
+    assert res.gate.ok and not res.repairs
+    return notes_from_loop(res.ast, tonic_pc=2, mode="dorian", n=n)      # D dorian, as in instrument.md §1
+
+
+def test_example_loopscript_maps_to_the_notes_the_design_describes():
+    n = stub.loop_samples(82)
+    notes, programs, hits = _example_notes(n)
+    sax = sorted((nt.start, nt.pitch) for nt in notes if nt.channel == 2)
+    assert sax[0] == (0, 57), "bar 1 lands on A3, the 5th of Dm9"
+    assert (min(p for _, p in sax), max(p for _, p in sax)) == (50, 62), "sax range D3-D4"
+    assert sum(nt.channel == 1 for nt in notes) == 24, "24 bass onsets"
+    assert programs == {0: 4, 1: 33, 2: 66} and len(hits) > 100
+
+
+@needs_fluidsynth
+def test_example_loopscript_renders_exact_length_at_target_loudness():
+    n = stub.loop_samples(82)
+    notes, programs, hits = _example_notes(n)
+    y, _ = stub.mix_and_normalize([(stub.render_stems(notes, programs, n, SF2), 1.0), (stub.render_drums(hits, n), 0.5)])
+    assert y.shape == (2, n) and abs(lufs(y, 44100) + 14) <= 0.1 and true_peak_dbtp(y) <= CEILING_DBTP
