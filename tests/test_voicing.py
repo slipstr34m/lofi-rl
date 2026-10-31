@@ -188,8 +188,8 @@ def test_r7_quartal_coincidences_are_counted():
                     if cands[a] & cands[b]:
                         shared += 1
                         pairs[a, b] = pairs.get((a, b), 0) + 1
-    assert (cases, shared) == (36036, 2430)
-    assert pairs[("7", "9")] == pairs[("m7", "m11")] == pairs[("maj7", "maj9")] == 240 and len(pairs) == 13
+    assert (cases, shared) == (36036, 2001)
+    assert pairs[("7", "9")] == pairs[("m7", "m11")] == pairs[("maj7", "maj9")] == 240 and len(pairs) == 10
     same = sum(bool(quartal_stacks(a, n, m)) and quartal_stacks(a, n, m) == quartal_stacks(b, n, m)
                for m in MODES for n in NUMERALS for a, b in combinations(QUALITIES, 2))
     assert same == 0, "no two qualities share every stack in any mode"
@@ -247,7 +247,7 @@ SHOOTOUT_AT_D = {
              "E3 A3 C#4 F#4 | F#3 B3 E4 A4"],
     "i-IV": ["F3 C4 E4 | F3 A3 B3 E4", "F3 C4 E4 | F3 B3 E4", "F3 E4 C5 | F3 B3 E4 A4", "C3 F3 B3 E4 | D3 F3 B3 E4"],
     "Pulse": ["F3 C4 E4 | A3 B3 F4", "F3 C4 E4 | A3 B3 F4", "F3 E4 C5 | A3 F4 B4", "C3 F3 B3 E4 | F3 B3 E4 A4"],
-    "Step": ["E4 F4 G4 C5 | D4 G4 B4", "C4 F4 G4 | D4 G4", "G3 E4 F4 C5 | G3 D4 B4", "D3 G3 C4 F4 | D3 G3 C4 F4"],
+    "Step": ["E4 F4 G4 C5 | D4 G4 B4", "C4 F4 G4 | D4 G4", "G3 E4 F4 C5 | G3 D4 B4", "D3 G3 C4 F4 | D3 G3 C4 E4"],
     "Float": ["F3 C4 E4 | G3 B3 E4", "C4 E4 F4 | B3 E4", "F3 E4 C5 | G3 E4 B4", "C3 F3 B3 E4 | D3 G3 B3 E4"],
     "Drift": ["F3 C4 E4 | F3 A3 D4", "F3 C4 E4 | A3 D4", "F3 E4 C5 | F3 D4 A4", "C3 F3 Bb3 E4 | C3 F3 A3 D4"],
     "Plagal": ["F3 C4 E4 | A3 Bb3 F4", "F3 C4 E4 | A3 Bb3 F4", "F3 E4 C5 | F3 Bb3 A4", "C3 F3 Bb3 E4 | F3 Bb3 E4 A4"],
@@ -262,6 +262,32 @@ def test_the_shootout_vamps_at_tonic_2_are_pinned():
         for style, want in zip(VOICINGS, SHOOTOUT_AT_D[name]):
             va, vb = voice_vamp(Chord(*a), Chord(*b), 2, mode, style)
             assert f"{note_names(va)} | {note_names(vb)}" == want, (name, style)
+
+
+# ------------------------------------------------------------------- voicing rules V2.1 (docs/COMPILER.md §9)
+# Each change answers a finding of the review of V2 (workflow wf_b54901ca-e65): TH-1, TH-2, and TH-3 with R1.
+PHRYGIAN_M7 = (("ionian", "III"), ("dorian", "II"), ("aeolian", "V"))    # the diatonic m7 chords over a phrygian mode
+
+
+def test_v21_avoid_notes_count_the_bass_root():
+    # TH-1: the bass always plays the root, so an added tension a semitone above it is an avoid note even when the keys
+    # leave the root out. Under V2 the phrygian m7 chords took that b9: Step's IIm7 at tonic 2 was D3 G3 C4 F4,
+    # b7-b3-b13-b9 over E.
+    assert not avoids({1, 3, 10}, "m7") and not avoids({1, 3, 7, 10}, "m7")     # b9 over the bass, root held or not
+    assert avoids({2, 3, 10}, "m7") and avoids({1, 4, 10}, "7b9")               # a 9; 7b9 names its b9
+    assert not avoids({1, 2, 4, 10}, "7b9") and not avoids({4, 5, 10}, "7")     # 9 over a held b9; 11 over the 3rd
+    for mode, numeral in PHRYGIAN_M7:
+        assert 1 in chord_scale(numeral, mode)
+        for q in ("m7", "m9", "m11"):
+            for tonic in range(12):
+                root = root_of(numeral, tonic)
+                for v in _candidates(root, q, "quartal", numeral, mode):
+                    assert (root + 1) % 12 not in {p % 12 for p in v}, (mode, numeral, q, tonic, note_names(v))
+    for mode in MODES:
+        for numeral in NUMERALS:
+            for q in QUALITIES:
+                for stack in quartal(QUALITY[q], chord_scale(numeral, mode)):
+                    assert q == "7b9" or 1 not in {x % 12 for x in stack}, (mode, numeral, q, stack)
 
 
 # ------------------------------------------------------------------- section 3 rules that V2 leaves unchanged

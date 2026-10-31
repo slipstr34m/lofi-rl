@@ -37,6 +37,7 @@ MINOR_NINTH = 13                # rejected unless the chord is 7b9
 MU_CENTER = 60
 MU_WEIGHT = Fraction(1, 4)
 PERFECT_FIFTH = 7               # only a perfect fifth goes under an extension (m7b5 keeps its b5)
+ROOT = 0                        # the bass always plays it, so R3's avoid-note rule counts it as held (V2.1)
 TENSIONS = (1, 2, 3, 5, 6, 8, 9)    # b9 9 #9 11 #11 b13 13: what a quartal stack may add, from the mode (R3)
 FOURTHS = (5, 6)                # quartal: every adjacent interval ...
 THIRDS = (3, 4)                 # ... except at most one of these
@@ -86,8 +87,10 @@ def shell(q: Quality) -> Voicing:
 
 
 def _avoids(held: frozenset[int], named: frozenset[int]) -> bool:
-    """R3's avoid-note rule: no added tension a semitone above a named tone the stack holds."""
-    return not any((t - 1) % 12 in held & named for t in held - named)
+    """R3's avoid-note rule (V2.1): no added tension a semitone above the root, which the bass always plays, or
+    above a named tone the stack holds."""
+    sounding = (held & named) | {ROOT}
+    return not any((t - 1) % 12 in sounding for t in held - named)
 
 
 @lru_cache(maxsize=None)

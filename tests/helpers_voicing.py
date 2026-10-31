@@ -57,10 +57,12 @@ def added(q: str, numeral: str, mode: str) -> frozenset[int]:
 
 
 def avoids(held: set[int], q: str) -> bool:
-    """R3's avoid-note rule: no added tension sits a semitone, in pitch class, above a named tone the voicing
-    also holds (no natural 11 over a major 3rd)."""
+    """R3's avoid-note rule (V2.1): no added tension sits a semitone, in pitch class, above the root, which the bass
+    always plays, or above a named tone the voicing also holds (no natural 11 over a major 3rd, no b9 over the
+    bass)."""
     names = named(q)
-    return not any((t - 1) % 12 in held & names for t in held - names)
+    sounding = (set(held) & names) | {0}
+    return not any((t - 1) % 12 in sounding for t in set(held) - names)
 
 
 def rootless_template(q: str) -> list[int]:
