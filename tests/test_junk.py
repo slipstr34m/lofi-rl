@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from lofi_rl import prompt
+from lofi_rl import grammar, prompt
 from lofi_rl.brief import Brief, sample_briefs
 from lofi_rl.compile.compiler import CompileError
 from lofi_rl.palette import load_palette
@@ -303,9 +303,73 @@ def test_generate_writes_one_row_per_brief_with_the_v1_prompt(tmp_path, pal, mon
     assert meta["briefs"] == {"seed": 33, "count": 10, "sampler": "lofi_rl.brief.sample_briefs"}
     assert meta["model"] == {"repo": junk.QWEN[0], "revision": junk.QWEN[1]}
     assert [c["count"] for c in meta["timing"]["chunks"]] == [4, 4, 2] and meta["timing"]["load_s"] == 1.5
+    assert meta["constrained"] == UNCONSTRAINED, "v0's settings: no structured outputs unless --constrained"
     assert junk.main(["score", "--run", str(tmp_path), "--palette", str(DEV)]) == 0
     s = json.loads((tmp_path / "summary" / "junk.json").read_text())
     assert s["n"] == 10 and s["prompt"]["rows_matching"] == 10 and s["near_copy"]["count"] == 5
+    assert s["constrained"] == UNCONSTRAINED
+
+
+UNCONSTRAINED = {"enabled": False, "regex_sha256": None, "regex_chars": None, "builder": None}
+
+
+def test_generate_constrained_sends_the_loopscript_regex_and_records_its_sha(tmp_path, pal, monkeypatch):
+    engine = FakeEngine([prompt.example_text(pal), ORIG])
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: engine)
+    made = []
+
+    def params(regex):
+        made.append(regex)
+        return {"StructuredOutputsParams": {"regex": regex}}
+    monkeypatch.setattr(junk, "structured_outputs_params", params)
+    rc = junk.main(["generate", "--run", str(tmp_path), "--n", "4", "--chunk", "4", "--palette", str(DEV),
+                    "--hang-s", "0", "--constrained"])
+    assert rc == 0
+    rx = grammar.loopscript_regex(pal)
+    assert made == [rx], "built once, from the run's palette"
+    assert engine.sp == {**junk.SAMPLING, "structured_outputs": {"StructuredOutputsParams": {"regex": rx}}}
+    meta = json.loads((tmp_path / "summary" / "generate.json").read_text())
+    want = {"enabled": True, "regex_sha256": grammar.regex_sha256(pal), "regex_chars": len(rx),
+            "builder": "lofi_rl.grammar.loopscript_regex"}
+    assert meta["constrained"] == want
+    assert meta["sampling"] == junk.SAMPLING, "the sampling settings are v0's; the regex is recorded by its sha"
+    assert junk.main(["score", "--run", str(tmp_path), "--palette", str(DEV)]) == 0
+    s = json.loads((tmp_path / "summary" / "junk.json").read_text())
+    assert s["constrained"] == want
+    assert s["pass"]["count"] == 4 and s["failures"]["G1"] == 0, "the score step is the same"
+
+
+def test_generate_constrained_fails_before_the_model_loads_naming_the_import(tmp_path, pal, monkeypatch):
+    import types
+    loads = []
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: loads.append(model) or FakeEngine([ORIG]))
+    monkeypatch.setitem(sys.modules, "vllm", types.ModuleType("vllm"))
+    monkeypatch.setitem(sys.modules, "vllm.sampling_params", None)          # a vLLM without StructuredOutputsParams
+    rc = junk.main(["generate", "--run", str(tmp_path), "--n", "2", "--palette", str(DEV), "--hang-s", "0",
+                    "--constrained"])
+    assert rc == 1 and loads == [], "no GPU time is spent on a run that cannot constrain"
+    meta = json.loads((tmp_path / "summary" / "generate.json").read_text())
+    assert "from vllm.sampling_params import StructuredOutputsParams" in meta["stopped"]
+    assert meta["generated"] == 0 and meta["constrained"]["regex_sha256"] == grammar.regex_sha256(pal)
+    assert (tmp_path / "summary" / "completions.jsonl").read_text() == ""
+
+
+def test_structured_outputs_params_is_vllms_regex_params_and_reaches_sampling_params(monkeypatch):
+    import types
+    seen = _fake_vllm(monkeypatch, refuse_top_k_zero=False)
+
+    class StructuredOutputsParams:
+        def __init__(self, **kw):
+            self.kw = kw
+    mod = types.ModuleType("vllm.sampling_params")
+    mod.StructuredOutputsParams = StructuredOutputsParams
+    monkeypatch.setitem(sys.modules, "vllm.sampling_params", mod)
+    so = junk.structured_outputs_params("vamp: (Im9|IV13)")
+    assert isinstance(so, StructuredOutputsParams) and so.kw == {"regex": "vamp: (Im9|IV13)"}
+    eng = junk.VllmEngine("/hf/snap", seed=5, gpu_mem=0.85, max_model_len=4096)
+    sp = eng.sampling(**junk.SAMPLING, structured_outputs=so)
+    assert sp.kw == {**junk.SAMPLING, "n": 1, "structured_outputs": so}
+    assert "init" in seen
 
 
 def test_generate_stops_at_its_deadline_and_keeps_every_finished_chunk(tmp_path, pal, monkeypatch):

@@ -1,6 +1,7 @@
 """Base-model junk rate: the Phase 1-2 progress oracle (CLAUDE.md §6) and the data of the Phase 1 gate (§9).
 
-    python -m lofi_rl.rl.junk generate --run DIR [--n 500] [--seed 2026] [--model REPO@SHA]   policy env (vLLM)
+    python -m lofi_rl.rl.junk generate --run DIR [--n 500] [--seed 2026] [--model REPO@SHA] [--constrained]
+                                                                                             policy env (vLLM)
     python -m lofi_rl.rl.junk score    --run DIR                                             policy env
     python -m lofi_rl.rl.junk render   --run DIR [--k 50]                                    scorer env
 
@@ -12,6 +13,10 @@ jobs/junk_rate.sbatch runs the three in order on one GPU node, with DIR = $REMOT
   (kit.hf_cache.resolve_pinned), in bf16 and eager mode as the Phase-0 smoke ran it. Prompts go to vLLM in chunks;
   each finished chunk is appended to completions.jsonl and fsynced, and generate.json is rewritten, so a kill keeps
   what was done. A chunk that would end past --deadline-s is not started.
+  --constrained adds grammar-constrained decoding (D-016; docs/GRAMMAR.md): SamplingParams(structured_outputs=
+  StructuredOutputsParams(regex=lofi_rl.grammar.loopscript_regex(palette))). vLLM's class is imported inside the run,
+  before the model loads, so a vLLM without it fails in seconds with the import named. generate.json and junk.json
+  record the regex's sha256 under "constrained"; the sampling settings stay v0's.
 - score: gates G1-G6 (dsl.parse with the palette's vocabulary and the brief's mode) and compile (compile_loop). No
   audio, no numpy, so it runs in the policy env. Writes scored.jsonl and junk.json.
 - render: a seeded sample of --k gate-passing loops rendered with dev_gu (render.pipeline) to one-pass 16-bit
@@ -33,6 +38,8 @@ junk.json (schema lofi-rl/junk/1):
   compared by its canonical text without `sax:` (the form the example is printed in), any other by its raw text
   with fences, blank lines and extra spaces dropped;
 - prompt: version, template sha, system-message sha, and how many rows were sent exactly today's prompt;
+- constrained: generate.json's record of the decoding grammar (enabled, regex sha256 and length, builder); null for a
+  run whose generate.json predates --constrained (v0, unconstrained);
 - by_knob: pass counts by energy and by mood. top_details: the commonest gate details, line numbers dropped.
 
 No claim about sound: clips are only measured (length, loudness, hashes).
@@ -64,6 +71,7 @@ from lofi_rl.brief import ENERGIES, MOOD_NAMES, Brief, sample_briefs
 from lofi_rl.compile.compiler import compile_loop
 from lofi_rl.dsl import canon, canon_sha, parse
 from lofi_rl.dsl.repair import penalty
+from lofi_rl.grammar import loopscript_regex
 from lofi_rl.palette import ROOT, Palette, load_palette
 from lofi_rl.prng import MASK, splitmix64
 from lofi_rl.prompt import (PROMPT_VERSION, build_messages, estimate_tokens, example_text, messages_sha256,
@@ -284,6 +292,29 @@ class VllmEngine:
         return out
 
 
+STRUCTURED_IMPORT = "from vllm.sampling_params import StructuredOutputsParams"
+REGEX_BUILDER = "lofi_rl.grammar.loopscript_regex"
+
+
+def structured_outputs_params(regex: str):
+    """vLLM's StructuredOutputsParams(regex=...), for SamplingParams(structured_outputs=...): the field v0's
+    generate.json shows as `structured_outputs=None`. Imported here, inside the run (policy env only)."""
+    try:
+        from vllm.sampling_params import StructuredOutputsParams
+    except ImportError as err:
+        raise RuntimeError(f"--constrained: `{STRUCTURED_IMPORT}` failed ({type(err).__name__}: {err}), so the "
+                           "model was not loaded and nothing was generated") from err
+    return StructuredOutputsParams(regex=regex)
+
+
+def constrained_block(regex: str | None) -> dict:
+    """What generate.json (and junk.json after it) records about grammar-constrained decoding: never the regex
+    itself, only its sha256 and length (None when the run is unconstrained)."""
+    if regex is None:
+        return {"enabled": False, "regex_sha256": None, "regex_chars": None, "builder": None}
+    return {"enabled": True, "regex_sha256": sha256_text(regex), "regex_chars": len(regex), "builder": REGEX_BUILDER}
+
+
 def load_engine(model: str, *, seed: int, gpu_mem: float, max_model_len: int) -> VllmEngine:
     """The pinned snapshot from the HF cache (no huggingface_hub call), then vLLM on it."""
     from kit.hf_cache import resolve_pinned
@@ -303,6 +334,7 @@ def cmd_generate(a: argparse.Namespace) -> int:
     shas = [messages_sha256(c) for c in convs]
     longest = max((c[0]["content"] + "\n" + c[1]["content"] for c in convs), key=len)
     sampling = dict(SAMPLING, max_tokens=a.max_tokens)
+    regex = loopscript_regex(palette) if a.constrained else None
     meta = {"schema": GENERATE_SCHEMA, "partial": True, "requested": a.n, "generated": 0, "stopped": None,
             "briefs": {"seed": a.seed, "count": a.n, "sampler": "lofi_rl.brief.sample_briefs"},
             "model": {"repo": repo, "revision": rev},
@@ -310,15 +342,19 @@ def cmd_generate(a: argparse.Namespace) -> int:
                        "system_sha256": sha256_text(system_message(palette)), "chars": len(longest),
                        "tokens_estimate_4cpt": estimate_tokens(longest)},
             "palette": {"id": palette.id, "sha256": palette.sha256, "path": _rel(a.palette)},
-            "sampling": sampling, "engine": {}, "timing": {"chunks": []}, "host": _host()}
+            "sampling": sampling, "constrained": constrained_block(regex), "engine": {},
+            "timing": {"chunks": []}, "host": _host()}
     _write_json(summ / "generate.json", meta)
     chunks = meta["timing"]["chunks"]
     rc = 0
     with (summ / "completions.jsonl").open("w", encoding="utf-8") as f:
         try:
+            extra = {}                  # vLLM's StructuredOutputsParams is imported before the model loads
+            if regex is not None:
+                extra["structured_outputs"] = structured_outputs_params(regex)
             engine = load_engine(a.model, seed=a.seed, gpu_mem=a.gpu_mem, max_model_len=a.max_model_len)
             meta["timing"]["load_s"] = engine.load_s
-            sp = engine.sampling(**sampling)
+            sp = engine.sampling(**sampling, **extra)
             meta["engine"] = dict(engine.info)
             _write_json(summ / "generate.json", meta)
             for start in range(0, a.n, a.chunk):
@@ -353,8 +389,10 @@ def cmd_generate(a: argparse.Namespace) -> int:
                           tok_per_s=round(tokens / gen_s, 1) if gen_s else None)
     meta["partial"] = False
     _write_json(summ / "generate.json", meta)
+    regex_sha = meta["constrained"]["regex_sha256"]
     print(f"GENERATE_{'OK' if rc == 0 and meta['generated'] else 'FAILED'} {meta['generated']}/{a.n} "
-          f"stopped={meta['stopped']} tok/s={meta['timing']['tok_per_s']}", flush=True)
+          f"stopped={meta['stopped']} tok/s={meta['timing']['tok_per_s']} "
+          f"constrained={regex_sha[:16] if regex_sha else 'off'}", flush=True)
     return rc if meta["generated"] else 1
 
 
@@ -479,6 +517,7 @@ def summarize(rows: list[dict], scored: list[dict], meta: dict, palette: Palette
         "prompt": {"version": PROMPT_VERSION, "template_sha256": template_sha256(),
                    "system_sha256": sha256_text(system_message(palette)), "rows_matching": matching,
                    "as_generated": meta.get("prompt")},
+        "constrained": meta.get("constrained"),
         "palette": {"id": palette.id, "sha256": palette.sha256,
                     "matches_generate": None if gen_palette is None else gen_palette == palette.sha256},
         "by_knob": {"energy": _knobs(scored, "energy", ENERGIES), "mood": _knobs(scored, "mood", MOOD_NAMES)},
@@ -602,6 +641,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="dump stacks and exit after this many seconds (default deadline + 90; 0 disables)")
     g.add_argument("--gpu-mem", type=float, default=0.85, help="vLLM gpu_memory_utilization")
     g.add_argument("--max-model-len", type=int, default=4096)
+    g.add_argument("--constrained", action="store_true",
+                   help="decode under lofi_rl.grammar's LoopScript regex (vLLM structured outputs; docs/GRAMMAR.md)")
     s = sub.add_parser("score", help="gates G1-G6 and compile -> summary/junk.json (policy env)")
     s.add_argument("--run", type=Path, required=True)
     s.add_argument("--palette", type=Path, default=DEFAULT_PALETTE)
