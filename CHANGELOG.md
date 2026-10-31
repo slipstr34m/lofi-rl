@@ -3,9 +3,82 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 170.1 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-30 ~19:05).
-- **Phase:** 0 (setup), started 2026-10-30. Both envs are built. The Phase-0 gate waits on `lofi-smoke-env` 13624734: it is queued on debug behind other users (Slurm estimate 23:00) and will run the mirror at `5380ff0`, LoopScript render included.
-- **Waiting on Shresth:** whether `scancel` may be used on our own jobs. With it, the smoke could race on the gpu partition, and 13624408 could be cleared: it waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots.
+- **SU used:** 241.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-30 23:53).
+- **Phase:** 0 (setup), started 2026-10-30. Smoke 13624734 failed 2 checks, both with known causes, and the fixes are in (entry below). The Phase-0 gate waits on the smoke rerun.
+- **Waiting on Shresth:** whether `scancel` may be used on our own jobs. It now matters only for 13624408, which waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots. Racing the smoke on the gpu partition is dropped.
+
+---
+
+## 2026-10-30 (night): smoke 13624734 fails 2 checks; a pre-flight audit finds a third; fixes
+
+**What was done**
+- **Smoke run.** `lofi-smoke-env` 13624734 ran on b11-09 (A40), 22:12–22:15, after 3 h 9 min in the debug queue (submitted 19:03; `sacct`). Everything passed except two checks, both of which failed while loading a model (tracebacks in `runs/smoke-13624734/summary/{scorer,policy}.json`):
+  1. **CLAP:** `KeyError: 'text_branch.embeddings.position_ids'`. With transformers ≥ 4.31, laion_clap 1.1.7 deletes that key itself (`factory.py:64-65`). The smoke's patch for LAION-AI/CLAP#127 had already removed it, so laion_clap's own `del` failed.
+  2. **vLLM:** `IncompleteSnapshotError`. In the policy env, huggingface_hub 2.4.0 checks an offline `snapshot_download` against its cached file listing (`trees/<sha>.json`). It refused the Qwen snapshot because `fetch.sbatch`'s allow_patterns had skipped `.gitattributes`, `LICENSE` and `README.md`, none of which vLLM reads. MERT loaded the same way in the scorer env, where hub 0.36.2 has no such check.
+- **Pre-flight audit before resubmitting** (workflow `wf_ab3f5d9c-0f7`: 4 investigators, each with an adversarial verifier). It read every code path that had not yet run against library sources copied from both cluster envs: vLLM 0.32.0, transformers 5.19.0 and 4.43.4, huggingface_hub 2.4.0 and 0.36.2, laion_clap 1.1.7, triton 3.7.1. It found:
+  - **A third deterministic failure.** The four tempo-exact CLAP windows (4 × 280,975 samples at 48 kHz) are longer than the resampled loop (1,123,893 samples), because N is rounded to whole 64-sample blocks. So `np.stack` would raise. Reproduced on the laptop, which has the scorer env's scipy 1.17.1 and numpy 1.26.4.
+  - **A false pass.** MERT, CLAP and Audiobox were non-critical, so 13624734's scorer step printed `SCORER_OK` with CLAP broken (`scorer.json`: `"ok": true`).
+  - **Hardening:**
+    - vLLM start-up has no deadline, and the step JSON was written only at the end, so a hang would burn the walltime and leave nothing behind;
+    - the CLAP repeat difference was recorded but never asserted;
+    - vLLM usage telemetry was on;
+    - a bare `is_dir()` resolver would accept a scratch-purged snapshot;
+    - the policy step's GPU probe initialised CUDA in the parent, which forces vLLM's engine core to `spawn`. That means two CUDA processes on one GPU, a layout that has never run on this account.
+- **Fixes.** `jobs/smoke_env.sbatch` is unchanged, so its registry sha `3edc166e77e1b180` still holds.
+  - **Pinned resolver.** `kit.hf_cache.resolve_pinned(repo, sha, need)` returns the snapshot path at the pinned commit as a `str` and never calls huggingface_hub. It fails closed on a missing dir, a dangling blob link, a missing `need` file or a missing indexed shard. Qwen, MERT and the CLAP checkpoint load through it. The Audiobox predictor and laion_clap's roberta-base still load by repo id, which worked offline under hub 0.36.2.
+  - **CLAP:**
+    - loads the original checkpoint;
+    - `clap_windows()` takes the window length from the resampled signal (82 BPM: 4 × 280,973);
+    - warms up, then makes every call under `no_grad`, and times the batch per window;
+    - asserts finite unit-norm embeddings and a repeat difference ≤ 1e-4;
+    - records batch-1 vs batch-4, and runs the text tower for the first time.
+  - **Scorer gate.** MERT, CLAP and Audiobox are critical. `loop_render` hands its clip to the scorers before asserting, and fails if `example.ls` fails its gate.
+  - **Step files and watchdog.** The Recorder rewrites `<step>.json` before and after every check. A per-step `faulthandler` watchdog (facts 120 s, scorer 480 s, policy 900 s) dumps every stack and exits 1, so a hang still ends in `SMOKE_FAILED` inside the 30 min.
+  - **Policy step:**
+    - the GPU probe runs in a child interpreter, so vLLM keeps its default `fork`;
+    - a C compiler and `Python.h` check comes before the model load (Triton JIT-compiles its driver);
+    - `max_tokens` 1024, a `finish_reason` assert, `parse(..., mode="wistful")`.
+  - **Facts and env.** Facts record the GPU compute mode. `job_env.sh` sets `VLLM_NO_USAGE_STATS=1 DO_NOT_TRACK=1`.
+- **Review of the diff** (workflow `wf_894d2816-948`: scorer, policy and harness lenses, each with an adversarial verifier). No will-fail findings.
+  - **One false pass survived:** an empty or degenerate completion (EOS only, or one token repeated to the cap) would have passed `vllm_one_completion`. Fixed: the check now asserts non-empty text with at least 3 distinct tokens.
+  - **Hardening applied:**
+    - `faulthandler.enable(all_threads=True)`, so native crashes print Python stacks, in the forked engine core too;
+    - a `SIGALRM` backstop 30 s after each watchdog, because Python cancels the watchdog before native teardown runs;
+    - the network probe times out after 5 s per address instead of 20 s, so it cannot outrun the 120 s facts watchdog;
+    - atomic step-file writes;
+    - MERT's hidden states must be finite, with shape [13, ·, ·, 768];
+    - vLLM's start method is recorded;
+    - `hub_cache()` follows huggingface_hub exactly (`XDG_CACHE_HOME`, `~` and `$VAR` expansion);
+    - tests for two-level blob links (hub 2.4.0's shared store), the watchdog and the alarm.
+  - **Not applied** (all low likelihood): an explicit engine shutdown inside the check, SIGUSR1 stack dumps from the engine core, a libcuda pre-check, and a teardown marker. A teardown hang would print `SMOKE_FAILED` while the pulled JSONs still read ok, so the log is the place to look (`tail` via `scripts/remote.sh`).
+  - **Also found:** MERT's "pos_conv … newly initialized" warning in 13624734's log is spurious. torch 2.8's weight-norm compat hook remaps `weight_g`/`weight_v` on load.
+
+**Jobs** (`scripts/session_report.py`)
+
+| Job | Name | State | Minutes | SU | Result (log under `/scratch1/shresthr/lofi-rl/logs/`) |
+|---|---|---|---|---|---|
+| 13624734 | smoke-env | FAILED | 2.5 | 61.2 | b11-09; 8 of 10 checks and 447 tests passed; CLAP checkpoint load and vLLM's offline snapshot failed |
+
+**Numbers** (`runs/smoke-13624734/summary/*.json`, `pytest.txt`)
+- **Node:** b11-09, AMD EPYC 7313 16-Core, NVIDIA A40 (46,068 MiB, driver 580.159.04), glibc 2.28. huggingface.co is reachable (200).
+- **Scorer env** (torch 2.8.0+cu128, CUDA 12.8, bf16):
+  - FluidSynth 2.6.1 gives the same PCM twice (`afb1f6a4…`, 221,056 samples);
+  - `example.ls` passes its gate with 0 repairs and renders to N = 1,032,576 samples, −14.05 LUFS, −1.378 dBTP in 4 iterations (`eb2cadc5…`);
+  - MERT returns hidden states [13, 1, 1755, 768] in 61.4 ms per clip;
+  - Audiobox gives CE 6.276, CU 6.768, PC 5.121, PQ 6.968 in 335.7 ms per clip.
+- **Policy env:** torch 2.13.0+cu130, CUDA 13.0, bf16.
+- **Tests on the node** (`-m "not laptop"`): 447 passed, 33 deselected, 53.53 s.
+- **Laptop vs cluster.** A laptop run of the scorer step on `example.ls` (`python -m lofi_rl.smoke scorer`, this session; the GPU checks fail there) matches the cluster's LUFS and true peak to 3 decimals, but not its PCM: `3110334e…` vs `eb2cadc5…`, and FluidSynth's `4e1cde0b…` vs `afb1f6a4…`. Cluster renders stay canonical (LESSONS 38).
+- **Laptop after the fixes:** `pytest -q` gives 495 passed (480 plus 15 new tests: resolver, CLAP windows, Recorder, hang guards).
+
+**Failed approaches and why**
+- **The CLAP `position_ids` patch.** laion_clap 1.1.7 already deletes the key, and the patch breaks that delete. The re-saved copy `$REMOTE_SCR/cache/clap_music_patched.pt` (2.35 GB) is now unused and is left for the scratch purge.
+- **Offline loads by repo id** (`snapshot_download(local_files_only=True)`). Under hub 2.x they depend on how complete the fetch was, not on what the loader reads. Re-fetching the 3 files would also work, but it changes `fetch.sbatch`, a registered type over 500 SU.
+- **CLAP window length from the tempo.** N is rounded to whole blocks, so the 4 windows overrun the loop. The length now comes from the signal.
+
+**SU spent:** 61.2 (13624734). Total: 241.7 (`scripts/session_report.py`, 23:53).
+
+**Next:** rerun `lofi-smoke-env` (approved type, ≤ 720 SU). `SMOKE_OK` passes the Phase-0 gate; then Phase 1 starts (compiler, palette shootouts).
 
 ---
 
