@@ -31,6 +31,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -43,6 +44,7 @@ LOOPS = ROOT / "shootouts" / "loops"
 STEPS = ("draw", "measure", "levels", "palettes", "render", "build")
 TOOLS = ("lofi_rl.shootout.palettes", "lofi_rl.shootout.levels")      # sections 7.8 and 7.1
 LEADERS_SCHEMA = "lofi-rl/shootout-leaders/1"
+STAGES_SCHEMA = "lofi-rl/shootout-stages/1"
 _JOBS = re.compile(r"[0-9]+(\+[0-9]+)*")
 _NAMES = re.compile(r"[A-Za-z0-9_-]+(\+[A-Za-z0-9_-]+)*")
 
@@ -121,15 +123,16 @@ def commands(a: argparse.Namespace, doc: dict) -> list[tuple[str, list[str]]]:
         draw += ["--cut", "+".join(doc["cut"])]
     if a.seed:
         draw += ["--seed", a.seed]
-    measure = [py, "-m", "lofi_rl.shootout.palettes", "--plan", str(a.plan), "--levels", "none",
-               "--draw", str(s / "draw.json"), "--out", str(s / "palettes" / "measure")]
+    # the generator writes the measuring palettes into <out>/measure/, where the levels tool reads them
+    measure = [py, "-m", "lofi_rl.shootout.palettes", "--plan", str(a.plan), "--stage", a.stage, "--levels", "none",
+               "--out", str(s / "palettes")]
     levels = [py, "-m", "lofi_rl.shootout.levels", "--plan", str(a.plan), "--loops", str(a.loops),
               "--palettes", str(s / "palettes" / "measure"), "--stage", a.stage]
     if doc["prior_runs"]:                       # drift keys against job 1's (section 3, "Drift between jobs")
         levels += ["--prior", str(Path(doc["prior_runs"][0]) / "summary" / "levels.json")]
     levels += ["--out", str(s / "levels.json"), "--workers", str(a.jobs)]
-    palettes = [py, "-m", "lofi_rl.shootout.palettes", "--plan", str(a.plan), "--levels", str(s / "levels.json"),
-                "--draw", str(s / "draw.json"), "--out", str(s / "palettes")]
+    palettes = [py, "-m", "lofi_rl.shootout.palettes", "--plan", str(a.plan), "--stage", a.stage,
+                "--levels", str(s / "levels.json"), "--draw", str(s / "draw.json"), "--out", str(s / "palettes")]
     render = [py, "-m", "lofi_rl.shootout.render", "--draw", str(s / "draw.json"), "--palettes", str(s / "palettes"),
               "--out", str(a.run / "renders"), "--summary", str(s), "--jobs", str(a.jobs), "--workers", "1"]
     build = [py, "-m", "lofi_rl.shootout.batch", "build", "--plan", str(a.plan), "--stage", a.stage,
@@ -177,14 +180,28 @@ def main(argv: list[str] | None = None) -> int:
         for name, cmd in steps:
             print(f"{name}: {shlex.join(cmd)}")
         return 0
+    timed: list[dict] = []
     for name, cmd in steps:
+        t0 = time.perf_counter()
         rc = run_step(name, cmd)
+        timed.append({"stage": name, "exit": rc, "seconds": round(time.perf_counter() - t0, 1)})
+        _write_stages(summary, a, timed)
+        print(f"shootout: {name}: done in {timed[-1]['seconds']:.1f} s (exit {rc})", flush=True)
         if rc != 0:
             print(f"shootout: stopped at {name} (exit {rc}); no batch is written before the build stage",
                   file=sys.stderr)
             return rc
-    print("shootout: every stage done", flush=True)
+    print(f"shootout: every stage done in {sum(t['seconds'] for t in timed):.1f} s", flush=True)
     return 0
+
+
+def _write_stages(summary: Path, a: argparse.Namespace, timed: list[dict]) -> None:
+    """summary/stages.json: each stage's exit code and wall time so far (the job's SU basis, §7.7)."""
+    doc = {"schema": STAGES_SCHEMA, "stage": a.stage, "jobs": a.jobs, "stages": timed,
+           "seconds": round(sum(t["seconds"] for t in timed), 1)}
+    tmp = summary / ".stages.json.tmp"
+    tmp.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+    tmp.replace(summary / "stages.json")
 
 
 if __name__ == "__main__":

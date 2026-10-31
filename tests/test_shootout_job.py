@@ -63,15 +63,49 @@ def test_the_runner_writes_every_argument_into_leaders_json_and_lists_the_stages
            f"{tmp_path}/runs/shootout-13640002/summary/batches.json" in lines["draw"]
     assert "--repeats K1+R1+S1" in lines["draw"] and "--rerun-s2 sax_gu_alto" in lines["draw"]
     assert "--cut w1-two" in lines["draw"] and "--seed" not in lines["draw"]
-    assert f"lofi_rl.shootout.palettes --plan {job.PLAN} --levels none --draw {s}/draw.json --out {s}/palettes/measure" \
-        in lines["measure"]
+    assert lines["measure"].endswith(f"lofi_rl.shootout.palettes --plan {job.PLAN} --stage day3 --levels none "
+                                     f"--out {s}/palettes")
     assert f"--palettes {s}/palettes/measure --stage day3 --prior {tmp_path}/runs/shootout-13640001/summary/levels.json" \
         in lines["levels"] and f"--out {s}/levels.json --workers 8" in lines["levels"]
-    assert f"--levels {s}/levels.json --draw {s}/draw.json --out {s}/palettes" in lines["palettes"]
+    assert lines["palettes"].endswith(f"lofi_rl.shootout.palettes --plan {job.PLAN} --stage day3 --levels "
+                                      f"{s}/levels.json --draw {s}/draw.json --out {s}/palettes")
     assert f"lofi_rl.shootout.render --draw {s}/draw.json --palettes {s}/palettes --out {run}/renders " \
            f"--summary {s} --jobs 8 --workers 1" in lines["render"]
     assert f"batch build --plan {job.PLAN} --stage day3 --renders {run}/renders --out {tmp_path}/inbox " \
            f"--draw {s}/draw.json" in lines["build"]
+
+
+ARGPARSE = ("unrecognized arguments", "the following arguments are required", "invalid choice", "expected one argument",
+            "not allowed with")
+
+
+def test_every_stage_command_is_one_its_tool_takes(tmp_path, capsys, monkeypatch):
+    # Each stage runs a tool's own CLI in a fresh process, so a flag the tool does not take, or a folder one stage
+    # writes and the next does not read, would only show on the cluster. 2026-10-31 dry run: the generator was
+    # called without --stage, with --draw on the measuring run and --out one level too deep. Here each command
+    # line goes through its tool's main() (inputs missing, so each stops at its own checks, never at argparse), and
+    # the folders chain: measure -> levels -> palettes -> render -> build.
+    from lofi_rl.shootout import batch, levels, palettes, render
+    monkeypatch.setenv("LOFI_ASSETS", str(tmp_path / "no-assets"))     # the generator stops at its source check
+    a = job._args(["--run", str(tmp_path / "runs" / "shootout-1"), "--inbox", str(tmp_path / "inbox"), "--stage",
+                   "day1", "--seed", "0000000000000001"])
+    steps = dict(job.commands(a, job.check(a)))
+    tools = {"draw": batch, "measure": palettes, "levels": levels, "palettes": palettes, "render": render,
+             "build": batch}
+    for name, argv in steps.items():
+        assert argv[1:3] == ["-m", tools[name].__name__], name
+        try:
+            tools[name].main(argv[3:])
+        except SystemExit:
+            pass
+        err = capsys.readouterr().err
+        assert not any(x in err for x in ARGPARSE), (name, err)
+    arg = {name: dict(zip(argv[3:], argv[4:])) for name, argv in steps.items()}
+    assert arg["levels"]["--palettes"] == arg["measure"]["--out"] + "/measure", "the measuring palettes' folder"
+    assert arg["palettes"]["--levels"] == arg["levels"]["--out"] and arg["render"]["--palettes"] == arg["palettes"]["--out"]
+    assert arg["render"]["--draw"] == arg["palettes"]["--draw"] == arg["build"]["--draw"]
+    assert arg["build"]["--renders"] == arg["render"]["--out"] and "--draw" not in arg["measure"]
+    assert {arg[n]["--stage"] for n in ("draw", "measure", "levels", "palettes", "build")} == {"day1"}
 
 
 @pytest.mark.parametrize("args,match", [
@@ -116,7 +150,26 @@ def test_the_first_failing_stage_ends_the_job(tmp_path, capsys, monkeypatch):
     rc = job.main(["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"), "--stage", "day1"])
     assert rc == 3 and ran == ["draw", "measure", "levels", "palettes", "render"]
     assert "stopped at render (exit 3)" in capsys.readouterr().err
+    timed = json.loads((tmp_path / "run" / "summary" / "stages.json").read_text())
+    assert [(s["stage"], s["exit"]) for s in timed["stages"]] == [("draw", 0), ("measure", 0), ("levels", 0),
+                                                                 ("palettes", 0), ("render", 3)]
     ran.clear()
     monkeypatch.setattr(job, "run_step", lambda name, argv: ran.append(name) or 0)
     assert job.main(["--run", str(tmp_path / "run2"), "--inbox", str(tmp_path / "inbox"), "--stage", "day1"]) == 0
     assert ran[-1] == "build" and json.loads((tmp_path / "run2" / "summary" / "leaders.json").read_text())["stage"] == "day1"
+
+
+def test_the_runner_records_each_stages_wall_time(tmp_path, capsys, monkeypatch):
+    # The SU estimate of jobs/shootout.sbatch rests on measured stage times (SHOOTOUTS.md §7.7), so every run
+    # leaves them in summary/stages.json (pulled by `make pull`) and prints them in the job log.
+    monkeypatch.setattr(job, "find_spec", lambda name: object())
+    clock = iter(range(0, 100, 5))
+    monkeypatch.setattr(job.time, "perf_counter", lambda: float(next(clock)))
+    monkeypatch.setattr(job, "run_step", lambda name, argv: 0)
+    assert job.main(["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"), "--stage", "day1"]) == 0
+    doc = json.loads((tmp_path / "run" / "summary" / "stages.json").read_text())
+    assert doc["schema"] == "lofi-rl/shootout-stages/1" and doc["jobs"] == 8
+    assert [s["stage"] for s in doc["stages"]] == list(job.STEPS)
+    assert all(s["seconds"] == 5.0 and s["exit"] == 0 for s in doc["stages"]) and doc["seconds"] == 30.0
+    out = capsys.readouterr().out
+    assert "shootout: render: done in 5.0 s" in out and "shootout: every stage done in 30.0 s" in out

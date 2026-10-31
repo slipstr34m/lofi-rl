@@ -14,12 +14,13 @@ fixed band's included (§3 step 5).
   level anchors, and each later run one not yet measured variant per bus (the anchor where a bus has none left), so
   each variant is measured once (§3 step 1: 8 runs on Day 1). Trims and faders are 0. measure/index.json says which
   variant each run measures on which bus.
-- `--levels <levels.json>` writes one palette per (stage, option) of the day: <out>/<stage>/<option>.yaml, and for R2,
-  whose rounds each play one kit, <out>/r2/<kit>/<bass>.yaml. <out>/index.json lists them with their instruments,
-  trims, faders and sha256, and the day's round slots (loop, brief, tiles in symbols).
-- `--draw <draw.json>` (optional) also writes <out>/clips.json, the render list: each slot's tiles resolved through
-  the draw's symbol-to-option map to a palette. The draw is read as {"stage": "day1", "symbols": {stage: {symbol:
-  option}}}; other keys are ignored. It must meet each stage's draw rule (plan.yaml).
+- `--levels <levels.json>` writes one palette per (stage, option) of the day, and for R2, whose rounds each play one
+  kit, one per (kit, bass): <out>/<id>.yaml, the id being `<stage>_<option>` or `r2_<kit>_<bass>`, the key the
+  job's draw gives it (§7.6) and the file the render driver reads. <out>/index.json lists them with their
+  instruments, trims, faders and sha256, and the day's round slots (loop, brief, tiles in symbols).
+- `--draw <draw.json>` (optional; the job passes it): the batch builder's draw (lofi_rl.shootout.draw). It must be
+  this day's draw of this plan, each stage's maps must meet its draw rule (plan.yaml), and every palette its
+  `palettes` table asks for must be one written here with the same band; the index records its sha256.
 - `--without` leaves options out (a kit whose §7.4 archive is not built yet, say) and records them; the band and the
   level anchors cannot be left out.
 
@@ -52,7 +53,6 @@ from lofi_rl.shootout.plan import Plan, PlanError, load_plan
 
 INDEX_SCHEMA = "lofi-rl/shootout-palettes/1"
 MEASURE_SCHEMA = "lofi-rl/shootout-measure/1"
-CLIPS_SCHEMA = "lofi-rl/shootout-clips/1"
 LEVELS_SCHEMA = "lofi-rl/shootout-levels/1"
 BUSES = ("sax", "keys", "bass", "drums")          # render/mix.py's summing order
 TRIM_BUSES = ("sax", "keys", "bass")              # chains that start with the trim slot
@@ -215,8 +215,19 @@ class Inputs:
             printed = yaml_load(blocks.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, yaml.YAMLError) as err:
             raise GenerateError(f"kit {cid}: {blocks}: {err}") from err
-        if not isinstance(printed, dict) or set(printed) != {"lanes", "choke"}:
-            raise GenerateError(f"kit {cid}: {blocks} must hold exactly the importer's `lanes:` and `choke:` blocks")
+        if not isinstance(printed, dict) or not {"lanes", "choke"} <= set(printed) <= {"sources", "lanes", "choke"}:
+            raise GenerateError(f"kit {cid}: {blocks} must hold the importer's printed document: `lanes:` and "
+                                f"`choke:`, and its `sources:` entry if it printed one")
+        if "sources" in printed:                 # the importer's own entry for the archive it wrote (§7.4)
+            entries = printed["sources"]
+            if not isinstance(entries, dict) or len(entries) != 1:
+                raise GenerateError(f"kit {cid}: {blocks}: `sources:` must hold the one archive entry the importer "
+                                    f"printed")
+            (entry,) = entries.values()
+            if not isinstance(entry, dict) or entry.get("sha256") != sha:
+                raise GenerateError(f"kit {cid}: {blocks}: its sources entry names sha256 "
+                                    f"{str((entry or {}).get('sha256'))[:12]}..., but {tar} is {sha[:12]}...: the "
+                                    f"printed blocks belong to another archive")
         if printed["choke"] != base_kit["choke"]:
             raise GenerateError(f"kit {cid}: choke {printed['choke']} is not dev_gu's {base_kit['choke']} (§4.2)")
         lanes = printed["lanes"]
@@ -227,6 +238,9 @@ class Inputs:
             raise GenerateError(f"kit {cid}: every one-shot of {blocks} must name one source, the archive; got "
                                 f"{sorted(map(str, srcs))}")
         src = srcs.pop()
+        if "sources" in printed and set(printed["sources"]) != {src}:
+            raise GenerateError(f"kit {cid}: {blocks}: its sources entry is {sorted(printed['sources'])}, but its "
+                                f"one-shots name {src!r}")
         if src in self.base.sources or src in self.extra_sources:
             raise GenerateError(f"kit {cid}: source id {src!r} is already used")
         self.extra_sources[src] = {"path": a["path"], "sha256": sha, "license": a["license"], "mode": "fetch",
@@ -400,11 +414,8 @@ def write_stage(inputs: Inputs, out: Path, stage: str, plan_path: Path, levels_p
         inst = {b: e["instruments"][b] for b in BUSES}
         trims = {b: float(lv[inst[b]]["t"]) for b in BUSES}
         faders = {b: float(lv[inst[b]]["F"]) for b in BUSES}
-        if e["kit"] is None:
-            rel, pid = Path(e["stage"].lower()) / f"{e['option']}.yaml", f"{e['stage'].lower()}_{e['option']}"
-        else:
-            rel = Path(e["stage"].lower()) / e["kit"] / f"{e['option']}.yaml"
-            pid = f"{e['stage'].lower()}_{e['kit']}_{e['option']}"
+        pid = palette_id(e["stage"], e["option"], e["kit"])
+        rel = Path(f"{pid}.yaml")
         data = inputs.dump(inputs.palette_doc(pid, inst, trims, faders), str(rel))
         files[rel] = data
         palettes.append({"stage": e["stage"], "option": e["option"], "kit": e["kit"], "file": rel.as_posix(),
@@ -428,30 +439,71 @@ def write_stage(inputs: Inputs, out: Path, stage: str, plan_path: Path, levels_p
              "without": list(inputs.without), "band": dict(inputs.plan.days[inputs.day].band),
              "sources": inputs.sources_index(), "palettes": palettes, "slots": slots}
     if draw is not None:
+        check_draw_palettes(inputs, draw, palettes)
         index["draw"] = {"file": label(draw_path, inputs.root), "sha256": file_sha256(draw_path)}
-        files[Path("clips.json")] = (json.dumps(clips(inputs, draw, palettes, slots, index["draw"]), indent=1)
-                                     + "\n").encode("utf-8")
     files[Path("index.json")] = (json.dumps(index, indent=1) + "\n").encode("utf-8")
     return Generated(index, write_all(out, files))
 
 
 # --------------------------------------------------------------------------------------------- the draw
-def read_draw(path: Path, inputs: Inputs, stage: str) -> dict[str, dict[str, str]]:
+DRAW_SCHEMA = "lofi-rl/shootout-draw/1"
+SLOT_BUS = {"keys": "keys", "kit": "drums", "bass": "bass", "sax": "sax"}
+
+
+def palette_id(stage: str, option: str, kit: str | None = None) -> str:
+    """A stage palette's id and file stem: the key the job's draw gives it (lofi_rl.shootout.draw)."""
+    return "_".join([stage.lower()] + ([kit] if kit else []) + [option])
+
+
+def read_draw(path: Path, inputs: Inputs, stage: str) -> dict:
+    """The job's draw.json: this day's draw of this plan, each stage's maps within its draw rule."""
     try:
         doc = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError) as err:
         raise GenerateError(f"draw {path}: {err}") from err
-    if not isinstance(doc, dict) or doc.get("stage") != stage or not isinstance(doc.get("symbols"), dict):
-        raise GenerateError(f"draw {path}: expected {{'stage': {stage!r}, 'symbols': {{stage: {{symbol: option}}}}}}")
-    maps = doc["symbols"]
+    if not isinstance(doc, dict) or doc.get("schema") != DRAW_SCHEMA or doc.get("stage") != stage:
+        raise GenerateError(f"draw {path}: expected a {DRAW_SCHEMA} draw of {stage}, got "
+                            f"{doc.get('schema') if isinstance(doc, dict) else doc!r} of "
+                            f"{doc.get('stage') if isinstance(doc, dict) else None!r}")
+    if (doc.get("plan") or {}).get("sha256") != inputs.plan.sha256:
+        made = str((doc.get("plan") or {}).get("sha256"))[:12]
+        raise GenerateError(f"draw {path} was made from another plan (sha256 {made}...), not "
+                            f"{inputs.plan.sha256[:12]}...")
+    maps = doc.get("maps") or {}
     for st in inputs.stages:
-        got = maps.get(st.id)
-        if not isinstance(got, dict) or sorted(got) != sorted(st.symbols):
-            raise GenerateError(f"draw {st.id}: must map exactly the symbols {list(st.symbols)}")
+        groups = maps.get(st.id)
+        if not isinstance(groups, list) or len(groups) != len(st.groups):
+            raise GenerateError(f"draw {st.id}: expected one map per draw group ({len(st.groups)})")
+        got: dict[str, str] = {}
+        for g, m in zip(st.groups, groups):
+            if not isinstance(m, dict) or sorted(m) != sorted(g.symbols):
+                raise GenerateError(f"draw {st.id}: a group must map exactly the symbols {list(g.symbols)}")
+            got.update(m)
         if sorted(got.values()) != sorted(inputs.options[st.id]):
             raise GenerateError(f"draw {st.id}: must map onto the options {list(inputs.options[st.id])} one to one")
         check_rule(inputs.plan, st, got)
-    return {st.id: dict(maps[st.id]) for st in inputs.stages}
+    if not isinstance(doc.get("palettes"), dict):
+        raise GenerateError(f"draw {path}: no `palettes` table")
+    return doc
+
+
+def check_draw_palettes(inputs: Inputs, draw: Mapping, palettes: Sequence[Mapping]) -> None:
+    """Every palette the draw asks for is one written here, and its band is the one written (§2.1: a round's
+    palettes differ only in the candidate)."""
+    by_id = {p["id"]: p for p in palettes}
+    fixed = inputs.plan.days[inputs.day].band_slots()
+    for key, spec in sorted(draw["palettes"].items()):
+        if key not in by_id:
+            raise GenerateError(f"draw: palette {key} is not one of the {len(by_id)} palettes of this day")
+        band = spec.get("band") or {}
+        want = {slot: by_id[key]["instruments"][bus] for slot, bus in SLOT_BUS.items()}
+        want.update({slot: v for slot, v in fixed.items() if slot not in SLOT_BUS})
+        off = sorted(slot for slot in want if band.get(slot) != want[slot])
+        if off:
+            raise GenerateError(f"draw: palette {key} asks for " + ", ".join(f"{x}={band.get(x)}" for x in off) +
+                                f", but this day's palette {key} plays " + ", ".join(f"{x}={want[x]}" for x in off))
+        if spec.get("sax_muted"):
+            raise GenerateError(f"draw: palette {key} asks for a muted sax, which only the vamp palettes carry (§7.3)")
 
 
 def check_rule(plan: Plan, st, got: Mapping[str, str]) -> None:
@@ -479,25 +531,6 @@ def check_rule(plan: Plan, st, got: Mapping[str, str]) -> None:
             sym = next(s for s, v in got.items() if v == o)
             if sym not in st.draw["symbols"]:
                 raise GenerateError(f"draw {st.id}: {o} must sit on {st.draw['symbols']}, not {sym} (CD-16)")
-
-
-def clips(inputs: Inputs, draw, palettes, slots, draw_ref) -> dict:
-    """The render list: every slot's tiles resolved through the draw to a palette (R2 takes its kit from R1's
-    symbol)."""
-    by_key = {(p["stage"], p["option"], p["kit"]): p for p in palettes}
-    kit_stage = next(s.id for s in inputs.stages if s.bus == "drums")
-    rounds = []
-    for s in slots:
-        kit_option = draw[kit_stage][s["kit"]] if s["kit"] else None
-        tiles = []
-        for pos, sym in enumerate(s["tiles"], 1):
-            option = draw[s["stage"]][sym]
-            p = by_key[(s["stage"], option, kit_option)]
-            tiles.append({"tile": pos, "symbol": sym, "option": option, "palette": p["file"],
-                          "palette_sha256": p["sha256"]})
-        rounds.append({**{k: s[k] for k in ("stage", "id", "loop", "loop_file", "brief", "kit", "sub",
-                                            "text_sha256")}, "kit_option": kit_option, "tiles": tiles})
-    return {"schema": CLIPS_SCHEMA, "draw": draw_ref, "rounds": rounds}
 
 
 # --------------------------------------------------------------------------------------------- writing
@@ -539,7 +572,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--plan", required=True, type=Path)
     p.add_argument("--stage", required=True, choices=sorted(STAGES))
     p.add_argument("--levels", required=True, help="'none' for the measuring palettes, or the level tool's levels.json")
-    p.add_argument("--draw", type=Path, default=None, help="the batch builder's draw.json: also write clips.json")
+    p.add_argument("--draw", type=Path, default=None, help="the job's draw.json: check it and every palette it asks for")
     p.add_argument("--base", type=Path, default=None, help="the base palette (default: the plan's)")
     p.add_argument("--without", default="", help="options to leave out, comma-separated (recorded in the index)")
     p.add_argument("--out", required=True, type=Path, help="<run>/summary/palettes/")
@@ -567,7 +600,8 @@ def main(argv: list[str] | None = None) -> int:
         for e in got.index["palettes"]:
             print(f"{e['file']} {e['sha256'][:12]} " + " ".join(f"{b}:t={e['trim_db'][b]:+.2f},F={e['fader_db'][b]:+.2f}"
                                                                 for b in BUSES))
-        print(f"wrote {len(got.index['palettes'])} palettes to {a.out}" + (", and clips.json" if a.draw else ""))
+        print(f"wrote {len(got.index['palettes'])} palettes to {a.out}"
+              + (", every one the draw asks for" if a.draw else ""))
     if got.index["without"]:
         print("left out: " + ", ".join(got.index["without"]))
     return 0

@@ -19,6 +19,7 @@ from helpers_shootout import BASE_PATH, FILE_KITS, PLAN_PATH, ROOT, kit_archive,
 from lofi_rl.dsl import parse
 from lofi_rl.dsl.vocab import LANES
 from lofi_rl.palette import LAYERS, load_palette
+from lofi_rl.shootout.draw import draw, write_draw
 from lofi_rl.shootout.palettes import GenerateError, generate, main, yaml_load, yaml_text
 from lofi_rl.shootout.plan import load_plan
 
@@ -267,6 +268,31 @@ def test_a_missing_or_changed_kit_archive_is_refused_and_without_leaves_it_out(e
         generate(plan2, tmp_path / "c", stage="day1", levels=None, base=env["base"])
 
 
+def test_the_importers_printed_document_is_read_and_a_source_for_another_archive_is_refused(env, tmp_path,
+                                                                                           monkeypatch):
+    # §7.4: `python -m lofi_rl.convert.kit` prints one YAML document, its report in comment lines, then `sources`
+    # (the archive's entry, with its sha256), `choke` and `lanes`. Saved as derived/kits/<kit>.yaml, that whole
+    # document is what the generator reads (2026-10-31 dry run: the two real kits' printed files were refused).
+    assets = tmp_path / "assets"
+    for src in yaml.safe_load(env["base"].read_text())["sources"].values():
+        if src["mode"] == "fetch":
+            (assets / src["path"]).parent.mkdir(parents=True, exist_ok=True)
+            (assets / src["path"]).write_bytes((env["assets"] / src["path"]).read_bytes())
+    tars = {k: kit_archive(assets, k, printed=True) for k in FILE_KITS}
+    monkeypatch.setenv("LOFI_ASSETS", str(assets))
+    got = generate(PLAN_PATH, tmp_path / "a", stage="day1", levels=None, base=env["base"])
+    assert {r["instruments"]["drums"] for r in got.index["runs"]} == set(PLAN.stages["R1"].options)
+    for kit in FILE_KITS:
+        assert got.index["variants"][kit]["source_sha256"] == tars[kit]
+    blocks = assets / "derived" / "kits" / "kit_swirly.yaml"
+    blocks.write_text(blocks.read_text().replace(f"sha256: {tars['kit_swirly']}", "sha256: " + "0" * 64))
+    with pytest.raises(GenerateError, match="kit_swirly.*sources.*sha256"):
+        generate(PLAN_PATH, tmp_path / "b", stage="day1", levels=None, base=env["base"])
+    blocks.write_text(yaml.safe_dump({"lanes": {}, "choke": [], "extra": 1}))
+    with pytest.raises(GenerateError, match="kit_swirly"):
+        generate(PLAN_PATH, tmp_path / "c", stage="day1", levels=None, base=env["base"])
+
+
 def test_a_levels_file_from_another_base_or_without_a_variant_is_refused(env, tmp_path):
     doc = json.loads(env["levels"].read_text())
     other = dict(doc, base_sha256="1" * 64)
@@ -288,52 +314,68 @@ def test_a_levels_file_from_another_base_or_without_a_variant_is_refused(env, tm
 
 
 # ------------------------------------------------------------------------------------- the draw
-def a_draw() -> dict:
-    """A draw that meets every Day-1 constraint: K1's pairs are families, S1's t/a symbols their register."""
-    fam = {}
-    for o in PLAN.stages["K1"].options:
-        fam.setdefault(PLAN.candidates[o].family, []).append(o)
-    k1 = {}
-    for (pair, (a, b)), members in zip(sorted(PLAN.stages["K1"].draw["pairs"].items()), sorted(fam.values())):
-        k1[a], k1[b] = members
-    reg = {r: [o for o in PLAN.stages["S1"].options if PLAN.candidates[o].register == r] for r in ("tenor", "alto")}
-    s1 = {sym: reg[r][i] for r, syms in PLAN.stages["S1"].draw["groups"].items() for i, sym in enumerate(syms)}
-    return {"stage": "day1", "symbols": {
-        "K1": k1, "S1": s1,
-        "R1": dict(zip(PLAN.stages["R1"].symbols, reversed(PLAN.stages["R1"].options))),
-        "R2": dict(zip(PLAN.stages["R2"].symbols, PLAN.stages["R2"].options))}}
+def a_draw(tmp_path: Path, seed: int = 0x5EED) -> tuple[Path, dict]:
+    """The job's draw.json for Day 1 (lofi_rl.shootout.draw, the batch builder's draw, §2.3 and §7.6)."""
+    doc = draw(PLAN, "day1", seed=seed)
+    return write_draw(doc, tmp_path / "draw.json"), doc
 
 
-def test_a_draw_writes_the_render_list_and_a_draw_off_its_constraints_is_refused(env, tmp_path):
-    draw = a_draw()
-    (tmp_path / "draw.json").write_text(json.dumps(draw))
-    got = generate(PLAN_PATH, tmp_path / "out", stage="day1", levels=env["levels"], base=env["base"],
-                   draw=tmp_path / "draw.json")
-    clips = json.loads((tmp_path / "out" / "clips.json").read_text())
-    assert len(clips["rounds"]) == 18 and sum(len(r["tiles"]) for r in clips["rounds"]) == 24 + 9 + 9 + 24
-    files = {(p["stage"], p["option"], p["kit"]): p for p in got.index["palettes"]}
-    for r in clips["rounds"]:
-        assert r["loop"] in PLAN.loop_names and r["text_sha256"]
-        for pos, tile in enumerate(r["tiles"], 1):
-            assert tile["tile"] == pos
-            kit = draw["symbols"]["R1"][r["kit"]] if r["stage"] == "R2" else None
-            assert tile["option"] == draw["symbols"][r["stage"]][tile["symbol"]]
-            entry = files[(r["stage"], tile["option"], kit)]
-            assert (tile["palette"], tile["palette_sha256"]) == (entry["file"], entry["sha256"])
-    bad = copy.deepcopy(draw)
-    t1, a1 = bad["symbols"]["S1"]["t1"], bad["symbols"]["S1"]["a1"]
-    bad["symbols"]["S1"]["t1"], bad["symbols"]["S1"]["a1"] = a1, t1
-    (tmp_path / "bad.json").write_text(json.dumps(bad))
-    with pytest.raises(GenerateError, match="S1.*t1.*tenor"):
-        generate(PLAN_PATH, tmp_path / "bad", stage="day1", levels=env["levels"], base=env["base"],
-                 draw=tmp_path / "bad.json")
-    split = copy.deepcopy(draw)
-    k1 = split["symbols"]["K1"]
-    k1["P1b"], k1["P2a"] = k1["P2a"], k1["P1b"]
-    (tmp_path / "split.json").write_text(json.dumps(split))
-    with pytest.raises(GenerateError, match="K1.*P1.*family"):
-        generate(PLAN_PATH, tmp_path / "split", stage="day1", levels=env["levels"], base=env["base"],
-                 draw=tmp_path / "split.json")
+def _rewrite(path: Path, edit) -> Path:
+    doc = json.loads(path.read_text())
+    edit(doc)
+    out = path.with_name(f"edited-{len(list(path.parent.glob('edited-*')))}.json")
+    out.write_text(json.dumps(doc))
+    return out
+
+
+def test_with_the_jobs_draw_every_palette_it_asks_for_is_written_under_its_key(env, tmp_path):
+    # The render driver reads <palettes>/<key>.yaml for each key of the draw's `palettes` table (§7.7); the key
+    # is the palette's id, `<stage>_<option>` or R2's `r2_<kit>_<bass>`.
+    path, doc = a_draw(tmp_path)
+    got = generate(PLAN_PATH, tmp_path / "out", stage="day1", levels=env["levels"], base=env["base"], draw=path)
+    by_id = {p["id"]: p for p in got.index["palettes"]}
+    assert set(doc["palettes"]) == set(by_id) and len(by_id) == 26
+    assert got.index["draw"]["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    slot_of = {"keys": "keys", "drums": "kit", "bass": "bass", "sax": "sax"}
+    for key, spec in doc["palettes"].items():
+        entry = by_id[key]
+        assert entry["file"] == f"{key}.yaml" and (tmp_path / "out" / entry["file"]).is_file()
+        assert {slot_of[b]: i for b, i in entry["instruments"].items()} == \
+            {s: spec["band"][s] for s in slot_of.values()}, key
+        assert load_palette(tmp_path / "out" / entry["file"], verify=False).id == key
+    assert {r["palette"] for r in doc["renders"].values()} <= set(by_id)
+
+
+def test_a_draw_off_its_plan_or_its_constraints_is_refused(env, tmp_path):
+    path, _ = a_draw(tmp_path)
+
+    def run(p):
+        return generate(PLAN_PATH, tmp_path / p.stem, stage="day1", levels=env["levels"], base=env["base"], draw=p)
+
+    def swap_s1(d):                       # t1 (a tenor symbol) and a1 (an alto symbol) trade options
+        tenor, alto = d["maps"]["S1"]
+        tenor["t1"], alto["a1"] = alto["a1"], tenor["t1"]
+
+    def split_k1(d):                      # twins P1b and P2a trade options: P1 no longer holds one family
+        k1 = d["maps"]["K1"][0]
+        k1["P1b"], k1["P2a"] = k1["P2a"], k1["P1b"]
+
+    def other_plan(d):
+        d["plan"]["sha256"] = "0" * 64
+
+    def extra_palette(d):
+        d["palettes"]["k1_nonesuch"] = d["palettes"]["k1_jrhodes3d"]
+
+    def other_band(d):
+        d["palettes"]["k1_jrhodes3d"]["band"]["bass"] = "bass_vsco2_pizz"
+
+    def other_day(d):
+        d["stage"] = "day2"
+
+    for edit, match in ((swap_s1, "S1.*t1.*tenor"), (split_k1, "K1.*P1.*family"), (other_plan, "another plan"),
+                        (extra_palette, "k1_nonesuch"), (other_band, "k1_jrhodes3d.*bass"), (other_day, "day2")):
+        with pytest.raises(GenerateError, match=match):
+            run(_rewrite(path, edit))
 
 
 # ---------------------------------------------------------------------------------------- the CLI

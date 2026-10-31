@@ -319,7 +319,7 @@ def test_after_matching_every_bus_sits_at_its_target_on_two_loops(tmp_path, monk
     from lofi_rl.render.pipeline import render
     (tmp_path / "levels.json").write_text(json.dumps(doc))
     got = generate(PLAN_PATH, tmp_path / "stage", stage="day1", levels=tmp_path / "levels.json", without=missing)
-    entry = next(p for p in got.index["palettes"] if p["file"] == "k1/vcsl_upright_knight.yaml")
+    entry = next(p for p in got.index["palettes"] if p["file"] == "k1_vcsl_upright_knight.yaml")
     m = render(PLAN.loop_text("L1"), PLAN.briefs()["l1_melancholy_low"],
                load_palette(tmp_path / "stage" / entry["file"], verify=True)).manifest
     for bus, vid in entry["instruments"].items():

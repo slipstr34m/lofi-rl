@@ -6,7 +6,9 @@ test module.
   palette.sf2_coverage read it, so a palette naming its presets passes load_palette(verify=True), coverage check
   (SHOOTOUTS.md §7.5) included; nothing here renders it.
 - `kit_archive`: what the §7.4 importer writes: derived/kits/<kit>.tar (44.1 kHz mono float32 one-shots, sorted
-  members, mtime 0) and derived/kits/<kit>.yaml, its printed `lanes:` and `choke:` blocks.
+  members, mtime 0) and derived/kits/<kit>.yaml, its printed `lanes:` and `choke:` blocks, or with `printed=True`
+  the whole document `python -m lofi_rl.convert.kit` prints (its report as comments, then `sources`, `choke` and
+  `lanes`).
 - `synthetic_base`: shootouts/palettes/base.yaml with every SoundFont replaced by a tiny_sf2 under `assets`.
 - `synthetic_levels`: a levels file shaped like the level tool's, with made-up trims and faders.
 - `fake_flac`, `fake_render`, `fake_renders`: what `lofi_rl.shootout.render` writes and the batch builder reads, with
@@ -51,7 +53,7 @@ def tiny_sf2(path: Path, presets) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def kit_archive(assets: Path, kit: str, shaker_db: float = 0.0) -> str:
+def kit_archive(assets: Path, kit: str, shaker_db: float = 0.0, *, printed: bool = False) -> str:
     """One decaying click per layer and round robin (1 or 2 per layer), the shaker lane at `shaker_db` (a borrowed
     lane's offset, §7.4). Returns the tar's sha256."""
     folder = assets / "derived" / "kits"
@@ -77,8 +79,17 @@ def kit_archive(assets: Path, kit: str, shaker_db: float = 0.0) -> str:
             info = tarfile.TarInfo(name)
             info.size, info.mtime, info.mode = len(members[name]), 0, 0o644
             t.addfile(info, io.BytesIO(members[name]))
-    (folder / f"{kit}.yaml").write_text(yaml.safe_dump({"lanes": lanes, "choke": CHOKE}, sort_keys=False))
-    return hashlib.sha256(tar.read_bytes()).hexdigest()
+    sha = hashlib.sha256(tar.read_bytes()).hexdigest()
+    if not printed:
+        (folder / f"{kit}.yaml").write_text(yaml.safe_dump({"lanes": lanes, "choke": CHOKE}, sort_keys=False))
+        return sha
+    source = {"path": f"derived/kits/{kit}.tar", "sha256": sha, "license": "CC0 1.0", "mode": "fetch", "url": None,
+              "converted_from": f"shootouts/kits/{kit}.yaml (sha256 000000000000) by lofi_rl.convert.kit 1",
+              "attribution": None}
+    head = f"# {kit}: sha256 {sha} ({tar.stat().st_size:,} bytes), synthetic\n# sources goes into the palette's sources\n"
+    (folder / f"{kit}.yaml").write_text(head + yaml.safe_dump({"sources": {kit: source}}, sort_keys=False)
+                                        + yaml.safe_dump({"choke": CHOKE, "lanes": lanes}, sort_keys=False))
+    return sha
 
 
 def synthetic_base(tmp: Path, assets: Path) -> Path:
