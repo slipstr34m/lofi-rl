@@ -65,12 +65,16 @@ def limit_loop(x: np.ndarray, sr: int) -> np.ndarray:
 
 
 def normalize_loop(x: np.ndarray, sr: int, target: float = TARGET_LUFS, tol: float = TOL_LU,
-                   iters: int = 4) -> tuple[np.ndarray, LoudnessInfo]:
-    """Gain then limit until the loop sits at `target` LUFS ± `tol`, with true peak at or below CEILING_DBTP."""
+                   iters: int = 8) -> tuple[np.ndarray, LoudnessInfo]:
+    """Gain then limit until the loop sits at `target` LUFS ± `tol`, with true peak at or below CEILING_DBTP.
+
+    Once the limiter works, each dB of gain adds less than 1 LU, so plain `g += target - level` undershoots.
+    A secant step on (gain, loudness) converges instead. Its slope is clamped to [1, 4] dB of gain per LU.
+    """
     level = lufs(x, sr)
     if not np.isfinite(level):
         raise LoudnessError("silent input")
-    g = target - level
+    g, prev = target - level, None
     for i in range(1, iters + 1):
         y = limit_loop(x * np.float32(10 ** (g / 20)), sr)
         level = lufs(y, sr)
@@ -79,5 +83,9 @@ def normalize_loop(x: np.ndarray, sr: int, target: float = TARGET_LUFS, tol: flo
             if tp > CEILING_DBTP:
                 raise LoudnessError(f"true peak {tp:.2f} dBTP above {CEILING_DBTP}")
             return y.astype(np.float32), LoudnessInfo(level, tp, g, i)
-        g += target - level
+        slope = 1.0
+        if prev is not None and abs(level - prev[1]) > 1e-6:
+            slope = min(4.0, max(1.0, (g - prev[0]) / (level - prev[1])))
+        prev = (g, level)
+        g += slope * (target - level)
     raise LoudnessError(f"not within {tol} LU of {target} after {iters} iterations (last {level:.2f})")
