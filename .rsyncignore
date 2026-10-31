@@ -20,3 +20,4 @@ assets/big/
 *.bin
 *.safetensors
 jobs/submissions.log
+.claude-run.lock

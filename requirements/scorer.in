@@ -2,6 +2,7 @@
 # code breaks on transformers>=4.44 while vLLM 0.32 needs transformers 5.16-5.19 (docs/research/taste_scorers_rl.md).
 torch==2.8.0
 torchaudio==2.8.0
+torchvision==0.23.0   # laion_clap imports torchvision.ops but does not declare it (env_scorer job 13624269)
 transformers==4.43.4
 numpy==1.26.4
 laion_clap==1.1.7

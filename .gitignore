@@ -36,3 +36,6 @@ dist/
 .idea/
 .vscode/
 *.swp
+
+# --- autonomous-run lock (CLAUDE.md §10) ---
+.claude-run.lock

@@ -128,6 +128,7 @@ numpy==1.26.4
     #   soundfile
     #   soxr
     #   torchlibrosa
+    #   torchvision
     #   transformers
     #   webdataset
 nvidia-cublas-cu12==12.8.4.1
@@ -206,6 +207,8 @@ pandas==3.0.6
     # via laion-clap
 pedalboard==0.9.26
     # via -r requirements/scorer.in
+pillow==13.0.0
+    # via torchvision
 platformdirs==4.14.0
     # via
     #   pooch
@@ -307,12 +310,15 @@ torch==2.8.0
     #   -r requirements/scorer.in
     #   audiobox-aesthetics
     #   torchaudio
+    #   torchvision
 torchaudio==2.8.0
     # via
     #   -r requirements/scorer.in
     #   audiobox-aesthetics
 torchlibrosa==0.1.0
     # via laion-clap
+torchvision==0.23.0
+    # via -r requirements/scorer.in
 tqdm==4.70.1
     # via
     #   audiobox-aesthetics
