@@ -1,0 +1,52 @@
+# Virtuosity Drums v0.925 (CC0) as one-shots for the drums shootout: docs/SHOOTOUTS.md §4.2 and §7.4 (kit maps,
+# CD-31 to CD-35). Read by `python -m lofi_rl.convert.kit shootouts/kits/kit_virtuosity.yaml --big assets/big
+# --out assets/big/derived/kits/kit_virtuosity.tar`; paths are relative to --big. Every value is a starting point
+# for the shootout, not a claim about how anything sounds.
+id: kit_virtuosity
+license: CC0 1.0 (Virtuosity Drums v0.925)
+attribution: null
+# [CD-31] The premix: kick mic, snare mic and overheads at 0 dB; the room, mid and lofi mics are left out. The
+# kickmic and snaremic files are mono and the oh files stereo, all 48 kHz 24-bit, so every one-shot below but the
+# shaker is resampled once to 44.1 kHz (§7.2).
+mics: {kickmic: 0.0, snaremic: 0.0, oh: 0.0}
+lanes:
+  # [CD-33] soft / med / hard = velocity layers floor(0.25 N + 1/2), floor(0.6 N + 1/2), floor(0.9 N + 1/2) of N.
+  kick:                       # kick_snon, N = 4, round robins 1-4
+    path: virtuosity-drums/Samples/{mic}/kick/{mic}_kick_snon_vl{vl}_rr{rr}.flac
+    vl: {soft: 1, med: 2, hard: 4}
+    rr: [1, 2, 3, 4]
+  snare:                      # snare_center, N = 36, no round robins: the layer and its two neighbours
+    path: virtuosity-drums/Samples/{mic}/snare/{mic}_snare_center_vl{vl}.flac
+    vl: {soft: 9, med: 22, hard: 32}
+    rr: neighbours
+  rim:                        # [CD-32] cross-stick (GU's rim lane is note 37, Side Stick), N = 16
+    path: virtuosity-drums/Samples/{mic}/snare/{mic}_snare_crossstick_vl{vl}.flac
+    vl: {soft: 4, med: 10, hard: 14}
+    rr: neighbours
+  hat:                        # hh_closed, N = 4, round robins 1-4
+    path: virtuosity-drums/Samples/{mic}/hh/{mic}_hh_closed_vl{vl}_rr{rr}.flac
+    vl: {soft: 1, med: 2, hard: 4}
+    rr: [1, 2, 3, 4]
+  ohat:                       # hh_open, N = 4, round robins 1-3
+    path: virtuosity-drums/Samples/{mic}/hh/{mic}_hh_open_vl{vl}_rr{rr}.flac
+    vl: {soft: 1, med: 2, hard: 4}
+    rr: [1, 2, 3]
+  shaker:                     # [CD-34] its own perc shaker, recorded apart from the kit: level set as a borrowed
+    borrowed: true            # lane [CD-30]; close (mono) + oh (stereo) mics, 44.1 kHz 16-bit
+    mics: {close: {db: 0.0, label: Close}, oh: {db: 0.0, label: Overhead}}
+    path: virtuosity-drums/Samples/perc/{mic}/shaker/LShaker_Shake1{dir}_rr{rr}_{label}.wav
+    all_layers:               # Shake1D / Shake1U round robins 1-7, D and U alternating, the same in every layer
+      - {dir: D, rr: 1}
+      - {dir: U, rr: 1}
+      - {dir: D, rr: 2}
+      - {dir: U, rr: 2}
+      - {dir: D, rr: 3}
+      - {dir: U, rr: 3}
+      - {dir: D, rr: 4}
+      - {dir: U, rr: 4}
+      - {dir: D, rr: 5}
+      - {dir: U, rr: 5}
+      - {dir: D, rr: 6}
+      - {dir: U, rr: 6}
+      - {dir: D, rr: 7}
+      - {dir: U, rr: 7}

@@ -37,7 +37,7 @@ write_stem_midi(compiled, "sax", path, cycles=2)            # one file per Fluid
   - `palette`: `lofi_rl.palette.Palette` from `load_palette`.
 - **Errors.** `CompileError` (a `ValueError`) for a name the palette lacks, a chord, quality or voicing
   outside the palette, a vamp of two equal chords, or a phrase with no notes.
-- **Cost.** About 10 ms per loop on the laptop: 240 parses plus compiles of the fixtures took 2.57 s (2026-10-31; best of 3 runs after voicing rules V2, against 2.68 s before them the same day). The review fixes T7, T8 and SR-7 (§7) cost nothing measurable: run back to back the same day, the code before them took 2.69 and 2.68 s, and after them 2.67 and 2.69 s (load average about 2.2).
+- **Cost.** About 10 ms per loop on the laptop: 240 parses plus compiles of the fixtures took 2.57 s (2026-10-31; best of 3 runs after voicing rules V2, against 2.68 s before them the same day). The review fixes T7, T8 and SR-7 (§7) cost nothing measurable: run back to back the same day, the code before them took 2.69 and 2.68 s, and after them 2.67 and 2.69 s (load average about 2.2). Nor did voicing rules V2.1 (§9): run back to back, V2 took 2.84 and 2.86 s and V2.1 2.85 and 2.83 s (5-minute load average 3.3).
 - **Environments.** Everything but `midi.py` needs only the standard library and PyYAML, so it imports in all
   three envs. `midi.py` needs mido, which the scorer env and the laptop have.
 
@@ -96,28 +96,30 @@ All sample positions are computed as exact fractions and rounded once, **half up
   - Each note still outside the playable range (tenor 44–75, alto 49–80) folds by octaves into it. Each fold is one `Repair("sax_fold", 0, before, after, penalized=True)` in `CompiledLoop.repairs`. Line 0 means no source line. P_fix covers both lists: `dsl.repair.penalty(parse_result.repairs + compiled.repairs)`, at 0.02 each, capped at 0.1 (§2).
 - **Bass pitch.** The root of the chord in effect at each strike, one octave per vamp chord for the whole loop. Choose (pA, pB) in 28–43 (E1–G2) to minimize |pA−36| + |pB−36| + 0.5·|pA−pB|. Ties go to the lower pair: lower pA + pB, then lower pA (`bass.bass_octaves`).
 
-### 3.3 Keys voicings (§3, Voicings, as amended by voicing rules V2, §9)
+### 3.3 Keys voicings (§3, Voicings, as amended by voicing rules V2.1, §9)
 Every voicing holds the chord's 3rd (the 4th for 7sus) and its 7th, and its colour: the top named extension, plus the ♭5 of m7b5 and dim7. The styles, in semitones above the root (`theory/voicing.py`; the template table, the rules and why are in §9):
 - **rootless:** no root. The third, the seventh and the named extensions (at most two, the top one always), plus m7b5's ♭5. With no extension: third, fifth and seventh.
 - **shell:** the third (the fourth for sus), the seventh and the top extension. m7b5 and dim7 take ♭3, ♭5 and their seventh.
 - **spread:** drop-2 of each inversion of the rootless voicing. The second-highest note goes down an octave.
-- **quartal:** every stack of 3 or 4 distinct tones drawn from the chord's named tones and the brief's mode's tensions that holds the 3rd, the 7th and the colour, and whose adjacent intervals are all 5 or 6 semitones, except at most one of 3 or 4.
-  - The tensions are the 9ths, 11ths and 13ths (♭9 9 ♯9 11 ♯11 ♭13 13) that the brief's mode holds above the chord root (`voicing.chord_scale`) and the symbol does not name. A stack adds none a semitone above a named tone it holds (no natural 11 over a major 3rd).
+- **quartal:** every stack of 3 or 4 distinct tones drawn from the chord's named tones and its added tensions that holds the 3rd, the 7th and the colour, and whose adjacent intervals are all 5 or 6 semitones, except at most one of 3 or 4.
+  - The added tensions are the quality's available tensions that the brief's mode holds above the chord root (`voicing.chord_scale`) and the symbol does not name (`voicing.AVAILABLE_TENSIONS`, V2.1): 9, ♯11 and 13 on maj7, maj9 and maj7#11; 9 and 13 on 7, 9, 13, 7b9 and 7#9, whose ♭9 or ♯9 comes only with a symbol that names it; 9, 11 and 13 on m7, m9 and m11; 11 and ♭13 on m7b5; 9 and 13 on 7sus; none on dim7.
+  - A stack adds none a semitone above the root, which the bass always plays, or above a named tone it holds (no natural 11 over a major 3rd, no ♭9 over the bass).
   - So the stacks depend on the mode as well as the chord, and `voice_vamp` takes the brief's mode. Stacks are placed at every octave and never inverted.
-  - A chord with no quartal candidate takes its rootless candidates: m7b5 always, and m9 on B, C and C♯ (§9).
+  - A chord with no quartal candidate takes its rootless candidates: m7b5 always; m9 where the mode has no 13 above its root, and on B, C and C♯ where it has; maj9 on A where the mode has no 13 (§9).
 
 The choice:
 1. **Candidates.** Inversion j of a template raises its lowest j tones by an octave, for j = 0 … len−1. Each inversion, or each quartal stack, is placed at every octave where all of its notes lie in 48–72.
 2. **Rejections.** A candidate is rejected if a ♯9 sounds under a major 3rd (R5: in 7♯9, rootless and shell inversions 1 and 2), or if two adjacent notes are 2 semitones apart or less and the lower one is below 55. It is also rejected if any two notes are 13 semitones apart, unless the chord is 7b9.
-3. **Cost.** The pair (A, B) minimizes VL(A→B) + VL(B→A) + 0.25·(|μA − 60| + |μB − 60|), where μ is the mean pitch and VL is the summed movement under sorted pairing. With unequal sizes, voice i of A pairs with voice round(i·(|B|−1)/(|A|−1)) of B, halves up. So the outer voices pair bottom with bottom and top with top.
+3. **Cost.** Of the pairs whose two voicings differ (R8, V2.1: the vamp moves), the pair (A, B) minimizes VL(A→B) + VL(B→A) + 0.25·(|μA − 60| + |μB − 60|), where μ is the mean pitch and VL is the summed movement under sorted pairing. With unequal sizes, voice i of A pairs with voice round(i·(|B|−1)/(|A|−1)) of B, halves up. So the outer voices pair bottom with bottom and top with top. Only two chords with the same single candidate would leave no pair that differs, and they would share it; no two chords of the vocabulary are such a pair at any tonic, in any mode or style (§9).
 4. **Ties.** Ties go to the lexicographically smallest (A, B). Costs are exact: `choose` compares the cost times 4·lcm(the voicing sizes) as integers, one factor for every pair, so the order and the ties are the cost's. Each chord keeps its voicing for the whole loop.
 
-`tests/test_voicing.py` checks all of this against an oracle that never reads `voicing.py` (`tests/helpers_voicing.py`), which rebuilds the tone sets from the chord-tones table and the mode tables:
+`tests/test_voicing.py` checks all of this against an oracle that never reads `voicing.py` (`tests/helpers_voicing.py`), which rebuilds the tone sets from the chord-tones table, the mode tables and R3's available tensions:
 - every candidate set, for every mode × numeral (borrowed ones included) × quality × style at every tonic, equals the oracle's, and every candidate keeps R1–R6;
 - R7 in rootless, shell and spread, and the count of quartal coincidences;
 - the quartal oracle itself against every pitch set in 48–72, for every quality on I and the sample vamps' chords;
 - the choice against a brute force over the oracle's candidates, for 21 vamp × mode cases (the 12 shootout vamps of §6 in their moods, and IIm7b5 V7b9, Idim7 bIIImaj7#11 and I7sus V7#9 in every mode) × 12 tonics × 4 styles;
-- the 12 shootout vamps at tonic 2 in every style, pinned as note names (§9).
+- the 12 shootout vamps at tonic 2 in every style, pinned as note names (§9);
+- the three V2.1 changes: no added tension a semitone above the bass's root (TH-1), only the quality's available tensions in the mode (TH-2), and two different voicings for the two vamp chords in the 576 shootout (vamp, style, tonic) cases and in every vamp of two distinct chords of the vocabulary at every tonic, in every mode for quartal (TH-3, R1).
 
 ### 3.4 Strikes, holds and chord changes (§3, Chord changes and `bass: lock`)
 - **Grids.** The comp and bass grids are read as one 128-cell cycle (`timeline.segments`).
@@ -324,7 +326,7 @@ Each is pinned by a test and can be changed by Shresth.
 - **§3 Voicings.**
   - "Every inversion" of a template wider than an octave raises its lowest j tones by an octave.
   - Spread applies drop-2 to each rootless inversion; with 3 notes, the middle note drops.
-  - The quartal templates (and §3's "+ext" and "18|19") are gone: voicing rules V2 replace them with stacks (§9, which also lists the readings V2 leaves open).
+  - The quartal templates (and §3's "+ext" and "18|19") are gone: voicing rules V2 replace them with stacks, which V2.1 refines (§9, which also lists the readings V2.1 leaves open).
   - VL with unequal sizes pairs the outer voices (§3.3).
   - Rule 2's "≤ 2 semitones" is between adjacent notes, which covers every pair; "13-semitone pairs" is between any two notes.
 - **§3 Registers.**
@@ -405,25 +407,25 @@ Each is pinned by a test and can be changed by Shresth.
 - **§6 naming.** "GU Drawbar Organ 16" is the GM name for program 16. GeneralUser GS 2.0.3 calls that preset "Tonewheel Organ".
 
 ## 8. Tests
-The instrument.md §7 rows, plus the interface. `tests/helpers_compile.py` holds the spec oracles: §3.1 step times and §3.2 sax pitches written out from the tables, independently of `src/`. `tests/helpers_voicing.py` is the voicing oracle (§3.3, §9). Together the 12 files below hold 377 passing tests and no xfail, which ran in 6.59 s on the laptop (2026-10-31, after the review fixes T7, T8 and SR-7 of §7; 7.18 s in the run before it). After voicing rules V2 they held 360 and 1 strict xfail, the `sax:` seed issue that SR-7 settled, and ran in 5.81 s (`tests/test_voicing.py` alone, 27 tests, 0.91 s).
+The instrument.md §7 rows, plus the interface. `tests/helpers_compile.py` holds the spec oracles: §3.1 step times and §3.2 sax pitches written out from the tables, independently of `src/`. `tests/helpers_voicing.py` is the voicing oracle (§3.3, §9). Together the 12 files below hold 381 passing tests and no xfail, which ran in 6.99 and 7.15 s on the laptop in two runs (2026-10-31, after voicing rules V2.1, load average about 2.5); `tests/test_voicing.py` alone holds 31 and ran in 1.17–1.19 s in three runs. Before V2.1 they held 377 and ran in 6.59 s (after the review fixes T7, T8 and SR-7 of §7; 7.18 s in the run before it). After voicing rules V2 they held 360 and 1 strict xfail, the `sax:` seed issue that SR-7 settled, and ran in 5.81 s (`tests/test_voicing.py` alone, 27 tests, 0.91 s).
 
 | §7 row | file |
 |---|---|
 | `test_modes_chords` | `tests/test_modes_chords.py`: modes, every degree of every mode through `degree_offset`, home bands, the chord-tones table |
-| `test_voicing` | `tests/test_voicing.py`: voicing rules V2 against the oracle in `tests/helpers_voicing.py` (R1–R6 for every mode × numeral × quality × style at every tonic, R7 and the quartal coincidence count, the quartal fallbacks), the quartal oracle against every pitch set, the brute-force optimum, the shootout vamps pinned at tonic 2, inversions, drop-2, rule 2, ties |
+| `test_voicing` | `tests/test_voicing.py`: voicing rules V2.1 against the oracle in `tests/helpers_voicing.py` (R1–R6 for every mode × numeral × quality × style at every tonic, R7 and the quartal coincidence count, the quartal fallbacks), the quartal oracle against every pitch set, the brute-force optimum, the shootout vamps pinned at tonic 2, V2.1's avoid notes over the bass, available tensions and moving vamps (the last over every vamp of the vocabulary), inversions, drop-2, rule 2, ties |
 | `test_timeline` | `tests/test_timeline.py`: N, swing positions at every tempo 60–95 (ten put the steps on half samples), the 8th warp, segments |
 | `test_bass_lock` | `tests/test_bass_lock.py`: octave pairs, lock, re-strikes, keys and bass velocities for X, x and g |
 | `test_sax_register` | `tests/test_sax_register.py`: pitches against the spec tables in every mood on both saxes, the mood's mode, octave fit (comfort, not playable), folds (playable, not comfort), note-offs, velocity, feels, a per-lane sax swing, one sax |
 | `test_expression` | `tests/test_expression.py`: whole vibrato cycles, bend range, scoops read from the written line (across the seam too), vibrato, CC11, RPN |
 | `test_prng` | `tests/test_prng.py`: the test vector and the reference sequence |
 | `test_palette` | `tests/test_palette.py`: schema, licences, sha256, the dev palette's values, choke pairs (a lane may choke itself; no pair twice), pedalboard chains, fetch-mode sources under `$LOFI_ASSETS` (unset, empty, absolute, relative) |
-| compile | `tests/test_compile.py`: every gate-passing fixture in five briefs against the spec (the §3.3 voicing pair for the brief's tonic and mode and the loop's style, chord tones plus quartal's in-mode tensions and no root outside quartal, §3.2 sax pitches, §3.1 step times, every open hat choked), the example's claims, a loop without `sax:`, humanize against the §3.6 key (drums, keys and bass; the sax untouched; legato joins; the seed formula; another keys instrument, voicing or kit name keeps every nudge), determinism |
+| compile | `tests/test_compile.py`: every gate-passing fixture in five briefs against the spec (the §3.3 voicing pair for the brief's tonic and mode and the loop's style, chord tones plus quartal's available in-mode tensions and no root outside quartal, §3.2 sax pitches, §3.1 step times, every open hat choked), the example's claims, a loop without `sax:`, humanize against the §3.6 key (drums, keys and bass; the sax untouched; legato joins; the seed formula; another keys instrument, voicing or kit name keeps every nudge), determinism |
 | | `tests/test_compile_drums.py` (gains, layers, round robin across the seam with 2, 3 and 4 one-shots, the choke by either hat: consecutive open hats, a lone open hat, no other hat, the earliest cut, same-step hats under swing and humanize), `tests/test_compile_midi.py` (the dispatch model, file layout, seamless FluidSynth cycles), `tests/test_brief.py` (the sampler, its distribution, the documented key, independent fields and streams) |
 
-## 9. Amendment V2 to instrument.md §3 Voicings
-Voicing rules V2 are a Claude's default (2026-10-31). They replace instrument.md §3's voicing templates and keep its choice, steps 1–4. Like every default in TASTE.md, Shresth can override them; the keys and vamp shootouts still prune by ear. Sound claims: none.
+## 9. Amendment V2.1 to instrument.md §3 Voicings
+Voicing rules V2 are a Claude's default (2026-10-31), and V2.1 (the same day) makes three changes to them after a review of V2: two to R3 (the avoid-note rule counts the bass's root, and quartal adds only the quality's available tensions) and a new R8 (the vamp moves). They replace instrument.md §3's voicing templates and keep its choice, steps 1–4, which R8 restricts to the pairs that move. Like every default in TASTE.md, Shresth can override them; the keys and vamp shootouts still prune by ear. Sound claims: none.
 
-**Why.** The second review (workflow `wf_ddc78253-994`, theory lens T1–T6) found that the §3 templates break TASTE.md's harmony row: "every chord at least a 7th; 9ths common", "chords that give a feeling", and the dealbreaker "sour notes". The code followed §3 literally, so each finding was rejected as a code bug, and the rules changed instead. The numbers in T1–T6 are the review's.
+**Why V2.** The second review (workflow `wf_ddc78253-994`, theory lens T1–T6) found that the §3 templates break TASTE.md's harmony row: "every chord at least a 7th; 9ths common", "chords that give a feeling", and the dealbreaker "sour notes". The code followed §3 literally, so each finding was rejected as a code bug, and the rules changed instead. The numbers in T1–T6 are the review's.
 - **T1.** Rootless and spread took the first extension, so 13 = 9, m11 = m9 and maj7#11 = maj9. In 2 of the 4 styles the model's choice among those symbols changed nothing, and the 13 chords of the shootout vamps played as 9 chords.
 - **T2.** Quartal dominants added an unnamed natural 13, outside the mode in both minor moods. Over every symbol, quartal held a tone outside both mode and chord in 126 of 462 (mode, numeral, quality) cases.
 - **T3.** Quartal major chords had no 7th. Quartal could not tell maj7 from maj9, m7 from m9 or m11, or 9 from 13.
@@ -437,12 +439,32 @@ Checked against the V2 oracle (`tests/helpers_voicing.py`), the §3 templates br
 - R3 for 573 quartal chords, and R5 for 144 quartal, 12 rootless and 12 shell chords;
 - R7 in rootless and spread (9 = 13, m9 = m11, maj9 = maj7#11) and in shell (m11 = m7b5).
 
-Under V2, 264 of T5's 288 chosen quartal voicings are stacks; the other 24 are m9's rootless fallback on B, C and C♯.
+Under V2, 264 of T5's 288 chosen quartal voicings are stacks; the other 24 are m9's rootless fallback on B, C and C♯. Under V2.1, 246 are: the rootless fallbacks are those 24 plus Drift's and Plagal's aeolian Im9 at their 9 other tonics each, 42 in all.
+
+**Why V2.1.** The review of V2 (workflow `wf_b54901ca-e65`: theory findings TH-1 to TH-4, regression findings R1 to R4) confirmed no code bug, since the code follows V2's words. Three findings show gaps in those words, so V2.1 changes the rules. The voicings and counts below were computed on this laptop from the V2 code and the V2.1 code.
+- **TH-1: a ♭9 over the bass.** V2's avoid-note rule looked only at the keys, and quartal stacks often leave the root to the bass, so a stack could add the ♭9 a semitone above the root the bass plays. 450 of V2's 3,549 stacks added one, and the m7, m9 and m11 chords on the phrygian degrees (III in ionian, II in dorian, V in aeolian) held it in 159 of their quartal candidates over the 12 tonics. Step's IIm7 at tonic 2 was D3 G3 C4 F4: ♭7-♭3-♭13-♭9 over E.
+- **TH-2: neighbour tensions on borrowed chords.** V2 added any 9th, 11th or 13th of the mode, so a borrowed chord took the mode's neighbours of its own tones. At tonic C in hopeful, against Imaj7, bVImaj7 was G3 C4 E4 (7-3-♭13, an E against its E♭), bIIImaj7 D3 G3 B3 E4 (7-3-♭13-♭9, the pitches of its Imaj7) and IVm7 B3 E♭4 A♭4 (♯11-♭7-♭3). 1,281 of V2's 3,549 stacks held a tension outside R3's table below: 628 on the dominants, 286 on the m7 family, 257 on the maj7 family, 74 on dim7 and 36 on 7sus.
+- **TH-3 and R1: vamps that do not move.** The cost is least when nothing moves, so the two vamp chords often got the same keys pitches and only the bass moved. That happened in 29 of the 576 (shootout vamp, style, tonic) cases, all quartal (Royal-half on 10 tonics, Step on 10 and Rise on 9; at tonic 2, Royal-half played F#3 B3 E4 A4 and Step D3 G3 C4 F4 under both chords), and in `span1_dotted.ls`. Under §3 it was 0 of 576. Over every vamp of two distinct chords of the vocabulary (11 numerals × 14 qualities: 11,781 pairs) at every tonic, every pair whose candidate sets met played one voicing twice: 480 rootless, 540 shell and 480 spread cases of 141,372 each, and 22,612 quartal cases of 424,116 (in every mode). Leaving the root out of quartal stacks would clear the 29 shootout cases, but the review found I–IV, i–iv and i–v still repeating at every tonic, so R8 constrains the choice instead.
+
+What V2.1 does:
+- **Stacks.** 2,268 quartal stacks remain of V2's 3,549 (3,099 after the bass clause alone), and none adds a ♭9 or a tension outside the table. With the table, no quality may add a ♭9 its symbol does not name, so the bass clause of R3 now removes no stack by itself (2,268 either way); it keeps the rule right if the table changes.
+- **Fallbacks.** The rootless fallback grows from 495 to 635 of the 5,544 mode × numeral × quality × tonic cases (readings below). In the shootout vamps, Drift's and Plagal's Im9 are voiced rootless in quartal at every tonic.
+- **Vamps.** No vamp repeats a voicing: 0 of the 576 shootout cases, and 0 vamps of the vocabulary, whose chords' candidate sets meet in 480 rootless, 540 shell, 480 spread and 11,294 quartal cases, each with a pair that moves. No two chords have the same single candidate, so no vamp is left without one.
+- **Shootout clips.** None changes. The reference loops play rootless, K2 plays spread and the vamp rounds keep rootless (SHOOTOUTS.md §4 and §5). Of the 576 shootout cases only quartal ones changed, 52 of 144 (Royal-half on 11 tonics, Step on 10, Drift, Plagal and Rise on 9, Two-of-us on 4), and the 9 reference loops compile to the same digests, rootless and spread.
 
 **Rules.** Tones are pitch classes above the chord root. "Named" means in the quality's entry of the chord-tones table (§3.2, `theory.chords.QUALITY`), where 11 and 13 imply the 9.
 - **R1 Guide tones.** Every voicing of every style holds the chord's 3rd (the 4th for 7sus) and its 7th (𝄫7 for dim7).
 - **R2 Colour.** Every voicing holds the quality's top named extension: 13 for 13; 11 for m11 and m7b5; ♯11 for maj7#11; 9 for maj9, 9, m9 and 7sus; ♭9 for 7b9; ♯9 for 7#9. m7b5 and dim7 also hold their ♭5. The one exception: a shell is three notes, so the m7b5 shell is ♭3-♭5-♭7, since its ♭5 names it, and the 11 goes.
-- **R3 No foreign tones.** A voicing holds only the quality's tones and named extensions, plus, in quartal, added tensions. An added tension is in the brief's mode and does not sit a semitone, in pitch class, above a chord tone the voicing also holds (the avoid-note rule: no natural 11 over a major 3rd). Nothing is outside chord + mode, ever: a borrowed chord keeps its own tones, and its added tensions must still be in the mode.
+- **R3 No foreign tones** (amended in V2.1). A voicing holds only the quality's tones and named extensions, plus, in quartal, added tensions. An added tension is one of the quality's available tensions, it is in the brief's mode, and it does not sit a semitone, in pitch class, above the root, which the bass always plays, or above a chord tone the voicing holds (the avoid-note rule: no natural 11 over a major 3rd, no ♭9 over the bass). Nothing is outside chord + mode, ever: a borrowed chord keeps its own tones, and its added tensions must still be in the mode. The available tensions (`voicing.AVAILABLE_TENSIONS`):
+
+  | qualities | available tensions |
+  |---|---|
+  | maj7, maj9, maj7#11 | 9, ♯11, 13 |
+  | 7, 9, 13, 7b9, 7#9 | 9, 13; a ♭9 or ♯9 only where the symbol names it (7b9, 7#9), as a chord tone |
+  | m7, m9, m11 | 9, 11, 13 |
+  | m7b5 | 11, ♭13 |
+  | dim7 | none |
+  | 7sus | 9, 13 |
 - **R4 Styles.**
   - rootless: no root. With extensions: the 3rd, the 7th and the named extensions (at most two, the top one always), plus m7b5's ♭5. Without: 3rd-5th-7th, as before.
   - shell: 3rd + 7th + the top extension; ♭3-♭5-♭7 for m7b5 and ♭3-♭5-𝄫7 for dim7.
@@ -451,6 +473,7 @@ Under V2, 264 of T5's 288 chosen quartal voicings are stacks; the other 24 are m
 - **R5 ♯9 above the 3rd.** In a 7#9 voicing the ♯9 sounds above the 3rd, never a semitone under it.
 - **R6 Unchanged.** The register C3–C5 (48–72); no interval of 2 semitones or less below 55; no 13-semitone pair outside 7b9; the voice-leading cost and its tie-break; the two vamp chords are voiced jointly.
 - **R7 Distinct symbols.** In rootless, shell and spread, two qualities whose top named extensions differ never compile to the same voicing for the same root and mode (13 vs 9, m11 vs m9, maj7#11 vs maj9, m7b5 vs m11). Quartal stacks may coincide, because an added tension can be another quality's named one.
+- **R8 The vamp moves** (V2.1). The two vamp chords never get the same keys pitch set while any allowed candidate pair differs: the cost and its tie-break (R6) choose among the pairs of two different voicings. Only two chords with the same single candidate would leave none, and they would share it.
 
 **Templates** (semitones above the root; **bold** where V2 changed §3, with §3's value after the arrow). Every inversion is a candidate, and spread is drop-2 of each rootless inversion.
 
@@ -471,40 +494,50 @@ Under V2, 264 of T5's 288 chosen quartal voicings are stacks; the other 24 are m
 | m7b5 | 0 3 6 10 17 | ♭3, ♭5, ♭7, 11 (the shell: ♭3, ♭5, ♭7) | **3 6 10 17** ← 3 10 17 | **3 6 10** ← 3 10 17 |
 | dim7 | 0 3 6 9 | ♭3, ♭5, 𝄫7 | 3 6 9 | **3 6 9** ← 3 9 |
 
-Quartal has no fixed template, because its stacks depend on the mode above the root. Some of them:
+Quartal has no fixed template, because its stacks depend on the mode above the root. Some of them, under V2.1:
 - Imaj7 in ionian: 7-3-13-9 [11, 16, 21, 26], 9-5-7-3 [2, 7, 11, 16], 7-3-5 [11, 16, 19] and 5 more, against §3's 3-13-9-5 [4, 9, 14, 19], which had no 7th;
 - V13 in ionian: 5-♭7-3-13, ♭7-3-13, ♭7-3-13-R and ♭7-3-13-9;
-- Im9 in dorian has one stack, ♭7-♭3-13-9 [10, 15, 21, 26], and in aeolian one, ♭7-♭3-♭13-9 [10, 15, 20, 26];
-- m7b5 has one stack in every mode, 11-♭7-♭3-♭5 [5, 10, 15, 18], and R6 rejects it (its 11 and ♭5 are 13 semitones apart).
+- Im9 in dorian has three stacks, and R6 keeps one, ♭7-♭3-13-9 [10, 15, 21, 26]: the other two, 9-11-♭7-♭3 [2, 5, 10, 15] and 9-5-♭7-♭3 [2, 7, 10, 15], hold a 9 and a ♭3 13 semitones apart. In aeolian Im9 has only those two, so it is voiced rootless (V2's one aeolian stack that R6 kept, ♭7-♭3-♭13-9 [10, 15, 20, 26], held a ♭13, which the m7 family does not add);
+- m7b5 has one stack in every mode, 11-♭7-♭3-♭5 [5, 10, 15, 18], and R6 rejects it (its 11 and ♭5 are 13 semitones apart);
+- dim7 adds nothing, so its stacks come from its own four tones, e.g. ♭3-𝄫7-R-♭5 [3, 9, 12, 18] and ♭5-𝄫7-♭3 [6, 9, 15].
 
-**Readings** (where V2's words leave a choice). `tests/test_voicing.py` pins each one through the oracle. The counts are the oracle's, over every mode × numeral × quality: 3,549 quartal stacks in all, before R5 and R6.
-- **The root.** R3 allows the quality's tones, and the root is one, so a quartal stack may hold it: 666 of the 3,549 stacks do. Rootless, shell and spread never hold it.
-- **Added tensions** are the 9ths, 11ths and 13ths, ♭9 9 ♯9 11 ♯11 ♭13 13, that the symbol does not name. So quartal never adds a ♭7 to a major 7th chord, a 3rd to 7sus or a major 7th to dim7, even where the mode holds them. Reading "any tone of the mode" instead would add 194 stacks, every one of them holding one of those three tones.
-- **"A chord tone the voicing also holds"** is a named tone, extensions included, held by the keys voicing itself. The bass is not counted, so a stack that leaves out the root may add a ♭9: 450 stacks do, all on chords other than 7b9.
+**Readings** (where V2.1's words leave a choice). `tests/test_voicing.py` pins each one through the oracle. The counts are the oracle's, over every mode × numeral × quality: 2,268 quartal stacks in all, before R5 and R6 (3,549 under V2).
+- **The root.** R3 allows the quality's tones, and the root is one, so a quartal stack may hold it: 557 of the 2,268 stacks do (666 of 3,549 under V2). Rootless, shell and spread never hold it. R8, not leaving the root out, keeps the vamp moving.
+- **Families.** maj7, maj9 and maj7#11 are the maj7 family; 7, 9, 13, 7b9 and 7#9 the dominants; m7, m9 and m11 the m7 family (`chords.Quality.family`).
+- **Added tensions** are available tensions that the symbol does not name. So quartal never adds another chord's tone (a ♭7 to a major 7th chord, a 3rd to 7sus, a major 7th to dim7) or a tension outside the table, even where the mode holds it.
+- **"In the mode"** applies to every available tension, not only to the 13 that the rule names for the m7 family: the m7 family adds a 9 or an 11 only where the mode has it, and never a ♭13.
+- **The dominants' ♭9 and ♯9** come only with the symbols that name them, as chord tones; no dominant adds one. So 7#9 may add the 9 and the 13 (none of its 137 stacks holds the 9 with the ♯9), and 7b9 the 13 (19 of its 217 stacks); its 9 would sit a semitone above its ♭9.
+- **The bass** counts for the avoid-note rule only: R6's 13-semitone rule stays inside the keys voicing, and no keys note is checked against the bass.
 - **A stack** holds each tone once.
-- **"If no stack exists"** is read per root, after R5 and R6: a chord whose stacks all break R6, or none of which fits C3–C5 on its root, takes its rootless candidates. That happens in 495 of the 5,544 mode × numeral × quality × tonic cases: every m7b5 (396), and m9 on B, C and C♯ (99), whose stacks span 16 semitones.
-- **R5** is checked for every quality with a major 3rd. Only 7#9 can hold both a ♯9 and a major 3rd, so R5 rejects rootless and shell inversions 1 and 2 of 7#9, and spread's drop-2 of inversion 1, which R6 rejects anyway.
-- **R7.** In rootless, shell and spread no two qualities share a voicing on any root, which covers R7's pairs and the qualities whose top extensions are equal too. In quartal, 2,430 of the 36,036 (mode, numeral, tonic, quality pair) cases share at least one candidate. The 13 pairs are 7/9, m7/m11 and maj7/maj9 (240 each), 7/13 and 7/7#9 (228), 7/7b9 and maj7/maj7#11 (216), maj9/maj7#11 (198), m7/m9 (180), 9/13 (171), 7b9/7#9 (143), 13/7b9 (70) and 13/7#9 (60). No two qualities share every stack in any mode × numeral.
-
-**What V2 leaves open: the two chords of a vamp can get the same pitches.** V2 constrains each chord, and the cost then prefers the least movement. With quartal's added tensions, the two chords sometimes meet: in 29 of the 576 (shootout vamp, style, tonic) cases, all quartal, both chords play the same notes and only the bass moves. These are Royal-half on 10 tonics, Step on 10 and Rise on 9 (at tonic 2: Royal-half F#3 B3 E4 A4, Step D3 G3 C4 F4), and `span1_dotted.ls`. Under §3 it was 0 of 576. Each of the 29 holds one chord's root; with the root left out of quartal stacks it would be 0 of the 144 quartal cases.
+- **"If no stack exists"** is read per root, after R5 and R6: a chord whose stacks all break R6, or none of which fits C3–C5 on its root, takes its rootless candidates. That happens in 635 of the 5,544 mode × numeral × quality × tonic cases (495 under V2):
+  - every m7b5 (396);
+  - m9 (225): at every root where the mode has no 13 above it (14 mode × numeral cases, so 168), since its other stacks hold a 9 and a ♭3 13 semitones apart, and on B, C and C♯ where it has (57), since ♭7-♭3-13-9 spans 16 semitones;
+  - maj9 on A where the mode has no 13 above it (14), since its stacks 9-5-7-3 and 9-♯11-7-3 [2, 7 or 6, 11, 16] span 14.
+- **R5** is checked for every quality with a major 3rd. Only 7#9 can hold both a ♯9 and a major 3rd, since no quality adds a ♯9, so R5 rejects rootless and shell inversions 1 and 2 of 7#9, and spread's drop-2 of inversion 1, which R6 rejects anyway. No quartal stack of 7#9 puts its ♯9 under its 3rd.
+- **R7.** In rootless, shell and spread no two qualities share a voicing on any root, which covers R7's pairs and the qualities whose top extensions are equal too. In quartal, 1,683 of the 36,036 (mode, numeral, tonic, quality pair) cases share at least one candidate (2,430 under V2). The 8 pairs are 7/9 and m7/m11 (240 each), maj7/maj9 (237), 7/13 (228), maj7/maj7#11 (216), maj9/maj7#11 (198), 9/13 (171) and m7/m9 (153). No two qualities share every stack in any mode × numeral.
+- **R8** compares the two voicings as MIDI pitch sets: the same tones an octave apart, or another inversion, count as different. It applies to every style, and it ranks before the cost: a pair that moves beats every pair that does not, whatever their costs. It leaves the candidates alone, so it never causes a rootless fallback.
 
 **The 12 shootout vamps at tonic 2** (§6 gives no tonic; its /1 and /2 are spans), each in its mood, as the compiler voices them. `tests/test_voicing.py::test_the_shootout_vamps_at_tonic_2_are_pinned` holds these.
 
 | vamp | mood | rootless | shell | spread | quartal |
 |---|---|---|---|---|---|
 | Aruarian IIm9 V13 | hopeful | G3 D4 F#4 \| G3 B3 C#4 F#4 | G3 D4 F#4 \| G3 C#4 F#4 | D3 G3 F#4 \| C#3 G3 B3 F#4 | D3 G3 C#4 F#4 \| E3 G3 C#4 F#4 |
-| Royal-half IVmaj7 IIIm7 | hopeful | B3 D4 F#4 \| A3 C#4 E4 | B3 F#4 \| A3 E4 | F#3 D4 B4 \| E3 C#4 A4 | F#3 B3 E4 A4 \| F#3 B3 E4 A4 |
+| Royal-half IVmaj7 IIIm7 | hopeful | B3 D4 F#4 \| A3 C#4 E4 | B3 F#4 \| A3 E4 | F#3 D4 B4 \| E3 C#4 A4 | C#4 F#4 B4 \| C#4 E4 A4 |
 | Two-of-us IVmaj7 III7 | hopeful | B3 D4 F#4 \| Bb3 C#4 E4 | B3 F#4 \| Bb3 E4 | F#3 D4 B4 \| E3 C#4 Bb4 | F#3 B3 E4 \| F#3 Bb3 E4 |
 | Lift Imaj9 IVmaj9 | hopeful | F#3 C#4 E4 \| A3 B3 F#4 | F#3 C#4 E4 \| A3 B3 F#4 | E3 C#4 F#4 \| F#3 B3 A4 | E3 A3 C#4 F#4 \| F#3 B3 E4 A4 |
 | i–IV Im9 IV13 | wistful | F3 C4 E4 \| F3 A3 B3 E4 | F3 C4 E4 \| F3 B3 E4 | F3 E4 C5 \| F3 B3 E4 A4 | C3 F3 B3 E4 \| D3 F3 B3 E4 |
 | Pulse Im9 IV9 | wistful | F3 C4 E4 \| A3 B3 F4 | F3 C4 E4 \| A3 B3 F4 | F3 E4 C5 \| A3 F4 B4 | C3 F3 B3 E4 \| F3 B3 E4 A4 |
-| Step Im11 IIm7 | wistful | E4 F4 G4 C5 \| D4 G4 B4 | C4 F4 G4 \| D4 G4 | G3 E4 F4 C5 \| G3 D4 B4 | D3 G3 C4 F4 \| D3 G3 C4 F4 |
+| Step Im11 IIm7 | wistful | E4 F4 G4 C5 \| D4 G4 B4 | C4 F4 G4 \| D4 G4 | G3 E4 F4 C5 \| G3 D4 B4 | D3 G3 C4 F4 \| D3 G3 B3 E4 |
 | Float Im9 bVIImaj7 | wistful | F3 C4 E4 \| G3 B3 E4 | C4 E4 F4 \| B3 E4 | F3 E4 C5 \| G3 E4 B4 | C3 F3 B3 E4 \| D3 G3 B3 E4 |
-| Drift Im9 bVImaj7 | melancholy | F3 C4 E4 \| F3 A3 D4 | F3 C4 E4 \| A3 D4 | F3 E4 C5 \| F3 D4 A4 | C3 F3 Bb3 E4 \| C3 F3 A3 D4 |
-| Plagal Im9 IVm9 | melancholy | F3 C4 E4 \| A3 Bb3 F4 | F3 C4 E4 \| A3 Bb3 F4 | F3 E4 C5 \| F3 Bb3 A4 | C3 F3 Bb3 E4 \| F3 Bb3 E4 A4 |
+| Drift Im9 bVImaj7 | melancholy | F3 C4 E4 \| F3 A3 D4 | F3 C4 E4 \| A3 D4 | F3 E4 C5 \| F3 D4 A4 | F3 C4 E4 \| F3 A3 D4 |
+| Plagal Im9 IVm9 | melancholy | F3 C4 E4 \| A3 Bb3 F4 | F3 C4 E4 \| A3 Bb3 F4 | F3 E4 C5 \| F3 Bb3 A4 | F3 C4 E4 \| F3 Bb3 E4 A4 |
 | Backdoor IVm9 bVII13 | melancholy | Bb3 F4 A4 \| Bb3 D4 E4 A4 | Bb3 F4 A4 \| Bb3 E4 A4 | F3 Bb3 A4 \| E3 Bb3 D4 A4 | F3 Bb3 E4 A4 \| G3 Bb3 E4 A4 |
 | Rise bVImaj7 bVII13 | melancholy | F3 A3 D4 \| E3 A3 Bb3 D4 | D3 A3 \| E3 A3 Bb3 | F3 D4 A4 \| E3 Bb3 D4 A4 | A3 D4 G4 \| Bb3 E4 A4 |
 
 Spelling: one fixed name per pitch class (C C# D Eb E F F# G Ab A Bb B), C4 = 60.
 
-**Code and renders.** `voice_vamp(first, second, tonic, mode, style)` takes the brief's mode; `voicing.chord_scale(numeral, mode)` gives the mode above a chord's root. Of the 8 golden render cases on the laptop key, 7 changed, and only through their keys stem (`tests/golden/render_hashes.json`; the bass, sax and drum stems hash the same). `one_bar_base.ls` (IIm9 V13, shell) is unchanged, since its shells did not change.
+V2.1 changed 4 of the 12 quartal cells and nothing else in the table. Under V2 they were Royal-half F#3 B3 E4 A4 \| F#3 B3 E4 A4, Step D3 G3 C4 F4 \| D3 G3 C4 F4, Drift C3 F3 Bb3 E4 \| C3 F3 A3 D4 and Plagal C3 F3 Bb3 E4 \| F3 Bb3 E4 A4. Drift's and Plagal's Im9 now takes its rootless voicing.
+
+**Code and renders.** `voice_vamp(first, second, tonic, mode, style)` takes the brief's mode; `voicing.chord_scale(numeral, mode)` gives the mode above a chord's root, `voicing.AVAILABLE_TENSIONS` the available tensions by family, and `voicing.choose` puts every pair of two equal voicings after the pairs that move (R8).
+- **V2:** of the 8 golden render cases on the laptop key, 7 changed, and only through their keys stem (`tests/golden/render_hashes.json`; the bass, sax and drum stems hash the same). `one_bar_base.ls` (IIm9 V13, shell) is unchanged, since its shells did not change.
+- **V2.1:** 1 of the 8 changed, `span1_dotted.ls|wistful|mid|82|2` (Im11 IIm7, quartal), from `86d6b1fd…` to `71fec473…`, through its keys stem alone: D3 G3 C4 F4 under both chords became D3 G3 C4 F4 \| D3 G3 B3 E4. The other 7 cases and the 18 one-shots hash as before. The Linux key keeps V2's hash for that case until the cluster re-records it.

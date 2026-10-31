@@ -1,12 +1,14 @@
-"""The keys-voicing oracle for voicing rules V2 (docs/COMPILER.md, "Amendment V2 to instrument.md §3 Voicings"),
-written out from the rules independently of src/lofi_rl/theory/voicing.py, which it never imports.
+"""The keys-voicing oracle for voicing rules V2.1 (docs/COMPILER.md §9, "Amendment V2.1 to instrument.md §3
+Voicings"), written out from the rules independently of src/lofi_rl/theory/voicing.py, which it never imports.
 
-- Tone sets come from chords.py's interval table (QUALITY: third, fifth, seventh, extensions) and the mode
-  tables (dsl.vocab.MODES). Tones are pitch classes above the chord root.
+- Tone sets come from chords.py's interval table (QUALITY: third, fifth, seventh, extensions), the mode tables
+  (dsl.vocab.MODES) and R3's available tensions, written out per quality (AVAILABLE). Tones are pitch classes above
+  the chord root.
 - The rootless, shell and spread templates are rebuilt from R4's wording.
 - The quartal stacks come from a brute force over every bottom-to-top ordering of every 3- and 4-tone subset of
   R3's tone set (tests/test_voicing.py checks that against every pitch set in C3-C5 for a sample).
-- The voice-leading cost is an exact integer, 48 times the section 3 cost.
+- The voice-leading cost is an exact integer, 48 times the section 3 cost; the best pair is taken among the pairs
+  of two different voicings (R8).
 Not a test module.
 """
 from __future__ import annotations
@@ -19,7 +21,13 @@ from lofi_rl.dsl.vocab import MODES, NUMERAL_SEMITONES
 from lofi_rl.theory.chords import QUALITY
 
 LO, HI = 48, 72                         # R6: C3-C5, sounding MIDI
-TENSIONS = (1, 2, 3, 5, 6, 8, 9)        # the 9ths, 11ths and 13ths: b9 9 #9 11 #11 b13 13
+# V2.1 R3: the tensions a quartal stack may add, per quality (b9 1, 9 2, #9 3, 11 5, #11 6, b13 8, 13 9), before the
+# mode: the maj7 family 9 #11 13; the dominants 9 13, plus a b9 or #9 only where the symbol names it; the m7 family
+# 9 11 13; m7b5 11 b13; dim7 none; 7sus 9 13.
+AVAILABLE = {"maj7": {2, 6, 9}, "maj9": {2, 6, 9}, "maj7#11": {2, 6, 9},
+             "7": {2, 9}, "9": {2, 9}, "13": {2, 9}, "7b9": {1, 2, 9}, "7#9": {2, 3, 9},
+             "m7": {2, 5, 9}, "m9": {2, 5, 9}, "m11": {2, 5, 9},
+             "m7b5": {5, 8}, "dim7": set(), "7sus": {2, 9}}
 PERFECT_FIFTH = 7
 NOTE = ("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")    # one fixed name per pitch class
 
@@ -51,16 +59,18 @@ def mode_pcs(numeral: str, mode: str) -> frozenset[int]:
 
 
 def added(q: str, numeral: str, mode: str) -> frozenset[int]:
-    """R3 (b): the tensions a quartal stack may add: 9ths, 11ths and 13ths in the brief's mode that the symbol
-    does not name."""
-    return frozenset(t for t in TENSIONS if t in mode_pcs(numeral, mode)) - named(q)
+    """R3 (b), V2.1: the tensions a quartal stack may add: the quality's available tensions that are in the brief's
+    mode and that the symbol does not name."""
+    return frozenset(AVAILABLE[q] & mode_pcs(numeral, mode)) - named(q)
 
 
 def avoids(held: set[int], q: str) -> bool:
-    """R3's avoid-note rule: no added tension sits a semitone, in pitch class, above a named tone the voicing
-    also holds (no natural 11 over a major 3rd)."""
+    """R3's avoid-note rule (V2.1): no added tension sits a semitone, in pitch class, above the root, which the bass
+    always plays, or above a named tone the voicing also holds (no natural 11 over a major 3rd, no b9 over the
+    bass)."""
     names = named(q)
-    return not any((t - 1) % 12 in held & names for t in held - names)
+    sounding = (set(held) & names) | {0}
+    return not any((t - 1) % 12 in sounding for t in set(held) - names)
 
 
 def rootless_template(q: str) -> list[int]:
@@ -188,8 +198,11 @@ def cost48(a, b) -> int:
 
 
 def best_pair(cands_a, cands_b) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    """The minimum-cost pair, ties to the lexicographically smallest (A, B), over two candidate sets."""
-    return min(((a, b) for a in cands_a for b in cands_b), key=lambda ab: (cost48(*ab), ab))
+    """The minimum-cost pair, ties to the lexicographically smallest (A, B), over two candidate sets. V2.1: only
+    pairs of two different voicings count, unless no such pair exists (both sets are the same one voicing)."""
+    pairs = [(a, b) for a in cands_a for b in cands_b]
+    moving = [(a, b) for a, b in pairs if a != b]
+    return min(moving or pairs, key=lambda ab: (cost48(*ab), ab))
 
 
 def root_of(numeral: str, tonic: int) -> int:
