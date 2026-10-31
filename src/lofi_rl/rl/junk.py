@@ -255,11 +255,15 @@ class VllmEngine:
                      "transformers": transformers.__version__, "path": path, "dtype": "bfloat16",
                      "enforce_eager": True, "gpu_memory_utilization": gpu_mem, "max_model_len": max_model_len,
                      "seed": seed, "mp_method": os.environ.get("VLLM_WORKER_MULTIPROC_METHOD") or "fork"}
-        try:
+        try:                                    # informational only: never a reason to lose the run
             self.info["max_num_seqs"] = self.llm.llm_engine.vllm_config.scheduler_config.max_num_seqs
-        except AttributeError:
+        except Exception:  # noqa: BLE001
             pass
-        self._chat_kw = {"use_tqdm": False} if "use_tqdm" in inspect.signature(self.llm.chat).parameters else {}
+        try:
+            quiet = "use_tqdm" in inspect.signature(self.llm.chat).parameters
+        except (TypeError, ValueError):
+            quiet = False
+        self._chat_kw = {"use_tqdm": False} if quiet else {}
 
     def sampling(self, **kw):
         try:

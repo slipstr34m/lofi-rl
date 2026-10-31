@@ -337,6 +337,77 @@ def test_generate_records_an_engine_failure_and_exits_nonzero(tmp_path, pal, mon
     assert len((tmp_path / "summary" / "completions.jsonl").read_text().splitlines()) == 3
 
 
+def _fake_vllm(monkeypatch, *, refuse_top_k_zero: bool) -> dict:
+    """vllm, torch and transformers stand-ins with the attributes VllmEngine reads (the laptop has none of them)."""
+    import types
+    seen: dict = {}
+
+    class SamplingParams:
+        def __init__(self, **kw):
+            if refuse_top_k_zero and kw.get("top_k") == 0:
+                raise ValueError("top_k must be -1 (disable), or at least 1, got 0.")
+            self.kw = kw
+
+        def __repr__(self):
+            return f"SamplingParams(top_k={self.kw['top_k']})"
+
+    class Output:
+        def __init__(self, text, reason, ids):
+            self.text, self.finish_reason, self.token_ids = text, reason, ids
+
+    class Request:
+        def __init__(self, k):
+            self.outputs = [Output(f"text {k}", "length" if k else "stop", list(range(3 + k)))]
+            self.prompt_token_ids = list(range(1388))
+
+    class LLM:
+        def __init__(self, **kw):
+            seen["init"] = kw
+
+        def chat(self, messages, sampling_params=None, use_tqdm=True):
+            seen["chat"] = (messages, sampling_params, use_tqdm)
+            return [Request(k) for k in range(len(messages))]
+    for name, attrs in (("vllm", {"LLM": LLM, "SamplingParams": SamplingParams, "__version__": "0.32.0"}),
+                        ("torch", {"__version__": "2.13.0"}), ("transformers", {"__version__": "5.19.0"})):
+        mod = types.ModuleType(name)
+        for k, v in attrs.items():
+            setattr(mod, k, v)
+        monkeypatch.setitem(sys.modules, name, mod)
+    monkeypatch.setattr(junk, "_check_toolchain", lambda: None)
+    return seen
+
+
+@pytest.mark.parametrize("refuse", [False, True], ids=["top_k 0", "older vLLM: top_k -1"])
+def test_vllm_engine_runs_vllm_as_the_smoke_did_and_maps_its_outputs(monkeypatch, refuse):
+    seen = _fake_vllm(monkeypatch, refuse_top_k_zero=refuse)
+    eng = junk.VllmEngine("/hf/snap", seed=5, gpu_mem=0.85, max_model_len=4096)
+    assert seen["init"] == {"model": "/hf/snap", "dtype": "bfloat16", "gpu_memory_utilization": 0.85,
+                            "max_model_len": 4096, "enforce_eager": True, "seed": 5}
+    sp = eng.sampling(**junk.SAMPLING)
+    assert sp.kw == {**junk.SAMPLING, "n": 1, "top_k": -1 if refuse else 0}
+    assert eng.info["sampling_params"] == repr(sp) and eng.info["vllm"] == "0.32.0" and "max_num_seqs" not in eng.info
+    convs = [[{"role": "user", "content": "a"}], [{"role": "user", "content": "b"}]]
+    out = eng.chat(convs, sp)
+    assert seen["chat"] == (convs, sp, False), "batched, with the progress bar off"
+    assert out == [junk.Completion("text 0", "stop", 3, 1388), junk.Completion("text 1", "length", 4, 1388)]
+
+
+def test_load_engine_takes_the_pinned_snapshot_from_the_hf_cache(tmp_path, monkeypatch):
+    repo, rev = junk.QWEN[0], junk.QWEN[1]
+    snap = tmp_path / "hub" / ("models--" + repo.replace("/", "--")) / "snapshots" / rev
+    snap.mkdir(parents=True)
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+    monkeypatch.setattr(junk, "VllmEngine", lambda path, **kw: (path, kw))
+    with pytest.raises(FileNotFoundError, match="config.json"):       # smoke.QWEN's files must be there
+        junk.load_engine(f"{repo}@{rev}", seed=1, gpu_mem=0.8, max_model_len=4096)
+    for f in junk.QWEN[2]:
+        (snap / f).write_text("{}")
+    path, kw = junk.load_engine(f"{repo}@{rev}", seed=1, gpu_mem=0.8, max_model_len=4096)
+    assert path == str(snap) and kw == {"seed": 1, "gpu_mem": 0.8, "max_model_len": 4096}
+
+
 def test_model_spec_needs_a_pinned_commit():
     assert junk.split_model("org/name@" + "a" * 40) == ("org/name", "a" * 40)
     for bad in ("org/name", "org/name@main", "org/name@abc123"):
