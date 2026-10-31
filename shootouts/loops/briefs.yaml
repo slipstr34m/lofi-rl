@@ -1,0 +1,13 @@
+# Briefs of the shootout reference loops (docs/SHOOTOUTS.md section 5). One brief per loop: every clip made from a
+# loop uses this mood, energy, tempo and tonic. The scene is always "city at night". `vamp` names the loop's own
+# vamp among the 12 of docs/design/instrument.md section 6. Tonic is a pitch class, C = 0.
+loops:
+  l1_melancholy_low:  {mood: melancholy, energy: low,  bpm: 76, tonic: 9,  key: A aeolian,  vamp: drift}
+  l2_melancholy_mid:  {mood: melancholy, energy: mid,  bpm: 81, tonic: 4,  key: E aeolian,  vamp: backdoor}
+  l3_melancholy_high: {mood: melancholy, energy: high, bpm: 87, tonic: 0,  key: C aeolian,  vamp: rise}
+  l4_wistful_low:     {mood: wistful,    energy: low,  bpm: 78, tonic: 7,  key: G dorian,   vamp: float}
+  l5_wistful_mid:     {mood: wistful,    energy: mid,  bpm: 83, tonic: 2,  key: D dorian,   vamp: step}
+  l6_wistful_high:    {mood: wistful,    energy: high, bpm: 89, tonic: 11, key: B dorian,   vamp: pulse}
+  l7_hopeful_low:     {mood: hopeful,    energy: low,  bpm: 79, tonic: 5,  key: F ionian,   vamp: lift}
+  l8_hopeful_mid:     {mood: hopeful,    energy: mid,  bpm: 85, tonic: 3,  key: Eb ionian,  vamp: aruarian}
+  l9_hopeful_high:    {mood: hopeful,    energy: high, bpm: 90, tonic: 10, key: Bb ionian,  vamp: royal_half}

@@ -161,3 +161,61 @@ assets:
     extracts:
       - {path: "assets/big/freepats-finger-bass-yr/x/FingerBassYR SF2-20190930/FingerBassYR 20190930.sf2", bytes: 4220300, sha256: bd1332696f61c0cb254ce7f202fb6b945ff46ccb1dcdd62e345a50bde3afb165}
     notes: "bass shootout: Finger Bass YR, SF2; sha256 pinned on first fetch (none published)."
+  # SF2 conversions of the SFZ banks (src/lofi_rl/convert, docs/CONVERTER.md), made on the laptop; fetch-only like
+  # their sources. Rebuild with: python -m lofi_rl.convert all --big assets/big --out-dir assets/big/converted
+  - path: assets/big/converted/weresax-alto.sf2
+    sha256: d4f797497fcd4ea7b58e0d97eae8edac1da137300a41f83643c1d62a8b4f798c
+    license: "CC0 1.0 (Weresax v1.003)"
+    mode: fetch
+    url: null
+    upstream: "lofi_rl.convert weresax-alto at 07ccf73, from assets/big/karoryfer-weresax/"
+    bytes: 49835920
+    notes: "one preset (0, 0); byte-identical across processes and hash seeds (docs/CONVERTER.md)"
+  - path: assets/big/converted/mtg-tenor.sf2
+    sha256: 38fcf328b5aab04d388ce7235fad74748b0908275c74eab0dac8ccb3a5914e53
+    license: "CC BY 4.0 (SFZ mapping by kinwie) and CC BY 3.0 (samples by MTG, Universitat Pompeu Fabra): attribution required, see assets/ATTRIBUTION.md"
+    mode: fetch
+    url: null
+    upstream: "lofi_rl.convert mtg-tenor at 07ccf73, from assets/big/mtg-solo-sax/"
+    bytes: 39541982
+    notes: "one preset (0, 0); byte-identical across processes and hash seeds (docs/CONVERTER.md)"
+  - path: assets/big/converted/mtg-alto.sf2
+    sha256: 2b338b89a47b712ec84d5ffa8d33f22d37384838c744576bee68e34d903d30e6
+    license: "CC BY 4.0 (SFZ mapping by kinwie) and CC BY 3.0 (samples by MTG, Universitat Pompeu Fabra): attribution required, see assets/ATTRIBUTION.md"
+    mode: fetch
+    url: null
+    upstream: "lofi_rl.convert mtg-alto at 07ccf73, from assets/big/mtg-solo-sax/"
+    bytes: 40870876
+    notes: "one preset (0, 0); byte-identical across processes and hash seeds (docs/CONVERTER.md)"
+  - path: assets/big/converted/jrhodes3d-mono.sf2
+    sha256: d662cb23ac788849ff56bccbafd7f9d7d7214aa3c70404d0c559ca93a8b587e1
+    license: "CC BY-NC 4.0 (an adaptation of the samples): non-commercial, never committed or shared"
+    mode: fetch
+    url: null
+    upstream: "lofi_rl.convert jrhodes3d-mono at 07ccf73, from assets/big/jrhodes3d/"
+    bytes: 78655288
+    notes: "one preset (0, 0); byte-identical across processes and hash seeds (docs/CONVERTER.md)"
+  - path: assets/big/converted/vcsl-upright-knight.sf2
+    sha256: 151ea259a8727bb0b207dcc0607fc665c7c924f8017ef30bc03c2e59158a585a
+    license: "CC0 1.0"
+    mode: fetch
+    url: null
+    upstream: "lofi_rl.convert vcsl-upright-knight at 07ccf73, from assets/big/vcsl/"
+    bytes: 364927584
+    notes: "one preset (0, 0); byte-identical across processes and hash seeds (docs/CONVERTER.md)"
+  - path: assets/big/converted/vsco2-contrabass-pizz.sf2
+    sha256: 27f341aba7a608ac6689a19016c493a17d0632649d9b1b67bc909dde5efb0c01
+    license: "CC0 1.0 (its readme asks for credit: Versilian Studios / Sam Gossner)"
+    mode: fetch
+    url: null
+    upstream: "lofi_rl.convert vsco2-contrabass-pizz at 07ccf73, from assets/big/vsco2-ce/"
+    bytes: 10164334
+    notes: "one preset (0, 0); byte-identical across processes and hash seeds (docs/CONVERTER.md)"
+  - path: assets/big/converted/gsullivan-wurlitzer.sf2
+    sha256: aab58d9cc609c23e72b2719e7b7b7cec6a7d7dab0264639d362c97fc8a7cac82
+    license: "CC BY 3.0 (Greg Sullivan; SFZ mapping by kinwie): attribution required, see assets/ATTRIBUTION.md"
+    mode: fetch
+    url: null
+    upstream: "lofi_rl.convert gsullivan-wurlitzer at 07ccf73, from assets/big/gsullivan-epianos/"
+    bytes: 8874716
+    notes: "one preset (0, 0); byte-identical across processes and hash seeds (docs/CONVERTER.md)"
