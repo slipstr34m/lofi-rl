@@ -110,3 +110,31 @@ supersedes an earlier one. Sources: `docs/TASTE.md` (Shresth's interview), `docs
 - There are no API keys and no `.env` for seeds.
 - Half the writing agents see `docs/TASTE.md`; half see only the DSL spec and the brief.
 - Seed generation runs in batches, within his Claude plan's usage limits.
+
+## D-019 (2026-10-31): the base-model test (junk-rate) v0, pre-registered before its first run
+**Decided by:** Claude. Shresth delegated the order of work ("Feel free to decide how to proceed next") after asking why
+no GRPO had run.
+- **Why now:** the plan dates this test Nov 7–8. It runs early, on the dev palette (palettes/dev_gu.yaml), as an
+  exploratory v0. The official Phase 1 gate (≥ 60 % pass and ≥ 30 % "fine" by ear) is re-run on the frozen palette
+  (D-017) with the same settings. v0 also decides whether GRPO run 1 starts from the plain base model. The GRPO
+  smoke (`jobs/grpo_smoke.sbatch`) runs in parallel on the plain model. It only tests the training stack, so it
+  decides nothing here.
+- **Prompt:** `lofi_rl.prompt` v1, template sha256 `7aceb2bc0d7339a7d3c9af7bf0d808ee156d4f7a8684e0393d923940fa5c1e68`
+  (tests/test_prompt.py pins it). It holds:
+  - a grammar card from docs/DSL.md and the palette's full vocabulary;
+  - per mood, the chords all in its mode, and one example loop (example.ls without `sax:`);
+  - the brief as scene + energy + mood only, never tempo, tonic or mode.
+- **Run settings:**
+  - model: Qwen3-4B-Instruct-2507 @cdbee75f;
+  - briefs: `brief.sample_briefs(2026, 500)`, one completion each;
+  - sampling: T 1.0, top_p 1, top_k 0, max_tokens 512 (taste_pipeline §6);
+  - vLLM: bf16, eager.
+- **Readout** (summary/junk.json):
+  - **pass:** gates G1–G6 plus compile, with its Wilson 95 % CI;
+  - **pass_not_copy:** pass, counting a near-copy of the in-prompt example as a failure (character 5-gram Jaccard
+    ≥ 0.8). The ≥ 60 % bar reads pass_not_copy, so copying the example cannot carry it;
+  - also: failures per gate, repairs and P_fix, token lengths and truncations.
+- **What follows from it:**
+  - **pass_not_copy ≥ 60 %:** GRPO run 1 starts from the base model.
+  - **Below that, with syntax failures (G1, G2, G5) the main cause:** grammar-constrained decoding comes first (D-016).
+  - **Below that, with other causes:** the prompt gets fixed as v2 and re-registered here before a re-run.
