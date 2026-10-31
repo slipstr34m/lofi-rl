@@ -14,8 +14,10 @@
 #   1. the draw (lofi_rl.shootout.batch draw): option maps, round order, anchors and repeats from a fresh 64-bit
 #      seed, recorded only in summary/draw.json (CD-21), with the renders and palettes the day needs
 #   2. the palette generator with --levels none: the measuring palettes (section 7.8)
-#   3. the levels tool (section 7.1): trims and faders on the 9 reference loops
-#   4. the generator again with those trims and faders: one palette per draw key, checked against the draw
+#   3. the levels tool (section 7.1): trims and median faders on the 9 reference loops, and every clip's own
+#      fader on the bus its round varies, the anchor's sour copy included (CD-52)
+#   4. the generator again with those trims and faders: one palette per draw key (each clip of an instrument
+#      stage its own), checked against the draw
 #   5. the clip renders, 8 at a time with 1 worker each (lofi_rl.shootout.render); every palette source is
 #      hashed once per job
 #   6. the batches (lofi_rl.shootout.batch build): opaque one-pass FLACs plus manifest.json and
@@ -27,10 +29,11 @@
 # Results: $REMOTE_SCR/runs/shootout-<job>/summary/ (draw.json, leaders.json, levels.json, palettes/, renders.json,
 # batches.json, and summary/stages.json: each stage's exit code and wall time) and $REMOTE_SCR/inbox/<date>/<batch>/;
 # make pull brings back both, never the renders.
-# Walltime: the Day-1 dry run on the laptop (Apple M4, --jobs 8, 2026-10-31) took 87.9-89.4 s for every stage
-# (levels 43.8-44.8 s, 67 renders 42.8-43.3 s, the rest 1.3 s) at a peak of 3.0 GB. The cluster renders a fixture
-# 1.3-2.7 x slower (2.86-5.95 s, SHOOTOUTS.md 7.7, against 2.2 s, RENDER.md 7); with 8 CPUs that may be 4 cores'
-# hyperthreads (x 2) and 2 min of start-up that is 4-10 min, about 50-120 SU. 20 min leaves twice the slowest.
+# Walltime: the Day-1 dry runs on the laptop (Apple M4, --jobs 8, 2026-10-31) took 87.9-96.7 s for every stage
+# over five runs (per-clip faders, CD-52: 90.7-96.7 s, levels 44.3-46.0 s, 67 renders 44.8-49.1 s; the median-fader
+# code 93.6 s back to back with the fastest) at a peak of 3.0 GB. The cluster renders a fixture 1.3-2.7 x slower
+# (2.86-5.95 s, SHOOTOUTS.md 7.7, against 2.2 s, RENDER.md 7); with 8 CPUs that may be 4 cores' hyperthreads (x 2)
+# and 2 min of start-up that is 4.0-10.7 min, about 48-128 SU. 20 min is 1.9 times the slowest.
 # Cost: 8 CPU + 4 (16 GB) = 12 SU/min -> at most 240 SU.
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/..}"
