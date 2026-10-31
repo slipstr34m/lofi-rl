@@ -48,7 +48,8 @@ from typing import IO, Any
 from lofi_rl.brief import sample_briefs
 from lofi_rl.palette import Palette, load_palette
 from lofi_rl.rl import curriculum
-from lofi_rl.rl.config import ConfigError, RunConfig, detect_profile, fit_fields, load_config, resolve
+from lofi_rl.rl.config import (ConfigError, RunConfig, detect_profile, fit_fields, load_config, resolve,
+                               structured_summary)
 from lofi_rl.rl.reward import SERVER_TERMS, make_reward
 
 T_PROCESS = time.time()
@@ -154,6 +155,7 @@ def dry_run(cfg: RunConfig, out: IO[str] | None = None, prompts: Any = None) -> 
                     "energy_x_mood": dict(sorted(mix.items())), "chars": {"min": min(chars), "max": max(chars)},
                     "preview": rows[0]["prompt"]},
         "profiles": profiles,
+        "structured_outputs": structured_summary(cfg),
         "optional_fields": sorted(cfg.optional_fields),
         "unverified_trl_fields": sorted({k for p in profiles.values() for k in p["trainer"]}),
         "resume_from_step": cfg.resume_step,
@@ -304,7 +306,7 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
         "model": {"repo": cfg.model_repo, "revision": cfg.model_revision}, "run_dir": str(run_dir),
         "summary_dir": str(summary_dir), "resume_from": str(resume_from) if resume_from else None,
         "job": job, "node": platform.node(), "stamp": stamp.read_text().strip() if stamp.is_file() else None,
-        "versions": _versions(), "lora": dict(cfg.lora)}
+        "versions": _versions(), "lora": dict(cfg.lora), "structured_outputs": structured_summary(cfg)}
     _write_json(summary_dir / "run.json", man)
     steps: StepLog | None = None
     try:

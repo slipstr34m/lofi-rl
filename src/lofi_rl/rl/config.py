@@ -6,7 +6,14 @@ GRPOConfig (and transformers TrainingArguments) field names, merged per GPU prof
 
 TRL is not on the laptop, so field names are checked against the real GRPOConfig only on the cluster:
 fit_fields() refuses a name GRPOConfig lacks, before the model loads, unless the config lists it under
-`optional_fields`, which are dropped and reported instead. Standard library and PyYAML only.
+`optional_fields`, which are dropped and reported instead. Standard library and PyYAML only (a constrained config
+also loads its palette and lofi_rl.grammar, both standard library and PyYAML).
+
+Grammar-constrained decoding (D-016; docs/GRAMMAR.md): the top-level `structured_outputs: loopscript_regex` names a
+regex builder of lofi_rl.grammar. load_config() builds the regex from the config's palette, and resolve() sets it as
+the GRPOConfig field `vllm_structured_outputs_regex` in every profile, so the regex is never pasted into YAML and goes
+through the same field check as every other name (UNVERIFIED for TRL 1.17.1 until the cluster: a wrong name stops
+the run in about 2 minutes). Writing that field by hand in `trainer` or a profile is refused.
 """
 from __future__ import annotations
 
@@ -24,7 +31,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 TOP_REQUIRED = ("run", "model", "palette", "briefs", "prompts_per_step", "lora", "trainer", "profiles",
                 "optional_fields")
-TOP_OPTIONAL = ("smoke",)
+TOP_OPTIONAL = ("smoke", "structured_outputs")
+STRUCTURED_BUILDERS = ("loopscript_regex",)                 # functions of lofi_rl.grammar: palette -> regex
+STRUCTURED_FIELD = "vllm_structured_outputs_regex"          # the TRL GRPOConfig field the regex goes into
 # The §6 settings every run must state (in `trainer` or in each profile), so none falls to a TRL default.
 REQUIRED = ("learning_rate", "lr_scheduler_type", "warmup_steps", "max_steps", "num_generations", "num_iterations",
             "max_completion_length", "mask_truncated_completions", "beta", "loss_type", "scale_rewards",
@@ -75,6 +84,8 @@ class RunConfig:
     profiles: Mapping[str, Mapping[str, Any]]       # name -> {min_gib, trainer overrides}
     optional_fields: frozenset[str]
     resume_step: int | None                         # smoke.resume_from_step
+    # builder, field, regex, sha256, chars when the config sets `structured_outputs`; None otherwise
+    structured_outputs: Mapping[str, Any] | None = None
 
     def palette_path(self, root: Path = ROOT) -> Path:
         p = Path(self.palette)
@@ -152,11 +163,23 @@ def load_config(path: Path | str) -> RunConfig:
     clash = sorted(set(optional) & set(REQUIRED))
     if clash:
         raise ConfigError(f"optional_fields lists {clash}, which every run requires")
+    builder = doc.get("structured_outputs")
+    if builder is not None and (not isinstance(builder, str) or builder not in STRUCTURED_BUILDERS):
+        raise ConfigError(f"structured_outputs {builder!r} is not one of {list(STRUCTURED_BUILDERS)} (a regex builder "
+                          "of lofi_rl.grammar)")
+    if STRUCTURED_FIELD in optional:
+        raise ConfigError(f"optional_fields lists {STRUCTURED_FIELD}: a constrained run must not drop its regex "
+                          "silently, and an unconstrained one never sets it")
 
+    sections = [("trainer", trainer)] + [(f"profiles.{n}", p) for n, p in profiles.items() if isinstance(p, dict)]
     for k, why in FORBIDDEN.items():
-        for where, sec in [("trainer", trainer)] + [(f"profiles.{n}", p) for n, p in profiles.items() if isinstance(p, dict)]:
+        for where, sec in sections:
             if k in sec:
                 raise ConfigError(f"{where}.{k} {why}")
+    for where, sec in sections:
+        if STRUCTURED_FIELD in sec:
+            raise ConfigError(f"{where}.{STRUCTURED_FIELD}: write `structured_outputs: loopscript_regex` instead; the "
+                              "regex is built from lofi_rl.grammar when the config loads, never pasted into it")
     for k, v in trainer.items():
         _check_value(k, v, "trainer")
     for name, prof in profiles.items():
@@ -185,6 +208,8 @@ def load_config(path: Path | str) -> RunConfig:
         optional_fields=frozenset(optional), resume_step=resume)
     if not cfg.palette_path().is_file():
         raise ConfigError(f"palette {cfg.palette} does not exist")
+    if builder is not None:
+        cfg = dataclasses.replace(cfg, structured_outputs=_structured(builder, cfg.palette_path()))
     for name in cfg.profiles:
         resolve(cfg, name)                          # every profile complete and consistent
     t = cfg.trainer
@@ -201,12 +226,34 @@ def load_config(path: Path | str) -> RunConfig:
     return cfg
 
 
+def _structured(builder: str, palette_path: Path) -> Mapping[str, Any]:
+    """The regex a `structured_outputs` builder makes from the config's palette, with its identity."""
+    from lofi_rl import grammar                     # only a constrained config needs the grammar and the palette
+    from lofi_rl.palette import PaletteError, load_palette
+    try:
+        palette = load_palette(palette_path, verify=False)
+    except PaletteError as err:
+        raise ConfigError(f"structured_outputs: the palette {palette_path} does not load ({err})") from err
+    regex = getattr(grammar, builder)(palette)
+    return MappingProxyType({"builder": builder, "field": STRUCTURED_FIELD, "regex": regex,
+                             "sha256": hashlib.sha256(regex.encode("utf-8")).hexdigest(), "chars": len(regex)})
+
+
+def structured_summary(cfg: RunConfig) -> dict[str, Any] | None:
+    """What run.json and the dry run record of the regex: everything but its text."""
+    so = cfg.structured_outputs
+    return None if so is None else {k: v for k, v in so.items() if k != "regex"}
+
+
 def resolve(cfg: RunConfig, profile: str) -> dict[str, Any]:
-    """The trainer settings of one GPU profile: `trainer`, then the profile's overrides (min_gib dropped)."""
+    """The trainer settings of one GPU profile: `trainer`, then the profile's overrides (min_gib dropped), then the
+    `structured_outputs` regex in its GRPOConfig field when the config asks for one."""
     if profile not in cfg.profiles:
         raise ConfigError(f"unknown GPU profile {profile!r}; the config has {sorted(cfg.profiles)}")
     kw = dict(cfg.trainer)
     kw.update({k: v for k, v in cfg.profiles[profile].items() if k != "min_gib"})
+    if cfg.structured_outputs is not None:
+        kw[cfg.structured_outputs["field"]] = cfg.structured_outputs["regex"]
     missing = [k for k in REQUIRED if k not in kw]
     if missing:
         raise ConfigError(f"profile {profile}: trainer settings missing {missing}")
