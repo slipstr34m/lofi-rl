@@ -964,7 +964,7 @@ Each is overridable by Shresth; the reason is one line.
 
 Questions in plain words, each with its deadline and what happens without an answer:
 
-1. **Hidden checks in the shootouts** (by Nov 2 evening, before job 1). "Your vote rules bring a few rounds back at
+1. **Hidden checks in the shootouts. ANSWERED 2026-10-31: keep them** (Shresth: "Defaults are fine."). Was due by Nov 2 evening, before job 1. "Your vote rules bring a few rounds back at
    least two days later and slip in a deliberately broken loop now and then. In the shootouts that means 5 repeated
    rounds on Nov 6, when the keys, drums, chords and sax rounds are otherwise over, so you might recognise them, and
    3 rounds where one clip has a deliberately sour sax line. About 9 minutes in all. Keep them, or leave them out of
@@ -974,7 +974,7 @@ Questions in plain words, each with its deadline and what happens without an ans
    pair in the shootout uses one, so the shootout cannot test them there. The plan drops these chords if every pair
    that has one comes last. If that happens, should Claude drop them everywhere, only from hopeful loops, or keep
    them?" Without an answer they stay (TASTE's default).
-3. **A beat round** (by Nov 2 evening). "Your drums answer says the shootout should narrow down kits and beats. The
+3. **A beat round. ANSWERED 2026-10-31: no beat round** (Shresth: "Defaults are fine."). Was due by Nov 2 evening. "Your drums answer says the shootout should narrow down kits and beats. The
    plan compares kits, each on 3 beats, but has no round that compares beats with the same kit, because the model
    writes every beat and your votes judge them later. Want a short beat round, about 3 minutes on Nov 3?" Without an
    answer there is none.
