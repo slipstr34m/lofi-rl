@@ -14,7 +14,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
-## 2026-10-31 (13:40 PDT): deck-only reference sample from vikhyatk/lofi recorded; GRPO path merged and queued
+## 2026-10-31 (13:56 PDT): deck-only reference sample from vikhyatk/lofi recorded; GRPO path merged and queued
 
 **What was done**
 - **Reference sample.** Shresth asked in a side session (`local_4dee338e…`) whether the HF dataset `vikhyatk/lofi` helps. That session's answer was "not for training": the dataset is audio only, its MusicGen textures are ones TASTE.md rules out, and it carries no taste signal. Shresth approved it for the Nakano deck only ("Yes, for the deck").
