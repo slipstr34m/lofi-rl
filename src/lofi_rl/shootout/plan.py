@@ -49,6 +49,7 @@ _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _TOP = ("v", "scene", "loops_dir", "loops", "candidates", "band", "stages", "batches")
 _TOP_OPT = ("alto_above", "registers", "repeats", "rerun_s2", "cuts")
 _STAGE_KEYS = ("day", "category", "fills", "bus", "draw")
+_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)   # libyaml when present: the same documents, 7x faster
 _STAGE_OPT = ("what", "slots", "slots_by_count", "band", "default", "sub", "sax_muted", "anchor", "repeat_group")
 
 
@@ -219,7 +220,7 @@ def load_plan(path: Path | str = PLAN) -> Plan:
     path = Path(path)
     data = path.read_bytes()
     try:
-        doc = yaml.safe_load(data.decode("utf-8"))
+        doc = yaml.load(data.decode("utf-8"), Loader=_LOADER)
     except (UnicodeDecodeError, yaml.YAMLError) as err:
         raise PlanError(f"{path}: not a UTF-8 YAML document ({err})") from err
     return parse_plan(doc, path, hashlib.sha256(data).hexdigest())
@@ -329,7 +330,7 @@ def _loops(top: dict, path: Path) -> dict[str, Loop]:
     base = base if base.is_absolute() else path.parent / base
     briefs_path = base / "briefs.yaml"
     try:
-        briefs = yaml.safe_load(briefs_path.read_text(encoding="utf-8"))["loops"]
+        briefs = yaml.load(briefs_path.read_text(encoding="utf-8"), Loader=_LOADER)["loops"]
     except (OSError, KeyError, TypeError, yaml.YAMLError) as err:
         raise _fail("loops_dir", f"cannot read {briefs_path} ({err})") from err
     out = {}

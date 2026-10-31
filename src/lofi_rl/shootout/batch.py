@@ -106,14 +106,13 @@ def public_leaks(public: Mapping, hidden: Mapping, extra: Iterable[str] = ()) ->
         hit = sorted((_words(n) - cats) & words)
         if hit:
             out.append(f"{hit} of hidden name {n!r} shows in the public manifest")
+    shown = {i[k:k + LEAK_WINDOW] for i in ids for k in range(len(i) - LEAK_WINDOW + 1)}
     for hr in hidden["rounds"].values():
         for oid, info in hr["clips"].items():
             for what, value in (("real clip id", str(info.get("clip", ""))[1:]),
                                 ("pcm_sha256", str(info.get("pcm_sha256") or ""))):
-                for k in range(len(value) - LEAK_WINDOW + 1):
-                    if any(value[k:k + LEAK_WINDOW] in i for i in ids):
-                        out.append(f"a stretch of the {what} of clip {oid} shows in a public id")
-                        break
+                if any(value[k:k + LEAK_WINDOW] in shown for k in range(len(value) - LEAK_WINDOW + 1)):
+                    out.append(f"a stretch of the {what} of clip {oid} shows in a public id")
     return out
 
 

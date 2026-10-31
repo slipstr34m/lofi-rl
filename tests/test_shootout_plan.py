@@ -3,6 +3,7 @@
 The plan is public, so it places only symbols on tiles: which option a symbol stands for is drawn at job time
 (section 2.3). These tests also pin the designs' balance as section 2.4 states it (tile sums, Latin squares,
 the alto-above rounds), so a transcription slip in the YAML fails here rather than in a listening session."""
+import copy
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -10,7 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from lofi_rl.shootout.plan import PLAN, PlanError, apply_cuts, load_plan
+from lofi_rl.shootout.plan import PLAN, PlanError, apply_cuts, load_plan, parse_plan
 from lofi_rl.ui.manifest import BATCH_RE
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,7 +60,7 @@ def test_tiles_hold_only_symbols_never_an_option(plan):
             for slot in slots:
                 assert set(slot.tiles) <= declared, (st.id, slot.id)
                 assert not set(slot.tiles) & options, (st.id, slot.id)
-    raw = yaml.safe_load(PLAN.read_text())
+    raw = RAW
     tile_lists = []
 
     def walk(node):
@@ -194,13 +195,11 @@ def test_cuts_apply_as_section_2_7_lists_them(plan):
         apply_cuts(plan, ["no-such-cut"])
 
 
-def _write(tmp_path, mutate):
-    doc = yaml.safe_load(PLAN.read_text())
-    doc["loops_dir"] = str(ROOT / "shootouts" / "loops")
-    mutate(doc)
-    p = tmp_path / "plan.yaml"
-    p.write_text(yaml.safe_dump(doc, sort_keys=False))
-    return p
+RAW = yaml.load(PLAN.read_text(), Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
+
+
+def test_the_c_loader_reads_the_plan_as_the_python_loader_does():
+    assert RAW == yaml.safe_load(PLAN.read_text())
 
 
 @pytest.mark.parametrize("mutate,match", [
@@ -216,6 +215,8 @@ def _write(tmp_path, mutate):
     (lambda d: d["band"]["day1"]["fixed"].update(keys="clavinet"), "clavinet"),
     (lambda d: d["candidates"]["kits"].update(gu_tine_ep={}), "twice"),
 ])
-def test_a_broken_plan_is_refused(tmp_path, mutate, match):
+def test_a_broken_plan_is_refused(mutate, match):
+    doc = copy.deepcopy(RAW)
+    mutate(doc)
     with pytest.raises(PlanError, match=match):
-        load_plan(_write(tmp_path, mutate))
+        parse_plan(doc, PLAN, "0" * 64)
