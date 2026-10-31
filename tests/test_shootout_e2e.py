@@ -27,13 +27,16 @@ from lofi_rl.ui.manifest import HIDDEN_NAME, PUBLIC_NAME, load_batch
 
 ROOT = Path(__file__).resolve().parents[1]
 DEV = ROOT / "palettes" / "dev_gu.yaml"
-LOOPS = {                       # two sparse loops that pass G1-G6 (dev_gu aliases ep and dusty)
-    "t1": "vamp: Im9 IV13 span 2\nkeys: ep rootless\ncomp: x--------------- ................\n"
-          "bass: x--------------- ................\ndrums: dusty\nkick: x............... x...............\n"
-          "rim: ....x.......x... ....x.......x...\nA: w5 w3 w1 w2\nB: w5 w3 w1 w7\n",
-    "t2": "vamp: Imaj9 IVmaj9 span 2\nkeys: ep rootless\ncomp: x--------------- ................\n"
-          "bass: x--------------- ................\ndrums: dusty\nkick: x............... x...............\n"
-          "rim: ....x.......x... ....x.......x...\nA: w3 w2 w1 w5\nB: w3 w2 w1 w6\n",
+# Two sparse loops that pass G1-G6 (dev_gu aliases ep and dusty). Their comp and bass are rests, so each render
+# runs one FluidSynth process (the sax) instead of three (RENDER.md 3.1: a stem with no notes runs no process);
+# the candidate here is the sax expression, and the keys and bass stems are rendered by tests/test_render*.py.
+LOOPS = {
+    "t1": "vamp: Im9 IV13 span 2\nkeys: ep rootless\ncomp: ................\nbass: ................\n"
+          "drums: dusty\nkick: x............... x...............\nrim: ....x.......x... ....x.......x...\n"
+          "A: w5 w3 w1 w2\nB: w5 w3 w1 w7\n",
+    "t2": "vamp: Imaj9 IVmaj9 span 2\nkeys: ep rootless\ncomp: ................\nbass: ................\n"
+          "drums: dusty\nkick: x............... x...............\nrim: ....x.......x... ....x.......x...\n"
+          "A: w3 w2 w1 w5\nB: w3 w2 w1 w6\n",
 }
 BRIEFS = {"loops": {"t1": {"mood": "wistful", "energy": "low", "bpm": 95, "tonic": 2},
                     "t2": {"mood": "hopeful", "energy": "low", "bpm": 95, "tonic": 7}}}
