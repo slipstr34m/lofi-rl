@@ -8,9 +8,9 @@ and the top named extension plus the b5 of m7b5 and dim7 (R2). The styles (R4):
   m7b5's b5; with no extension, third-fifth-seventh;
 - shell: the third and the seventh, plus the top extension; b3-b5-b7 for m7b5 and b3-b5-bb7 for dim7;
 - spread: drop-2 of each inversion of the rootless voicing;
-- quartal: every stack of 3 or 4 tones drawn from the named tones and the quality's available tensions that are
-  in the brief's mode (R3, AVAILABLE_TENSIONS) that holds R1 and R2, adds no tension a semitone above the root
-  (which the bass plays) or above a named tone it holds (R3), and has adjacent intervals of 5 or 6 semitones,
+- quartal: every stack of 3 or 4 tones, drawn from the named tones and those of the quality's available tensions
+  that the brief's mode holds (R3, AVAILABLE_TENSIONS), that holds R1 and R2, adds no tension a semitone above the
+  root (which the bass plays) or above a named tone it holds (R3), and has adjacent intervals of 5 or 6 semitones,
   except at most one of 3 or 4. A chord with no quartal candidate is voiced rootless.
 
 The choice (section 3, steps 1-4, plus R8): every inversion at every octave inside C3-C5 (48-72) is a candidate

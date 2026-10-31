@@ -1,10 +1,12 @@
-"""Keys voicings: instrument.md section 3, Voicings, as amended by voicing rules V2 (docs/COMPILER.md,
-"Amendment V2 to instrument.md §3 Voicings"). voicing.py is checked against tests/helpers_voicing.py, an oracle
+"""Keys voicings: instrument.md section 3, Voicings, as amended by voicing rules V2.1 (docs/COMPILER.md §9,
+"Amendment V2.1 to instrument.md §3 Voicings"). voicing.py is checked against tests/helpers_voicing.py, an oracle
 that never reads voicing.py's templates:
 - R1-R6 over every mode x numeral (borrowed ones included) x quality x style at every tonic, with every candidate
   set equal to the oracle's; R7 in rootless, shell and spread, and the quartal coincidences counted;
 - the quartal oracle itself against every pitch set in C3-C5, for a sample of chords;
 - the voice-leading choice against a brute force over the oracle's candidates, for a sample of vamps;
+- V2.1's three changes: avoid notes over the bass, available tensions, and vamps that move (R8), the last over every
+  vamp of the vocabulary;
 - the section 3 rules V2 leaves alone: inversions, drop-2, rule 2, the cost and its ties."""
 import ast
 from fractions import Fraction

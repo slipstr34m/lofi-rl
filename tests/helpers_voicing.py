@@ -1,12 +1,14 @@
-"""The keys-voicing oracle for voicing rules V2 (docs/COMPILER.md, "Amendment V2 to instrument.md §3 Voicings"),
-written out from the rules independently of src/lofi_rl/theory/voicing.py, which it never imports.
+"""The keys-voicing oracle for voicing rules V2.1 (docs/COMPILER.md §9, "Amendment V2.1 to instrument.md §3
+Voicings"), written out from the rules independently of src/lofi_rl/theory/voicing.py, which it never imports.
 
-- Tone sets come from chords.py's interval table (QUALITY: third, fifth, seventh, extensions) and the mode
-  tables (dsl.vocab.MODES). Tones are pitch classes above the chord root.
+- Tone sets come from chords.py's interval table (QUALITY: third, fifth, seventh, extensions), the mode tables
+  (dsl.vocab.MODES) and R3's available tensions, written out per quality (AVAILABLE). Tones are pitch classes above
+  the chord root.
 - The rootless, shell and spread templates are rebuilt from R4's wording.
 - The quartal stacks come from a brute force over every bottom-to-top ordering of every 3- and 4-tone subset of
   R3's tone set (tests/test_voicing.py checks that against every pitch set in C3-C5 for a sample).
-- The voice-leading cost is an exact integer, 48 times the section 3 cost.
+- The voice-leading cost is an exact integer, 48 times the section 3 cost; the best pair is taken among the pairs
+  of two different voicings (R8).
 Not a test module.
 """
 from __future__ import annotations
