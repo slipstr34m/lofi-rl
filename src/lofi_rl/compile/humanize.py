@@ -6,7 +6,8 @@ Off by default (palette groove.humanize). Modes:
 The key XORs each field into its own byte of the 64-bit seed (draw bits 24-31, lane 16-23, bar 8-15,
 step 0-7), so no two fields collide, and h = splitmix64(key). u = (h >> 11) 2^-53; timing = (2u - 1) *
 humanize_ms and velocity x (1 + (2u - 1) * humanize_vel), both uniform. seed = the first 8 bytes of
-SHA256(canonical text).
+SHA256(the canonical text without its keys:, drums: and sax: lines), so the groove depends only on the vamp,
+the grids and the phrases, never on which keys instrument, voicing style, kit or sax a loop names (SR-7).
 """
 from __future__ import annotations
 
@@ -23,11 +24,19 @@ from .timeline import BAR, STEPS, ms
 
 TIMING, VELOCITY = 1, 2
 LANE_ID = {lane: i + 1 for i, lane in enumerate(TIMING_LANES)}     # kick 1 .. sax 9
+NAME_LINES = ("keys:", "drums:", "sax:")    # canonical lines that only name sounds; the seed leaves them out
+
+
+def seed_text(loop: Loop) -> str:
+    """The canonical text without its keys:, drums: and sax: lines (the keys instrument and style, the kit, the
+    sax): the vamp, the grids, the edits and the phrases, in canonical order."""
+    return "".join(line for line in canon(loop).splitlines(keepends=True) if not line.startswith(NAME_LINES))
 
 
 def loop_seed(loop: Loop) -> int:
-    """seed = SHA256(canonical text)[:8], big-endian: the same loop always draws the same nudges."""
-    return int.from_bytes(hashlib.sha256(canon(loop).encode("utf-8")).digest()[:8], "big")
+    """seed = SHA256(seed_text)[:8], big-endian: the same vamp, grids and phrases always draw the same nudges,
+    whatever keys instrument, voicing style, kit or sax the loop names."""
+    return int.from_bytes(hashlib.sha256(seed_text(loop).encode("utf-8")).digest()[:8], "big")
 
 
 @dataclass(frozen=True)

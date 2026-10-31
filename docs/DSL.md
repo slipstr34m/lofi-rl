@@ -133,13 +133,11 @@ whatever the line says (`docs/COMPILER.md` §2, stage 1, and §6).
   - it must be one sax name from the palette (`sax: soprano` is G4, `sax: tenor alto` G1, `sax: 90bpm` G5);
   - it cannot be edited (`@4 sax: alto` is G5);
   - it is kept in the AST (`Loop.sax`) and in the canonical text (§8).
-- **Open: the line still reaches the compiler through the humanize seed.** The seed hashes the canonical text
-  (COMPILER.md §3.6), so the same loop with and without `sax: tenor` compiles to different `CompiledLoop.seed`s and
-  digests.
-  - With humanize off (the default) the seed drives nothing, so every note, hit and curve is the same.
-  - With humanize `bar` or `loop` (shootout only), the drum, keys and bass nudges differ too.
-  - `tests/test_compile.py::test_a_loop_without_a_sax_statement_compiles_to_the_same_loop_as_with_sax_tenor` is
-    a strict xfail until the seed ignores the line (COMPILER.md §7).
+- **It does not reach the humanize seed either** (settled 2026-10-31, SR-7). The seed hashes the canonical text
+  without its `keys:`, `drums:` and `sax:` lines (COMPILER.md §3.6 and §7). So the same loop with `sax: tenor`,
+  with `sax: alto` or with no `sax:` line compiles to the same `CompiledLoop`, digest included, with humanize off,
+  `bar` or `loop` (`tests/test_compile.py::test_a_loop_without_a_sax_statement_compiles_to_the_same_loop_as_with_sax_tenor`).
+  Naming another keys instrument, voicing style or kit keeps the humanize nudges too.
 - **The Phase-0 smoke adapter** (`compile/stub_from_loop.py`) still reads the line to pick a General MIDI program
   (tenor 66, alto 65). The Phase 1 compiler does not read it.
 

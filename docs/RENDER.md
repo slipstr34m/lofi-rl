@@ -309,19 +309,23 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
 - **The CLI** takes about 2.2 s wall per fixture, interpreter start included.
 - All six fixtures converged in 1 iteration (§8).
 
-## 8. Fixture renders (CLI, `dev_gu`, wistful, mid, 82 BPM, tonic 2; this laptop, 2026-10-31)
+## 8. Fixture renders (CLI, `dev_gu`, wistful, mid, 82 BPM, tonic 2; this laptop, 2026-10-31, after voicing rules V2)
 
 | fixture | N | LUFS | true peak (dBTP) | pcm_sha256 |
 |---|---|---|---|---|
-| example.ls | 1,032,576 | −14.008 | −1.495 | `6061a4a3b372fa0a77e57e6c6f9f5efd49a59f05f2d211ed6cbf5eec1a448500` |
-| example_leniency.ls | 1,032,576 | −14.008 | −1.495 | `6061a4a3b372fa0a77e57e6c6f9f5efd49a59f05f2d211ed6cbf5eec1a448500` |
-| leniency_lower_x.ls | 1,032,576 | −14.009 | −1.495 | `ec884f970b68d8c6c8379454ddffa13825bba2ff72fcb63210a960ade76415e1` |
+| example.ls | 1,032,576 | −14.006 | −1.496 | `08e696500fbf4f1083666f2b4da277a61dbe150f12eb199542a991b85c883e90` |
+| example_leniency.ls | 1,032,576 | −14.006 | −1.496 | `08e696500fbf4f1083666f2b4da277a61dbe150f12eb199542a991b85c883e90` |
+| leniency_lower_x.ls | 1,032,576 | −14.007 | −1.496 | `013093004a1dd7d4c1fda80925dacbcd10417c004ff4ebaea40c8f3f89858b87` |
 | one_bar_base.ls | 1,032,576 | −14.028 | −1.494 | `31fdfbaa4f5fd6dfd2e6af69e26972dc14d5e0c0ea43c98d6a0e309f7705cb6f` |
-| shaker_edits.ls | 1,032,576 | −14.068 | −1.494 | `bf8b4f1eb91dafe5a66e357b165cb97de3361be3c7fbbc317a5ed1f533c0a242` |
-| span1_dotted.ls | 1,032,576 | −14.020 | −1.496 | `703079f8c975784839db6e7a3d4a5e923476218dc4ecb3d1bb5372826f5e97c0` |
+| shaker_edits.ls | 1,032,576 | −14.038 | −1.494 | `93a0baa3067fa0b1cbb738f58c2f2f4512dd8847d9c9d15f5a6853747f845a19` |
+| span1_dotted.ls | 1,032,576 | −14.028 | −1.495 | `86d6b1fd5c310f1aed45680bac174dc3311a75908601042f918bbc45a75d8ea0` |
 
 `example_leniency.ls` parses to the same AST as `example.ls`, so their renders are identical. These are laptop
 hashes; the cluster's are canonical (docs/kit/LESSONS.md 38). None of these clips has had an ear check.
+- **Voicing rules V2** (docs/COMPILER.md §9) changed every row but `one_bar_base.ls`, whose shells did not change.
+  Each change is in the keys stem alone: the bass, sax and drum stem hashes are the same as before. Before V2,
+  `example.ls` rendered to `6061a4a3…`, `leniency_lower_x.ls` to `ec884f97…`, `shaker_edits.ls` to `bf8b4f1e…` and
+  `span1_dotted.ls` to `703079f8…`.
 
 ## 9. Choices the spec left open
 Each is pinned by a test and can be changed.

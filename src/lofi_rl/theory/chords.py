@@ -1,8 +1,9 @@
 """Chord numerals and qualities -> pitch classes (docs/design/instrument.md section 3, chord tones table).
 
-A quality is stored by role (third, fifth, seventh, extensions) because the voicing rules pick tones by
-role: rootless drops the root and, under an extension, the fifth; shell keeps third, seventh and the top
-extension. Extensions are compound intervals above the root, in the table's order.
+A quality is stored by role (third, fifth, seventh, extensions) because the voicing rules (V2, docs/COMPILER.md
+section 9) pick tones by role: rootless drops the root and, under an extension, a perfect fifth (m7b5 keeps its
+b5); shell keeps third, seventh and the top extension (third, b5 and seventh for m7b5 and dim7). Extensions are
+compound intervals above the root, in the table's order; the last is the top one.
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ class Quality:
 
     @property
     def family(self) -> str:
-        """maj, dom, min, sus, half (m7b5) or dim: the quartal table's rows."""
+        """maj, dom, min, sus, half (m7b5) or dim."""
         if self.third == 5:
             return "sus"
         if self.third == 4:

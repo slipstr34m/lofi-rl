@@ -135,6 +135,8 @@ def test_every_committed_palette_source_has_a_committable_licence_in_the_asset_m
     ({"sax_lead": "soprano"}, "not a sax"),
     ({"kits__jazz__lanes__shaker": None}, "missing shaker"),
     ({"kits__jazz__choke": [["ohat", "cowbell"]]}, "not one of"),
+    ({"kits__jazz__choke": [["ohat", "hat"], ["ohat", "hat"]]}, "listed twice"),
+    ({"kits__jazz__choke": [["ohat"]]}, "choked lane, choking lane"),
     ({"chords__qualities": ["m9", "6/9"]}, "not one of"),
     ({"voicings": ["rootless", "drop3"]}, "not one of"),
     ({"aliases": {"rhodes": "organ"}}, "also be a palette name"),
@@ -151,6 +153,13 @@ def test_schema_errors_name_the_path(paths, message):
         parse_palette(edited(**paths))
 
 
+@pytest.mark.parametrize("pairs", [[["ohat", "ohat"]], [["ohat", "hat"], ["ohat", "ohat"]], [["hat", "hat"]], []])
+def test_a_kit_may_list_a_lane_that_chokes_itself(pairs):
+    # Review finding T7: a hi-hat is one instrument, so an open hat ends at the next hat hit of either kind. The pair
+    # [ohat, ohat] makes the open-hat lane cut itself (docs/COMPILER.md §3.9); the order of the pairs is kept.
+    assert parse_palette(edited(kits__jazz__choke=pairs)).kits["jazz"].choke == tuple(map(tuple, pairs))
+
+
 def test_dev_palette_carries_the_spec_starting_values():
     pal = dev_palette()
     tenor, alto = pal.sax["tenor"], pal.sax["alto"]                         # section 3, Registers
@@ -161,7 +170,7 @@ def test_dev_palette_carries_the_spec_starting_values():
     assert all(dict(v.vel) == {"X": 96, "x": 80, "g": 52} for v in pal.keys.values())   # section 3, Velocities
     kit = pal.kits["jazz"]
     assert (kit.bass.bank, kit.bass.prog, dict(kit.bass.vel)) == (0, 32, {"X": 104, "x": 88, "g": 64})
-    assert kit.choke == (("ohat", "hat"),)
+    assert kit.choke == (("ohat", "hat"), ("ohat", "ohat")), "a hi-hat is one instrument: either hat cuts the open one"
     notes = {lane: {s.note for layer in kit.lanes[lane].layers.values() for s in layer} for lane in LANES}
     assert notes == {"kick": {36}, "snare": {38}, "rim": {37}, "hat": {42}, "ohat": {46}, "shaker": {82}}
     assert all((s.bank, s.prog) == (128, 32) for d in kit.lanes.values() for layer in d.layers.values() for s in layer)

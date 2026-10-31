@@ -34,7 +34,7 @@ keys:
 kits:
   jazz:
     bass: {src: gu, bank: 0, prog: 32, vel: {X: 104, x: 88, g: 64}}  # GU "Acoustic Bass"
-    choke: [[ohat, hat]]                                              # [choked lane, choking lane]
+    choke: [[ohat, hat], [ohat, ohat]]     # [choked lane, choking lane]; one hi-hat: either hat cuts an open one
     lanes:
       kick:                                                           # GU Jazz kit note 36 "Jazz Bass Drum"
         soft: [{src: gu, bank: 128, prog: 32, note: 36, vel: 48}]

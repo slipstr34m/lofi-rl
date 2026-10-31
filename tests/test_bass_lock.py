@@ -109,4 +109,5 @@ def test_keys_and_bass_play_every_level_at_its_spec_velocity():
     keys = {(nt.step % 16, nt.velocity) for nt in c.keys.notes}
     bass = {(nt.step % 16, nt.velocity) for nt in c.bass.notes}
     assert keys == {(0, 52), (4, 80), (8, 96)} and bass == {(0, 64), (4, 88), (8, 104)}
-    assert len(c.keys.notes) == 8 * 3 * 3 and len(c.bass.notes) == 8 * 3
+    # three strikes a bar: Im9 (b3 b7 9) in bars 1, 2, 5, 6 and IV13 (3 b7 9 13, voicing rules V2) in 3, 4, 7, 8
+    assert len(c.keys.notes) == 4 * 3 * 3 + 4 * 3 * 4 and len(c.bass.notes) == 8 * 3

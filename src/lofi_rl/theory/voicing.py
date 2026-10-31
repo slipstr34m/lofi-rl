@@ -1,24 +1,32 @@
-"""Keys voicings and the voice-leading choice across the vamp (docs/design/instrument.md section 3, Voicings).
+"""Keys voicings and the voice-leading choice across the vamp: instrument.md section 3, Voicings, as amended by
+voicing rules V2 (docs/COMPILER.md §3.3 and "Amendment V2 to instrument.md §3 Voicings").
 
-Styles, as semitones above the root:
-- rootless: the core tones minus the root, plus the first extension; the fifth goes when there is one;
-- shell: the third (the fourth for sus) and the seventh, plus the top extension;
+Tones are semitones above the chord root. A quality's named tones are its table entry (theory.chords): root,
+third, fifth, seventh and extensions. Every voicing holds the third (the fourth for 7sus) and the seventh (R1),
+and the top named extension plus the b5 of m7b5 and dim7 (R2). The styles (R4):
+- rootless: no root. The third, the seventh and the named extensions (at most two, the top one always), plus
+  m7b5's b5; with no extension, third-fifth-seventh;
+- shell: the third and the seventh, plus the top extension; b3-b5-b7 for m7b5 and b3-b5-bb7 for dim7;
 - spread: drop-2 of each inversion of the rootless voicing;
-- quartal: maj [4,9,14,18|19] (18 for maj7#11), min [5,10,15,19], dom [10,16,21] plus each extension not
-  already in the stack, raised above its top; sus [5,10,14,19]; m7b5 and dim7 fall back to rootless.
+- quartal: every stack of 3 or 4 tones drawn from the named tones and the brief's mode's tensions (9ths, 11ths,
+  13ths) that holds R1 and R2, adds no tension a semitone above a named tone it holds (R3), and has adjacent
+  intervals of 5 or 6 semitones, except at most one of 3 or 4. A chord with no quartal candidate is voiced
+  rootless.
 
-The choice (section 3, steps 1-4): every inversion at every octave inside C3-C5 (48-72) is a candidate;
-candidates with an interval of 2 semitones or less below 55, or a 13-semitone pair outside 7b9, are
-rejected; the pair minimizing VL(A->B) + VL(B->A) + 0.25 (|muA - 60| + |muB - 60|) wins, ties broken by
-the lexicographically smallest (A, B). Costs are exact fractions, so ties are exact.
+The choice (section 3, steps 1-4, unchanged by V2): every inversion at every octave inside C3-C5 (48-72) is a
+candidate (for quartal, every stack at every octave); a #9 under the third (R5), an interval of 2 semitones or
+less below 55, and a 13-semitone pair outside 7b9 are rejected; the pair minimizing VL(A->B) + VL(B->A) +
+0.25 (|muA - 60| + |muB - 60|) wins, ties broken by the lexicographically smallest (A, B). Costs are exact.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from fractions import Fraction
+from functools import lru_cache
+from math import lcm
 
 from lofi_rl.dsl.ast import Chord
-from lofi_rl.dsl.vocab import VOICINGS
+from lofi_rl.dsl.vocab import NUMERAL_SEMITONES, VOICINGS, scale_of
 
 from .chords import Quality, quality, root_pc
 
@@ -28,37 +36,91 @@ CLUSTER = 2
 MINOR_NINTH = 13                # rejected unless the chord is 7b9
 MU_CENTER = 60
 MU_WEIGHT = Fraction(1, 4)
+PERFECT_FIFTH = 7               # only a perfect fifth goes under an extension (m7b5 keeps its b5)
+TENSIONS = (1, 2, 3, 5, 6, 8, 9)    # b9 9 #9 11 #11 b13 13: what a quartal stack may add, from the mode (R3)
+FOURTHS = (5, 6)                # quartal: every adjacent interval ...
+THIRDS = (3, 4)                 # ... except at most one of these
+STACK_SIZES = (3, 4)
+MAJOR_THIRD, SHARP_NINTH = 4, 3     # pitch classes: R5 keeps the #9 above the third
 
-Voicing = tuple[int, ...]       # sorted MIDI pitches
+Voicing = tuple[int, ...]       # sorted MIDI pitches, or a sorted shape in semitones above the root
+
+
+def chord_scale(numeral: str, mode: str) -> frozenset[int]:
+    """The brief's mode as pitch classes above the chord's root (a mood names its mode). R3: a quartal stack
+    adds only tensions in it."""
+    if numeral not in NUMERAL_SEMITONES:
+        raise ValueError(f"unknown numeral {numeral!r}")
+    root = NUMERAL_SEMITONES[numeral]
+    return frozenset((s - root) % 12 for s in scale_of(mode))
+
+
+def guide_tones(q: Quality) -> frozenset[int]:
+    """R1: the third (the fourth for sus) and the seventh (bb7 for dim7), as pitch classes."""
+    return frozenset({q.third % 12, q.seventh % 12})
+
+
+def colour(q: Quality) -> frozenset[int]:
+    """R2: the top named extension, plus the b5 of m7b5 and dim7, as pitch classes. The one exception, the
+    m7b5 shell, keeps only the b5 (`shell`)."""
+    top = {q.extensions[-1] % 12} if q.extensions else set()
+    altered = {q.fifth % 12} if q.fifth != PERFECT_FIFTH else set()
+    return frozenset(top | altered)
 
 
 def rootless(q: Quality) -> Voicing:
-    if q.extensions:
-        return (q.third, q.seventh, q.extensions[0])
-    return (q.third, q.fifth, q.seventh)
+    """R4 rootless: the third, the seventh and the named extensions (at most two, the top one always), plus an
+    altered fifth; with no extension, third-fifth-seventh."""
+    if not q.extensions:
+        return (q.third, q.fifth, q.seventh)
+    altered = (q.fifth,) if q.fifth != PERFECT_FIFTH else ()
+    return tuple(sorted((q.third, q.seventh) + altered + q.extensions[-2:]))
 
 
 def shell(q: Quality) -> Voicing:
+    """R4 shell: the third (the fourth for sus) and the seventh, plus the top extension. A shell is three notes,
+    so m7b5 and dim7 hold their b5 instead: b3-b5-b7 and b3-b5-bb7."""
+    if q.fifth != PERFECT_FIFTH:
+        return (q.third, q.fifth, q.seventh)
     return (q.third, q.seventh) + q.extensions[-1:]
 
 
-def quartal(q: Quality) -> Voicing:
-    fam = q.family
-    if fam == "maj":
-        return (4, 9, 14, 18 if 18 in q.extensions else 19)
-    if fam == "min":
-        return (5, 10, 15, 19)
-    if fam == "sus":
-        return (5, 10, 14, 19)
-    if fam == "dom":
-        stack = [10, 16, 21]
-        for ext in q.extensions:
-            if ext % 12 not in {t % 12 for t in stack}:
-                while ext <= stack[-1]:
-                    ext += 12
-                stack.append(ext)
-        return tuple(stack)
-    return rootless(q)          # m7b5 and dim7
+def _avoids(held: frozenset[int], named: frozenset[int]) -> bool:
+    """R3's avoid-note rule: no added tension a semitone above a named tone the stack holds."""
+    return not any((t - 1) % 12 in held & named for t in held - named)
+
+
+@lru_cache(maxsize=None)
+def quartal(q: Quality, scale: frozenset[int]) -> tuple[Voicing, ...]:
+    """R4 quartal: every stack of 3 or 4 distinct tones from R3's tone set (the named tones, plus the tensions in
+    `scale`, the brief's mode above the root) that holds R1 and R2 and keeps the avoid-note rule. Adjacent
+    intervals are 5 or 6 semitones, except at most one of 3 or 4. Each stack starts in [0, 12); () if none."""
+    named = frozenset(t % 12 for t in q.tones)
+    tones = named | {t for t in TENSIONS if t in scale}
+    need = guide_tones(q) | colour(q)
+    out = []
+
+    def grow(stack: tuple[int, ...], held: frozenset[int], third: bool) -> None:
+        if len(stack) in STACK_SIZES and need <= held and _avoids(held, named):
+            out.append(stack)
+        if len(stack) == STACK_SIZES[-1]:
+            return
+        for step in THIRDS + FOURTHS:
+            top = stack[-1] + step
+            if top % 12 in tones and top % 12 not in held and not (third and step in THIRDS):
+                grow(stack + (top,), held | {top % 12}, third or step in THIRDS)
+
+    for start in sorted(tones):
+        grow((start,), frozenset({start}), False)
+    return tuple(sorted(out))
+
+
+def sharp9_above_third(v: Sequence[int], q: Quality) -> bool:
+    """R5: over a major third, a #9 sounds above the third, never a semitone (or a minor 9th) under it. `v` is
+    a shape in semitones above the root."""
+    if q.third != MAJOR_THIRD:
+        return True
+    return all(n > t for n in v if n % 12 == SHARP_NINTH for t in v if t % 12 == MAJOR_THIRD)
 
 
 def inversions(template: Sequence[int]) -> tuple[Voicing, ...]:
@@ -74,8 +136,9 @@ def drop2(v: Sequence[int]) -> Voicing:
     return tuple(sorted(s))
 
 
-def shapes(q: Quality, style: str) -> tuple[Voicing, ...]:
-    """Every inversion of a style's template, as semitones above the root (sorted, distinct)."""
+def shapes(q: Quality, style: str, scale: Iterable[int] | None = None) -> tuple[Voicing, ...]:
+    """Every shape of a style for one chord, as semitones above the root (sorted, distinct), minus R5's
+    rejections. Quartal needs `scale`, the brief's mode above the root (chord_scale), and may be empty."""
     if style == "rootless":
         out = inversions(rootless(q))
     elif style == "shell":
@@ -83,10 +146,12 @@ def shapes(q: Quality, style: str) -> tuple[Voicing, ...]:
     elif style == "spread":
         out = tuple(drop2(v) for v in inversions(rootless(q)))
     elif style == "quartal":
-        out = inversions(quartal(q))
+        if scale is None:
+            raise ValueError("a quartal voicing needs the brief's mode (voicing.chord_scale)")
+        out = quartal(q, frozenset(scale))
     else:
         raise ValueError(f"unknown voicing style {style!r}; expected one of {VOICINGS}")
-    return tuple(sorted(set(out)))
+    return tuple(sorted({s for s in out if sharp9_above_third(s, q)}))
 
 
 def allowed(v: Sequence[int], q: Quality) -> bool:
@@ -100,12 +165,9 @@ def allowed(v: Sequence[int], q: Quality) -> bool:
     return True
 
 
-def candidates(root: int, quality_name: str, style: str,
-               lo: int = KEYS_RANGE[0], hi: int = KEYS_RANGE[1]) -> tuple[Voicing, ...]:
-    """Rule 1 and 2: every inversion at every octave with all notes in [lo, hi], minus rejections."""
-    q = quality(quality_name)
+def _placed(root: int, q: Quality, shapes_: Iterable[Voicing], lo: int, hi: int) -> tuple[Voicing, ...]:
     out = set()
-    for shape in shapes(q, style):
+    for shape in shapes_:
         base = [root + s for s in shape]
         first = -((base[0] - lo) // 12)               # the lowest octave shift with every note >= lo
         for k in range(first, (hi - base[-1]) // 12 + 1):
@@ -115,17 +177,32 @@ def candidates(root: int, quality_name: str, style: str,
     return tuple(sorted(out))
 
 
+def candidates(root: int, quality_name: str, style: str, scale: Iterable[int] | None = None,
+               lo: int = KEYS_RANGE[0], hi: int = KEYS_RANGE[1]) -> tuple[Voicing, ...]:
+    """Rules 1 and 2: every shape at every octave with all notes in [lo, hi], minus rejections. `scale` is the
+    brief's mode above the root, needed for quartal. A quartal chord with no candidate (no stack, or none that
+    fits) takes the rootless candidates (R4): a voicing, not a repair."""
+    q = quality(quality_name)
+    out = _placed(root, q, shapes(q, style, scale), lo, hi)
+    if not out and style == "quartal":
+        out = _placed(root, q, shapes(q, "rootless"), lo, hi)
+    return out
+
+
+def _vl(sa: Sequence[int], sb: Sequence[int]) -> int:
+    na, nb = len(sa), len(sb)
+    if na == 1:
+        return abs(sa[0] - sb[0])
+    return sum(abs(x - sb[(2 * i * (nb - 1) + na - 1) // (2 * (na - 1))]) for i, x in enumerate(sa))
+
+
 def voice_leading(a: Sequence[int], b: Sequence[int]) -> int:
     """VL(A->B): summed movement under sorted pairing.
 
     With equal sizes voice i of A moves to voice i of B. With unequal sizes voice i of A moves to voice
     round(i (|B|-1) / (|A|-1)) of B (halves up), so the outer voices still pair bottom-bottom, top-top.
     """
-    sa, sb = sorted(a), sorted(b)
-    na, nb = len(sa), len(sb)
-    if na == 1:
-        return abs(sa[0] - sb[0])
-    return sum(abs(x - sb[(2 * i * (nb - 1) + na - 1) // (2 * (na - 1))]) for i, x in enumerate(sa))
+    return _vl(sorted(a), sorted(b))
 
 
 def mean_pitch(v: Sequence[int]) -> Fraction:
@@ -139,13 +216,28 @@ def pair_cost(a: Sequence[int], b: Sequence[int]) -> Fraction:
 
 
 def choose(cands_a: Sequence[Voicing], cands_b: Sequence[Voicing]) -> tuple[Voicing, Voicing]:
-    """The minimum-cost pair; ties go to the lexicographically smallest (A, B)."""
+    """The minimum-cost pair; ties go to the lexicographically smallest (A, B).
+
+    Costs compare as exact integers: pair_cost times S = 4 x lcm(the voicing sizes), 4 being MU_WEIGHT's
+    denominator. S is the same for every pair, so the order and the ties are pair_cost's."""
     if not cands_a or not cands_b:
         raise ValueError("a chord has no voicing candidate")
-    return min(((a, b) for a in cands_a for b in cands_b), key=lambda ab: (pair_cost(*ab), ab))
+    den = lcm(*{len(v) for v in (*cands_a, *cands_b)})
+    factor = MU_WEIGHT.denominator * den
+
+    def prepared(cands: Sequence[Voicing]) -> list[tuple[Voicing, list[int], int]]:
+        # S x MU_WEIGHT x |mu - 60| = numerator x (den / n) x |sum - 60 n|
+        return [(v, sorted(v), MU_WEIGHT.numerator * (den // len(v)) * abs(sum(v) - MU_CENTER * len(v)))
+                for v in cands]
+
+    pa, pb = prepared(cands_a), prepared(cands_b)
+    _, a, b = min((factor * (_vl(sa, sb) + _vl(sb, sa)) + ca + cb, a, b) for a, sa, ca in pa for b, sb, cb in pb)
+    return a, b
 
 
-def voice_vamp(first: Chord, second: Chord, tonic: int, style: str) -> tuple[Voicing, Voicing]:
-    """One voicing per vamp chord, kept for the whole loop (section 3, step 4)."""
-    return choose(candidates(root_pc(first.numeral, tonic), first.quality, style),
-                  candidates(root_pc(second.numeral, tonic), second.quality, style))
+def voice_vamp(first: Chord, second: Chord, tonic: int, mode: str, style: str) -> tuple[Voicing, Voicing]:
+    """One voicing per vamp chord, kept for the whole loop (section 3, step 4). The brief's mode sets the
+    tensions a quartal stack may add (R3)."""
+    return choose(candidates(root_pc(first.numeral, tonic), first.quality, style, chord_scale(first.numeral, mode)),
+                  candidates(root_pc(second.numeral, tonic), second.quality, style,
+                             chord_scale(second.numeral, mode)))

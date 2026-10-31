@@ -19,7 +19,7 @@ from lofi_rl.compile.humanize import Humanize, loop_seed
 from lofi_rl.compile.timeline import Clock, loop_samples, ms, segments
 from lofi_rl.dsl import canon, parse
 from lofi_rl.dsl.ast import expand, timed
-from lofi_rl.dsl.vocab import LANES
+from lofi_rl.dsl.vocab import LANES, MODES
 from lofi_rl.prng import splitmix64
 from lofi_rl.theory.chords import chord_pcs, root_pc
 from lofi_rl.theory.voicing import voice_vamp
@@ -50,13 +50,9 @@ def test_a_loop_without_a_sax_statement_passes_the_gates():
     assert res.ast == replace(with_sax.ast, sax=None) and res.penalty == with_sax.penalty
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "open: CompiledLoop.seed hashes dsl.canon(loop), which prints the sax: line, so the digests differ (and with "
-    "humanize bar or loop, the drum, keys and bass nudges too). The fix is in compile/humanize.loop_seed (hash "
-    "canon(replace(loop, sax=None))), outside this change. Drop this mark once it lands (docs/COMPILER.md §7)."))
 def test_a_loop_without_a_sax_statement_compiles_to_the_same_loop_as_with_sax_tenor():
-    # The palette's sax_lead plays whatever the line says (docs/COMPILER.md §2), so the line changes nothing the
-    # compiler produces, with humanize off or on.
+    # The palette's sax_lead plays whatever the line says (docs/COMPILER.md §2), and the humanize seed leaves the
+    # line out (§3.6, SR-7), so the line changes nothing the compiler produces, with humanize off or on.
     without = loop_text(EXAMPLE_TEXT.replace("sax: tenor\n", ""))
     tenor, alto = loop_of("example.ls"), loop_text(EXAMPLE_TEXT.replace("sax: tenor\n", "sax: alto\n"))
     for humanize in ("off", "bar", "loop"):
@@ -77,21 +73,27 @@ def _check(c, loop, brief):
             assert 0 <= nt.on < c.n and nt.on < nt.off <= nt.on + c.n and 1 <= nt.velocity <= 127
             assert nt.channel in stem.channels and 0 <= nt.step < 128
     chords = loop.vamp.chords
-    # The voicing pair is the section 3.3 choice for the brief's tonic and the loop's own style (test_voicing.py
-    # checks voice_vamp against a brute force), and every keys note belongs to the chord it plays under.
-    assert c.voicings == voice_vamp(*chords, brief.tonic, loop.keys.voicing), (loop.keys.voicing, brief)
+    # The voicing pair is the section 3.3 choice (voicing rules V2) for the brief's tonic and mode and the loop's
+    # own style (test_voicing.py checks voice_vamp against a brute force), and every keys note belongs to the chord
+    # it plays under.
+    assert c.voicings == voice_vamp(*chords, brief.tonic, brief.mode, loop.keys.voicing), (loop.keys.voicing, brief)
     voicing = dict(zip(chords, c.voicings))
     strikes = segments("".join(bars.comp), bars.chords)
     assert len(c.keys.notes) == sum(len(voicing[bars.chords[s.start // 16]]) for s in strikes)
     for s in strikes:
         chord = bars.chords[s.start // 16]
         assert sorted(nt.pitch for nt in c.keys.notes if nt.step == s.start) == list(voicing[chord])
+    mode = {(brief.tonic + s) % 12 for s in MODES[brief.mode]}
     for nt in c.keys.notes:
         chord = bars.chords[nt.step // 16]
         root = root_pc(chord.numeral, brief.tonic)
-        # Quartal stacks fourths (section 3.3), so it may add the 9th, 11th or 13th to a chord whose table lacks them
-        # (min [5, 10, 15, 19] on m7); the other styles take only chord tones.
-        extra = {(root + t) % 12 for t in (2, 5, 9)} if loop.keys.voicing == "quartal" else set()
+        # V2 R3: quartal may add a 9th, 11th or 13th of the brief's mode that the chord's table lacks; the other
+        # styles take only chord tones, never the root (R4). Nothing outside chord + mode, ever.
+        if loop.keys.voicing == "quartal":
+            extra = {(root + t) % 12 for t in (1, 2, 3, 5, 6, 8, 9)} & mode
+        else:
+            extra = set()
+            assert nt.pitch % 12 != root, (chord, nt)
         assert nt.pitch % 12 in chord_pcs(chord, brief.tonic) | extra, (chord, nt)
     assert all(48 <= p <= 72 for v in c.voicings for p in v)
     for nt in c.bass.notes:
@@ -110,8 +112,9 @@ def _check(c, loop, brief):
     assert list(c.drums) == sorted(c.drums, key=lambda d: (d.on, LANES.index(d.lane), d.step))
     assert all(0 <= d.on < c.n and d.rr == 0 and d.layer == {"X": "hard", "x": "med", "g": "soft"}[d.level]
                for d in c.drums)
-    if any(d.lane == "hat" for d in c.drums):
-        assert all((d.choke_at is None) == (d.lane != "ohat") for d in c.drums), "only open hats are choked"
+    # dev_gu's open hat is choked by either hat (review T7), so every open hat ends somewhere, at the latest at its own
+    # repeat one cycle on, and nothing else is choked.
+    assert all((d.choke_at is None) == (d.lane != "ohat") for d in c.drums), "only open hats are choked, all of them"
 
 
 @pytest.mark.parametrize("name", passing_fixtures())
@@ -133,7 +136,7 @@ def test_section_1_example_claims():
     kicks = {d.step for d in c.drums if d.lane == "kick" and d.level in "Xx"}
     assert len(bass) == 24 and len(bass & kicks) == 19, "bass and kick coincide on 19 of 24 bass onsets"
     assert c.n == 1_032_576 and abs(c.bpm_eff - 82) < 0.001
-    assert c.voicings == ((53, 60, 64), (57, 59, 65)) and c.bass_pitches == (38, 31)
+    assert c.voicings == ((53, 60, 64), (53, 57, 59, 64)) and c.bass_pitches == (38, 31)   # F3 C4 E4 | F3 A3 B3 E4
     assert (c.keys_name, c.kit, c.keys.program, c.bass.program) == ("rhodes", "jazz", 4, 32)
 
 
@@ -183,8 +186,38 @@ def test_humanize_off_puts_every_hit_on_its_clock():
     c = compiled("example.ls")
     plain = Clock(c.n, swing=dev_palette().groove.swing)
     assert all(d.on == plain.sample(d.step) for d in c.drums)
-    assert c.seed == loop_seed(loop_of("example.ls"))
-    assert c.seed == int(hashlib.sha256(canon(loop_of("example.ls")).encode()).hexdigest()[:16], 16)
+    # §3.6: the seed hashes the canonical text without its keys:, drums: and sax: lines. example.ls is canonical but
+    # for its kit alias, which sits on a dropped line, so that is its own text without lines 2, 5 and 16.
+    lines = EXAMPLE_TEXT.splitlines(keepends=True)
+    assert [lines[i] for i in (1, 4, 15)] == ["keys: rhodes rootless\n", "drums: dusty\n", "sax: tenor\n"]
+    kept = "".join(line for i, line in enumerate(lines) if i not in (1, 4, 15))
+    assert c.seed == loop_seed(loop_of("example.ls")) == int(hashlib.sha256(kept.encode()).hexdigest()[:16], 16)
+
+
+@pytest.mark.parametrize("mode", ["bar", "loop"])
+def test_naming_another_keys_instrument_voicing_or_kit_keeps_every_nudge(mode):
+    # SR-7: the seed hashes only the vamp, the grids and the phrases (§3.6). So swapping rhodes for organ, or
+    # rootless for spread, draws the same humanize nudges: every drum hit and bass note is unchanged, and the keys
+    # strike at the same times and velocities (spread changes only their pitches). So does another kit name that
+    # resolves to the same kit (parsed without the palette, so canon keeps the name).
+    pal = palette_with(groove_humanize=mode)
+    base = compile_loop(loop_of("example.ls"), EXAMPLE_BRIEF, pal)
+
+    def strikes(c):
+        return sorted({(nt.step, nt.on, nt.off, nt.velocity) for nt in c.keys.notes})
+
+    organ = compile_loop(loop_text(EXAMPLE_TEXT.replace("keys: rhodes", "keys: organ")), EXAMPLE_BRIEF, pal)
+    spread = compile_loop(loop_text(EXAMPLE_TEXT.replace("rootless", "spread")), EXAMPLE_BRIEF, pal)
+    assert organ.keys_name == "organ" and organ.keys.program == 16 and spread.voicings != base.voicings
+    for c in (organ, spread):
+        assert c.seed == base.seed
+        assert c.drums == base.drums and c.bass.notes == base.bass.notes
+        assert strikes(c) == strikes(base)
+    assert organ.keys.notes == base.keys.notes
+    kits = [parse(EXAMPLE_TEXT.replace("drums: dusty", f"drums: {kit}"), mode="dorian").ast
+            for kit in ("dusty", "brushes", "jazz")]
+    assert len({canon(loop) for loop in kits}) == 3
+    assert {compile_loop(loop, EXAMPLE_BRIEF, pal).digest() for loop in kits} == {base.digest()}
 
 
 @pytest.mark.parametrize("mode", ["bar", "loop"])

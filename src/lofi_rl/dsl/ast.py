@@ -75,7 +75,7 @@ class Loop:
     a: tuple[Item, ...]
     b: tuple[Item, ...]
     edits: tuple[Edit, ...] = ()
-    sax: str | None = None      # optional while the palette has a single sax
+    sax: str | None = None      # optional and ignored: the palette's sax_lead plays every loop (docs/DSL.md §4)
 
     @property
     def bass_lock(self) -> bool:

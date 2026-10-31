@@ -75,7 +75,7 @@ class CompiledLoop:
     bass: Stem
     sax: Stem
     drums: tuple[DrumHit, ...]  # sorted by (on, lane order, step)
-    seed: int                   # humanize seed: SHA256(canonical text)[:8]
+    seed: int                   # humanize seed: SHA256(canonical text minus keys/drums/sax lines)[:8]
     repairs: tuple[Repair, ...] = ()   # compiler repairs (sax octave folds), penalized like the parser's
 
     @property

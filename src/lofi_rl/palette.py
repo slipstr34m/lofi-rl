@@ -147,7 +147,7 @@ class DrumLane:
 class Kit:
     name: str
     bass: BassVoice
-    choke: tuple[tuple[str, str], ...]      # (choked lane, choking lane)
+    choke: tuple[tuple[str, str], ...]      # (choked lane, choking lane); a lane may choke itself
     lanes: Mapping[str, DrumLane] = field(hash=False)
 
 
@@ -637,6 +637,25 @@ def _one_shot(node: Any, where: str, sources: Mapping[str, Source]) -> OneShot:
                    vel=_int(m["vel"], f"{where}.vel", 1, 127))
 
 
+def _choke_pairs(node: Any, where: str) -> list[tuple[str, str]]:
+    """A kit's [choked lane, choking lane] pairs, in order. A lane may choke itself ([ohat, ohat]: the next open
+    hat cuts the one before, review T7); a pair may not be listed twice."""
+    if not isinstance(node, list):
+        raise _fail(where, "expected a list of [choked lane, choking lane]")
+    out: list[tuple[str, str]] = []
+    for i, pair in enumerate(node):
+        if not isinstance(pair, list) or len(pair) != 2:
+            raise _fail(f"{where}[{i}]", "expected [choked lane, choking lane]")
+        for j, lane in enumerate(pair):
+            if _str(lane, f"{where}[{i}][{j}]") not in LANES:
+                raise _fail(f"{where}[{i}][{j}]", f"{lane!r} is not one of {list(LANES)}")
+        victim, killer = pair
+        if (victim, killer) in out:
+            raise _fail(f"{where}[{i}]", f"[{victim}, {killer}] is listed twice")
+        out.append((victim, killer))
+    return out
+
+
 def _kits(node: Any, sources: Mapping[str, Source]) -> Mapping[str, Kit]:
     out = {}
     for name, raw in sorted(_table(node, "kits").items()):
@@ -645,14 +664,7 @@ def _kits(node: Any, sources: Mapping[str, Source]) -> Mapping[str, Kit]:
         b = _map(m["bass"], f"{w}.bass", ("src", "bank", "prog", "vel"))
         bass = BassVoice(_src(b["src"], f"{w}.bass.src", sources), _int(b["bank"], f"{w}.bass.bank", 0, 127),
                          _int(b["prog"], f"{w}.bass.prog", 0, 127), _vel(b["vel"], f"{w}.bass.vel"))
-        if not isinstance(m["choke"], list):
-            raise _fail(f"{w}.choke", "expected a list of [choked lane, choking lane]")
-        choke = []
-        for i, pair in enumerate(m["choke"]):
-            if not isinstance(pair, list) or len(pair) != 2:
-                raise _fail(f"{w}.choke[{i}]", "expected [choked lane, choking lane]")
-            victim, killer = _names(pair, f"{w}.choke[{i}]", LANES)
-            choke.append((victim, killer))
+        choke = _choke_pairs(m["choke"], f"{w}.choke")
         lanes_raw = _map(m["lanes"], f"{w}.lanes", LANES)
         lanes = {}
         for lane in LANES:

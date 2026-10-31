@@ -65,7 +65,7 @@ def compile_loop(loop: Loop, brief: Brief, palette: Palette) -> CompiledLoop:
     clocks = {lane: lane_clock(lane, n, palette, human) for lane in LANES + ("keys", "bass")}
     bars = expand(loop)
 
-    voicing_a, voicing_b = voice_vamp(first, second, brief.tonic, style)
+    voicing_a, voicing_b = voice_vamp(first, second, brief.tonic, brief.mode, style)
     bass_a, bass_b = bass_octaves(root_pc(first.numeral, brief.tonic), root_pc(second.numeral, brief.tonic))
     kit = palette.kits[kit_name]
     keys_voice = palette.keys[keys_name]
