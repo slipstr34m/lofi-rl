@@ -19,7 +19,13 @@ from lofi_rl.dsl.vocab import MODES, NUMERAL_SEMITONES
 from lofi_rl.theory.chords import QUALITY
 
 LO, HI = 48, 72                         # R6: C3-C5, sounding MIDI
-TENSIONS = (1, 2, 3, 5, 6, 8, 9)        # the 9ths, 11ths and 13ths: b9 9 #9 11 #11 b13 13
+# V2.1 R3: the tensions a quartal stack may add, per quality (b9 1, 9 2, #9 3, 11 5, #11 6, b13 8, 13 9), before the
+# mode: the maj7 family 9 #11 13; the dominants 9 13, plus a b9 or #9 only where the symbol names it; the m7 family
+# 9 11 13; m7b5 11 b13; dim7 none; 7sus 9 13.
+AVAILABLE = {"maj7": {2, 6, 9}, "maj9": {2, 6, 9}, "maj7#11": {2, 6, 9},
+             "7": {2, 9}, "9": {2, 9}, "13": {2, 9}, "7b9": {1, 2, 9}, "7#9": {2, 3, 9},
+             "m7": {2, 5, 9}, "m9": {2, 5, 9}, "m11": {2, 5, 9},
+             "m7b5": {5, 8}, "dim7": set(), "7sus": {2, 9}}
 PERFECT_FIFTH = 7
 NOTE = ("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")    # one fixed name per pitch class
 
@@ -51,9 +57,9 @@ def mode_pcs(numeral: str, mode: str) -> frozenset[int]:
 
 
 def added(q: str, numeral: str, mode: str) -> frozenset[int]:
-    """R3 (b): the tensions a quartal stack may add: 9ths, 11ths and 13ths in the brief's mode that the symbol
-    does not name."""
-    return frozenset(t for t in TENSIONS if t in mode_pcs(numeral, mode)) - named(q)
+    """R3 (b), V2.1: the tensions a quartal stack may add: the quality's available tensions that are in the brief's
+    mode and that the symbol does not name."""
+    return frozenset(AVAILABLE[q] & mode_pcs(numeral, mode)) - named(q)
 
 
 def avoids(held: set[int], q: str) -> bool:

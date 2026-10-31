@@ -188,8 +188,8 @@ def test_r7_quartal_coincidences_are_counted():
                     if cands[a] & cands[b]:
                         shared += 1
                         pairs[a, b] = pairs.get((a, b), 0) + 1
-    assert (cases, shared) == (36036, 2001)
-    assert pairs[("7", "9")] == pairs[("m7", "m11")] == pairs[("maj7", "maj9")] == 240 and len(pairs) == 10
+    assert (cases, shared) == (36036, 1683)
+    assert pairs[("7", "9")] == pairs[("m7", "m11")] == 240 and pairs[("maj7", "maj9")] == 237 and len(pairs) == 8
     same = sum(bool(quartal_stacks(a, n, m)) and quartal_stacks(a, n, m) == quartal_stacks(b, n, m)
                for m in MODES for n in NUMERALS for a, b in combinations(QUALITIES, 2))
     assert same == 0, "no two qualities share every stack in any mode"
@@ -197,11 +197,15 @@ def test_r7_quartal_coincidences_are_counted():
 
 def test_quartal_falls_back_to_rootless_when_no_stack_fits():
     # m7b5 has one stack, 11-b7-b3-b5 [5, 10, 15, 18], and its 11 and b5 are 13 semitones apart (R6), so m7b5 is
-    # voiced rootless in every mode. Each m9 stack spans 16 semitones, so on roots B, C and C# none fits C3-C5.
+    # voiced rootless in every mode. m9's other stacks hold a 9 and a b3 13 semitones apart, except b7-b3-13-9
+    # [10, 15, 21, 26] (V2.1: the m7 family adds a 13, never a b13), so m9 is voiced rootless where the mode has no
+    # 13 above the root, and on roots B, C and C# where it has, since that stack spans 16 semitones. Without the 13,
+    # maj9 keeps 9-5-7-3 and 9-#11-7-3 [2, 7 or 6, 11, 16], which span 14 and fit no root A.
     falls = 0
     for mode in MODES:
         for numeral in NUMERALS:
-            assert quartal(QUALITY["m7b5"], chord_scale(numeral, mode)) == ((5, 10, 15, 18),)
+            scale = chord_scale(numeral, mode)
+            assert quartal(QUALITY["m7b5"], scale) == ((5, 10, 15, 18),)
             for q in QUALITIES:
                 for tonic in range(12):
                     root = root_of(numeral, tonic)
@@ -209,8 +213,11 @@ def test_quartal_falls_back_to_rootless_when_no_stack_fits():
                         falls += 1
                         assert _candidates(root, q, "quartal", numeral, mode) == candidates(root, q, "rootless"), \
                             (mode, numeral, q, tonic)
-                        assert q == "m7b5" or (q == "m9" and root in (11, 0, 1)), (mode, numeral, q, tonic)
-    assert falls == 3 * 11 * 12 + 3 * 11 * 3 == 495
+                        thirteen = 9 in scale
+                        assert (q == "m7b5" or (q == "m9" and (not thirteen or root in (11, 0, 1)))
+                                or (q == "maj9" and not thirteen and root == 9)), (mode, numeral, q, tonic)
+    no_13 = sum(9 not in chord_scale(n, m) for m in MODES for n in NUMERALS)
+    assert no_13 == 14 and falls == 3 * 11 * 12 + (12 * no_13 + 3 * (33 - no_13)) + no_13 == 396 + 225 + 14
     with pytest.raises(ValueError, match="mode"):
         candidates(2, "m9", "quartal")
 
@@ -247,10 +254,10 @@ SHOOTOUT_AT_D = {
              "E3 A3 C#4 F#4 | F#3 B3 E4 A4"],
     "i-IV": ["F3 C4 E4 | F3 A3 B3 E4", "F3 C4 E4 | F3 B3 E4", "F3 E4 C5 | F3 B3 E4 A4", "C3 F3 B3 E4 | D3 F3 B3 E4"],
     "Pulse": ["F3 C4 E4 | A3 B3 F4", "F3 C4 E4 | A3 B3 F4", "F3 E4 C5 | A3 F4 B4", "C3 F3 B3 E4 | F3 B3 E4 A4"],
-    "Step": ["E4 F4 G4 C5 | D4 G4 B4", "C4 F4 G4 | D4 G4", "G3 E4 F4 C5 | G3 D4 B4", "D3 G3 C4 F4 | D3 G3 C4 E4"],
+    "Step": ["E4 F4 G4 C5 | D4 G4 B4", "C4 F4 G4 | D4 G4", "G3 E4 F4 C5 | G3 D4 B4", "D3 G3 C4 F4 | D3 G3 B3 E4"],
     "Float": ["F3 C4 E4 | G3 B3 E4", "C4 E4 F4 | B3 E4", "F3 E4 C5 | G3 E4 B4", "C3 F3 B3 E4 | D3 G3 B3 E4"],
-    "Drift": ["F3 C4 E4 | F3 A3 D4", "F3 C4 E4 | A3 D4", "F3 E4 C5 | F3 D4 A4", "C3 F3 Bb3 E4 | C3 F3 A3 D4"],
-    "Plagal": ["F3 C4 E4 | A3 Bb3 F4", "F3 C4 E4 | A3 Bb3 F4", "F3 E4 C5 | F3 Bb3 A4", "C3 F3 Bb3 E4 | F3 Bb3 E4 A4"],
+    "Drift": ["F3 C4 E4 | F3 A3 D4", "F3 C4 E4 | A3 D4", "F3 E4 C5 | F3 D4 A4", "F3 C4 E4 | F3 A3 D4"],
+    "Plagal": ["F3 C4 E4 | A3 Bb3 F4", "F3 C4 E4 | A3 Bb3 F4", "F3 E4 C5 | F3 Bb3 A4", "F3 C4 E4 | F3 Bb3 E4 A4"],
     "Backdoor": ["Bb3 F4 A4 | Bb3 D4 E4 A4", "Bb3 F4 A4 | Bb3 E4 A4", "F3 Bb3 A4 | E3 Bb3 D4 A4",
                  "F3 Bb3 E4 A4 | G3 Bb3 E4 A4"],
     "Rise": ["F3 A3 D4 | E3 A3 Bb3 D4", "D3 A3 | E3 A3 Bb3", "F3 D4 A4 | E3 Bb3 D4 A4", "A3 D4 G4 | Bb3 E4 A4"],
@@ -288,6 +295,36 @@ def test_v21_avoid_notes_count_the_bass_root():
             for q in QUALITIES:
                 for stack in quartal(QUALITY[q], chord_scale(numeral, mode)):
                     assert q == "7b9" or 1 not in {x % 12 for x in stack}, (mode, numeral, q, stack)
+
+
+# V2.1 R3's available tensions, as the rule names them: a quartal stack adds only these, and only those in the mode.
+TENSION = {"b9": 1, "9": 2, "#9": 3, "11": 5, "#11": 6, "b13": 8, "13": 9}
+AVAILABLE = {**dict.fromkeys(("maj7", "maj9", "maj7#11"), "9 #11 13"), **dict.fromkeys(("7", "9", "13"), "9 13"),
+             "7b9": "b9 9 13", "7#9": "9 #9 13",          # a dominant's b9 or #9 only when the symbol names it
+             **dict.fromkeys(("m7", "m9", "m11"), "9 11 13"), "m7b5": "11 b13", "dim7": "", "7sus": "9 13"}
+
+
+def test_v21_quartal_adds_only_the_quality_s_available_tensions():
+    # TH-2: V2 added any 9th, 11th or 13th of the mode, so borrowed chords took the mode's neighbours of their own
+    # tones. At tonic C in hopeful, against Imaj7, bVImaj7 was G3 C4 E4 (7-3-b13: E against its Eb) and IVm7 was
+    # B3 Eb4 Ab4 (#11-b7-b3).
+    assert set(AVAILABLE) == set(QUALITIES)
+    for mode in MODES:
+        for numeral in NUMERALS:
+            scale = mode_pcs(numeral, mode)
+            for q in QUALITIES:
+                allowed_ = {TENSION[t] for t in AVAILABLE[q].split()} & scale
+                assert added(q, numeral, mode) == allowed_ - named(q), (mode, numeral, q)
+                for stack in quartal(QUALITY[q], chord_scale(numeral, mode)):
+                    assert {x % 12 for x in stack} <= named(q) | allowed_, (mode, numeral, q, stack)
+    assert all({x % 12 for x in s} <= {0, 3, 6, 9} for m in MODES for n in NUMERALS
+               for s in quartal(QUALITY["dim7"], chord_scale(n, m))), "dim7 adds nothing"
+    imaj7 = Chord("I", "maj7")
+    for chord, foreign in ((Chord("bVI", "maj7"), {1, 3, 8}), (Chord("bIII", "maj7"), {1, 3, 8}),
+                           (Chord("IV", "m7"), {6, 8})):
+        root = root_of(chord.numeral, 0)
+        _, v = voice_vamp(imaj7, chord, 0, "ionian", "quartal")
+        assert not {(p - root) % 12 for p in v} & foreign, (chord, note_names(v))
 
 
 # ------------------------------------------------------------------- section 3 rules that V2 leaves unchanged

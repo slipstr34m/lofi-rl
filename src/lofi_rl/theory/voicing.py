@@ -20,10 +20,11 @@ less below 55, and a 13-semitone pair outside 7b9 are rejected; the pair minimiz
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from fractions import Fraction
 from functools import lru_cache
 from math import lcm
+from types import MappingProxyType
 
 from lofi_rl.dsl.ast import Chord
 from lofi_rl.dsl.vocab import NUMERAL_SEMITONES, VOICINGS, scale_of
@@ -38,7 +39,16 @@ MU_CENTER = 60
 MU_WEIGHT = Fraction(1, 4)
 PERFECT_FIFTH = 7               # only a perfect fifth goes under an extension (m7b5 keeps its b5)
 ROOT = 0                        # the bass always plays it, so R3's avoid-note rule counts it as held (V2.1)
-TENSIONS = (1, 2, 3, 5, 6, 8, 9)    # b9 9 #9 11 #11 b13 13: what a quartal stack may add, from the mode (R3)
+# V2.1 R3: the tensions a quartal stack may add, by family (chords.Quality.family), and only those in the brief's
+# mode. A dominant's b9 or #9 comes only with a symbol that names it (7b9, 7#9), as a chord tone.
+AVAILABLE_TENSIONS: Mapping[str, frozenset[int]] = MappingProxyType({
+    "maj": frozenset({2, 6, 9}),        # 9 #11 13
+    "dom": frozenset({2, 9}),           # 9 13
+    "min": frozenset({2, 5, 9}),        # 9 11 13
+    "half": frozenset({5, 8}),          # 11 b13
+    "dim": frozenset(),
+    "sus": frozenset({2, 9}),           # 9 13
+})
 FOURTHS = (5, 6)                # quartal: every adjacent interval ...
 THIRDS = (3, 4)                 # ... except at most one of these
 STACK_SIZES = (3, 4)
@@ -95,11 +105,12 @@ def _avoids(held: frozenset[int], named: frozenset[int]) -> bool:
 
 @lru_cache(maxsize=None)
 def quartal(q: Quality, scale: frozenset[int]) -> tuple[Voicing, ...]:
-    """R4 quartal: every stack of 3 or 4 distinct tones from R3's tone set (the named tones, plus the tensions in
-    `scale`, the brief's mode above the root) that holds R1 and R2 and keeps the avoid-note rule. Adjacent
-    intervals are 5 or 6 semitones, except at most one of 3 or 4. Each stack starts in [0, 12); () if none."""
+    """R4 quartal: every stack of 3 or 4 distinct tones from R3's tone set (the named tones, plus the quality's
+    available tensions that are in `scale`, the brief's mode above the root) that holds R1 and R2 and keeps the
+    avoid-note rule. Adjacent intervals are 5 or 6 semitones, except at most one of 3 or 4. Each stack starts in
+    [0, 12); () if none."""
     named = frozenset(t % 12 for t in q.tones)
-    tones = named | {t for t in TENSIONS if t in scale}
+    tones = named | (AVAILABLE_TENSIONS[q.family] & scale)
     need = guide_tones(q) | colour(q)
     out = []
 
