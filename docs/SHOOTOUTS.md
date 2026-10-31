@@ -978,7 +978,7 @@ Questions in plain words, each with its deadline and what happens without an ans
    plan compares kits, each on 3 beats, but has no round that compares beats with the same kit, because the model
    writes every beat and your votes judge them later. Want a short beat round, about 3 minutes on Nov 3?" Without an
    answer there is none.
-4. **The rain file** (by Nov 5 noon): download it as `docs/SHOOTOUT_ASSETS.md` describes, so the rain rounds are
-   ready on Nov 6 morning.
+4. **The rain file. DONE 2026-10-31:** in `assets/big/rain/`, pinned in assets/MANIFEST.yaml (sha256 `60f7398e…`) and on the
+   cluster.
 
 And the listening itself. No job type needs his approval (`lofi-shootout` is at most 360 SU).

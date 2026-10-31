@@ -7,12 +7,31 @@ Newest entry first. Every number cites the file or command output it was read fr
 - **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way:
   - committed: the rating page, the compiler + renderer, two reviews, voicing rules V2, the SFZ → SF2 converter and the shootout plan (`docs/SHOOTOUTS.md`);
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
-  - next: the shootout tooling for job 1 (due Nov 2 evening) and V2.1 voicing refinements.
+  - all 14 shootout sources and the rain file are on the laptop and the cluster;
+  - running: the job-1 shootout tooling (due Nov 2 evening) and V2.1 voicing refinements, in 4 worktree branches.
 - **No GRPO yet.** The plan has the GRPO smoke on Nov 11–12. Shresth asked why nothing has trained (2026-10-31); pulling the base-model test and the GRPO smoke forward awaits his answer.
-- **Waiting on Shresth:**
-  - that answer, plus the `grpo-smoke` SU OK if yes;
-  - the Freesound rain file;
-  - `docs/SHOOTOUTS.md` §11 questions 1 and 3 (defaults apply without an answer).
+- **Waiting on Shresth:** that answer, plus the `grpo-smoke` SU OK if yes. `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords) is due by Nov 4 morning.
+
+---
+
+## 2026-10-31 (12:30 PDT): rain file in; Shresth's rating-page test worked; shootout defaults; worktrees kept out of the mirror
+
+**What was done**
+- **Rain file.** Shresth signed in to Freesound in the app's browser; Claude started the download there, and he moved the file from Downloads, which macOS blocks my shell from reading, into `assets/big/rain/`.
+  - **Checks:** WAV PCM 24-bit, 48 kHz, stereo, 9,408,000 frames (196.000 s), 56,448,120 bytes (`soundfile.info`, `ls`); all match its page.
+  - **Levels:** peak −17.56 dBFS, RMS −44.03 dBFS (own script).
+  - **Records:** sha256 `60f7398e…`, pinned in assets/MANIFEST.yaml (CC0). `make push-assets` copied it to the cluster, and a checksum dry run found the cluster copy identical.
+  - **Before it renders:** the 48 → 44.1 kHz conversion and the excerpt picker (SHOOTOUTS.md §7.2).
+- **Shresth's rating-page test** (his browser and AirPods, the bws4 demo of test tones; the vote log in his temp folder):
+  - he listened to round 1 for about 2 min, paused, and saved best = clip 3, worst = clip 4, with heard bars 8, 5, 8 and 7 and 10 switches;
+  - Esc then logged round 2 as abandoned and the session end;
+  - all 7 events parse, with device airpods and sr 44100. The files are mode 600 and the folder 700.
+- **Shootout defaults** (Shresth: "Defaults are fine."): the hidden checks stay, and there is no beat round (SHOOTOUTS.md §11, `73b2213`).
+- **Worktrees.** The tooling workflow's agents work in `.claude/worktrees/` (133 MB of full checkouts), which neither `.gitignore` nor `.rsyncignore` excluded, so the next `make sync` would have copied them to the mirror. Both now exclude it, and `test_privacy` checks it (`d8bcebf`).
+
+**Failed approaches and why:** reading `~/Downloads` from my shell ("Operation not permitted"; macOS privacy). Shresth moved the file instead.
+
+**SU spent:** 0.
 
 ---
 

@@ -6,7 +6,7 @@
 - **Two files beyond the table:** VCSL's LICENSE from master `c1ea7bcc` (its sfz branch has none) and Virtuosity's LICENSE, 7,048 bytes each. jRhodes3d's third SFZ is the root-level `jRhodes3d-mono-no-xfade.sfz`.
 - **Archive SF2s** (bank, program): tenor sax, Upright KW, FSBS jazz and Finger Bass YR hold one preset each, (0, 0). FM Piano #1 holds (0, 0) to (0, 3).
 - **Sample rates:** 44.1 kHz everywhere except the MTG sax samples (132, 48 kHz 24-bit) and the Virtuosity kit (720, 48 kHz 24-bit); its perc shakers are 44.1 kHz.
-- **Still Shresth's to download:** the Freesound rain file (below).
+- **The Freesound rain file:** downloaded through Shresth's login on 2026-10-31 and pinned in assets/MANIFEST.yaml (sha256 `60f7398e…`, 56,448,120 bytes; WAV 24-bit, 48 kHz, stereo, 196.000 s, as its page says).
 
 Every size is a byte count from a HEAD request or the GitHub API. A second agent re-checked each one, and each license, independently (workflow `wf_57c1b524-c49`, 2026-10-31), and two sizes plus five license texts were spot-checked by hand. Already in the repo: GeneralUser GS (tenor 66, alto 65, Tine EP 4, Drawbar Organ 16, Acoustic Bass 32, Jazz kit 32).
 

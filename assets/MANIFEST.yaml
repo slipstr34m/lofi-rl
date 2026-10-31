@@ -219,3 +219,13 @@ assets:
     upstream: "lofi_rl.convert gsullivan-wurlitzer at 07ccf73, from assets/big/gsullivan-epianos/"
     bytes: 8874716
     notes: "one preset (0, 0); byte-identical across processes and hash seeds (docs/CONVERTER.md)"
+  # The rain bed source, downloaded by Shresth on 2026-10-31 (Freesound originals need a login); 48 kHz, so the
+  # one-time 48 -> 44.1 kHz conversion and the excerpt picker (docs/SHOOTOUTS.md §7.2) come before it renders.
+  - path: assets/big/rain/235827__metadex__soft-rain-on-roof-window.wav
+    sha256: 60f7398e590213d207222648ea8e0885ab1c58ff46d86ba73e1badc26446e769
+    license: "CC0 1.0 (Freesound page: Creative Commons 0)"
+    mode: fetch
+    url: https://freesound.org/people/Metadex/sounds/235827/
+    upstream: "Freesound 235827 by Metadex, uploaded 2014-05-02"
+    bytes: 56448120
+    notes: "WAV PCM 24-bit, 48 kHz, stereo, 9,408,000 frames (196.000 s); the page notes a suburban hum, a few birds and distant thunder, so the excerpt needs an ear check"
