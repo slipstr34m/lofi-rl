@@ -14,10 +14,10 @@ from helpers_compile import EXAMPLE_BRIEF, dev_palette, loop_of
 from helpers_render import needs_fluidsynth, palette
 from lofi_rl.compile.compiler import compile_loop
 from lofi_rl.compile.events import DrumHit
-from lofi_rl.palette import OneShot, Source
+from lofi_rl.palette import DrumLane, OneShot, Source
 from lofi_rl.render import fluid, sampler
 from lofi_rl.render.sampler import (CHOKE, SamplerError, choke, file_shot, kit_shots, mix_hits, note_settings,
-                                    note_shot, pan_gains, render_note, settings_key)
+                                    note_shot, pan_gains, render_drums, render_note, settings_key)
 from lofi_rl.render.wavio import pcm_sha256, read_float, write_float
 
 CENTRE = math.sqrt(0.5)
@@ -251,3 +251,31 @@ def test_a_fluidsynth_user_config_never_reaches_the_one_shot_cache(tmp_path, mon
         json.dumps(dict(stale, pcm_sha256=pcm_sha256(poisoned))))
     x, digest = note_shot(shot, pal, cache=tmp_path / "cache")
     assert digest == pcm_sha256(clean) and np.array_equal(x, clean)
+
+
+def test_each_lane_keeps_its_own_pan_and_db_through_the_kit(tmp_path):
+    # docs/COMPILER.md §4.4: a lane's pan and db come from that palette lane. Every dev_gu lane is (0, 0), so this
+    # kit gives each lane its own values, with one mono impulse as every one-shot.
+    want = {"kick": (-0.8, -1.0), "snare": (-0.4, -2.0), "rim": (0.0, -3.0), "hat": (0.6, -3.0),
+            "ohat": (0.3, -4.5), "shaker": (0.9, -6.0)}
+    x = np.zeros((1, 64), dtype=np.float32)
+    x[0, 0] = 1.0
+    write_float(tmp_path / "one.wav", x, 44100)
+    with zipfile.ZipFile(tmp_path / "kit.zip", "w") as z:
+        z.write(tmp_path / "one.wav", "one.wav")
+    pal = dev_palette()
+    shot = OneShot("zip", file="one.wav")
+    lanes = {lane: DrumLane(MappingProxyType({layer: (shot,) for layer in ("soft", "med", "hard")}), *want[lane])
+             for lane in want}
+    pal = replace(pal, assets_root=str(tmp_path), sources=MappingProxyType({
+        **pal.sources, "zip": Source("zip", "kit.zip", "0" * 64, "CC0-1.0", "fetch", None, None, None)}),
+        kits=MappingProxyType({"jazz": replace(pal.kits["jazz"], lanes=MappingProxyType(lanes))}))
+    kit = kit_shots(pal, "jazz", cache=tmp_path / "cache")
+    assert dict(kit.lanes) == want
+    c = compile_loop(loop_of("example.ls"), EXAMPLE_BRIEF, pal)
+    hits = tuple(hit(lane, 1000 * (i + 1), step=i) for i, lane in enumerate(want))   # one med hit per lane
+    y = render_drums(replace(c, drums=hits), kit)
+    for i, (lane, (pan, db)) in enumerate(want.items()):
+        g = 10 ** (db / 20)
+        assert y[0, 1000 * (i + 1)] == np.float32(g * math.sqrt((1 - pan) / 2)), lane
+        assert y[1, 1000 * (i + 1)] == np.float32(g * math.sqrt((1 + pan) / 2)), lane

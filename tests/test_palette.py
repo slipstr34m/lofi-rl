@@ -263,3 +263,64 @@ def test_layer_fallback_is_nearest_then_softer():
     with pytest.raises(PaletteError, match="every layer is empty"):
         parse_palette(edited(kits__jazz__lanes__hat__med=[], kits__jazz__lanes__hat__soft=[],
                              kits__jazz__lanes__hat__hard=[]))
+
+
+# ------------------------------------------------------------------------------- fetch-mode sources
+FETCHED = b"a fetch-mode file"
+
+
+def _fetch_doc(assets_root="$LOFI_ASSETS"):
+    """The dev palette with its SoundFont at an absolute path (so any `root` finds it) and one mode-fetch
+    source, `kit/one.zip`, resolved through `assets_root`."""
+    doc = edited(assets_root=assets_root, sources__gu__path=str(dev_palette().source_path("gu")))
+    doc["sources"]["kit"] = {"path": "kit/one.zip", "sha256": hashlib.sha256(FETCHED).hexdigest(),
+                             "license": "CC0-1.0", "mode": "fetch"}
+    return doc
+
+
+def _place(folder: Path) -> Path:
+    (folder / "kit").mkdir(parents=True, exist_ok=True)
+    (folder / "kit" / "one.zip").write_bytes(FETCHED)
+    return folder / "kit" / "one.zip"
+
+
+@pytest.mark.parametrize("value", [None, ""], ids=["unset", "empty"])
+def test_fetch_sources_resolve_under_assets_big_while_lofi_assets_is_unset_or_empty(tmp_path, monkeypatch, value):
+    # docs/SHOOTOUT_ASSETS.md, Route: the laptop fetches into <repo>/assets/big/. Nothing sets $LOFI_ASSETS on the
+    # laptop, and an empty value once gave the bare relative path kit/one.zip, read from the current directory.
+    if value is None:
+        monkeypatch.delenv("LOFI_ASSETS", raising=False)
+    else:
+        monkeypatch.setenv("LOFI_ASSETS", value)
+    root, elsewhere = tmp_path / "repo", tmp_path / "cwd"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    want = _place(root / "assets" / "big")
+    path = tmp_path / "pal.yaml"
+    path.write_text(yaml.safe_dump(_fetch_doc()))
+    pal = load_palette(path, verify=True, root=root)            # the file is found and matches its sha256
+    assert pal.source_path("kit", root) == want
+    assert pal.source_path("kit") == ROOT / "assets" / "big" / "kit" / "one.zip"
+
+
+def test_fetch_sources_follow_lofi_assets_and_a_relative_value_is_relative_to_the_root(tmp_path, monkeypatch):
+    root, elsewhere = tmp_path / "repo", tmp_path / "cwd"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    pal = parse_palette(_fetch_doc())
+    monkeypatch.setenv("LOFI_ASSETS", str(tmp_path / "keep" / "assets"))
+    assert pal.source_path("kit", root) == _place(tmp_path / "keep" / "assets")
+    assert pal.verify_sources(root) == []
+    monkeypatch.setenv("LOFI_ASSETS", "shared/assets")
+    assert pal.source_path("kit", root) == root / "shared" / "assets" / "kit" / "one.zip", "never the cwd"
+    assert any("missing" in p for p in pal.verify_sources(root))
+    assert parse_palette(_fetch_doc("fetched")).source_path("kit", root) == root / "fetched" / "kit" / "one.zip"
+
+
+def test_an_unset_variable_other_than_lofi_assets_is_an_error(monkeypatch):
+    monkeypatch.delenv("LOFI_NOWHERE", raising=False)
+    pal = parse_palette(_fetch_doc("$LOFI_NOWHERE/assets"))
+    with pytest.raises(PaletteError, match=r"\$LOFI_NOWHERE is unset or empty.*source kit is mode fetch"):
+        pal.source_path("kit")
+    assert pal.source_path("gu") == dev_palette().source_path("gu"), "mode commit never reads assets_root"
+    assert any("LOFI_NOWHERE" in p for p in pal.verify_sources())

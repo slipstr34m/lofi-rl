@@ -2,15 +2,21 @@
 below -1 dBTP on the loop as it repeats, the bed at -Δ ± 0.5 LU, gate G7, and a manifest that matches the
 audio. Every number is measured here, independently of the manifest."""
 import json
+from dataclasses import replace
 
 import numpy as np
 import pytest
+from scipy.signal import resample_poly
 
 from helpers_compile import EXAMPLE_BRIEF, FIX, ROOT
 from helpers_render import needs_fluidsynth, palette, rendered, with_bed
+from lofi_rl.brief import Brief
 from lofi_rl.compile.timeline import loop_samples
+from lofi_rl.dsl import parse
+from lofi_rl.dsl.repair import penalty
+from lofi_rl.render import pipeline
 from lofi_rl.render.formats import write_wav
-from lofi_rl.render.loudness import lufs, true_peak_dbtp
+from lofi_rl.render.loudness import LoudnessInfo, lufs, true_peak_dbtp
 from lofi_rl.render.pipeline import RenderError, finish, loop_true_peak_dbtp, main, render
 from lofi_rl.render.wavio import pcm_sha256, read_float
 
@@ -125,3 +131,131 @@ def test_gate_g7_on_silent_or_broken_music():
     broken[0, 5] = np.nan
     with pytest.raises(RenderError, match="NaN"):
         finish(broken, palette())
+
+
+# ------------------------------------------------------------------------------------- synthetic loops
+def _tone(seconds: int = 3, bursts: float = 0.0) -> np.ndarray:
+    """A periodic stereo loop of whole seconds: a 110 Hz sine (330 cycles in 3 s) plus, scaled by `bursts`, a
+    decaying 1 kHz burst every 0.25 s, which the limiter has to catch. (2, n) float32 at 0.1 of full scale."""
+    n = seconds * SR
+    x = np.sin(2 * np.pi * 110 * np.arange(n) / SR)
+    k = np.arange(2000)
+    for start in range(0, n, SR // 4):
+        x[start:start + 2000] += bursts * np.exp(-k / 300) * np.sin(2 * np.pi * 1000 * k / SR)
+    return (0.1 * np.stack([x, x])).astype(np.float32)
+
+
+def _at_lufs(x: np.ndarray, level: float) -> np.ndarray:
+    return (x.astype(np.float64) * 10 ** ((level - lufs(x, SR)) / 20)).astype(np.float32)
+
+
+def test_normalization_takes_up_to_the_palettes_iterations():
+    # RENDER.md §3.5: at most loudness.iters (4) iterations. The bursts make the limiter work, so one pass lands
+    # 0.78 LU low (measured 2026-10-31) and a later one converges. No fixture needs a second pass.
+    music, pal = _tone(bursts=5.0), palette()
+    done = finish(music, pal)
+    assert 2 <= done.report["loudness"]["iterations"] <= pal.loudness.iters == 4
+    assert abs(done.report["loudness"]["lufs"] + 14.0) <= 0.1 and abs(lufs(done.audio, SR) + 14.0) <= 0.1
+    one = replace(pal, loudness=replace(pal.loudness, iters=1))
+    with pytest.raises(RenderError, match=r"G7: not within 0.1 LU of -14.0 after 1 iterations"):
+        finish(music, one)
+
+
+@pytest.mark.parametrize("delta", [18.0, 24.0, 30.0])
+def test_the_bed_follows_the_palettes_delta(tmp_path, delta):
+    # RENDER.md §3.4: LUFS_bed = LUFS_music - Δ, Δ = bed.delta_lu: the rain shootout's 18, 24 and 30
+    # (instrument.md §6). The tone never reaches the limiter, so render minus music.wav is the bed alone.
+    music = _tone()
+    done = finish(music, with_bed(tmp_path, music.shape[1], delta_lu=delta))
+    bed_alone = done.audio.astype(np.float64) - done.music
+    assert lufs(bed_alone, SR) - lufs(done.music, SR) == pytest.approx(-delta, abs=0.05)
+    rep, gain = done.report["bed"], done.report["loudness"]["gain_db"]
+    assert rep["delta_lu"] == delta and rep["lufs"] == pytest.approx(done.report["music_lufs"] - delta)
+    assert lufs(bed_alone, SR) == pytest.approx(rep["lufs"] + gain, abs=0.05), "the report's level is the bed's"
+
+
+@pytest.mark.parametrize("level, passes", [(-55.0, False), (-45.0, True)])
+def test_gate_g7_on_music_below_minus_50_lufs(level, passes):
+    music = _at_lufs(_tone(), level)
+    if passes:
+        assert abs(finish(music, palette()).report["loudness"]["lufs"] + 14.0) <= 0.1
+    else:
+        with pytest.raises(RenderError, match=r"G7: music at -55.00 LUFS is below -50.0"):
+            finish(music, palette())
+
+
+@pytest.mark.parametrize("peak_db, passes", [(-0.70, False), (-0.95, True)])
+def test_gate_g7_on_a_true_peak_above_minus_0_9_dbtp(monkeypatch, peak_db, passes):
+    # The limiter keeps real renders near -1.5 dBTP, so normalize_loop is replaced by one that returns a loop with
+    # a chosen true peak; G7 measures it on the loop as it repeats (instrument.md §2: above -0.9 dBTP fails).
+    loud = (10 ** (peak_db / 20) * _tone() * 10).astype(np.float32)
+    monkeypatch.setattr(pipeline, "normalize_loop", lambda x, sr, **kw: (loud, LoudnessInfo(-14.0, 0.0, 0.0, 1)))
+    if passes:
+        assert finish(_tone(), palette()).report["loudness"]["true_peak_dbtp"] == pytest.approx(peak_db, abs=0.01)
+    else:
+        with pytest.raises(RenderError, match=r"G7: true peak -0\.69 dBTP is above -0\.9"):
+            finish(_tone(), palette())
+
+
+def test_the_loop_true_peak_sees_an_overshoot_at_the_seam():
+    # RENDER.md §3.5: measured with the other end of the cycle as context, it equals the true peak of the middle
+    # cycle of a 3x tile, where the last and first samples meet.
+    n = 64_000
+    y = np.zeros((2, n), dtype=np.float32)
+    y[:, 0] = y[:, -1] = 0.8
+    up = resample_poly(np.tile(y.astype(np.float64), 3), 4, 1, axis=-1)[:, 4 * n:8 * n]
+    tiled = 20 * np.log10(np.max(np.abs(up)))
+    assert tiled == pytest.approx(0.117, abs=0.001) and true_peak_dbtp(y) < -1.9, "the cycle alone hides it"
+    assert loop_true_peak_dbtp(y) == pytest.approx(tiled, abs=1e-9)
+
+
+# ----------------------------------------------------------------- render(): parse, compile and the manifest
+@pytest.fixture
+def silent_audio(monkeypatch):
+    """render() with its audio stages (FluidSynth, sampler, buses, bed, loudness) replaced by silence, so a test
+    of its parse call and manifest runs in milliseconds; parse, compile and the manifest stay real."""
+    def music_cycles(compiled, palette, cycles=2, **kw):
+        n = compiled.n
+        return pipeline.Music(np.zeros((2, cycles * n), np.float32), n, {b: None for b in pipeline.BUSES},
+                              {b: "0" * 64 for b in pipeline.BUSES}, {})
+
+    def finish_stub(music, palette, **kw):
+        return pipeline.Finished(np.zeros_like(music), np.zeros_like(music), {"stub": True})
+    monkeypatch.setattr(pipeline, "music_cycles", music_cycles)
+    monkeypatch.setattr(pipeline, "finish", finish_stub)
+
+
+SAX_FOLDS = """vamp: Im9 IV13 span 2
+keys: rhodes rootless
+comp: x---------------
+bass: lock
+drums: jazz
+kick: x.......x.....
+snare: ....x.......x...
+hat: x.x.x.x.x.x.x.x.
+A: w1,, | w3 | w5 | w1,,
+B: w1 | w3 | w5 | h1 hr
+"""
+
+
+def test_the_manifest_carries_parser_and_compiler_repairs_and_their_p_fix(silent_audio):
+    # docs/COMPILER.md §3.2: P_fix = dsl.repair.penalty(parse repairs + compiled repairs). Here the 14-cell kick
+    # grid is padded by the parser and the two w1,, notes fold in the compiler.
+    res = parse(SAX_FOLDS, vocab=palette().vocab(), mode="dorian")
+    r = render(SAX_FOLDS, EXAMPLE_BRIEF, palette())
+    codes = [rep["code"] for rep in r.manifest["loop"]["repairs"]]
+    assert [rep.code for rep in r.compiled.repairs] == ["sax_fold", "sax_fold"] and codes.count("sax_fold") == 2
+    assert codes == [rep.code for rep in res.repairs] + ["sax_fold", "sax_fold"] and len(codes) > 2
+    assert r.manifest["loop"]["p_fix"] == penalty(list(res.repairs) + list(r.compiled.repairs)) == pytest.approx(0.06)
+
+
+@pytest.mark.parametrize("mood, chord", [("wistful", "Im7"), ("melancholy", "Im7"), ("hopeful", "Imaj7")])
+def test_render_parses_with_the_briefs_mode(silent_audio, mood, chord):
+    # docs/COMPILER.md §1: parse(..., mode=brief.mode). A bare numeral becomes the mode's diatonic 7th chord, a
+    # penalized repair rather than a gate (instrument.md §2, leniency step 6).
+    text = (FIX / "example.ls").read_text().replace("vamp: Im9 IV13 span 2", "vamp: I IV13 span 2")
+    r = render(text, Brief("mid", mood, 82, 2), palette())
+    assert r.manifest["loop"]["canon"].splitlines()[0] == f"vamp: {chord} IV13 span 2"
+    assert r.compiled.mode == Brief("mid", mood, 82, 2).mode
+    assert [rep["code"] for rep in r.manifest["loop"]["repairs"] if rep["penalized"]] == ["bare_numeral"]
+    assert r.manifest["loop"]["p_fix"] == pytest.approx(0.02) and r.manifest["gates"]["G1-G6"] == "pass"

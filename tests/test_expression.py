@@ -11,7 +11,6 @@ from lofi_rl.brief import Brief
 from lofi_rl.compile.compiler import compile_loop
 from lofi_rl.compile.expression import bend_value, vibrato_cycles
 from lofi_rl.compile.midi import stem_midi
-from lofi_rl.compile.sax import sax_line
 from lofi_rl.compile.timeline import loop_samples
 from lofi_rl.dsl.ast import timed
 
@@ -67,24 +66,58 @@ def test_points_follow_every_onset_on_10_and_20_ms_grids():
         assert grid == [math.floor(j * 882 + 0.5) for j in range(len(grid))] and cc11[-1][0] == d
 
 
-def test_scoop_after_a_rest_or_a_leap_on_notes_of_4_steps_or_more():
-    loop = loop_of("example.ls")
-    pal = dev_palette()
-    line, _ = sax_line(loop, 2, "dorian", pal.sax["tenor"], pal.groove, pal.sax_expr, loop_samples(82))
-    c = compiled("example.ls")
-    points = {note.step: bend for note, bend, _ in _notes(c)}
-    scooped = [x for x in line if x.scoop and x.dur >= 4]
-    assert scooped, "the example has scooped notes"
-    for x in line:
-        bend = points[x.step]
-        if x in scooped:
+def _written_scoops(loop, c):
+    """Steps of the notes §3.8 scoops, read from the written line: 4+ steps after a rest, or after a leap of 3+
+    semitones from the note before, the line read as a cycle (B's last item comes before A's first)."""
+    seq = _timed(loop)
+    pitch = {x.step: x.pitch for x in c.sax.notes}
+    out = set()
+    for i, (k, item) in enumerate(seq):
+        pk, prev = seq[i - 1]
+        if not item.rest and item.dur >= 4 and (prev.rest or abs(pitch[k] - pitch[pk]) >= 3):
+            out.add(k)
+    return out
+
+
+SEAM = """vamp: Im9 IV13 span 2
+keys: rhodes rootless
+comp: x---------------
+bass: lock
+drums: jazz
+kick: x.......x.......
+snare: ....x.......x...
+hat: x.x.x.x.x.x.x.x.
+"""
+SCOOP_LINES = {
+    "example": (FIX / "example.ls").read_text(),
+    # B's last w1 runs into A's first w1 at the same pitch (D3, 50): no rest and no leap, so no scoop at step 0
+    "seam_same_pitch": SEAM + "A: w1 | w3 | w5 | w3\nB: w5 | w3 | w2 | w1\n",
+    # B's last w5 (A3, 57) leaps 7 semitones down into A's first w1: a scoop at step 0
+    "seam_leap": SEAM + "A: w1 | w3 | w5 | w3\nB: w5 | w3 | w2 | w5\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(SCOOP_LINES))
+def test_scoop_after_a_rest_or_a_leap_on_notes_of_4_steps_or_more(name):
+    loop = loop_text(SCOOP_LINES[name])
+    c = compile_loop(loop, EXAMPLE_BRIEF, dev_palette())
+    scooped = _written_scoops(loop, c)
+    assert scooped and len(scooped) < len(c.sax.notes), "some notes scoop and some do not"
+    assert (0 in scooped) == (name != "seam_same_pitch")
+    for note, bend, _ in _notes(c):
+        if note.step in scooped:
             assert bend[0] == (0, SCOOP_FLOOR), "starts 60 cents flat at the note-on"
             mid = dict(bend)[1764]                                     # 40 ms: half way along the raised cosine
             assert abs(mid - bend_value(-30.0, 2)) <= 1
-            d = c.sax.notes[[n.step for n in c.sax.notes].index(x.step)]
-            assert all(v == 0 for t, v in bend if 3528 <= t < 0.35 * (d.off - d.on)), "back to pitch at 80 ms"
-        elif x.dur < 8:
-            assert all(v == 0 for _, v in bend), "short unscooped notes are not bent"
+            assert all(v == 0 for t, v in bend if 3528 <= t < 0.35 * (note.off - note.on)), "back to pitch at 80 ms"
+        else:
+            assert bend[0] == (0, 0), (name, note.step)
+            if _dur(loop, note.step) < 8:
+                assert all(v == 0 for _, v in bend), "short unscooped notes are not bent"
+
+
+def _dur(loop, step):
+    return dict(_timed(loop))[step].dur
 
 
 def test_vibrato_starts_after_35_percent_and_fades_in():

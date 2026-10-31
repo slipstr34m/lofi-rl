@@ -2,22 +2,27 @@
 example's claims, humanize, and determinism (same process, fresh processes, A-B-A order)."""
 import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
 from dataclasses import FrozenInstanceError, replace
+from fractions import Fraction
 
 import pytest
 
-from helpers_compile import EXAMPLE_BRIEF, ROOT, compiled, dev_palette, loop_of, palette_with, passing_fixtures
+from helpers_compile import (EXAMPLE_BRIEF, ROOT, compiled, dev_palette, loop_of, loop_text, palette_with,
+                             passing_fixtures, spec_sample, spec_sax_pitches)
 from lofi_rl.brief import Brief
 from lofi_rl.compile.compiler import CompileError, compile_loop, lane_clock
 from lofi_rl.compile.humanize import Humanize, loop_seed
-from lofi_rl.compile.timeline import Clock, loop_samples, segments
+from lofi_rl.compile.timeline import Clock, loop_samples, ms, segments
 from lofi_rl.dsl import canon, parse
 from lofi_rl.dsl.ast import expand, timed
 from lofi_rl.dsl.vocab import LANES
-from lofi_rl.theory.chords import root_pc
+from lofi_rl.prng import splitmix64
+from lofi_rl.theory.chords import chord_pcs, root_pc
+from lofi_rl.theory.voicing import voice_vamp
 
 BRIEFS = (EXAMPLE_BRIEF, Brief("low", "melancholy", 60, 9), Brief("high", "hopeful", 95, 4),
           Brief("mid", "melancholy", 73, 11), Brief("mid", "hopeful", 88, 0))
@@ -30,15 +35,35 @@ def test_the_gate_passing_fixtures_are_found():
     assert not {"g1_kick_words.ls", "g3_no_b.ls", "g4_kit_trap808.ls", "g5_tempo.ls"} & set(names)
 
 
-@pytest.mark.xfail(strict=True, reason="open DSL bug (review finding spec-5): dsl/parse.py REQUIRED omits 'sax', "
-                                       "which is outside the compiler's code. Drop this mark once it is fixed.")
-def test_a_loop_without_its_sax_statement_fails_g3():
-    # instrument.md §1 lists sax: as required and §2 makes a missing one gate G3. The compiler never reads the
-    # line (it plays the palette's sax_lead), so today the only effect is on the gate pass rate.
-    text = (ROOT / "tests" / "fixtures" / "loops" / "example.ls").read_text()
-    assert "sax: tenor\n" in text
-    gate = parse(text.replace("sax: tenor\n", ""), vocab=dev_palette().vocab(), mode="dorian").gate
-    assert (gate.ok, gate.code, gate.detail) == (False, "G3", "missing: sax")
+EXAMPLE_TEXT = (ROOT / "tests" / "fixtures" / "loops" / "example.ls").read_text()
+
+
+def test_a_loop_without_a_sax_statement_passes_the_gates():
+    # One sax plays every loop (TASTE.md, Lead) and the plan drops `sax:` once one survives, so the line chooses
+    # nothing: it is optional, never a G3 requirement (docs/DSL.md). The rest of the loop parses as before.
+    assert "sax: tenor\n" in EXAMPLE_TEXT
+    vocab = dev_palette().vocab()
+    res = parse(EXAMPLE_TEXT.replace("sax: tenor\n", ""), vocab=vocab, mode="dorian")
+    assert res.gate.ok, res.gate
+    with_sax = parse(EXAMPLE_TEXT, vocab=vocab, mode="dorian")
+    assert res.ast.sax is None and with_sax.ast.sax == "tenor"
+    assert res.ast == replace(with_sax.ast, sax=None) and res.penalty == with_sax.penalty
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "open: CompiledLoop.seed hashes dsl.canon(loop), which prints the sax: line, so the digests differ (and with "
+    "humanize bar or loop, the drum, keys and bass nudges too). The fix is in compile/humanize.loop_seed (hash "
+    "canon(replace(loop, sax=None))), outside this change. Drop this mark once it lands (docs/COMPILER.md §7)."))
+def test_a_loop_without_a_sax_statement_compiles_to_the_same_loop_as_with_sax_tenor():
+    # The palette's sax_lead plays whatever the line says (docs/COMPILER.md §2), so the line changes nothing the
+    # compiler produces, with humanize off or on.
+    without = loop_text(EXAMPLE_TEXT.replace("sax: tenor\n", ""))
+    tenor, alto = loop_of("example.ls"), loop_text(EXAMPLE_TEXT.replace("sax: tenor\n", "sax: alto\n"))
+    for humanize in ("off", "bar", "loop"):
+        pal = palette_with(groove_humanize=humanize)
+        want = compile_loop(tenor, EXAMPLE_BRIEF, pal).digest()
+        assert compile_loop(without, EXAMPLE_BRIEF, pal).digest() == want, humanize
+        assert compile_loop(alto, EXAMPLE_BRIEF, pal).digest() == want, humanize
 
 
 def _check(c, loop, brief):
@@ -52,18 +77,33 @@ def _check(c, loop, brief):
             assert 0 <= nt.on < c.n and nt.on < nt.off <= nt.on + c.n and 1 <= nt.velocity <= 127
             assert nt.channel in stem.channels and 0 <= nt.step < 128
     chords = loop.vamp.chords
+    # The voicing pair is the section 3.3 choice for the brief's tonic and the loop's own style (test_voicing.py
+    # checks voice_vamp against a brute force), and every keys note belongs to the chord it plays under.
+    assert c.voicings == voice_vamp(*chords, brief.tonic, loop.keys.voicing), (loop.keys.voicing, brief)
     voicing = dict(zip(chords, c.voicings))
     strikes = segments("".join(bars.comp), bars.chords)
     assert len(c.keys.notes) == sum(len(voicing[bars.chords[s.start // 16]]) for s in strikes)
     for s in strikes:
         chord = bars.chords[s.start // 16]
         assert sorted(nt.pitch for nt in c.keys.notes if nt.step == s.start) == list(voicing[chord])
+    for nt in c.keys.notes:
+        chord = bars.chords[nt.step // 16]
+        root = root_pc(chord.numeral, brief.tonic)
+        # Quartal stacks fourths (section 3.3), so it may add the 9th, 11th or 13th to a chord whose table lacks them
+        # (min [5, 10, 15, 19] on m7); the other styles take only chord tones.
+        extra = {(root + t) % 12 for t in (2, 5, 9)} if loop.keys.voicing == "quartal" else set()
+        assert nt.pitch % 12 in chord_pcs(chord, brief.tonic) | extra, (chord, nt)
     assert all(48 <= p <= 72 for v in c.voicings for p in v)
     for nt in c.bass.notes:
         assert 28 <= nt.pitch <= 43 and nt.pitch % 12 == root_pc(bars.chords[nt.step // 16].numeral, brief.tonic)
     sax = pal.sax[pal.sax_lead]
     assert len(c.sax.notes) == sum(not it.rest for it in loop.a + loop.b)
     assert all(sax.play[0] <= nt.pitch <= sax.play[1] for nt in c.sax.notes)
+    # Section 3.2 from the spec tables, in the brief's mode and tonic; section 3.1 from the formula, at every tempo
+    # (73 BPM puts the steps on half samples).
+    assert {nt.step: nt.pitch for nt in c.sax.notes} == spec_sax_pitches(loop, brief.tonic, brief.mode), brief
+    assert all(nt.on == spec_sample(nt.step, c.n) % c.n for nt in c.sax.notes), "the sax plays on the swung grid"
+    assert all(d.on == spec_sample(d.step, c.n) % c.n for d in c.drums), "every hit on its step's time"
     cells = [(lane, 16 * b + s, cell) for lane in LANES for b, bar in enumerate(bars.drums[lane])
              for s, cell in enumerate(bar) if cell in "Xxg"]
     assert sorted((d.lane, d.step, d.level) for d in c.drums) == sorted(cells)
@@ -155,7 +195,8 @@ def test_humanize_nudges_stay_within_3_ms_and_8_percent_and_repeat(mode):
     plain = Clock(c.n, swing=pal.groove.swing)
     base = {d.lane + str(d.step): d for d in compiled("example.ls").drums}
     for d in c.drums:
-        assert abs(d.on - plain.sample(d.step)) <= 133                          # 3 ms = 132.3 samples
+        drift = (d.on - plain.sample(d.step) + c.n // 2) % c.n - c.n // 2      # a step-0 hit nudged early wraps
+        assert abs(drift) <= 133                                               # 3 ms = 132.3 samples
         assert 0.92 - 1e-9 <= d.gain / base[d.lane + str(d.step)].gain <= 1.08 + 1e-9
     human = Humanize.from_groove(pal.groove, c.seed)
     same_every_bar = all(human.nudge(lane, k) == human.nudge(lane, k + 16) for lane in LANES for k in range(112))
@@ -165,6 +206,70 @@ def test_humanize_nudges_stay_within_3_ms_and_8_percent_and_repeat(mode):
     keys = lane_clock("keys", c.n, pal, human)
     assert all(nt.on == keys.sample(nt.step) % c.n for nt in c.keys.notes)
     assert all(abs(nt.velocity - {"X": 96, "x": 80, "g": 52}[_level(loop, nt.step)]) <= 8 for nt in c.keys.notes)
+
+
+LANE_ID = {"kick": 1, "snare": 2, "rim": 3, "hat": 4, "ohat": 5, "shaker": 6, "keys": 7, "bass": 8, "sax": 9}
+
+
+def _spec_u(seed, draw, lane, k, mode):
+    """docs/COMPILER.md §3.6: u = (splitmix64(seed ^ draw << 24 ^ lane << 16 ^ bar << 8 ^ step-in-bar) >> 11) 2^-53,
+    with bar 0 in H1 (`bar`) and the bar 0-7 in H2 (`loop`). splitmix64 is pinned by tests/test_prng.py."""
+    r = k % 128
+    key = seed ^ (draw << 24) ^ (LANE_ID[lane] << 16) ^ ((r // 16 if mode == "loop" else 0) << 8) ^ (r % 16)
+    return Fraction(splitmix64(key) >> 11, 2 ** 53)
+
+
+@pytest.mark.parametrize("mode", ["bar", "loop"])
+def test_humanize_draws_follow_the_documented_key(mode):
+    # Timing (2u - 1) 3 ms from draw 1, velocity x (1 + (2u - 1) 0.08) from draw 2, each loop from its own seed:
+    # computed here from §3.6 for every drum hit and every keys and bass strike of three loops.
+    pal = palette_with(groove_humanize=mode)
+    patterns = set()
+    for name in ("example.ls", "shaker_edits.ls", "one_bar_base.ls"):
+        c, plain = compile_loop(loop_of(name), EXAMPLE_BRIEF, pal), compiled(name)
+        assert c.seed == plain.seed == loop_seed(loop_of(name))
+        timing = lambda lane, k: (2 * _spec_u(c.seed, 1, lane, k, mode) - 1) * Fraction(1323, 10)    # noqa: E731
+        factor = lambda lane, k: 1 + (2 * _spec_u(c.seed, 2, lane, k, mode) - 1) * Fraction(2, 25)   # noqa: E731
+        gain = {(d.lane, d.step): d.gain for d in plain.drums}
+        for d in c.drums:
+            assert d.on == spec_sample(d.step, c.n, nudge=timing(d.lane, d.step)) % c.n, (name, d)
+            assert d.gain == pytest.approx(gain[d.lane, d.step] * float(factor(d.lane, d.step)), rel=1e-12), d
+        for lane, stem, base in (("keys", c.keys, plain.keys), ("bass", c.bass, plain.bass)):
+            velocity = {(nt.step, nt.pitch): nt.velocity for nt in base.notes}
+            for nt in stem.notes:
+                assert nt.on == spec_sample(nt.step, c.n, nudge=timing(lane, nt.step)) % c.n, (name, nt)
+                want = math.floor(velocity[nt.step, nt.pitch] * factor(lane, nt.step) + Fraction(1, 2))
+                assert nt.velocity == min(127, max(1, want)), (name, lane, nt)
+        assert c.sax == plain.sax, "humanize never touches the sax (§3.6 Lanes)"
+        human = Humanize.from_groove(pal.groove, c.seed)
+        nudges = [human.nudge(lane, k) for lane in LANES + ("keys", "bass") for k in range(128)]
+        assert max(nudges) > ms(Fraction(5, 2)) and min(nudges) < -ms(Fraction(5, 2)), "the nudges fill +-3 ms"
+        patterns.add(tuple(nudges))
+    assert len(patterns) == 3, "different loops draw different nudges"
+
+
+@pytest.mark.parametrize("mode", ["off", "bar", "loop"])
+def test_humanize_keeps_legato_keys_and_bass_strikes_joined(mode):
+    # A nudge moves each note-off with the step it ends on (§3.6), so a strike still ends exactly where the next
+    # one starts (§3.4), around the seam too.
+    text = """vamp: Im9 IV13 span 2
+keys: rhodes rootless
+comp: x---x---x---x---
+bass: x---x---x---x---
+drums: jazz
+kick: x.......x.......
+snare: ....x.......x...
+hat: x.x.x.x.x.x.x.x.
+A: w5 | w3 | w1 | w2
+B: w5 | w3 | w1 | h2 hr
+"""
+    c = compile_loop(loop_text(text), EXAMPLE_BRIEF, palette_with(groove_humanize=mode))
+    for stem in (c.keys, c.bass):
+        strikes = sorted({(nt.step, nt.on, nt.off) for nt in stem.notes})
+        assert [k for k, _, _ in strikes] == list(range(0, 128, 4))
+        assert all((off - nxt) % c.n == 0 for (_, _, off), (_, nxt, _) in zip(strikes, strikes[1:] + strikes[:1]))
+        moved = sum(on != spec_sample(k, c.n) % c.n for k, on, _ in strikes)
+        assert (moved > 16) == (mode != "off"), (stem.name, moved)
 
 
 def _level(loop, step):

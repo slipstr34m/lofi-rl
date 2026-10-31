@@ -6,7 +6,8 @@ render depends on (the manifest records it). Licences (docs/DECISIONS.md D-012):
 and a licence; mode `commit` takes only CC0, public domain, permissive and CC BY licences, so a
 non-commercial, restricted or unrecognized one must be mode `fetch`; a CC-BY source names its attribution.
 `load_palette(..., verify=True)` also checks each source file against its sha256 and every SoundFont
-preset the palette names against the file's preset headers.
+preset the palette names against the file's preset headers. A mode-commit path is repo-relative; a mode-fetch
+path lies under `assets_root` (`Palette.assets_dir`: `$LOFI_ASSETS`, or <root>/assets/big while it is unset).
 
 Numbers that feed sample positions (swing, offsets, lags) are kept as exact `Fraction`s of the decimal
 written in the file, so the timeline never depends on binary floating point.
@@ -61,6 +62,12 @@ _COMMIT_OK = re.compile(r"\bCC[-\s_]?0\b|creative\s+commons\s+zero|public[-\s_]+
 _CC_BY = re.compile(r"\bCC[-\s_]*BY\b|creative\s+commons\s+attribution|^\s*attribution\b", re.I)
 _ID = re.compile(r"[a-z][a-z0-9_]*")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_VAR = re.compile(r"\$(?:\{(\w+)\}|(\w+))")
+# Mode-fetch sources resolve under assets_root, `$LOFI_ASSETS` in every palette. Unset or empty, it is the
+# laptop's fetch folder <root>/assets/big (docs/SHOOTOUT_ASSETS.md, Route). Cluster jobs must export it as
+# $REMOTE_KEEP/assets (CLAUDE.md section 1); docs/RENDER.md sections 10 and 11 say what is still missing there.
+ASSETS_VAR = "LOFI_ASSETS"
+ASSETS_DEFAULT = Path("assets") / "big"
 
 
 class PaletteError(ValueError):
@@ -287,14 +294,33 @@ class Palette:
             raise PaletteError(f"{kind} name {name!r} is not in palette {self.id}")
         return hit
 
+    def assets_dir(self, root: Path = ROOT) -> Path:
+        """Where mode-fetch sources live: `assets_root` with its `$VARS` and `~` expanded.
+
+        $LOFI_ASSETS, when unset or empty, is <root>/assets/big, where the laptop fetches them
+        (docs/SHOOTOUT_ASSETS.md, Route). Any other unset or empty variable is an error. A relative result is
+        relative to `root`, like a commit-mode path, never to the current directory."""
+        def value(m: re.Match) -> str:
+            name = m.group(1) or m.group(2)
+            got = os.environ.get(name, "")
+            if got:
+                return got
+            if name == ASSETS_VAR:
+                return str(root / ASSETS_DEFAULT)
+            raise PaletteError(f"assets_root {self.assets_root!r}: ${name} is unset or empty")
+        if "$" in _VAR.sub("", self.assets_root):
+            raise PaletteError(f"assets_root {self.assets_root!r} has a '$' that names no variable")
+        base = Path(os.path.expanduser(_VAR.sub(value, self.assets_root)))
+        return base if base.is_absolute() else root / base
+
     def source_path(self, src: str, root: Path = ROOT) -> Path:
         s = self.sources[src]
         if s.mode == "commit":
             return root / s.path
-        base = os.path.expandvars(os.path.expanduser(self.assets_root))
-        if "$" in base:
-            raise PaletteError(f"assets_root {self.assets_root!r} is unset (source {src} is mode fetch)")
-        return Path(base) / s.path
+        try:
+            return self.assets_dir(root) / s.path
+        except PaletteError as err:
+            raise PaletteError(f"{err} (source {src} is mode fetch)") from err
 
     def verify_sources(self, root: Path = ROOT) -> list[str]:
         """Problems with the source files: missing, or not matching their sha256. Empty when all good."""

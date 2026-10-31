@@ -27,9 +27,9 @@ write_stem_midi(compiled, "sax", path, cycles=2)            # one file per Fluid
 ```
 
 - **Inputs.**
-  - `loop`: a `ParseResult.ast` that passed gates G1–G6. Parse it with `palette.vocab()`, so names are
-    checked against the palette and its aliases. A loop parsed with another vocabulary still compiles
-    when its names resolve through the palette.
+  - `loop`: a `ParseResult.ast` that passed gates G1–G6 (the language: `docs/DSL.md`). Parse it with
+    `palette.vocab()`, so names are checked against the palette and its aliases. A loop parsed with another
+    vocabulary still compiles when its names resolve through the palette.
   - `brief`: `lofi_rl.brief.Brief`: energy (`low`/`mid`/`high`), mood (`melancholy`/`wistful`/`hopeful`,
     which picks the mode), integer BPM in 60–95, tonic pitch class 0–11, scene `city at night`.
     The compiler reads only BPM, tonic and mode. Energy changes nothing it does (TASTE.md: more energy is
@@ -148,7 +148,8 @@ The choice:
 ### 3.6 Humanize (§3, Humanize; shootout only)
 - **Modes.** `groove.humanize` is `off` (the default), `bar` (H1) or `loop` (H2).
 - **Lanes.** `groove.humanize_lanes`: the drum lanes, bass and keys. Never the sax.
-- **Seed.** seed = the first 8 bytes of SHA256(`dsl.canon(loop)`), big-endian (`CompiledLoop.seed`).
+- **Seed.** seed = the first 8 bytes of SHA256(`dsl.canon(loop)`), big-endian (`CompiledLoop.seed`). The
+  canonical text keeps a `sax:` line, so today that line changes the seed (§7).
 - **Key.** key = seed ⊕ (draw ≪ 24) ⊕ (lane ≪ 16) ⊕ (bar ≪ 8) ⊕ step-in-bar.
   - draw is 1 for timing and 2 for velocity;
   - lane runs from kick = 1 to sax = 9;
@@ -329,16 +330,17 @@ Each is pinned by a test and can be changed by Shresth.
   - The line is cyclic for "follows a rest or leap" and "follows immediately".
   - Expression off means no bend, CC11 110, and velocity 92.
   - Sax notes alternate channels 2 and 3 around the cycle; B's last note takes channel 4 when the count is odd.
-- **§3 Humanize.**
+- **§3 Humanize** (`tests/test_compile.py` recomputes every drum, keys and bass nudge and velocity factor of three
+  loops from the §3.6 key, H1 and H2).
   - The key packs each field into its own byte, and timing and velocity are separate draws.
-  - It applies to the drum lanes, bass and keys, never the sax.
-  - A nudge moves note-offs too, so legato strikes stay joined.
+  - It applies to the drum lanes, bass and keys, never the sax: the sax stem is identical with humanize on and off.
+  - A nudge moves note-offs too, so legato strikes stay joined (`test_humanize_keeps_legato_keys_and_bass_strikes_joined`).
   - The seed is read big-endian.
 - **§3 Drum sampler.**
   - The compiler resolves the layer (the softer one wins a tie) and the round-robin index.
   - "The next closed hat" is the closed hat on the next strictly later grid step that sounds after the open hat; the compiler computes `choke_at`.
 - **§8 issues** (settled by TASTE.md and the plan):
-  - One sax plays every loop: the palette's `sax_lead`. A loop's `sax:` line still has to pass G4, but it does not choose. Shootouts swap `sax_lead`.
+  - One sax plays every loop: the palette's `sax_lead`. A loop's `sax:` line is optional and does not choose (not a G3 requirement; `docs/DSL.md` §4). When present it still has to pass G4. Shootouts swap `sax_lead`.
   - The sax feel is a palette option. `grid` is the default; `lag` (25 ms) and `swung` (0.6) are starting points for the sax shootout.
   - Energy does not change the sax.
   - The bass holds the roots.
@@ -347,32 +349,59 @@ Each is pinned by a test and can be changed by Shresth.
   - Every key is required.
   - Added keys: `sax_lead`, `aliases`, `kits.<k>.bass.vel`, `groove.swing` per timing lane, `humanize_ms`, `humanize_vel`, `humanize_lanes`, `metric_db: {lanes, db[16]}`, the `sax_expr` fields, `mix.bus_target_lu`, and `bed: null`.
   - One-shots take the SoundFont-note or file form.
-  - Licences (D-012): mode `commit` is an allow-list of CC0, public domain, permissive and CC BY licences, with no restriction named (non-commercial, ShareAlike, NoDerivatives, all rights reserved, personal use, no redistribution). Any other licence, an unrecognized spelling included, must be mode `fetch`. A CC-BY source must name its attribution, however the licence is spelled ("CC BY 4.0", "Creative Commons Attribution 3.0 Unported"). `palette.licence_problem` is the check.
+  - Licences (D-012): mode `commit` is an allow-list of CC0, public domain, permissive and CC BY licences, with no restriction named (non-commercial, ShareAlike, NoDerivatives, all rights reserved, personal use, no redistribution). Any other licence, an unrecognized spelling included, must be mode `fetch`. A CC-BY source must name its attribution, however the licence is spelled ("CC BY 4.0", "Creative Commons Attribution 3.0 Unported"). `palette.licence_problem` is the check. `tests/test_licenses.py` applies the same allow-list to `assets/MANIFEST.yaml`:
+    - a mode-commit entry needs a licence the allow-list accepts;
+    - an entry whose licence it refuses is mode fetch under `assets/big/`;
+    - the one carve-out is a licence document (`LICENSE.txt`, licence "the license text itself") committed in the folder of an asset the allow-list accepts.
   - `load_palette(verify=True)` also reads each SoundFont's preset headers (`palette.sf2_presets`) and refuses a (bank, program) the file lacks, which FluidSynth would otherwise replace with another preset.
-- **Briefs.**
+- **Briefs** (`brief.sample_brief(seed, index)`).
   - BPM is an integer.
   - Each tempo in 75–90 has 4× the weight of one outside it, so P(75–90) = 64/84.
   - Energy, mood and tonic are uniform.
-  - Each field is its own keyed draw, so a brief's index fixes it.
+  - Each field is its own keyed draw, so a brief's index fixes it, however many briefs are drawn.
+  - **The key is chained SplitMix64:** h = splitmix64(splitmix64(splitmix64(seed mod 2⁶⁴) ⊕ index) ⊕ field).
+    - It hashes the seed, then mixes in the index, then the field. The fields are energy 1, mood 2, tempo 3 and
+      tonic 4, and the index runs from 0 to 2⁶⁴ − 1.
+    - The value is `prng.below(h, k)` = ((h ≫ 11)·k) ≫ 53, for k choices. The tempo takes it over the 84 weight
+      units.
+  - **Streams from different seeds are independent** (`tests/test_brief.py`). The old key, seed ⊕ (index ≪ 8) ⊕
+    field, had two flaws:
+    - seeds a multiple of 256 apart replayed each other's briefs in another order:
+      `sample_brief(256, 0) == sample_brief(0, 1)`, and brief i of seed 256k was brief i ⊕ k of seed 0;
+    - adjacent seeds coupled fields: the energy of seed 2026 was the mood draw of seed 2025.
+  - **The fields of one brief are independent too.** `tests/test_brief.py` checks 900 briefs (seeds 0, 2026 and
+    2⁶⁴ − 1) against the key above, written out in the test with its own SplitMix64, so equal field ids or a changed
+    chain fail there. It also checks 6,000 briefs of seed 2026: all 9 energy × mood pairs occur, and a chi-square
+    on every pair of fields stays under z = 6. The marginals alone could not see a shared draw: with mood drawn
+    from the energy hash, only 3 of the 9 pairs occur and every marginal is still uniform.
+  - **No golden file pins a sampled brief.** Golden renders and the seam tests use explicit `Brief(...)`s.
+    The comment on `tests/test_seam.py`'s `PREROLL_BRIEF` still names `sample_brief(99, 0)`, which is where the
+    brief first came from, under the old key.
 
 ## 7. Spec issues found (not changed)
 - **§3 rootless on m7b5.** The literal rule ("the 5th is dropped when there is an extension") drops m7b5's ♭5, so rootless m7b5 is [3, 10, 17] with no ♭5. The quartal style falls back to this for m7b5.
 - **§3 rootless "first extension".** It makes rootless 13 = rootless 9 ([4, 10, 14]), rootless m11 = rootless m9, and rootless maj7#11 = rootless maj9. The 13th, 11th and ♯11 appear only in shell and quartal.
-- **§1 vs the parser on `sax:`.** §1 lists `sax:` as required, but `dsl/parse.py` treats it as optional "while the palette has a single sax" (`REQUIRED`, line 37). `dev_gu` has two, and so does the default vocabulary, so a loop with no `sax:` line passes gate G3 where §2 says it fails. The compiler never reads the line (it plays `sax_lead`), so the only effect is on the gate pass rate. Open: `dsl/` is outside the compiler's code, so the fix (add `"sax"` to `REQUIRED`) is reported, not made.
+- **§1 vs the parser on `sax:` (settled 2026-10-31: the parser is right).** §1 lists `sax:` as required, but TASTE.md (one sax plays in every loop) and the plan (`sax:` is dropped once one sax survives) make the line choose nothing. So it is optional, never a G3 requirement, and the compiler plays `sax_lead` whatever it says (`docs/DSL.md` §4 and §10). `tests/test_compile.py::test_a_loop_without_a_sax_statement_passes_the_gates` pins the gate.
+  - **Open: the line still changes the humanize seed.** The seed hashes `dsl.canon(loop)` (§3.6), and canon prints the line. So `example.ls` with and without `sax: tenor` (or with `sax: alto`) compiles to different seeds and digests. With humanize off, the seed drives nothing and every event is the same; with `bar` or `loop`, the drum, keys and bass nudges differ too. `tests/test_compile.py::test_a_loop_without_a_sax_statement_compiles_to_the_same_loop_as_with_sax_tenor` is a strict xfail until the seed ignores the line.
+  - **The fix,** not made yet: in `compile/humanize.loop_seed`, hash `canon(replace(loop, sax=None))`. On a scratch copy of the tree, the xfail then passes (a strict XPASS, so its mark goes), and one test and one claim here need work:
+    - `test_humanize_off_puts_every_hit_on_its_clock` pins the old seed formula, so it fails;
+    - `test_compile_drums.py::test_a_closed_hat_on_the_same_step_never_chokes_under_humanize` still passes but loses its case. With the new seed, every closed hat that shares a step with an open hat in `example.ls` lands before it (−32 to −258 samples, H1 and H2). Today two land after it under H2, which is §3.9's "4 and 6 samples later".
+    - `test_humanize_nudges_stay_within_3_ms_and_8_percent_and_repeat` no longer breaks: it now measures drift around the seam, so a step-0 hit nudged early (to the end of the cycle) reads as a few samples early. `test_humanize_draws_follow_the_documented_key` takes each loop's seed from `CompiledLoop.seed`, so it passes with either formula (measured 2026-10-31: `test_compile.py`, `test_compile_drums.py` and `test_bass_lock.py` give 2 failed, 39 passed with the fix, the 2 being the XPASS and the seed pin).
+  - **Dropping the line from canon instead** (`dsl/canon.py`) breaks 13 tests in `tests/test_dsl_canon.py`, which pin that canon prints the line and round-trips it.
 - **§6 naming.** "GU Drawbar Organ 16" is the GM name for program 16. GeneralUser GS 2.0.3 calls that preset "Tonewheel Organ".
 
 ## 8. Tests
-The instrument.md §7 rows, plus the interface. Together the 12 files below hold 325 passing tests and 1 strict xfail (`test_compile.py::test_a_loop_without_its_sax_statement_fails_g3`, the open `sax:` gate issue in §7), which ran in 3.81 s on the laptop (2026-10-31).
+The instrument.md §7 rows, plus the interface. `tests/helpers_compile.py` holds the spec oracles: §3.1 step times and §3.2 sax pitches written out from the tables, independently of `src/`. Together the 12 files below hold 347 passing tests and 1 strict xfail (`test_compile.py::test_a_loop_without_a_sax_statement_compiles_to_the_same_loop_as_with_sax_tenor`, the open `sax:` seed issue in §7), which ran in 5.00 s on the laptop (2026-10-31).
 
 | §7 row | file |
 |---|---|
-| `test_modes_chords` | `tests/test_modes_chords.py`: modes, degrees, home bands, the chord-tones table |
+| `test_modes_chords` | `tests/test_modes_chords.py`: modes, every degree of every mode through `degree_offset`, home bands, the chord-tones table |
 | `test_voicing` | `tests/test_voicing.py`: templates, rule 2, the brute-force optimum |
-| `test_timeline` | `tests/test_timeline.py`: N, swing positions, the 8th warp, segments |
-| `test_bass_lock` | `tests/test_bass_lock.py`: octave pairs, lock, re-strikes |
-| `test_sax_register` | `tests/test_sax_register.py`: pitches, octave fit, folds, note-offs, velocity, feels, one sax |
-| `test_expression` | `tests/test_expression.py`: whole vibrato cycles, bend range, scoop, vibrato, CC11, RPN |
+| `test_timeline` | `tests/test_timeline.py`: N, swing positions at every tempo 60–95 (ten put the steps on half samples), the 8th warp, segments |
+| `test_bass_lock` | `tests/test_bass_lock.py`: octave pairs, lock, re-strikes, keys and bass velocities for X, x and g |
+| `test_sax_register` | `tests/test_sax_register.py`: pitches against the spec tables in every mood on both saxes, the mood's mode, octave fit (comfort, not playable), folds (playable, not comfort), note-offs, velocity, feels, a per-lane sax swing, one sax |
+| `test_expression` | `tests/test_expression.py`: whole vibrato cycles, bend range, scoops read from the written line (across the seam too), vibrato, CC11, RPN |
 | `test_prng` | `tests/test_prng.py`: the test vector and the reference sequence |
-| `test_palette` | `tests/test_palette.py`: schema, licences, sha256, the dev palette's values, pedalboard chains |
-| compile | `tests/test_compile.py`: every gate-passing fixture, the example's claims, humanize, determinism |
-| | `tests/test_compile_drums.py`, `tests/test_compile_midi.py` (the dispatch model, file layout, seamless FluidSynth cycles), `tests/test_brief.py` |
+| `test_palette` | `tests/test_palette.py`: schema, licences, sha256, the dev palette's values, pedalboard chains, fetch-mode sources under `$LOFI_ASSETS` (unset, empty, absolute, relative) |
+| compile | `tests/test_compile.py`: every gate-passing fixture in five briefs against the spec (the §3.3 voicing pair for the brief's tonic and the loop's style, chord tones, §3.2 sax pitches, §3.1 step times), the example's claims, a loop without `sax:`, humanize against the §3.6 key (drums, keys and bass; the sax untouched; legato joins), determinism |
+| | `tests/test_compile_drums.py`, `tests/test_compile_midi.py` (the dispatch model, file layout, seamless FluidSynth cycles), `tests/test_brief.py` (the sampler, its distribution, the documented key, independent fields and streams) |

@@ -98,3 +98,15 @@ def test_explicit_bass_holds_are_cut_and_re_struck_at_chord_changes():
     by_step = {nt.step: nt for nt in c.bass.notes}
     assert by_step[16].off == by_step[32].on, "the held note ends exactly where the re-strike starts"
     assert by_step[32].velocity == by_step[16].velocity == 88
+
+
+def test_keys_and_bass_play_every_level_at_its_spec_velocity():
+    # docs/COMPILER.md §3.5: keys X 96, x 80, g 52 and bass X 104, x 88, g 64, a ghost strike included (no fixture
+    # has a g in comp or bass, and `bass: lock` copies only X and x).
+    text = LOCK.replace("comp: x---------------", "comp: g---x---X-------").replace("bass: lock",
+                                                                                     "bass: g---x---X-------")
+    c = compile_loop(loop_text(text), EXAMPLE_BRIEF, dev_palette())
+    keys = {(nt.step % 16, nt.velocity) for nt in c.keys.notes}
+    bass = {(nt.step % 16, nt.velocity) for nt in c.bass.notes}
+    assert keys == {(0, 52), (4, 80), (8, 96)} and bass == {(0, 64), (4, 88), (8, 104)}
+    assert len(c.keys.notes) == 8 * 3 * 3 and len(c.bass.notes) == 8 * 3

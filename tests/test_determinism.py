@@ -25,6 +25,7 @@ from lofi_rl.brief import Brief
 from lofi_rl.render.formats import dither_seed, to_int16
 from lofi_rl.render.machine import golden_key
 from lofi_rl.render.pipeline import manifest_json, render
+from lofi_rl.render.sampler import kit_shots
 from lofi_rl.render.wavio import pcm_sha256, read_float
 
 GOLDEN = ROOT / "tests" / "golden" / "render_hashes.json"
@@ -34,24 +35,27 @@ def case_id(name: str, brief: Brief) -> str:
     return f"{name}|{brief.mood}|{brief.energy}|{brief.bpm}|{brief.tonic}"
 
 
-def _golden_check(name: str, brief: Brief) -> None:
-    r = rendered(name, brief)
-    got = {"audio_sha256": r.manifest["audio_sha256"], "music_sha256": r.manifest["music_sha256"],
-           "n": r.compiled.n}
+def _golden(case: str, got: dict) -> None:
+    """Check `got` against this machine's golden entry for `case`, or record it there (LOFI_RECORD_GOLDEN)."""
     record = os.environ.get("LOFI_RECORD_GOLDEN")
     if record:
         path = Path(record)
         doc = json.loads(path.read_text()) if path.is_file() else {"keys": {}}
-        doc.setdefault("keys", {}).setdefault(golden_key(), {})[case_id(name, brief)] = got
+        doc.setdefault("keys", {}).setdefault(golden_key(), {})[case] = got
         doc["keys"] = {k: dict(sorted(v.items())) for k, v in sorted(doc["keys"].items())}
         path.write_text(json.dumps(doc, indent=2) + "\n")
         return
     table = json.loads(GOLDEN.read_text())["keys"].get(golden_key())
-    if table is None or case_id(name, brief) not in table:
-        pytest.skip(f"no golden render hashes for {golden_key()} {case_id(name, brief)} (cluster: canonical, "
-                    f"recorded by the determinism job)")
-    assert got == table[case_id(name, brief)], (
+    if table is None or case not in table:
+        pytest.skip(f"no golden hashes for {golden_key()} {case} (cluster: canonical, recorded by the determinism job)")
+    assert got == table[case], (
         "the render changed; if that is intended, re-record (see this module's docstring) and log it in CHANGELOG.md")
+
+
+def _golden_check(name: str, brief: Brief) -> None:
+    r = rendered(name, brief)
+    _golden(case_id(name, brief), {"audio_sha256": r.manifest["audio_sha256"],
+                                   "music_sha256": r.manifest["music_sha256"], "n": r.compiled.n})
 
 
 @pytest.fixture(scope="module")
@@ -111,7 +115,23 @@ def test_golden_hashes_for_this_platform():
     _golden_check("example.ls", EXAMPLE_BRIEF)
 
 
-CASES = [(f, EXAMPLE_BRIEF) for f in passing_fixtures()] + [("shaker_edits.ls", OTHER_BRIEF)]
+ONESHOTS = "oneshots|dev_gu|jazz"           # the golden entry of the dev kit's one-shots, lane/layer -> pcm_sha256
+
+
+@needs_fluidsynth
+def test_one_shots_built_into_an_empty_cache_match_the_golden_hashes(tmp_path):
+    # RENDER.md §6: a cache entry is reused while its samples hash to the pcm_sha256 recorded when it was built.
+    # So a builder change that does not bump sampler.BUILDER never reaches a render on a machine with a warm cache:
+    # every render test here would still pass. A cold build of the kit has to match this machine's recorded
+    # one-shots, and the warm cache's.
+    kit = kit_shots(palette(), "jazz", cache=tmp_path, workers=4)
+    got = {f"{lane}/{layer}": list(h) for (lane, layer), h in sorted(kit.pcm.items()) if h}
+    assert len(got) == 18 and got == rendered("example.ls").manifest["oneshots"], "the cache holds today's builds"
+    _golden(ONESHOTS, got)
+
+
+CASES = ([(f, EXAMPLE_BRIEF) for f in passing_fixtures()] + [("shaker_edits.ls", OTHER_BRIEF)]
+         + [("example.ls", Brief(energy="low", mood="melancholy", bpm=87, tonic=9))])   # A aeolian, half-sample steps
 
 
 @pytest.mark.cluster

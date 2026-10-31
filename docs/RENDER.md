@@ -38,6 +38,14 @@ r.pre_limiter, r.compiled # the kept cycle after the master chain, and the Compi
   - a missing file propagates unchanged.
 - **Stages for tests and tools:** `music_cycles(compiled, palette, cycles)` returns stages 2–4 over all
   cycles; `finish(music_cycle, palette)` runs stages 5–7.
+- **Where the palette's files are** (`Palette.source_path`, `Palette.assets_dir`). A mode-commit source is
+  repo-relative. A mode-fetch source lies under the palette's `assets_root`, `$LOFI_ASSETS` in every palette:
+  - unset or empty, `$LOFI_ASSETS` is `<repo>/assets/big`, where the laptop fetches the shootout assets
+    (docs/SHOOTOUT_ASSETS.md, Route), so a fetch-mode palette loads on the laptop with nothing exported;
+  - a relative value is relative to the repo root (`root=`), never to the current directory;
+  - any other unset or empty variable in `assets_root` is a `PaletteError`, which the CLI reports as exit 2.
+  On the cluster, `<repo>/assets/big` is inside the code mirror, which never holds assets, so a fetch-mode
+  palette fails `verify` there ("missing", exit 2) until jobs export `LOFI_ASSETS` (§11).
 - **`workers`** sets how many FluidSynth processes and pedalboard threads run at once. The output never
   depends on it (`tests/test_determinism.py`, `tests/test_mix.py`).
 
@@ -164,7 +172,9 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
 - **Normalization.** `loudness.normalize_loop` with the palette's `loudness`: target −14 LUFS, tolerance 0.1 LU,
   at most 4 iterations. Each iteration tiles the loop 3 times, runs BrickwallLimiter (ceiling −1.5 dB, release
   100 ms, lookahead 5 ms, true peak; `LIMIT_DB` sits under the −1 dBTP ceiling) and keeps [N + λ, 2N + λ),
-  where λ is the limiter's latency. Not converging is gate G7. The palette's `ceiling_dbtp` must be −1, the
+  where λ is the limiter's latency. Not converging is gate G7. Every fixture converges in 1 iteration (§7); a
+  synthetic loop in `tests/test_render.py`, a tone with strong 1 kHz bursts, takes 3, and fails G7 with `iters: 1`
+  (its first pass lands at −14.78 LUFS). The palette's `ceiling_dbtp` must be −1, the
   value `loudness.py` is built for; any other value raises.
 - **music.wav** gets the same gain and the same limiter as the render, without the bed.
 - **True peak** is measured on the loop as it repeats (`pipeline.loop_true_peak_dbtp`): 4× `resample_poly` over
@@ -250,8 +260,10 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
     almost never changes a sample. That is still a risk, and the cluster's determinism job measures it.
 - **Golden hashes.** `tests/golden/render_hashes.json` holds pcm_sha256 values keyed by `machine.golden_key()`:
   platform, FluidSynth and numpy versions. This laptop's key is `Darwin-arm64/fluidsynth-2.6.1/numpy-1.26.4`,
-  with all six gate-passing fixtures at the `example.ls` brief plus `shaker_edits.ls` at G ionian, 95 BPM.
-  Other keys skip. The default suite checks `example.ls`; `-m cluster` checks every case.
+  with all six gate-passing fixtures at the `example.ls` brief, `shaker_edits.ls` at G ionian, 95 BPM, and
+  `example.ls` at A aeolian, 87 BPM (a mood no other case has, at a tempo whose steps fall on half samples).
+  The key also holds `oneshots|dev_gu|jazz`, the pcm_sha256 of each of the kit's 18 one-shots (§6). Other keys
+  skip. The default suite checks `example.ls` and the one-shots; `-m cluster` checks every case.
 
 ## 6. The one-shot cache
 - **Location:** `$LOFI_CACHE`, else `~/.cache/lofi-rl`, or `--cache` / `cache=`. Entries live in `oneshots/`:
@@ -268,8 +280,13 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
   partial entry.
 - **Cost:** the GU Jazz kit is 18 one-shots, 36 files and about 23 MB, most of it the three open-hat layers.
   Building them into an empty cache took 1.65 s on the laptop with 4 workers (1.56 s with 8), once per cache.
-- **On the cluster:** set `LOFI_CACHE=$REMOTE_SCR/cache/lofi-rl`. `scripts/job_env.sh` does not set it yet,
-  so the default is the home directory. Scratch purges only cost a rebuild.
+- **A builder change shows only in a cold cache.** Every render reads its one-shots through the cache, and an entry
+  is reused while it matches its own recorded hash, so a change to the builder that does not bump `BUILDER` passes
+  every render test on a machine with a warm cache. So `tests/test_determinism.py` builds the kit into an empty
+  cache in the default suite (about 1 s) and compares each one-shot with this machine's golden entry (§5) and
+  with the warm cache's, which the render manifests record.
+- **On the cluster:** `scripts/job_env.sh` sets `LOFI_CACHE=$REMOTE_SCR/cache/lofi-rl`, so the small home
+  directory is never used. Scratch purges only cost a rebuild.
 
 ## 7. Cost (laptop, Apple M4, 2026-10-31)
 - **One render of `example.ls`** (N = 1,032,576, 23.4 s), in process with a warm cache: 1.26 s with 4 workers,
@@ -343,6 +360,10 @@ Each is pinned by a test and can be changed.
     names against the file's preset headers, §3.1.)
   - `.rsyncignore` drops `*.wav` everywhere, so loose one-shot WAVs would never reach the cluster mirror
     (CHANGELOG, 2026-10-31). An archive source avoids that.
+- **§4 Assets: two places for fetched assets.** §4 puts `$LOFI_ASSETS` at
+  `/project2/anakano_429/shresthr/lofi-rl-assets`; CLAUDE.md §1, docs/SHOOTOUT_ASSETS.md (Route) and
+  `scripts/cluster_setup.sh init` put fetched assets in `$REMOTE_KEEP/assets`. The renderer follows CLAUDE.md
+  (§11); §4's path is not defined anywhere else.
 
 ## 11. What the cluster still has to do
 - **Canonical hashes.** Write `jobs/lofi-determinism.sbatch` (`main` partition, CPU only, scorer env;
@@ -355,6 +376,15 @@ Each is pinned by a test and can be changed.
   disagree the key needs one.
 - **Seam and tempo sweep.** Run `tests/test_seam.py -m cluster` there too (5 fixtures × 4 tempos; 20 s on the
   laptop).
+- **Golden entries added 2026-10-31.** The determinism job should also record `example.ls|melancholy|low|87|9`
+  and `oneshots|dev_gu|jazz` for each cluster key (the one-shot test runs in the default suite and records under
+  `LOFI_RECORD_GOLDEN` like the renders).
+- **Fetch-mode sources** (every shootout palette; §1, Where the palette's files are). Two pieces are outside the
+  renderer and not done:
+  - `scripts/job_env.sh` should export `LOFI_ASSETS=${LOFI_ASSETS:-$REMOTE_KEEP/assets}`. Until then every job
+    resolves fetch-mode sources inside the mirror, finds nothing, and the palette fails to load (exit 2);
+  - nothing pushes `assets/big/` to `$REMOTE_KEEP/assets/`. The push must not reuse `.rsyncignore`, which drops
+    `assets/big/`, `*.wav` and `*.flac`, and must not use `--delete`.
 - **Smoke.** `src/lofi_rl/smoke.py` still renders through the Phase-0 stub chain (`compile/stub.py`). Moving
   the smoke's `loop_render` to `render.pipeline.render` is a separate change; smoke.py was out of scope here.
 - **Spectral fingerprints.** `tests/golden/fingerprints.json` (§7: laptop vs cluster within a tolerance) is
@@ -365,15 +395,15 @@ Each is pinned by a test and can be changed.
 
 | §7 row | file | what it checks |
 |---|---|---|
-| `test_sampler` | `tests/test_sampler.py` | layers and fallback, round-robin from compiled hits, the 8 ms choke (also into the next cycle), folding at the seam, the pan law, order independence, file one-shots, the GU kit build, cache reuse and rebuild, the drum-channel program, a missing drum kit as an error, a user config that never reaches the cache |
-| `test_render` | `tests/test_render.py` | length N, −14 ± 0.1 LUFS, true peak ≤ −1 dBTP on the repeating loop, the manifest against the audio, the bed at −Δ ± 0.5 LU, gates G1–G6 and G7 |
+| `test_sampler` | `tests/test_sampler.py` | layers and fallback, round-robin from compiled hits, the 8 ms choke (also into the next cycle), folding at the seam, the pan law, order independence, file one-shots, the GU kit build, cache reuse and rebuild, the drum-channel program, a missing drum kit as an error, a user config that never reaches the cache, each lane's own pan and dB through `kit_shots` and `render_drums` |
+| `test_render` | `tests/test_render.py` | length N, −14 ± 0.1 LUFS, true peak ≤ −1 dBTP on the repeating loop, the manifest against the audio, the bed at −Δ ± 0.5 LU, gates G1–G6 and G7. On synthetic loops (no FluidSynth): a loop that needs 2–4 loudness iterations (and fails G7 with `iters: 1`), the bed at Δ = 18, 24 and 30 with the reported level, the G7 music floor at −55 and −45 LUFS, the G7 true-peak limit at −0.69 and −0.94 dBTP, an overshoot at the seam. With the audio stages stubbed: parser plus compiler repairs and P_fix in the manifest, and a bare numeral parsed in the brief's mode |
 | `test_seam` | `tests/test_seam.py` | 3-cycle render, cycle 2 vs cycle 3 < 1e-6; the render keeps exactly cycle 2; the pre-roll case; the 3× limiter tile; `-m cluster`: 5 fixtures × 4 tempos |
-| `test_determinism` | `tests/test_determinism.py` | the same process in A-B-A order; a fresh CLI process with 1 worker against the in-process render with 4 (WAV, FLAC and manifest), run alongside the A-B-A renders to save wall time; golden hashes |
+| `test_determinism` | `tests/test_determinism.py` | the same process in A-B-A order; a fresh CLI process with 1 worker against the in-process render with 4 (WAV, FLAC and manifest), run alongside the A-B-A renders to save wall time; golden hashes; the kit's one-shots built into an empty cache against their golden hashes and the warm cache's |
 | `test_fluid_cli` | `tests/test_fluid_cli.py` | version 2.6.1, the exact flags, the version check and its memo, the rejected limiter flag, one process per non-empty stem with the pre-roll; an empty home for every render, a user config that cannot reach the PCM, the two config files FluidSynth tries, a system config that stops the render, substituted presets, errors in the log, short, silent and wrong-rate output as `FluidSynthError` |
 | (CLI) | `tests/test_render.py` | exit 2 on an out-of-range `--bpm` or `--tonic`, a missing loop or palette file, or a palette that does not load, before anything renders |
 | (outputs) | `tests/test_formats.py` | SplitMix64 vectorized = `prng.stream`, the TPDF distribution, dither keyed by the hash, FLAC decode and bytes, no PEAK chunk |
 | (mix, bed) | `tests/test_mix.py`, `tests/test_bed.py` | block-size invariance, sax_warm, faders and sum order, calibration; the crossfade formula, the wrap, equal power, the excerpt, the level |
 
 Shared renders are cached per session in `tests/helpers_render.py`. Tests that call FluidSynth skip when it is
-not on PATH (`tests/test_render_basic.py` convention). The 8 files hold 73 default tests (27 more are
-`-m cluster`), which ran in 8.99 s on the laptop (2026-10-31).
+not on PATH (`tests/test_render_basic.py` convention). The 8 files hold 88 default tests (28 more are
+`-m cluster`), which ran in 11.11 s on the laptop (2026-10-31).

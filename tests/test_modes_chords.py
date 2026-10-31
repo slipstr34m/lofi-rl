@@ -28,6 +28,12 @@ def test_modes_and_moods():
 
 
 def test_degree_offsets_with_accidentals_and_octaves():
+    for mode, scale in SPEC_MODES.items():          # the function the compiler calls, not only the MODES table
+        assert [degree_offset(mode, d) for d in range(1, 8)] == scale, mode
+        assert [degree_offset(mode, d, acc, octave) for d in range(1, 8) for acc in (-1, 0, 1) for octave in (-2, 1)] \
+            == [s + acc + 12 * octave for s in scale for acc in (-1, 0, 1) for octave in (-2, 1)], mode
+    for mood, mode in (("melancholy", "aeolian"), ("wistful", "dorian"), ("hopeful", "ionian")):
+        assert [degree_offset(mood, d) for d in range(1, 8)] == SPEC_MODES[mode], mood
     assert [degree_offset("dorian", d) for d in range(1, 8)] == SPEC_MODES["dorian"]
     assert degree_offset("dorian", 5, -1) == 6                      # eb5: the blue b5
     assert degree_offset("ionian", 3, -1) == 3 and degree_offset("ionian", 7, -1) == 10

@@ -64,9 +64,17 @@ TEMPO_WEIGHTS = _tempi()
 
 
 def _draw(seed: int, index: int, field: int) -> int:
-    if not 0 <= index < 1 << 56:
-        raise ValueError("brief index out of range")
-    return splitmix64((seed & MASK) ^ (index << 8) ^ field)
+    """The 64-bit hash behind one field of brief `index` of stream `seed`, by chained SplitMix64.
+
+    h = splitmix64(splitmix64(splitmix64(seed mod 2**64) ^ index) ^ field): hash the seed, then mix in the
+    index, then the field, each followed by a full SplitMix64 round, so streams from different seeds share no
+    structure. The old key, seed ^ (index << 8) ^ field, made seeds a multiple of 256 apart replay each other's
+    briefs in another order (brief i of seed 256k was brief i ^ k of seed 0) and coupled the fields of adjacent
+    seeds (the energy of seed 2026 was drawn from the mood hash of seed 2025).
+    """
+    if not 0 <= index <= MASK:
+        raise ValueError(f"brief index {index} is outside 0..2**64 - 1")
+    return splitmix64(splitmix64(splitmix64(seed & MASK) ^ index) ^ field)
 
 
 def _weighted(h: int, weights: tuple[tuple[int, int], ...]) -> int:
@@ -81,7 +89,8 @@ def _weighted(h: int, weights: tuple[tuple[int, int], ...]) -> int:
 def sample_brief(seed: int, index: int) -> Brief:
     """Brief number `index` of the stream `seed`: energy, mood and tonic uniform, tempo centred on 75-90.
 
-    Each field is its own keyed draw, so brief i is the same however many briefs are drawn.
+    Each field is its own keyed draw (`_draw`), so brief i is the same however many briefs are drawn, and
+    streams from different seeds are independent. The seed is read modulo 2**64; the index is 0..2**64 - 1.
     """
     return Brief(
         energy=ENERGIES[below(_draw(seed, index, _ENERGY), len(ENERGIES))],

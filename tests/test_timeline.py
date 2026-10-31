@@ -27,18 +27,28 @@ def _reference(k, n, s, offset_ms):
     return k * n / 128 + (k % 2) * (s - 0.5) * n / 64 + offset_ms * 44.1
 
 
-@pytest.mark.parametrize("bpm", [60, 67, 75, 82, 90, 95])
-@pytest.mark.parametrize("swing, offset_ms", [(0.5, 0.0), (0.55, 0.0), (0.58, 0.0), (0.6, -4.0), (0.66, 7.5),
-                                              (0.54, 2.25)])
-def test_swing_sample_positions_match_the_formula(bpm, swing, offset_ms):
+@pytest.mark.parametrize("bpm", range(60, 96))
+def test_swing_sample_positions_match_the_formula(bpm):
+    # Every tempo: at 61, 62, 66, 72, 73, 79, 81, 85, 87 and 89 BPM, N/128 is a half sample, so a step's position
+    # is not a whole number of samples before the swing is added.
     n = loop_samples(bpm)
-    clock = Clock(n, swing=Fraction(str(swing)), offset=ms(Fraction(str(offset_ms))))
-    for k in range(128):
-        ref = _reference(k, n, swing, offset_ms)
-        if abs(ref - math.floor(ref) - 0.5) < 1e-6:                 # an exact half: round half up
-            assert clock.sample(k) == math.floor(ref) + 1
-        else:
-            assert clock.sample(k) == math.floor(ref + 0.5), (k, ref)
+    for swing, offset_ms in ((0.5, 0.0), (0.55, 0.0), (0.58, 0.0), (0.6, -4.0), (0.66, 7.5), (0.54, 2.25)):
+        clock = Clock(n, swing=Fraction(str(swing)), offset=ms(Fraction(str(offset_ms))))
+        for k in range(128):
+            ref = _reference(k, n, swing, offset_ms)
+            if abs(ref - math.floor(ref) - 0.5) < 1e-6:             # an exact half: round half up
+                assert clock.sample(k) == math.floor(ref) + 1, (swing, offset_ms, k, ref)
+            else:
+                assert clock.sample(k) == math.floor(ref + 0.5), (swing, offset_ms, k, ref)
+
+
+def test_ten_tempos_put_the_steps_on_half_samples():
+    half = [bpm for bpm in range(60, 96) if loop_samples(bpm) % 128]
+    assert half == [61, 62, 66, 72, 73, 79, 81, 85, 87, 89] and all(loop_samples(b) % 128 == 64 for b in half)
+    n = loop_samples(87)                                            # 973,248 samples
+    assert Clock(n).time(127) == Fraction(1_931_289, 2) and Clock(n).sample(127) == 965_645   # 965,644.5 rounds up
+    assert Clock(n, Fraction(11, 20)).time(127) == Fraction(1_931_289, 2) + Fraction(n, 1280)  # + 760.35 of swing
+    assert Clock(n, Fraction(11, 20)).sample(127) == 966_405
 
 
 def test_only_odd_steps_are_delayed_by_s_minus_half_times_30_over_bpm():

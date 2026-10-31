@@ -1,11 +1,13 @@
 """The sax line (instrument.md section 3, Pitch mapping, Registers, Sax expression velocity and note-off;
 TASTE.md: one sax plays every loop)."""
 from dataclasses import replace
+from fractions import Fraction
+from types import MappingProxyType
 
 import pytest
 
 from helpers_compile import (EXAMPLE_BRIEF, FIX, compiled, dev_palette, loop_of, loop_text, palette_with,
-                             passing_fixtures)
+                             passing_fixtures, spec_sample, spec_sax_pitches)
 from lofi_rl.brief import MOOD_NAMES, Brief
 from lofi_rl.compile.compiler import compile_loop
 from lofi_rl.compile.sax import fit_shift, sax_clock, sax_pitches
@@ -54,6 +56,12 @@ def test_octave_fit_shifts_a_phrase_into_the_comfort_window():
     c = compile_loop(loop, EXAMPLE_BRIEF, dev_palette())
     a = [x.pitch for x in sorted(c.sax.notes, key=lambda x: x.step) if x.step < 64]
     assert a == [62, 65, 69, 62] and c.repairs == (), "written two octaves up, played one octave up, no fold"
+    # The fit counts notes outside the comfort window (48-72), not the playable range (44-75): unshifted, only 74
+    # is outside comfort, while all four are playable.
+    loop = loop_text(BASE + "A: w5' | w6' | w7' | w1''\nB: w1 | w3 | w5 | h1 hr\n")
+    c = compile_loop(loop, EXAMPLE_BRIEF, dev_palette())
+    a = [x.pitch for x in sorted(c.sax.notes, key=lambda x: x.step) if x.step < 64]
+    assert a == [57, 59, 60, 62] and c.repairs == (), "69 71 72 74 shift down to fit the comfort window"
 
 
 def test_out_of_range_notes_fold_with_one_penalized_repair_each():
@@ -64,6 +72,12 @@ def test_out_of_range_notes_fold_with_one_penalized_repair_each():
     assert [r.code for r in c.repairs] == ["sax_fold", "sax_fold"] and all(r.penalized for r in c.repairs)
     assert c.repairs[0].before.startswith("A w1,, in bar 1 step 1") and c.repairs[0].after == "MIDI 50"
     assert penalty(c.repairs) == 0.04
+    # Only notes outside the playable range (44-75) fold: 47 is below comfort but playable, so it stays. The fit
+    # keeps k = 0 here (one note outside comfort, as with +1; ties go to 0).
+    loop = loop_text(BASE + "A: w6, | w5' | w1 | w1\nB: w1 | w3 | w5 | h1 hr\n")
+    c = compile_loop(loop, EXAMPLE_BRIEF, dev_palette())
+    a = [x.pitch for x in sorted(c.sax.notes, key=lambda x: x.step) if x.step < 64]
+    assert a == [47, 69, 50, 50] and c.repairs == ()
 
 
 def test_every_fixture_stays_playable_in_every_key_mood_and_sax():
@@ -77,6 +91,33 @@ def test_every_fixture_stays_playable_in_every_key_mood_and_sax():
                     pitched, repairs = sax_pitches(loop, tonic, Brief("mid", mood, 80, tonic).mode, voice)
                     assert all(voice.play[0] <= p <= voice.play[1] for *_, p in pitched), (name, mood, tonic)
                     assert all(r.code == "sax_fold" and r.penalized for r in repairs)
+
+
+def test_the_brief_mood_picks_the_sax_mode():
+    # example.ls plays e6 at step 4 and q3 at step 8. In D, degree 6 is Bb in aeolian and B in dorian and ionian;
+    # degree 3 is F in aeolian and dorian and F# in ionian (TASTE.md: mood picks the mode).
+    for step, want in ((4, [58, 59, 59]), (8, [53, 53, 54])):
+        got = [next(x.pitch for x in compiled("example.ls", Brief("mid", mood, 82, 2)).sax.notes if x.step == step)
+               for mood in MOOD_NAMES]
+        assert got == want, (step, MOOD_NAMES)
+
+
+def test_every_fixture_plays_the_spec_pitches_in_every_mood_on_both_saxes():
+    # tests/test_compile.py checks the tenor in five briefs; here every distinct fixture in every mood, on both
+    # saxes, each in another tonic.
+    names = [name for name in passing_fixtures() if name != "example_leniency.ls"]   # the same AST as example.ls
+    tonics = set()
+    for i, name in enumerate(names):
+        for j, mood in enumerate(MOOD_NAMES):
+            for lead in ("tenor", "alto"):
+                tonic = (5 * i + 7 * j + 6 * (lead == "alto")) % 12
+                tonics.add(tonic)
+                brief = Brief("mid", mood, 80, tonic)
+                loop = loop_of(name, brief.mode)
+                c = compile_loop(loop, brief, palette_with(sax_lead=lead))
+                want = spec_sax_pitches(loop, tonic, brief.mode, lead)
+                assert {x.step: x.pitch for x in c.sax.notes} == want, (name, mood, lead, tonic)
+    assert len(tonics) == 12
 
 
 def test_the_fit_minimizes_notes_outside_comfort_with_the_stated_tie_order():
@@ -192,3 +233,10 @@ def test_timing_feels():
     odd = [k for k in grid if k % 2]
     assert all(abs(grid[k] - round(k * n / 128) - 0.05 * n / 64) <= 1 for k in odd), "grid: the band's 16th swing"
     assert replace(dev_palette().sax_expr, timing="grid") == dev_palette().sax_expr
+    # A per-lane override (groove.swing.sax) swings the sax's odd steps, and only the sax's (docs/COMPILER.md 3.1).
+    pal = palette_with(groove_swing_lanes=MappingProxyType({"sax": Fraction(3, 5)}))
+    c = compile_loop(loop_of("span1_dotted.ls"), EXAMPLE_BRIEF, pal)
+    odd = [x for x in c.sax.notes if x.step % 2]
+    assert len(odd) == 4 and all(x.on == spec_sample(x.step, c.n, Fraction(3, 5)) % c.n for x in odd)
+    assert all(x.on == spec_sample(x.step, c.n) % c.n for x in c.sax.notes if x.step % 2 == 0)
+    assert all(d.on == spec_sample(d.step, c.n) % c.n for d in c.drums), "the band keeps the default 0.55"
