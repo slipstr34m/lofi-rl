@@ -109,6 +109,9 @@ def _launch(run: Path, name: str, cfg: RunConfig, steps_want: list[int], start_s
     sources = sorted({str(r.get("step_source")) for r in rewards})
     if rewards and sources != ["trainer_state"]:
         warnings.append(f"launch {name}: the curriculum step came from {sources}, not TRL's trainer_state")
+    hooks = sorted({e for r in step_recs for e in ((r.get("lofi") or {}).get("hook_errors") or [])})
+    if hooks:
+        warnings.append(f"launch {name}: TRL's logging hooks failed: {hooks[:3]}")
     info = {"ran": True, "status": meta.get("status"), "resume_from": meta.get("resume_from"),
             "start_step": meta.get("start_step"), "final_global_step": meta.get("final_global_step"),
             "profile": meta.get("profile"), "dropped_optional_fields": meta.get("dropped_optional_fields"),
@@ -144,17 +147,32 @@ def _span(xs: list[int]) -> str:
     return f"{xs[0]}-{xs[-1]}" if xs == list(range(xs[0], xs[-1] + 1)) else str(xs)
 
 
-def check(run: Path, stage: str, cfg: RunConfig) -> dict[str, Any]:
+EXIT_MEANING = {"124": "timed out", "137": "killed after the timeout", "2": "config error", "3": "no policy env"}
+
+
+def check(run: Path, stage: str, cfg: RunConfig, exit_codes: dict[str, str] | None = None) -> dict[str, Any]:
     problems: list[str] = []
     warnings: list[str] = []
+    for name, code in sorted((exit_codes or {}).items()):
+        if code == "skipped":
+            problems.append(f"launch {name} did not run (an earlier step failed)")
+        elif code != "0":
+            why = EXIT_MEANING.get(code)
+            problems.append(f"launch {name} exited {code}" + (f" ({why})" if why else ""))
     max_steps, save = cfg.trainer["max_steps"], cfg.trainer["save_steps"]
     resume = cfg.resume_step if cfg.resume_step is not None else save
     ckpts = {s: _checkpoint(run / "a" / f"checkpoint-{s}", s, problems, warnings)
              for s in range(save, max_steps + 1, save)}
-    first, rows_a = _launch(run, "a", cfg, list(range(1, max_steps + 1)), 0, problems, warnings)
+    # The relaunch needs only launch a's exit code and checkpoints; its steps and rewards are judged at the end.
+    later: list[str] = []
+    first, rows_a = _launch(run, "a", cfg, list(range(1, max_steps + 1)), 0, later, warnings)
+    if stage == "final":
+        problems += later
+    else:
+        warnings += [f"judged at the final stage: {p}" for p in later]
     rep: dict[str, Any] = {"stage": stage, "run": str(run), "config": cfg.path, "config_sha256": cfg.sha256,
                            "max_steps": max_steps, "save_steps": save, "resume_from_step": resume,
-                           "first": {**first, "checkpoints": ckpts}}
+                           "exit_codes": dict(exit_codes or {}), "first": {**first, "checkpoints": ckpts}}
     rows = rows_a
     if stage == "final":
         resumed, rows_b = _launch(run, "b", cfg, list(range(resume + 1, max_steps + 1)), resume, problems, warnings)
@@ -181,13 +199,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run", type=Path, required=True)
     ap.add_argument("--stage", choices=("first", "final"), required=True)
     ap.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    ap.add_argument("--rc", action="append", default=[], metavar="LAUNCH=CODE",
+                    help="a launch's exit code (a=0, b=124, b=skipped); anything but 0 is a failure")
     a = ap.parse_args(argv)
+    codes = dict(x.split("=", 1) for x in a.rc if "=" in x)
     try:
         cfg = load_config(a.config)
     except (OSError, ConfigError) as err:
         print(f"GRPO_SMOKE_FAILED: config {a.config}: {err}")
         return 1
-    rep = check(a.run, a.stage, cfg)
+    rep = check(a.run, a.stage, cfg, codes)
     out = a.run / "summary"
     out.mkdir(parents=True, exist_ok=True)
     tmp = out / "smoke.json.tmp"

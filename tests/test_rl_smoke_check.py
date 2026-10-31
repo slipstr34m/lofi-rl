@@ -104,6 +104,8 @@ def test_reward_errors_fail_the_smoke(tmp_path, capsys):
         f.unlink()
     a.rmdir()
     _summary(a, list(range(1, 11)), errors=3)
+    assert sc.main(["--run", str(run), "--stage", "first", "--rc", "a=0"]) == 0, "the resume test still runs"
+    assert "FIRST_RUN_OK" in capsys.readouterr().out
     rc, rep, _ = _final(run, capsys)
     assert rc == 1 and any("3 reward errors" in f for f in rep["failures"])
 
@@ -114,3 +116,13 @@ def test_a_launch_that_never_wrote_its_summary_is_reported_not_raised(tmp_path, 
     rc, rep, out = _final(run, capsys)
     assert rc == 1 and rep["ok"] is False and "GRPO_SMOKE_FAILED" in out
     assert any("summary/a" in f for f in rep["failures"])
+
+
+def test_a_launch_that_exited_non_zero_fails_the_smoke_even_when_its_files_look_complete(tmp_path, capsys):
+    run = _good(tmp_path)
+    rc = sc.main(["--run", str(run), "--stage", "final", "--rc", "a=0", "--rc", "b=124"])
+    rep = json.loads((run / "summary" / "smoke.json").read_text())
+    assert rc == 1 and rep["exit_codes"] == {"a": "0", "b": "124"}
+    assert any("launch b exited 124 (timed out)" in f for f in rep["failures"])
+    assert sc.main(["--run", str(run), "--stage", "final", "--rc", "a=0", "--rc", "b=0"]) == 0
+    assert capsys.readouterr().out.strip().endswith("GRPO_SMOKE_OK")
