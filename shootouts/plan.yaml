@@ -1,14 +1,17 @@
 # The Phase-1 shootout plan: docs/SHOOTOUTS.md §4 and §6 transcribed in symbols (§7.8). Read by
 # src/lofi_rl/shootout/plan.py; the palette generator (lofi_rl.shootout.palettes), the level tool
-# (lofi_rl.shootout.levels) and the batch builder (§7.6) take everything they need from here.
+# (lofi_rl.shootout.levels), the job-time draw (lofi_rl.shootout.draw) and the batch builder (lofi_rl.shootout.batch)
+# take everything they need from here.
 #
 # Public, like the repo (§2.3): the candidate lists, each stage's symbols and the constraints of its draw, the loop of
 # each round slot and its tiles IN SYMBOLS, the batches, the fixed band, the cuts. Which option a symbol stands for,
-# the order of the rounds and the hidden controls are drawn at job time from a seed that is never committed; no
+# the order of the rounds and the hidden controls are drawn at job time from a 64-bit seed that is never committed
+# (CD-21) and recorded only in runs/shootout-<job>/summary/draw.json, batches.json and the hidden manifests; no
 # option is ever placed on a tile here (tests/test_shootout_plan.py checks it). Sound claims: none.
 #
 # Paths are relative to the repo root. Option ids are the `option` values of the hidden manifests (§4 header).
 version: 1
+scene: city at night                       # the only scene (TASTE.md); the page shows nothing else
 base: shootouts/palettes/base.yaml        # the committed base palette (§7.8; chains pinned from job 1 to the freeze)
 loops: shootouts/loops                     # the 9 reference loops and their briefs.yaml (§5)
 loop_names:                                # the round tables' L1..L9 (§5)
@@ -21,6 +24,7 @@ loop_names:                                # the round tables' L1..L9 (§5)
   L7: l7_hopeful_low
   L8: l8_hopeful_mid
   L9: l9_hopeful_high
+alto_above: [L2, L4, L8]                   # §4.4: both alto phrases sit 12 above the tenor's on these loops
 voices: {keys: ep, kit: dusty}             # CD-1: every loop says `keys: ep rootless` and `drums: dusty`
 registers:                                 # instrument.md §3; a palette names its one sax by its register (§5 Names)
   tenor: {play: [44, 75], comfort: [48, 72], home: [50, 61]}
@@ -28,8 +32,9 @@ registers:                                 # instrument.md §3; a palette names 
 
 # ------------------------------------------------------------------------------------------------ candidates
 # bus: keys | drums | bass | sax. `source` is a source id of the base palette. A kit made by the §7.4 importer names
-# its `archive`: the tar and the importer's printed `lanes:`/`choke:` blocks, both under $LOFI_ASSETS, and the tar's
-# sha256 once it is pinned (null until then: the generator then records the sha256 it reads).
+# its `archive`: the tar and the importer's printed document (its `sources`, `choke` and `lanes`), both under
+# $LOFI_ASSETS, and the tar's sha256 once it is pinned (null until then: the generator then records the sha256 it
+# reads).
 candidates:
   # §4.1 keys (T·Keys; I6; A). Families pair the twins of K1 (CD-8).
   jrhodes3d: {bus: keys, source: jrhodes3d_mono, bank: 0, prog: 0, family: rhodes}
@@ -116,20 +121,27 @@ vamps:
   rise: {mood: melancholy, chords: bVImaj7 bVII13, span: 2, margin: 16, borrowed: true}
 
 # ------------------------------------------------------------------------------------------------ stages (§4)
+# day: 1-3. bus: the bus whose loudness the hidden manifest records as `bus_lufs` (§2.2): keys | drums | bass | sax,
+# `bed` for the rain, `keys+bass` for the vamps (CD-27). fills: the band slot the option takes (keys, kit, bass, sax,
+# swing, humanize, sax_variant, timing, bed, rain), null when the option is a loop substitution (the vamps).
 # symbols: what the tiles hold. options: what the draw maps them onto (a candidate, variant or vamp id), or `ranks`
-# when they come from an earlier stage's tally (§8). draw: the constraints of the map (§2.3 item 1):
+# when they come from an earlier stage's tally (§8; the job's --leaders). draw: the constraints of the map (§2.3
+# item 1):
 #   any            any one-to-one map of symbols onto options
 #   family_pairs   each pair of twin symbols is one family; which family is which pair and which member a or b
 #   registers      each group of symbols takes the options of one register
 #   central        the listed options land on the listed symbols (the central tile sums), the rest at random
 #   ranks          the options are an earlier stage's top `top`, ranks drawn to symbols
+# groups: instead of options and draw, one draw per group of slots (the vamps: one per mood, CD-15).
 # slots: one per round: id, loop (L1..L9), tiles 1-4 left to right; R2 adds `kit`, the R1 symbol whose kit plays.
 # sub: a loop line every clip of the stage substitutes (§5 Substitutions); `option` takes the option's own value.
-# tie: the alternative symbols and tiles a tie brings (CD-41; §4.4).
+# tie: the alternative symbols and tiles a tie brings (CD-41; §4.4). default: the option a cut pins to the middle
+# tile sum and the one that stays on a tie (§2.7, CD-39). band: band slots the stage fixes for all its clips.
 stages:
   K1:
     day: 1
     bus: keys
+    fills: keys
     category: keys
     what: rootless
     symbols: [P1a, P1b, P2a, P2b, P3a, P3b, P4a, P4b]
@@ -146,6 +158,7 @@ stages:
   R1:
     day: 1
     bus: drums
+    fills: kit
     category: kits
     what: kit, GU acoustic bass, 3 patterns at 55 %, no humanize
     symbols: [k1, k2, k3]
@@ -158,6 +171,7 @@ stages:
   R2:
     day: 1
     bus: bass
+    fills: bass
     category: bass
     what: bass on the round's kit
     symbols: [b1, b2, b3]
@@ -170,6 +184,7 @@ stages:
   S1:
     day: 1
     bus: sax
+    fills: sax
     category: sax
     what: sax source
     symbols: [t1, t2, t3, a1, a2, a3]
@@ -184,8 +199,11 @@ stages:
       - {id: S1.6, loop: L7, tiles: [a2, t3, t1, t2]}
   R3a:
     day: 2
+    bus: drums
+    fills: swing
     category: swing
     what: swing, humanize off (advisory, CD-13)
+    default: swing_55
     symbols: [w1, w2, w3, w4]
     options: [swing_50, swing_55, swing_58, swing_split]
     draw: {rule: any}
@@ -194,8 +212,11 @@ stages:
       - {id: R3a.2, loop: L4, tiles: [w4, w3, w2, w1]}
   R3b:
     day: 2
+    bus: drums
+    fills: humanize
     category: humanize
     what: humanize at swing 0.55
+    default: humanize_off
     symbols: [n1, n2, n3]
     options: [humanize_off, humanize_h1, humanize_h2]
     draw: {rule: any}
@@ -206,6 +227,7 @@ stages:
   S1f:
     day: 2
     bus: sax
+    fills: sax
     category: sax
     what: sax final
     symbols: [f1, f2]
@@ -218,8 +240,11 @@ stages:
       - {id: S1f.3, loop: L8, tiles: [f1, f2]}
   S2a:
     day: 2
+    bus: sax
+    fills: sax_variant
     category: sax_warmth
     what: the S1 leader's warmth, with the expression-off control
+    default: sax_plain
     symbols: [m1, m2, m3]
     options: [sax_plain, sax_warm_on, sax_expr_off]
     draw: {rule: any}
@@ -229,8 +254,11 @@ stages:
       - {id: S2a.3, loop: L9, tiles: [m3, m1, m2]}
   S2b:
     day: 2
+    bus: sax
+    fills: timing
     category: sax_timing
     what: the S1 leader's timing at warm off (CD-19)
+    default: timing_grid
     symbols: [g1, g2, g3]
     options: [timing_grid, timing_lag, timing_swung]
     draw: {rule: any}
@@ -241,6 +269,7 @@ stages:
   K2:
     day: 2
     bus: keys
+    fills: keys
     category: keys
     what: spread
     symbols: [u1, u2, u3]
@@ -251,46 +280,39 @@ stages:
     slots:
       - {id: K2.1, loop: L3, tiles: [u1, u2, u3]}
       - {id: K2.2, loop: L8, tiles: [u2, u3, u1]}
-  V_melancholy:
+  V:                                       # the vamps: per mood, 3 rows of a 4x4 Latin square on its three loops
     day: 2
+    bus: keys+bass
+    fills: null
     category: vamps
     what: sax muted
+    sax_muted: true                        # §4.3, §7.3: a -200 dB Gain heads the sax chain
     symbols: [v1, v2, v3, v4]
-    options: [drift, plagal, backdoor, rise]
-    draw: {rule: central, options: [plagal], symbols: [v2, v3]}          # CD-16
+    groups:                                # one draw per mood (CD-15); plagal and float on v2 or v3 (CD-16)
+      - {slots: [V.1, V.2, V.3], options: [drift, plagal, backdoor, rise],
+         draw: {rule: central, options: [plagal], symbols: [v2, v3]}}
+      - {slots: [V.4, V.5, V.6], options: [i_iv, pulse, step, float],
+         draw: {rule: central, options: [float], symbols: [v2, v3]}}
+      - {slots: [V.7, V.8, V.9], options: [aruarian, royal_half, two_of_us, lift], draw: {rule: any}}
     sub: {vamp: option}
     slots:
-      - {id: V_melancholy.1, loop: L1, tiles: [v1, v2, v3, v4]}
-      - {id: V_melancholy.2, loop: L2, tiles: [v2, v1, v4, v3]}
-      - {id: V_melancholy.3, loop: L3, tiles: [v3, v4, v1, v2]}
-  V_wistful:
-    day: 2
-    category: vamps
-    what: sax muted
-    symbols: [v1, v2, v3, v4]
-    options: [i_iv, pulse, step, float]
-    draw: {rule: central, options: [float], symbols: [v2, v3]}           # CD-16
-    sub: {vamp: option}
-    slots:
-      - {id: V_wistful.1, loop: L4, tiles: [v1, v2, v3, v4]}
-      - {id: V_wistful.2, loop: L5, tiles: [v2, v1, v4, v3]}
-      - {id: V_wistful.3, loop: L6, tiles: [v3, v4, v1, v2]}
-  V_hopeful:
-    day: 2
-    category: vamps
-    what: sax muted
-    symbols: [v1, v2, v3, v4]
-    options: [aruarian, royal_half, two_of_us, lift]
-    draw: {rule: any}
-    sub: {vamp: option}
-    slots:
-      - {id: V_hopeful.1, loop: L7, tiles: [v1, v2, v3, v4]}
-      - {id: V_hopeful.2, loop: L8, tiles: [v2, v1, v4, v3]}
-      - {id: V_hopeful.3, loop: L9, tiles: [v3, v4, v1, v2]}
+      - {id: V.1, loop: L1, tiles: [v1, v2, v3, v4]}
+      - {id: V.2, loop: L2, tiles: [v2, v1, v4, v3]}
+      - {id: V.3, loop: L3, tiles: [v3, v4, v1, v2]}
+      - {id: V.4, loop: L4, tiles: [v1, v2, v3, v4]}
+      - {id: V.5, loop: L5, tiles: [v2, v1, v4, v3]}
+      - {id: V.6, loop: L6, tiles: [v3, v4, v1, v2]}
+      - {id: V.7, loop: L7, tiles: [v1, v2, v3, v4]}
+      - {id: V.8, loop: L8, tiles: [v2, v1, v4, v3]}
+      - {id: V.9, loop: L9, tiles: [v3, v4, v1, v2]}
   W1:
     day: 3
-    category: rain
+    bus: bed
+    fills: bed
+    category: rain_excerpt
     what: rain excerpt at delta 18 (CD-20)
+    default: excerpt_e1
+    band: {rain: rain_d18}                 # Δ 18, the loudest bed under test
     symbols: [z1, z2, z3]
     options: [excerpt_e1, excerpt_e2, excerpt_e3]
     draw: {rule: any}
@@ -300,8 +322,12 @@ stages:
       - {id: W1.3, loop: L5, tiles: [z3, z1, z2]}
   W2:
     day: 3
-    category: rain
+    bus: bed
+    fills: rain
+    category: rain_level
     what: rain level on excerpt e1
+    default: rain_d24
+    band: {bed: excerpt_e1}
     symbols: [y1, y2, y3, y4]
     options: [rain_none, rain_d30, rain_d24, rain_d18]
     draw: {rule: any}
@@ -312,52 +338,62 @@ stages:
       - {id: W2.4, loop: L8, tiles: [y4, y1, y2, y3]}
 
 # ------------------------------------------------------------------------------------- days and the band (§4, §2.6)
-# band: the instrument of every bus a round does not test (CD-7). Day 2 and Day 3 name tallies (§8), resolved from
-# the job's --leaders (summary/leaders.json).
+# band: the instrument of every bus a round does not test (CD-7); Day 2 and Day 3 name tallies (§8). leaders: the
+# band slots the job's --leaders names (§7.7; summary/leaders.json): null where the job must name it, an option where
+# that is the default. fixed: the other band slots, the palette defaults of §4 "Fixed in every round" (swing 0.55,
+# humanize off, warm off with expression on, grid timing, no bed).
 days:
   1:
     date: 2026-11-03
     stages: [K1, R1, R2, S1]
     band: {keys: gu_tine_ep, drums: kit_gu_jazz, bass: bass_gu_acoustic, sax: sax_gu_tenor}
+    fixed: {swing: swing_55, humanize: humanize_off, sax_variant: sax_plain, timing: timing_grid, bed: null,
+            rain: rain_none}
   2:
     date: 2026-11-04
-    stages: [R3a, R3b, S1f, S2a, S2b, K2, V_melancholy, V_wistful, V_hopeful]
+    stages: [R3a, R3b, S1f, S2a, S2b, K2, V]
     band: {keys: leader of K1, drums: leader of R1, bass: R2 pairing of the drums, sax: leader of S1}
+    leaders: {keys: null, kit: null, bass: null, sax: null}
+    fixed: {swing: swing_55, humanize: humanize_off, sax_variant: sax_plain, timing: timing_grid, bed: null,
+            rain: rain_none}
   3:
     date: 2026-11-06
     stages: [W1, W2]
     band: {keys: leader of K1 + K2, drums: R3 picks, bass: R2 pairing of the drums, sax: the final with its S2 picks}
+    leaders: {keys: null, kit: null, bass: null, sax: null, swing: swing_55, humanize: humanize_off,
+              sax_variant: sax_plain, timing: timing_grid}
+    fixed: {bed: null, rain: rain_none}
 
 # ---------------------------------------------------------------------------------------------- batches (§6)
-# rounds: design rounds per stage; anchors: extra rounds with a sour copy (§2.5). category `per_round`: each round
-# carries its stage's category. est_min: plan estimate / full auto-play. Contents only: the order is drawn (§2.4).
+# rounds: design rounds per stage; anchors: extra rounds with a sour copy (§2.5). category: the hidden manifest's
+# batch category (its rounds carry their stage's). est_min: plan estimate / full auto-play. Contents only: the order
+# is drawn (§2.4). A row naming two batches shares its rounds between them: `split` names the pool, which the draw
+# divides into batches of about equal planned length, with the 5 repeats (and the S2 re-run, §4.4).
 batches:
   - {names: [b1103-1-keys], date: 2026-11-03, day: 1, rounds: {K1: 6}, anchors: 0, category: keys,
      note: "Which keys do you like best?", est_min: [7.8, 9.3]}
-  - {names: [b1103-2-groove], date: 2026-11-03, day: 1, rounds: {R1: 3, R2: 3}, anchors: 0, category: per_round,
+  - {names: [b1103-2-groove], date: 2026-11-03, day: 1, rounds: {R1: 3, R2: 3}, anchors: 0, category: "kits, bass",
      note: "Which drums and bass do you like best?", est_min: [6.0, 6.9]}
   - {names: [b1103-3-sax], date: 2026-11-03, day: 1, rounds: {S1: 6}, anchors: 1, category: sax,
      note: "Which sax do you like best?", est_min: [9.2, 11.1]}
-  - {names: [b1104-1-groove], date: 2026-11-04, day: 2, rounds: {R3a: 2, R3b: 3}, anchors: 0, category: per_round,
-     note: "Which groove do you like best?", est_min: [5.6, 6.5]}
+  - {names: [b1104-1-groove], date: 2026-11-04, day: 2, rounds: {R3a: 2, R3b: 3}, anchors: 0,
+     category: "swing, humanize", note: "Which groove do you like best?", est_min: [5.6, 6.5]}
   - {names: [b1104-2-sax], date: 2026-11-04, day: 2, rounds: {S1f: 3, S2a: 3, S2b: 3}, anchors: 1,
-     category: per_round, note: "Which sax do you like best?", est_min: [9.2, 10.5]}
+     category: "sax, sax_warmth, sax_timing", note: "Which sax do you like best?", est_min: [9.2, 10.5]}
   - {names: [b1104-3-keys], date: 2026-11-04, day: 2, rounds: {K2: 2}, anchors: 0, category: keys,
      note: "Which keys do you like best?", est_min: [1.9, 2.2]}
-  - {names: [b1104-4-vamps], date: 2026-11-04, day: 2, rounds: {V_melancholy: 3, V_wistful: 3, V_hopeful: 3},
-     anchors: 0, category: vamps, note: "Which chords do you like best? There is no sax in this batch.",
-     est_min: [11.6, 13.9]}
+  - {names: [b1104-4-vamps], date: 2026-11-04, day: 2, rounds: {V: 9}, anchors: 0, category: vamps,
+     note: "Which chords do you like best? There is no sax in this batch.", est_min: [11.6, 13.9]}
   - {names: [b1106-1-mix, b1106-2-mix], date: 2026-11-06, day: 3, rounds: {W1: 3, W2: 4}, anchors: 1,
-     category: per_round, note: "Pick the best and the worst in each round.", est_min: [7.7, 9.1],
-     split: "drawn into two batches of about equal length, with the 5 repeats (and the S2 re-run, §4.4)"}
+     category: per_round, note: "Pick the best and the worst in each round.", est_min: [7.7, 9.1], split: mix}
 # Pushes (§6): Nov 3 b1103-1 + b1103-2, then b1103-3; Nov 4 b1104-1 + b1104-2, then b1104-3 + b1104-4; Nov 6 one each.
 
 # ------------------------------------------------------------------------------- hidden controls (§2.5; D-013)
 controls:
   repeats:
     count: 5
-    groups: {keys: [K1, K2], groove: [R1, R2, R3a, R3b], vamps: [V_melancholy, V_wistful, V_hopeful],
-             sax_sources: [S1, S1f], sax_variants: [S2a, S2b]}
+    groups: {keys: [K1, K2], drums_bass: [R1, R2, R3a, R3b], vamps: [V], sax_sources: [S1, S1f],
+             sax_variants: [S2a, S2b]}
     day: 3
     min_days_after: 2
     tiles: reversed
@@ -368,13 +404,16 @@ controls:
     sour: every sax note's accidental raised by one (a natural becomes '#', a 'b' becomes natural) (CD-23)
     gate: G1-G6 in its mood, P_chrom >= 0.2
 
+# The S2 re-run (§4.4): with the job's --rerun-s2 <sax id>, these stages run again on that sax in the day's split pool.
+rerun_s2: {day: 3, stages: [S2a, S2b]}
+
 # ------------------------------------------------------------------------------------------- cut options (§2.7)
-# Applied in `order` within a day until the day fits (CD-50). drop: slots left out; retile: new tiles of a kept
-# slot; default_on: [symbol, option] the draw must then map (the default on the middle tile sum).
+# Applied in `order` within a day until the day fits (CD-50), by the job's --cut <id>+<id>. drop: slots left out (a
+# stage with none left is dropped); retile: new tiles of a kept slot; default_on: [symbol, option] the draw must then
+# map (the default on the middle tile sum).
 cuts:
-  - {id: vamps-high, day: 2, order: 1, drop: [V_melancholy.3, V_wistful.3, V_hopeful.3],
-     retile: {V_melancholy.2: [v4, v3, v2, v1], V_wistful.2: [v4, v3, v2, v1], V_hopeful.2: [v4, v3, v2, v1]},
-     saves_min: [3.7, 4.3]}
+  - {id: vamps-high, day: 2, order: 1, drop: [V.3, V.6, V.9],
+     retile: {V.2: [v4, v3, v2, v1], V.5: [v4, v3, v2, v1], V.8: [v4, v3, v2, v1]}, saves_min: [3.7, 4.3]}
   - {id: latin3, day: 2, order: 2, drop: [R3b.3, S2a.3, S2b.3],
      default_on: {R3b: [n1, humanize_off], S2a: [m1, sax_plain], S2b: [g1, timing_grid]}, saves_min: [3.0, 3.4]}
   - {id: final, day: 2, order: 3, drop: [S1f.1, S1f.2, S1f.3], saves_min: [2.1, 2.3]}

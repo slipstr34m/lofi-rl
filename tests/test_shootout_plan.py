@@ -1,13 +1,16 @@
-"""shootouts/plan.yaml against docs/SHOOTOUTS.md §2, §4 and §6 (§7.8 "Plan").
+"""shootouts/plan.yaml against docs/SHOOTOUTS.md §2, §4 and §6 (§7.6 test 2, §7.8 "Plan").
 
 The round tables, the candidate tables, the vamp table and the batch table are written out here a second time,
 from the doc, independently of plan.yaml, so a slip in either transcription fails. The design properties the doc
 states in words (twins meet 3 times, Latin squares, tile sums, each candidate heard in 2+ loops on distinct tiles)
-are recomputed from the plan's slots. The plan is public (§2.3): its tiles hold symbols only, never an option."""
+are recomputed from the plan's slots, and so is the balance §2.4 promises the draw (tile sums by option count, the
+alto-above rounds, the vamps' central tile sums, the cuts). The plan is public (§2.3): its tiles hold symbols only,
+never an option."""
 from __future__ import annotations
 
+import copy
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from itertools import combinations
 from pathlib import Path
 
@@ -17,7 +20,9 @@ import yaml
 from lofi_rl.dsl import expand, parse
 from lofi_rl.dsl.vocab import LANES
 from lofi_rl.palette import load_palette
-from lofi_rl.shootout.plan import PlanError, load_plan, parse_plan, substitute
+from lofi_rl.shootout.plan import PLAN as PLAN_FILE
+from lofi_rl.shootout.plan import PlanError, apply_cuts, load_plan, parse_plan, substitute
+from lofi_rl.ui.manifest import BATCH_RE
 
 ROOT = Path(__file__).resolve().parents[1]
 PLAN_PATH = ROOT / "shootouts" / "plan.yaml"
@@ -36,10 +41,9 @@ DOC_SLOTS = {
     "R2.1": ("L6", "b1 b2 b3"), "R2.2": ("L7", "b2 b3 b1"), "R2.3": ("L2", "b3 b1 b2"),
     "R3a.1": ("L9", "w1 w2 w3 w4"), "R3a.2": ("L4", "w4 w3 w2 w1"),
     "R3b.1": ("L3", "n1 n2 n3"), "R3b.2": ("L7", "n2 n3 n1"), "R3b.3": ("L5", "n3 n1 n2"),
-    "V_melancholy.1": ("L1", "v1 v2 v3 v4"), "V_melancholy.2": ("L2", "v2 v1 v4 v3"),
-    "V_melancholy.3": ("L3", "v3 v4 v1 v2"),
-    "V_wistful.1": ("L4", "v1 v2 v3 v4"), "V_wistful.2": ("L5", "v2 v1 v4 v3"), "V_wistful.3": ("L6", "v3 v4 v1 v2"),
-    "V_hopeful.1": ("L7", "v1 v2 v3 v4"), "V_hopeful.2": ("L8", "v2 v1 v4 v3"), "V_hopeful.3": ("L9", "v3 v4 v1 v2"),
+    "V.1": ("L1", "v1 v2 v3 v4"), "V.2": ("L2", "v2 v1 v4 v3"), "V.3": ("L3", "v3 v4 v1 v2"),
+    "V.4": ("L4", "v1 v2 v3 v4"), "V.5": ("L5", "v2 v1 v4 v3"), "V.6": ("L6", "v3 v4 v1 v2"),
+    "V.7": ("L7", "v1 v2 v3 v4"), "V.8": ("L8", "v2 v1 v4 v3"), "V.9": ("L9", "v3 v4 v1 v2"),
     "S1.1": ("L4", "t3 a1 a2 a3"), "S1.2": ("L3", "a3 t1 t2 t3"), "S1.3": ("L1", "t1 a2 a3 a1"),
     "S1.4": ("L5", "a1 t2 t3 t1"), "S1.5": ("L9", "t2 a3 a1 a2"), "S1.6": ("L7", "a2 t3 t1 t2"),
     "S1f.1": ("L2", "f1 f2"), "S1f.2": ("L6", "f2 f1"), "S1f.3": ("L8", "f1 f2"),
@@ -55,7 +59,7 @@ DOC_LOOPS = {"L1": ("melancholy", "low", 76), "L2": ("melancholy", "mid", 81), "
              "L4": ("wistful", "low", 78), "L5": ("wistful", "mid", 83), "L6": ("wistful", "high", 89),
              "L7": ("hopeful", "low", 79), "L8": ("hopeful", "mid", 85), "L9": ("hopeful", "high", 90)}
 DAYS = {1: {"K1", "R1", "R2", "S1"},
-        2: {"R3a", "R3b", "S1f", "S2a", "S2b", "K2", "V_melancholy", "V_wistful", "V_hopeful"},
+        2: {"R3a", "R3b", "S1f", "S2a", "S2b", "K2", "V"},
         3: {"W1", "W2"}}
 # §4.1, §4.2, §4.4: option -> (bus, bank, prog, family or register, the source file under assets/big, or gu).
 GU = "gu"
@@ -95,15 +99,15 @@ DOC_VAMPS = {
 # §6: (date, names, rounds per stage, anchors, category, note, est_min plan / full)
 DOC_BATCHES = [
     ("2026-11-03", ("b1103-1-keys",), {"K1": 6}, 0, "keys", "Which keys do you like best?", (7.8, 9.3)),
-    ("2026-11-03", ("b1103-2-groove",), {"R1": 3, "R2": 3}, 0, "per_round", "Which drums and bass do you like best?",
+    ("2026-11-03", ("b1103-2-groove",), {"R1": 3, "R2": 3}, 0, "kits, bass", "Which drums and bass do you like best?",
      (6.0, 6.9)),
     ("2026-11-03", ("b1103-3-sax",), {"S1": 6}, 1, "sax", "Which sax do you like best?", (9.2, 11.1)),
-    ("2026-11-04", ("b1104-1-groove",), {"R3a": 2, "R3b": 3}, 0, "per_round", "Which groove do you like best?",
+    ("2026-11-04", ("b1104-1-groove",), {"R3a": 2, "R3b": 3}, 0, "swing, humanize", "Which groove do you like best?",
      (5.6, 6.5)),
-    ("2026-11-04", ("b1104-2-sax",), {"S1f": 3, "S2a": 3, "S2b": 3}, 1, "per_round", "Which sax do you like best?",
-     (9.2, 10.5)),
+    ("2026-11-04", ("b1104-2-sax",), {"S1f": 3, "S2a": 3, "S2b": 3}, 1, "sax, sax_warmth, sax_timing",
+     "Which sax do you like best?", (9.2, 10.5)),
     ("2026-11-04", ("b1104-3-keys",), {"K2": 2}, 0, "keys", "Which keys do you like best?", (1.9, 2.2)),
-    ("2026-11-04", ("b1104-4-vamps",), {"V_melancholy": 3, "V_wistful": 3, "V_hopeful": 3}, 0, "vamps",
+    ("2026-11-04", ("b1104-4-vamps",), {"V": 9}, 0, "vamps",
      "Which chords do you like best? There is no sax in this batch.", (11.6, 13.9)),
     ("2026-11-06", ("b1106-1-mix", "b1106-2-mix"), {"W1": 3, "W2": 4}, 1, "per_round",
      "Pick the best and the worst in each round.", (7.7, 9.1)),
@@ -235,20 +239,30 @@ def test_s1_follows_section_4_4():
     assert registers == {"tenor": 3, "alto": 3}
 
 
+def mood_group(mood: str):
+    """The vamp stage's draw group of one mood (§4.3: per mood, 4 vamps on the mood's three loops)."""
+    (g,) = [g for g in PLAN.stages["V"].groups if g.where["mood"] == mood]
+    return g
+
+
 def test_vamp_rounds_are_three_rows_of_a_latin_square_per_mood():
+    st = PLAN.stages["V"]
+    assert st.category == "vamps" and st.sub == {"vamp": "option"} and st.sax_muted
     for mood, loops in (("melancholy", ["L1", "L2", "L3"]), ("wistful", ["L4", "L5", "L6"]),
                         ("hopeful", ["L7", "L8", "L9"])):
-        st = PLAN.stages[f"V_{mood}"]
-        assert [s.loop for s in st.slots] == loops
-        assert [PLAN.briefs()[PLAN.loop_names[s.loop]].energy for s in st.slots] == ["low", "mid", "high"]
-        assert tile_sums(st.id) == {"v1": 6, "v2": 7, "v3": 8, "v4": 9}
-        assert sorted(st.options) == sorted(v for v, d in DOC_VAMPS.items() if d[0] == mood)
-        assert st.category == "vamps" and st.sub == {"vamp": "option"}
-    central = {m: PLAN.stages[f"V_{m}"].draw for m in ("melancholy", "wistful", "hopeful")}
-    assert central["melancholy"] == {"rule": "central", "options": ["plagal"], "symbols": ["v2", "v3"]}
-    assert central["wistful"] == {"rule": "central", "options": ["float"], "symbols": ["v2", "v3"]}
-    assert central["hopeful"] == {"rule": "any"}
-    assert tile_sums("V_melancholy")["v2"] in (7, 8) and tile_sums("V_melancholy")["v3"] in (7, 8)
+        g = mood_group(mood)
+        slots = [s for s in st.slots if s.id in g.slots]
+        assert [s.loop for s in slots] == loops
+        assert [PLAN.briefs()[PLAN.loop_names[s.loop]].energy for s in slots] == ["low", "mid", "high"]
+        sums = Counter()
+        for s in slots:
+            for pos, sym in enumerate(s.tiles, 1):
+                sums[sym] += pos
+        assert sums == {"v1": 6, "v2": 7, "v3": 8, "v4": 9}
+        assert sorted(g.options) == sorted(v for v, d in DOC_VAMPS.items() if d[0] == mood)
+    assert mood_group("melancholy").rule == "central" and mood_group("melancholy").pin == {"plagal": ("v2", "v3")}
+    assert mood_group("wistful").rule == "central" and mood_group("wistful").pin == {"float": ("v2", "v3")}
+    assert mood_group("hopeful").rule == "any" and mood_group("hopeful").pin == {}
 
 
 def test_every_candidate_is_heard_in_two_loops_on_distinct_tiles_within_its_stage():
@@ -327,7 +341,7 @@ def substituted_texts():
             if st.sub == {"keys": "ep spread"}:
                 yield slot.id, None, substitute(text, keys="ep spread")
             elif st.sub == {"vamp": "option"}:
-                for vid in st.options:
+                for vid in st.groups[st.group_of(slot.id, slot.tiles[0])].options:
                     v = PLAN.vamps[vid]
                     yield slot.id, vid, substitute(text, vamp=f"{v.chords} span {v.span}")
 
@@ -381,8 +395,7 @@ def test_the_batches_are_section_6s():
     assert sorted(b.day for b in PLAN.batches if b.anchors) == [1, 2, 3]
     assert all("sax" in n or "mix" in n for b in PLAN.batches if b.anchors for n in b.names)
     assert PLAN.controls["repeats"]["groups"] == {
-        "keys": ["K1", "K2"], "groove": ["R1", "R2", "R3a", "R3b"],
-        "vamps": ["V_melancholy", "V_wistful", "V_hopeful"], "sax_sources": ["S1", "S1f"],
+        "keys": ["K1", "K2"], "drums_bass": ["R1", "R2", "R3a", "R3b"], "vamps": ["V"], "sax_sources": ["S1", "S1f"],
         "sax_variants": ["S2a", "S2b"]}
 
 
@@ -390,10 +403,9 @@ def test_the_cut_options_are_section_2_7s():
     cuts = {c.id: c for c in PLAN.cuts}
     assert [c.id for c in sorted(PLAN.cuts, key=lambda c: (c.day, c.order))] == \
         ["vamps-high", "latin3", "final", "w1-two", "w2-two"]
-    assert cuts["vamps-high"].drop == ("V_melancholy.3", "V_wistful.3", "V_hopeful.3")
-    assert cuts["vamps-high"].retile == {"V_melancholy.2": ["v4", "v3", "v2", "v1"],
-                                         "V_wistful.2": ["v4", "v3", "v2", "v1"],
-                                         "V_hopeful.2": ["v4", "v3", "v2", "v1"]}
+    assert cuts["vamps-high"].drop == ("V.3", "V.6", "V.9")
+    assert cuts["vamps-high"].retile == {"V.2": ["v4", "v3", "v2", "v1"], "V.5": ["v4", "v3", "v2", "v1"],
+                                         "V.8": ["v4", "v3", "v2", "v1"]}
     assert cuts["latin3"].drop == ("R3b.3", "S2a.3", "S2b.3")
     assert cuts["latin3"].default_on == {"R3b": ["n1", "humanize_off"], "S2a": ["m1", "sax_plain"],
                                          "S2b": ["g1", "timing_grid"]}
@@ -420,8 +432,219 @@ def test_the_cut_options_are_section_2_7s():
     (lambda d: d["batches"][0]["rounds"].update(K9=1), "K9"),
 ])
 def test_the_loader_refuses_a_broken_plan(edit, message):
-    import copy
     doc = copy.deepcopy(DOC)
     edit(doc)
     with pytest.raises(PlanError, match=message):
         parse_plan(doc, PLAN_PATH)
+
+
+# ======================================================================= the design the draw relies on (§2.4)
+@pytest.fixture(scope="module")
+def plan():
+    return load_plan()
+
+
+def _sums(slots):
+    """symbol -> sum of the tile numbers (1-based) it sits on, over the given slots."""
+    out = Counter()
+    for slot in slots:
+        for pos, sym in enumerate(slot.tiles, 1):
+            out[sym] += pos
+    return dict(out)
+
+
+def _tiles(slots):
+    out = defaultdict(list)
+    for slot in slots:
+        for pos, sym in enumerate(slot.tiles, 1):
+            out[sym].append(pos)
+    return out
+
+
+def names_of(batches) -> list[str]:
+    return [n for b in batches for n in b.names]
+
+
+def test_the_plan_loads_with_every_stage_batch_and_loop(plan):
+    assert set(plan.stages) == {"K1", "R1", "R2", "S1", "R3a", "R3b", "S1f", "S2a", "S2b", "K2", "V", "W1", "W2"}
+    assert names_of(plan.batches) == [
+        "b1103-1-keys", "b1103-2-groove", "b1103-3-sax", "b1104-1-groove", "b1104-2-sax", "b1104-3-keys",
+        "b1104-4-vamps", "b1106-1-mix", "b1106-2-mix"]
+    assert sorted(plan.loops) == [f"L{i}" for i in range(1, 10)]
+    l5 = plan.loops["L5"]
+    assert (l5.name, l5.brief.mood, l5.brief.energy, l5.brief.bpm, l5.brief.tonic) == ("l5_wistful_mid", "wistful",
+                                                                                        "mid", 83, 2)
+    assert plan.path == PLAN_FILE and re.fullmatch(r"[0-9a-f]{64}", plan.sha256)
+
+
+def test_tiles_hold_only_symbols_never_an_option(plan):
+    # section 7.6 test 2, on the parsed plan and on the raw YAML (tie tiles and cut retiles included)
+    options = set(plan.candidates) | set(plan.variants) | set(plan.vamps)
+    for st in plan.stages.values():
+        declared = {s for g in st.groups for s in g.symbols}
+        for slots in [st.slots, *st.slots_by_count.values()]:
+            for slot in slots:
+                assert set(slot.tiles) <= declared, (st.id, slot.id)
+                assert not set(slot.tiles) & options, (st.id, slot.id)
+    raw = RAW
+    tile_lists = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k in ("tiles", "retile"):
+                    rows = list(v.values()) if isinstance(v, dict) else [v]
+                    tile_lists.extend(r for row in rows for r in (row if row and isinstance(row[0], list) else [row]))
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+    walk(raw)
+    assert len(tile_lists) > 50
+    assert all(not set(t) & options for t in tile_lists)
+
+
+def test_k1_family_sums_and_meetings_through_its_draw_group(plan):
+    k1 = plan.stages["K1"]
+    sums, tiles = _sums(k1.slots), _tiles(k1.slots)
+    assert all(6 <= s <= 9 for s in sums.values()) and len(sums) == 8
+    for a, b in k1.groups[0].pairs:
+        assert sums[a] + sums[b] == 15, (a, b)                  # each family's two members add to 15 [CD-8]
+    assert all(len(set(t)) == 3 for t in tiles.values())       # each candidate on 3 different tiles
+    loops = defaultdict(set)
+    for slot in k1.slots:
+        for sym in slot.tiles:
+            loops[sym].add(slot.loop)
+    assert all(v == {"L1", "L5", "L9"} for v in loops.values())
+    meet = Counter(frozenset(p) for slot in k1.slots for p in
+                   [(x, y) for i, x in enumerate(slot.tiles) for y in slot.tiles[i + 1:]])
+    twins = {frozenset(p) for p in k1.groups[0].pairs}
+    assert all(meet[t] == 3 for t in twins) and all(n == 1 for p, n in meet.items() if p not in twins)
+
+
+@pytest.mark.parametrize("sid", ["R1", "R2", "R3b", "S2a", "S2b", "W1", "W2"])
+def test_latin_squares_by_tile_position(plan, sid):
+    st = plan.stages[sid]
+    k = len(st.slots[0].tiles)
+    assert len(st.slots) == k
+    assert all(sorted(t) == list(range(1, k + 1)) for t in _tiles(st.slots).values())
+
+
+def test_r3a_plays_its_second_round_reversed(plan):
+    a, b = plan.stages["R3a"].slots
+    assert b.tiles == tuple(reversed(a.tiles)) and set(_sums([a, b]).values()) == {5}
+
+
+def test_s1_puts_each_source_on_every_tile_once_and_each_alto_once_above_the_tenor(plan):
+    s1 = plan.stages["S1"]
+    assert all(sorted(t) == [1, 2, 3, 4] for t in _tiles(s1.slots).values())
+    above = [s for s in s1.slots if s.loop in plan.alto_above]
+    altos = s1.groups[1].symbols
+    assert all(sum(a in s.tiles for s in above) == 1 for a in altos)
+    pairs = Counter(frozenset((x, y)) for s in s1.slots for i, x in enumerate(s.tiles) for y in s.tiles[i + 1:])
+    same = [p for p in pairs if len({q[0] for q in p}) == 1]
+    assert all(pairs[p] == 3 for p in same) and all(n == 2 for p, n in pairs.items() if p not in same)
+    assert {plan.loops[s.loop].brief.mood for s in s1.slots} == {"melancholy", "wistful", "hopeful"}
+
+
+def test_final_and_k2_tile_sums_by_option_count(plan):
+    assert sorted(_sums(plan.stages["S1f"].slots_for(2)).values()) == [4, 5]
+    assert all(sorted(t) == [1, 2, 3] for t in _tiles(plan.stages["S1f"].slots_for(3)).values())
+    assert sorted(_sums(plan.stages["K2"].slots_for(3)).values()) == [3, 4, 5]
+    assert set(_sums(plan.stages["K2"].slots_for(4)).values()) == {5}
+    with pytest.raises(PlanError):
+        plan.stages["K2"].slots_for(5)
+
+
+def test_vamp_rows_give_tile_sums_6_to_9_with_the_pinned_vamps_central(plan):
+    v = plan.stages["V"]
+    for g in v.groups:
+        slots = [s for s in v.slots if s.id in g.slots]
+        moods = {plan.loops[s.loop].brief.mood for s in slots}
+        assert moods == {g.where["mood"]}
+        assert _sums(slots) == {"v1": 6, "v2": 7, "v3": 8, "v4": 9}
+        for opt, allowed in g.pin.items():
+            assert plan.vamps[opt].mood == g.where["mood"]
+            assert {_sums(slots)[s] for s in allowed} == {7, 8}
+    assert {o for g in v.groups for o in g.pin} == {"plagal", "float"}
+
+
+def test_every_symbol_is_heard_in_two_loops_or_more_within_its_stage(plan):
+    for st in plan.stages.values():
+        for slots in [st.slots, *st.slots_by_count.values()]:
+            loops = defaultdict(set)
+            for s in slots:
+                for sym in s.tiles:
+                    loops[sym].add(s.loop)
+            assert all(len(v) >= 2 for v in loops.values()), st.id
+
+
+def test_consecutive_slot_loops_can_be_ordered_and_batches_sort_in_serving_order(plan):
+    names = names_of(plan.batches)
+    assert names == sorted(names) and all(BATCH_RE.fullmatch(n) for n in names)
+    assert [b.date for b in plan.batches] == sorted(b.date for b in plan.batches)
+    homes = Counter()
+    for b in plan.batches:
+        for sid in b.stages:
+            homes[(sid, b.split or b.names[0])] += 1
+    owners = Counter(sid for sid, _ in homes)
+    assert all(n == 1 for n in owners.values()) and set(owners) == set(plan.stages)
+    assert names_of(b for b in plan.batches if b.anchors) == ["b1103-3-sax", "b1104-2-sax", "b1106-1-mix",
+                                                               "b1106-2-mix"]
+
+
+def test_band_slots_and_stage_fills_name_real_candidates(plan):
+    assert plan.days[1].band_slots()["keys"] == "gu_tine_ep" and plan.days[1].leaders == {}
+    assert plan.days[1].band_slots()["kit"] == "kit_gu_jazz" == plan.days[1].band["drums"]
+    assert set(plan.days[2].leaders) == {"keys", "kit", "bass", "sax"}
+    assert plan.days[3].leaders["swing"] == "swing_55" and plan.days[3].leaders["keys"] is None
+    assert plan.stages["W1"].band == {"rain": "rain_d18"} and plan.stages["W2"].band == {"bed": "excerpt_e1"}
+    assert plan.stages["V"].fills is None and plan.stages["V"].sax_muted and not plan.stages["V"].anchor
+    assert plan.stages["S1"].anchor and plan.stages["K2"].sub == {"keys": "ep spread"}
+
+
+def test_cuts_apply_as_section_2_7_lists_them(plan):
+    cut = apply_cuts(plan, ["vamps-high", "latin3", "final"])
+    assert "S1f" not in cut.stages and "S1f" not in {s for b in cut.batches for s in b.stages}
+    v = cut.stages["V"]
+    assert [s.id for s in v.slots] == ["V.1", "V.2", "V.4", "V.5", "V.7", "V.8"]
+    for g in v.groups:
+        assert set(_sums([s for s in v.slots if s.id in g.slots]).values()) == {5}
+    r3b = cut.stages["R3b"]
+    assert [s.id for s in r3b.slots] == ["R3b.1", "R3b.2"]
+    sums = _sums(r3b.slots)
+    assert r3b.groups[0].pin == {"humanize_off": ("n1",)} and sorted(sums.values())[1] == sums["n1"]
+    w = apply_cuts(plan, ["w1-two", "w2-two"])
+    assert len(w.stages["W1"].slots) == 2 and w.stages["W1"].groups[0].pin == {"excerpt_e1": ("z1",)}
+    a, b = w.stages["W2"].slots
+    assert b.tiles == tuple(reversed(a.tiles))
+    assert load_plan().stages["R3b"].slots == plan.stages["R3b"].slots       # the plan itself is unchanged
+    with pytest.raises(PlanError, match="unknown cut"):
+        apply_cuts(plan, ["no-such-cut"])
+
+
+RAW = yaml.load(PLAN_FILE.read_text(), Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
+
+
+def test_the_c_loader_reads_the_plan_as_the_python_loader_does():
+    assert RAW == yaml.safe_load(PLAN_FILE.read_text())
+
+
+@pytest.mark.parametrize("mutate,match", [
+    (lambda d: d["stages"]["R1"]["slots"][0].update(tiles=["kit_swirly", "k2", "k3"]), "not a symbol"),
+    (lambda d: d["stages"]["R1"]["slots"][0].update(tiles=["k1", "k9", "k3"]), "not a symbol"),
+    (lambda d: d["stages"]["R1"]["slots"][1].update(id="R1.1"), "twice"),
+    (lambda d: d["stages"]["R1"].update(colour="red"), "unknown"),
+    (lambda d: d["stages"]["R1"]["slots"][0].update(loop="L10"), "loop"),
+    (lambda d: d["stages"]["R1"].update(options=["kit_virtuosity", "kit_swirly", "drums"]), "not a candidate"),
+    (lambda d: d["stages"]["R1"].update(symbols=["k1", "k2"]), "options"),
+    (lambda d: d["batches"][0].update(names=["b1103 keys"]), "batch name"),
+    (lambda d: d["batches"][0]["rounds"].update(Z9=1), "stage"),
+    (lambda d: d["days"][1]["band"].update(keys="clavinet"), "clavinet"),
+    (lambda d: d["variants"].update(gu_tine_ep={"stage": "R3a", "set": {}, "what": "x"}), "twice"),
+])
+def test_a_broken_plan_is_refused(mutate, match):
+    doc = copy.deepcopy(RAW)
+    mutate(doc)
+    with pytest.raises(PlanError, match=match):
+        parse_plan(doc, PLAN_FILE, "0" * 64)
