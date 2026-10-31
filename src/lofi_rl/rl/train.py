@@ -314,6 +314,8 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
         gib = props.total_memory / 2**30
         prof = profile or detect_profile(cfg, gib)
         kw, dropped = fit_fields(resolve(cfg, prof), GRPOConfig, cfg.optional_fields)
+        named, unnamed = fit_fields({"run_name": f"{cfg.run}-{job or 'local'}"}, GRPOConfig, {"run_name"})
+        dropped += unnamed
         start_step = checkpoint_step(resume_from) if resume_from else 0
         man.update(gpu={"name": props.name, "total_gib": round(gib, 2)}, profile=prof, trainer=kw,
                    verified_trl_fields=sorted(kw), dropped_optional_fields=dropped, start_step=start_step)
@@ -337,7 +339,7 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
                                       "max": max(lengths)}})
         _write_json(summary_dir / "run.json", man)
 
-        args = GRPOConfig(output_dir=str(run_dir), run_name=f"{cfg.run}-{job or 'local'}", **kw)
+        args = GRPOConfig(output_dir=str(run_dir), **named, **kw)
         model = AutoModelForCausalLM.from_pretrained(snap, dtype=torch.bfloat16)
         model.config.use_cache = False                      # gradient checkpointing; vLLM generates
         reward = make_reward(cfg.palette_path(), summary_dir / "rewards.jsonl",
