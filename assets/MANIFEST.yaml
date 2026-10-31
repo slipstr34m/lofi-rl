@@ -1,0 +1,19 @@
+# Every asset the renderer may load. tests/test_licenses.py enforces this file:
+# - every committed file under assets/ is listed here, with a matching sha256;
+# - nothing non-commercial (NC) is ever committed: NC sources are mode=fetch and live in assets/big/ (gitignored).
+# Fields: path (relative to the repo), sha256, license, mode (commit|fetch), url, upstream (commit or version), notes.
+assets:
+  - path: assets/soundfonts/generaluser-gs/GeneralUser-GS.sf2
+    sha256: 9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe
+    license: GeneralUser GS License v2.0 (permissive; use, modification and redistribution allowed)
+    mode: commit
+    url: https://github.com/mrbumpy409/GeneralUser-GS
+    upstream: 684543d5e5efaef08d02be50dcda8d552478fa60 (v2.0.3, 2026-02-22)
+    notes: General MIDI bank. Phase 0 smoke and Phase 1 shootout candidates (Tine EP, saxes, basses, Jazz kit 32).
+  - path: assets/soundfonts/generaluser-gs/LICENSE.txt
+    sha256: null
+    license: the license text itself
+    mode: commit
+    url: https://github.com/mrbumpy409/GeneralUser-GS/blob/main/documentation/LICENSE.txt
+    upstream: 684543d5e5efaef08d02be50dcda8d552478fa60
+    notes: kept next to the bank, as the license asks
