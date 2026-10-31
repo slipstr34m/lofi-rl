@@ -5,7 +5,7 @@
 jobs/env_policy.sbatch: {sha: 2bafd8e52ab13bc0, max_su: 960, by: Shresth, date: 2026-10-30}
 jobs/env_scorer.sbatch: {sha: 948d77571a5bb968, max_su: 960, by: Shresth, date: 2026-10-30}
 jobs/fetch.sbatch: {sha: 68298be22c7a752b, max_su: 720, by: Shresth, date: 2026-10-30}
-jobs/render_check.sbatch: {sha: 6259f868eac7698c, max_su: 360, by: Claude, date: 2026-10-31}
+jobs/render_check.sbatch: {sha: 6f3e8d4d00d3f64c, max_su: 360, by: Claude, date: 2026-10-31}
 jobs/seam_diag.sbatch: {sha: b2034ede829361ba, max_su: 120, by: Claude, date: 2026-10-31}
 jobs/smoke_env.sbatch: {sha: 3edc166e77e1b180, max_su: 720, by: Shresth, date: 2026-10-30}
 jobs/tools.sbatch: {sha: 2f181c7e6e3e4859, max_su: 270, by: Claude, date: 2026-10-30}

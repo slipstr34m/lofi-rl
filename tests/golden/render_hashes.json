@@ -98,6 +98,48 @@
         "music_sha256": "86d6b1fd5c310f1aed45680bac174dc3311a75908601042f918bbc45a75d8ea0",
         "n": 1032576
       }
+    },
+    "Linux-x86_64/fluidsynth-2.6.1/numpy-1.26.4": {
+      "example.ls|melancholy|low|87|9": {
+        "audio_sha256": "0484d8b28864383b00c461f199583539f2ba1ea8408c8034d77629c09aae06a0",
+        "music_sha256": "0484d8b28864383b00c461f199583539f2ba1ea8408c8034d77629c09aae06a0",
+        "n": 973248
+      },
+      "example.ls|wistful|mid|82|2": {
+        "audio_sha256": "2686834c976deb2f883018457ffc875051a6e2331525ac5b3a3591aae6cd485f",
+        "music_sha256": "2686834c976deb2f883018457ffc875051a6e2331525ac5b3a3591aae6cd485f",
+        "n": 1032576
+      },
+      "example_leniency.ls|wistful|mid|82|2": {
+        "audio_sha256": "2686834c976deb2f883018457ffc875051a6e2331525ac5b3a3591aae6cd485f",
+        "music_sha256": "2686834c976deb2f883018457ffc875051a6e2331525ac5b3a3591aae6cd485f",
+        "n": 1032576
+      },
+      "leniency_lower_x.ls|wistful|mid|82|2": {
+        "audio_sha256": "e92145c76ca913f93e98a297556857dfb75053da45c85f1cd23a107b3ddeac88",
+        "music_sha256": "e92145c76ca913f93e98a297556857dfb75053da45c85f1cd23a107b3ddeac88",
+        "n": 1032576
+      },
+      "one_bar_base.ls|wistful|mid|82|2": {
+        "audio_sha256": "cfb8b05250449fc471698eaafdaaf3e83698435c824b3fe48e99b3f1f5a5467b",
+        "music_sha256": "cfb8b05250449fc471698eaafdaaf3e83698435c824b3fe48e99b3f1f5a5467b",
+        "n": 1032576
+      },
+      "shaker_edits.ls|hopeful|high|95|7": {
+        "audio_sha256": "65e59a63d284fa00022ed55f2093db4d49596107db758b60dd2354e7be90b961",
+        "music_sha256": "65e59a63d284fa00022ed55f2093db4d49596107db758b60dd2354e7be90b961",
+        "n": 891264
+      },
+      "shaker_edits.ls|wistful|mid|82|2": {
+        "audio_sha256": "03b0b9e2b28e65f54e6b2374627d3b07e39dd54e90c63ad91f5de36ea7b2644d",
+        "music_sha256": "03b0b9e2b28e65f54e6b2374627d3b07e39dd54e90c63ad91f5de36ea7b2644d",
+        "n": 1032576
+      },
+      "span1_dotted.ls|wistful|mid|82|2": {
+        "audio_sha256": "0ce2a27b435e488cd1f8b5e7faff8bd3c7ecc9f58a04799719e25b9438cbacb9",
+        "music_sha256": "0ce2a27b435e488cd1f8b5e7faff8bd3c7ecc9f58a04799719e25b9438cbacb9",
+        "n": 1032576
+      }
     }
   }
 }

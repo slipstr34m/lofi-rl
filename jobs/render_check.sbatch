@@ -10,8 +10,8 @@
 # Renderer check on one CPU model. Cluster renders are canonical (docs/kit/LESSONS.md 38), so the canonical
 # render hashes come from here (docs/RENDER.md, tests/test_determinism.py). Steps:
 #   1. the test suite on a compute node: pytest -m "not laptop", the cluster-marked seam sweep included
-#   2. this machine's golden render hashes, recorded into the run's summary (LOFI_RECORD_GOLDEN), never into
-#      the mirror
+#   2. this machine's golden hashes (every render case and the one-shots), recorded into the run's summary
+#      (LOFI_RECORD_GOLDEN), never into the mirror
 #   3. every fixture loop through the render CLI, a fresh process each, with a cold one-shot cache: N, LUFS,
 #      true peak, pcm_sha256 and the manifest. Gate fixtures (g*.ls) must exit 3; the others must render.
 # main has three CPU models (epyc-7513, epyc-7542, xeon-4116). Run once per model and compare the summaries on
@@ -29,7 +29,7 @@ FAIL=0
 export LOFI_CACHE="$RUN/cache"
 "$PY" -m pytest -q -m "not laptop" -p no:cacheprovider tests/ 2>&1 | tail -n 25 | tee "$OUT/pytest.txt" || true
 grep -qE "^[0-9]+ passed" "$OUT/pytest.txt" && ! grep -qE "[0-9]+ (failed|error)" "$OUT/pytest.txt" || FAIL=1
-LOFI_RECORD_GOLDEN="$OUT/render_hashes.json" "$PY" -m pytest -q -m cluster -p no:cacheprovider \
+LOFI_RECORD_GOLDEN="$OUT/render_hashes.json" "$PY" -m pytest -q -m "cluster or not cluster" -p no:cacheprovider \
   tests/test_determinism.py 2>&1 | tail -n 5 | tee "$OUT/golden.txt" || true
 grep -qE "^[0-9]+ passed" "$OUT/golden.txt" && ! grep -qE "[0-9]+ (failed|error)" "$OUT/golden.txt" || FAIL=1
 export LOFI_CACHE="$RUN/cache-cli"
