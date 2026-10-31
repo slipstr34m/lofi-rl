@@ -3,10 +3,16 @@
     python -m lofi_rl.shootout.job --run $REMOTE_SCR/runs/shootout-<job> --runs $REMOTE_SCR/runs \
         --inbox $REMOTE_SCR/inbox --jobs 8 <the job's ARGS>
 
-with the ARGS `make submit JOB=jobs/shootout.sbatch ARGS='...'` passes: `--stage day1|day2|day3`, and
-`--leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id>` from day 2 on; day 3 adds
-`--prior <job>+<job>`, `--repeats <stage>+...` and, if needed, `--rerun-s2 <sax id>`; a cut adds
-`--cut <name>+<name>`. ARGS hold no spaces, so they need no comma-safe `--export`.
+with the ARGS `make submit JOB=jobs/shootout.sbatch ARGS='...'` passes: `--stage day1|day2|day3`, and from day 2
+on `--leaders`, one `<slot>=<id>[+<id>...]` per band slot joined by `/`, leader first:
+
+    --stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id>
+    --stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>
+
+Day 2's keys take 3 ids (4 on a tie at third place) and its sax 2 (3 on a tie, 1 with the `final` cut); day 3 takes
+one id per slot, and also names `swing`, `humanize`, `sax_variant` and `timing` when a Day-2 pick is not the plan's
+default. Day 3 adds `--prior <job>+<job>`, `--repeats <stage>+...` and, if needed, `--rerun-s2 <sax id>`; a cut
+adds `--cut <name>+<name>`. ARGS hold no spaces, so they need no comma-safe `--export`.
 
 1. Everything the job was given goes into `summary/leaders.json` first.
 2. `draw`: `python -m lofi_rl.shootout.batch draw` writes `summary/draw.json` (the maps, the order, the anchors and
@@ -20,10 +26,12 @@ with the ARGS `make submit JOB=jobs/shootout.sbatch ARGS='...'` passes: `--stage
 7. `build`: `python -m lofi_rl.shootout.batch build` writes the batches into the inbox and checks each folder.
 
 Each stage's exit code and wall time go into `summary/stages.json` as it ends, and into the log. The first stage
-that fails ends the job with its exit code, so a gate or compile failure stops it before any batch is written. Before any stage runs, the runner checks its arguments, that the generator and the levels
-tool are present in this mirror (they are built in their own workflows, sections 7.1 and 7.8), that every
-`--prior` run has its batches.json, and that none of the day's batch folders is already in the inbox (the build
-never overwrites one, so a re-run fails here instead of after its renders).
+that fails ends the job with its exit code, so a gate or compile failure stops it before any batch is written.
+Before any stage runs, the runner checks its arguments, the leaders as the draw checks them (`draw.day_band`, after
+the cuts; under `--dry-run` too), that the generator and the levels tool are present in this mirror (they are built
+in their own workflows, sections 7.1 and 7.8), that every `--prior` run has its batches.json, and that none of the
+day's batch folders is already in the inbox (the build never overwrites one, so a re-run fails here instead of
+after its renders).
 """
 from __future__ import annotations
 
@@ -39,7 +47,7 @@ from pathlib import Path
 
 from lofi_rl.palette import ROOT
 
-from .draw import DrawError, parse_leaders
+from .draw import DrawError, day_band, parse_leaders
 from .plan import PLAN, PlanError, day_name, day_number, load_plan
 
 LOOPS = ROOT / "shootouts" / "loops"
@@ -103,6 +111,10 @@ def check(a: argparse.Namespace) -> dict:
     unknown = [c for c in cut if c not in cuts]
     if unknown:
         raise JobError(f"--cut: {unknown} are not cuts of the plan ({cuts})")
+    try:                    # the draw's own check of the leaders (slots, ids and counts), on the plan after the cuts
+        day_band(plan, a.stage, leaders, cut)
+    except (DrawError, PlanError) as err:
+        raise JobError(str(err)) from err
     runs = a.runs or a.run.parent
     return {"schema": LEADERS_SCHEMA, "stage": a.stage, "leaders": {k: list(v) for k, v in leaders.items()},
             "prior": prior, "prior_runs": [str(runs / f"shootout-{j}") for j in prior], "repeats": repeats,

@@ -2,9 +2,10 @@
 
 The script follows tests/test_job_scripts.py (name, scratch log, job_env, cost header) and section 7.7's numbers
 (partition main, 8 CPU, 16 GB, 20 min: 12 SU/min, at most 240 SU). The runner, `python -m lofi_rl.shootout.job`,
-takes the job's ARGS, writes them all into summary/leaders.json, and runs the stages in order (the draw, the
-generator with --levels none, the levels tool, the generator, the clip renders, the batches); the first stage that
-fails ends the job before any batch is written. Its registration in jobs/APPROVED.yaml is left to `make approve`."""
+takes the job's ARGS, checks its --leaders as the draw does, writes them all into summary/leaders.json, and runs the
+stages in order (the draw, the generator with --levels none, the levels tool, the generator, the clip renders, the
+batches); the first stage that fails ends the job before any batch is written. Its registration in
+jobs/APPROVED.yaml is left to `make approve`."""
 import json
 import re
 import subprocess
@@ -13,6 +14,8 @@ from pathlib import Path
 import pytest
 
 from lofi_rl.shootout import job
+from lofi_rl.shootout.draw import DrawError, draw, parse_leaders
+from lofi_rl.shootout.plan import load_plan
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "jobs" / "shootout.sbatch"
@@ -123,6 +126,115 @@ def test_bad_job_arguments_stop_before_anything_runs(tmp_path, capsys, args, mat
     rc = job.main(["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"), *args, "--dry-run"])
     assert rc == 2 and match in capsys.readouterr().err
     assert not (tmp_path / "run").exists()
+
+
+# --leaders, as each day's draw takes it (SHOOTOUTS.md section 7.7): day 2's K2 plays the K1 top 3 (4 on a tie at
+# third place) and its S1 final the S1 top 2 (3 on a tie), so keys takes 3-4 ids and sax 2-3, or 1 when the `final`
+# cut drops the final; day 3 plays one instrument per slot.
+KEYS3 = "gu_tine_ep+fp_fm_ep1+gu_organ"
+KIT_BASS = "kit=kit_swirly/bass=bass_fp_finger_yr"
+
+
+@pytest.mark.parametrize("stage,leaders,cut,said", [
+    # SHOOTOUTS.md 7.7's day-2 form until 2026-10-31: one sax id
+    ("day2", f"keys={KEYS3}/{KIT_BASS}/sax=sax_mtg_tenor", "", "--leaders sax: 1 ids given, day2 takes [2, 3]"),
+    # job.py's docstring until 2026-10-31: "sax=<id>+<id> from day 2 on" (and three keys)
+    ("day3", f"keys=fp_fm_ep1/{KIT_BASS}/sax=sax_mtg_tenor+sax_gu_alto", "",
+     "--leaders sax: 2 ids given, day3 takes [1]"),
+    ("day3", f"keys={KEYS3}/{KIT_BASS}/sax=sax_mtg_tenor", "", "--leaders keys: 3 ids given, day3 takes [1]"),
+    # with the `final` cut the S1 leader is day 2's only sax
+    ("day2", f"keys={KEYS3}/{KIT_BASS}/sax=sax_mtg_tenor+sax_gu_alto", "final",
+     "--leaders sax: 2 ids given, day2 takes [1]"),
+])
+def test_a_leader_count_the_draw_refuses_stops_the_job_before_any_stage(tmp_path, capsys, monkeypatch, stage,
+                                                                        leaders, cut, said):
+    # The draw refuses these at its stage (exit 2), after the job has waited in the queue and started. The runner's
+    # own check runs the draw's leader check, after the cuts, so --dry-run and a real run both exit 2 first.
+    cuts = [cut] if cut else []
+    with pytest.raises(DrawError, match=re.escape(said)):
+        draw(load_plan(), stage, seed=1, leaders=parse_leaders(leaders), cuts=cuts)
+    args = ["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"), "--stage", stage, "--leaders", leaders,
+            *(["--cut", cut] if cut else [])]
+    assert job.main([*args, "--dry-run"]) == 2 and said in capsys.readouterr().err
+    monkeypatch.setattr(job, "find_spec", lambda name: object())
+    ran = []
+    monkeypatch.setattr(job, "run_step", lambda name, argv: ran.append(name) or 0)
+    assert job.main(args) == 2 and ran == [] and said in capsys.readouterr().err
+    assert not (tmp_path / "run").exists()
+
+
+@pytest.mark.parametrize("stage,cut,takes", [
+    ("day2", "", {(3, 2), (3, 3), (4, 2), (4, 3)}),
+    ("day2", "final", {(3, 1), (4, 1)}),
+    ("day3", "", {(1, 1)}),
+])
+def test_the_job_takes_exactly_the_leader_counts_its_draw_takes(tmp_path, stage, cut, takes):
+    # (keys ids, sax ids) from 1-4 keys and 1-3 saxes, one kit and one bass: the runner's check and the draw agree.
+    plan = load_plan()
+    o = plan.band_options
+    cuts = [cut] if cut else []
+    drawn, checked = set(), set()
+    for k in range(1, 5):
+        for s in range(1, 4):
+            text = f"keys={'+'.join(o['keys'][:k])}/kit={o['kit'][0]}/bass={o['bass'][0]}/sax={'+'.join(o['sax'][:s])}"
+            try:
+                draw(plan, stage, seed=1, leaders=parse_leaders(text), cuts=cuts)
+                drawn.add((k, s))
+            except DrawError:
+                pass
+            a = job._args(["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"), "--stage", stage,
+                           "--leaders", text, *(["--cut", cut] if cut else [])])
+            try:
+                job.check(a)
+                checked.add((k, s))
+            except job.JobError:
+                pass
+    assert drawn == takes
+    assert checked == takes
+
+
+DOCUMENTED = (ROOT / "docs" / "SHOOTOUTS.md", SCRIPT, ROOT / "src" / "lofi_rl" / "shootout" / "job.py",
+              ROOT / "src" / "lofi_rl" / "shootout" / "batch.py", ROOT / "src" / "lofi_rl" / "shootout" / "draw.py")
+FORM = re.compile(r"--leaders ([a-z_]+=[^\s'`\]]+)|\b(keys=<id>[^\s'`\]]*)")
+
+
+def _filled(form: str, plan) -> str:
+    """A documented --leaders form with each <id> replaced by the next candidate of its slot."""
+    out = []
+    for part in form.split("/"):
+        slot, _, ids = part.partition("=")
+        pool = iter(plan.band_options[slot])
+        out.append(slot + "=" + "+".join(next(pool) if i == "<id>" else i for i in ids.split("+")))
+    return "/".join(out)
+
+
+def test_every_documented_leaders_form_is_one_the_draw_and_the_job_take(tmp_path):
+    # SHOOTOUTS.md 7.7 gave day 2 one sax, and job.py said "sax=<id>+<id> from day 2 on": a job submitted from either
+    # text would wait in the queue and fail at its draw. Every form these files give names its --stage on its line,
+    # the draw takes it, and the docs and the job script each give day 2's and day 3's.
+    plan = load_plan()
+    days: dict[str, set[str]] = {}
+    wrong = []
+    for path in DOCUMENTED:
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for m in FORM.finditer(line):
+                form = m.group(1) or m.group(2)
+                stage = re.findall(r"--stage (day[123])\b", line[:m.start()])
+                if not stage:
+                    wrong.append(f"{path.name}:{n}: {form} names no --stage")
+                    continue
+                text = _filled(form, plan)
+                try:
+                    draw(plan, stage[-1], seed=1, leaders=parse_leaders(text))
+                    job.check(job._args(["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"),
+                                         "--stage", stage[-1], "--leaders", text]))
+                except (DrawError, job.JobError) as err:
+                    wrong.append(f"{path.name}:{n}: {stage[-1]} {form}: {err}")
+                    continue
+                days.setdefault(path.name, set()).add(stage[-1])
+    assert wrong == []
+    assert {name: days.get(name) for name in ("SHOOTOUTS.md", "shootout.sbatch", "job.py")} == \
+        dict.fromkeys(("SHOOTOUTS.md", "shootout.sbatch", "job.py"), {"day2", "day3"})
 
 
 def test_a_missing_tool_stops_the_job_before_any_stage(tmp_path, capsys, monkeypatch):

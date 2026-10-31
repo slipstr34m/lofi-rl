@@ -4,10 +4,13 @@ Two steps, because the palettes and the renders depend on the draw (R2 plays eac
 draws, S1 leaves out the sources its rounds draw, an anchor needs its sour copy rendered):
 
     python -m lofi_rl.shootout.batch draw --plan shootouts/plan.yaml --stage day1|day2|day3 --summary <run>/summary
-        [--leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id>] [--prior <run>/summary/batches.json ...]
+        [--leaders <slot>=<id>[+<id>...]/...] [--prior <run>/summary/batches.json ...]
         [--repeats <stage>+...] [--rerun-s2 <sax id>] [--cut <name>+...] [--seed <16 hex>]
     python -m lofi_rl.shootout.batch build --plan shootouts/plan.yaml --stage day1|day2|day3 --renders <run>/renders
         --out <inbox root> [--draw <run>/summary/draw.json] [--summary <run>/summary]
+
+`--leaders` takes the job's forms, which differ by day (docs/SHOOTOUTS.md section 7.7); the draw refuses a slot, id or
+count its day cannot play, as `draw.day_band` does.
 
 `draw` draws from `secrets.randbits(64)` unless `--seed` is given (tests only) and writes `summary/draw.json`:
 the maps, the batches' rounds in order with their hidden controls, and the renders and palettes the job must make.

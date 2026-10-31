@@ -86,7 +86,8 @@ class Rng:
 
 # ------------------------------------------------------------------------------------------------ inputs
 def parse_leaders(text: str | None) -> dict[str, tuple[str, ...]]:
-    """`keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>` (section 7.7) as {band slot: ids, leader first}."""
+    """`<slot>=<id>[+<id>...]` per band slot, joined by `/` (section 7.7), as {band slot: ids, leader first}. Syntax
+    only: how many ids each slot takes on a day, and which ids, is `day_band`'s check."""
     out: dict[str, tuple[str, ...]] = {}
     for part in (text or "").split("/"):
         if not part:
@@ -188,6 +189,16 @@ def _day_band(plan: Plan, day: str, leaders: Mapping[str, tuple[str, ...]], stag
                 raise DrawError(f"--leaders {slot}: {i!r} is not one of the {SLOT_LIST[slot]} candidates")
         band[slot] = ids[0]
     return band
+
+
+def day_band(plan: Plan, day: int | str, leaders: Mapping[str, tuple[str, ...]], cuts: Sequence[str] = ()
+             ) -> dict[str, str | None]:
+    """The band `draw` plays on `day` with the job's leaders, after the cuts, checked as `draw` checks it: DrawError
+    for a slot the day does not take or needs, an id that is not a candidate of its slot, or a count the day's
+    stages cannot play (day 2: keys 3 or 4, sax 2 or 3, or 1 with the `final` cut; day 3: one id per slot). The job
+    runs it before any stage (`job.check`), so a --leaders form the draw would refuse exits 2 there."""
+    cut = apply_cuts(plan, list(cuts))
+    return _day_band(cut, day_name(day_number(day)), leaders, cut.stages_of(day))
 
 
 def _map_group(plan: Plan, stage: Stage, gi: int, leaders: Mapping[str, tuple[str, ...]], rng: Rng
@@ -510,5 +521,5 @@ def write_draw(doc: Mapping, path: Path | str) -> Path:
     return p
 
 
-__all__ = ["DrawError", "Prior", "Rng", "SCHEMA", "draw", "est_minutes", "load_prior", "order_rounds",
+__all__ = ["DrawError", "Prior", "Rng", "SCHEMA", "day_band", "draw", "est_minutes", "load_prior", "order_rounds",
            "parse_leaders", "round_seconds", "write_draw", "PlanError"]

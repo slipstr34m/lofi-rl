@@ -813,12 +813,17 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   scripts/job_env.sh` (so `LOFI_ASSETS` and `LOFI_CACHE` are set). Header cost line: 8 CPU + 4 (16 GB) =
   12 SU/min, **at most 240 SU**. Claude registers it (`make approve JOB=jobs/shootout.sbatch MAX=240 BY=Claude`;
   ≤ 500 SU).
-- **Submitted only by** `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>'`.
-  `ARGS` reach the script as arguments, so they need no comma-safe `--export`; they hold no spaces. Day 3 adds
-  `--prior <job>+<job>`, `--repeats <stage>+...` (the stages first heard at least 2 days before Nov 6),
-  and, if needed, `--rerun-s2 <sax id>`. A cut adds `--cut vamps-high+latin3+final`. The job writes all of it into
-  `summary/leaders.json`. `scripts/submit.sh` refuses a dirty or unsynced tree (exit 3; `ALLOW_DIRTY=1` would ship
-  other workflows' edits), so each job waits for a clean, synced tree.
+- **Submitted only by** `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id>'`.
+  Day 2 takes the K1 top 3 as keys (4 on a tie at third place, §4.1) and the S1 top 2 as sax (3 on a tie, §4.4),
+  leader first, and one kit and one bass; with the `final` cut, sax takes one id. Day 3 takes one id per slot,
+  `ARGS='--stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>'`, and also names `swing`, `humanize`,
+  `sax_variant` and `timing` when a Day-2 pick is not the plan's default (`swing_55`, `humanize_off`, `sax_plain`,
+  `timing_grid`). `ARGS` reach the script as arguments, so they need no comma-safe `--export`; they hold no spaces.
+  Day 3 adds `--prior <job>+<job>`, `--repeats <stage>+...` (the stages first heard at least 2 days before Nov 6),
+  and, if needed, `--rerun-s2 <sax id>`. A cut adds `--cut vamps-high+latin3+final`. Before any stage the job checks
+  the leaders as the draw does (slots, ids and counts, after the cuts), so a wrong form exits 2, under `--dry-run`
+  too; then it writes all of it into `summary/leaders.json`. `scripts/submit.sh` refuses a dirty or unsynced tree
+  (exit 3; `ALLOW_DIRTY=1` would ship other workflows' edits), so each job waits for a clean, synced tree.
 - **Stages** (`python -m lofi_rl.shootout.job`): the draw (§7.6) → generator `--levels none` (§7.8) → levels
   (§7.1) → generator with the levels and the draw → clip renders, 8 at a time with 1 worker each → FLACs →
   batches (§7.6) → `SHOOTOUT_OK`. Every palette source is hashed once per stage process, not once per palette. Any
