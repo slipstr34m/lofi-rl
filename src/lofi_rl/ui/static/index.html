@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Rating</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #f5f4f0; --fg: #1d1d1b; --muted: #6b6a66; --line: #d8d5ce; --tile: #ffffff; --accent: #2f5d8a;
+    --best: #2e7d4f; --worst: #a23b2a; --heard: #2f5d8a; --unheard: #e3e0d9; --warn: #8a5a00; --banner: #fff3d1;
+    --up: #e9f0f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --fg: #ecebe7; --muted: #9b9993; --line: #36352f; --tile: #1f1f1d; --accent: #8db8e4;
+      --best: #6cc58f; --worst: #e38a77; --heard: #8db8e4; --unheard: #2d2c29; --warn: #f0c060; --banner: #3b3321;
+      --up: #22303d;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; color: var(--muted); font-size: 14px; }
+  header #mode { color: var(--fg); font-weight: 600; }
+  .banner { margin: 12px 0; padding: 10px 14px; border-radius: 8px; background: var(--banner); color: var(--fg); }
+  .note { color: var(--muted); margin: 12px 0 0; }
+  .ask { margin: 16px 0 4px; font-weight: 600; }
+  .scene { margin: 4px 0 16px; font-size: 28px; font-weight: 500; line-height: 1.25; }
+  .ruler { display: grid; grid-template-columns: repeat(auto-fit, minmax(28px, 1fr)); gap: 4px; margin: 0 0 12px; }
+  .ruler .bar { text-align: center; font-size: 12px; color: var(--muted); padding: 4px 0; border-radius: 4px;
+                border: 1px solid var(--line); }
+  .ruler .bar.now { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .tile { background: var(--tile); border: 2px solid var(--line); border-radius: 12px; padding: 12px; cursor: pointer;
+          min-height: 150px; display: flex; flex-direction: column; gap: 8px; }
+  .tile.up { border-color: var(--accent); background: var(--up); }
+  .tile .num { font-size: 34px; font-weight: 600; line-height: 1; }
+  .tile .heard { display: grid; grid-template-columns: repeat(auto-fit, minmax(10px, 1fr)); gap: 3px; }
+  .tile .cell { height: 10px; border-radius: 2px; background: var(--unheard); }
+  .tile .cell.on { background: var(--heard); }
+  .tile .cell.now { outline: 2px solid var(--fg); outline-offset: -1px; }
+  .tile.heard-ok .num::after { content: " \2713"; font-size: 18px; color: var(--heard); vertical-align: middle; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; min-height: 24px; }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--unheard); }
+  .badge.best, .badge.keep { background: var(--best); color: var(--bg); }
+  .badge.worst { background: var(--worst); color: var(--bg); }
+  .badge.tier { background: var(--accent); color: var(--bg); }
+  .tile-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hint { font-size: 12px; color: var(--muted); }
+  button { font: inherit; font-size: 14px; color: var(--fg); background: var(--tile); border: 1px solid var(--line);
+           border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  kbd { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); }
+  .flags { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
+  .chip { border-radius: 999px; font-size: 13px; }
+  .chip.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .status { margin: 14px 0 0; color: var(--muted); }
+  .msg { min-height: 1.45em; margin: 6px 0; font-weight: 600; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .ended { padding: 10px 14px; border-radius: 8px; background: var(--banner); }
+  .keys { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 18px; font-size: 13px; color: var(--muted); }
+  .warn { color: var(--warn); }
+  .small { font-size: 13px; color: var(--muted); }
+  table.tally { border-collapse: collapse; margin: 8px 0; }
+  table.tally th, table.tally td { border-bottom: 1px solid var(--line); padding: 4px 12px 4px 0; text-align: left; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .row.playing { background: var(--up); }
+  .row .rn { min-width: 80px; font-weight: 600; }
+  .row .rp { min-width: 200px; }
+  .row .rh { display: flex; gap: 6px; }
+  .mini { display: inline-flex; gap: 1px; }
+  .mini i { display: inline-block; width: 5px; height: 10px; background: var(--unheard); }
+  .mini i.on { background: var(--heard); }
+  footer { max-width: 980px; margin: 0 auto; padding: 8px 16px 24px; color: var(--muted); font-size: 13px;
+           display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  select { font: inherit; }
+  @media (max-width: 520px) { .scene { font-size: 22px; } .tile { min-height: 120px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <span id="mode"></span>
+    <span id="progress"></span>
+    <span id="est"></span>
+    <span id="batch"></span>
+  </header>
+  <div id="banner" class="banner" role="status" hidden></div>
+
+  <section id="loading"><p>Loading...</p></section>
+
+  <section id="vote" hidden>
+    <p id="note" class="note"></p>
+    <p id="ask" class="ask"></p>
+    <h1 id="scene" class="scene"></h1>
+    <div id="ruler" class="ruler" aria-label="bars of the loop"></div>
+    <div id="tiles" class="tiles"></div>
+    <div id="flags" class="flags"></div>
+    <p id="status" class="status"></p>
+    <p id="msg" class="msg" role="status" aria-live="polite"></p>
+    <div id="buttons" class="buttons">
+      <button data-act="play"><span>Play</span> <kbd>Space</kbd></button>
+      <button data-act="replay">From bar 1 <kbd>5</kbd></button>
+      <button data-act="commit">Save <kbd>Enter</kbd></button>
+      <button data-act="undo">Undo <kbd>Backspace</kbd></button>
+      <button data-act="end">Stop <kbd>Esc</kbd></button>
+    </div>
+    <p id="ended" class="ended" hidden>Stopped. Your place is saved. Press Space to go on, or close this tab.</p>
+    <div id="keys" class="keys"></div>
+  </section>
+
+  <section id="audit" hidden>
+    <h1 id="audit-title">This batch is done</h1>
+    <div id="audit-summary"></div>
+    <p id="replay-status" class="small"></p>
+    <div id="audit-list"></div>
+  </section>
+
+  <section id="error" hidden>
+    <h1>Something went wrong</h1>
+    <p id="error-text"></p>
+    <p class="small">Reload the page. If it keeps happening, tell Claude what it says above.</p>
+  </section>
+</main>
+<footer>
+  <label>Listening on <select id="device"></select></label>
+  <span id="ui"></span>
+</footer>
+<script src="/static/audio.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

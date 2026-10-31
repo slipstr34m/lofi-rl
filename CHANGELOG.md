@@ -4,10 +4,68 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ## Status
 - **SU used:** 298.5 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 04:08).
-- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target (entry below). Phase 1 (instrument) is next: the compiler, then the shootout batches.
+- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way: the rating page is committed (entry below); the compiler + renderer workflow is still running; then the shootout batches.
 - **Waiting on Shresth:**
   - the download OK for `docs/SHOOTOUT_ASSETS.md` (14 sources, 944 MB, all free licenses), and the Freesound rain file, which needs his login;
   - whether `scancel` may be used on our own jobs. It matters only for 13624408, which waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots.
+
+---
+
+## 2026-10-31 (midday): rating page built, reviewed and fixed; checked in a real browser
+
+**What was done**
+- **Rating page** (workflow `wf_2d3622ca-180`: build, then 2 review lenses with every finding re-checked by an independent verifier, then fixes with a failing test first; 6 agents, 435 tool calls, 2 h 37 min, per the workflow's completion notice). It follows taste_pipeline.md §1–2:
+  - `make rate [BATCH=inbox/<date>/<batch>]` serves 127.0.0.1:8596 from a stdlib server with vanilla Web Audio;
+  - modes: shootout, keep3, bws4, triage, ab and playlist, plus an `audit` that shows aggregates only;
+  - usage and file formats are in `docs/RATING.md`, settings in `configs/rating.yaml`.
+- **Review.** It found 17 issues (6 integrity, 11 spec). The verifiers confirmed 15, which are 13 distinct bugs, and all 13 are fixed, each with a test that failed first. The medium ones:
+  - **Failed write.** A write that failed part-way left a fragment that swallowed the next acknowledged vote at the next restart. The log is now cut back to its old end.
+  - **Shared votes folder.** Two servers on one votes folder overwrote each other's `state.json` and reused session ids. Writes now take an exclusive lock and merge per batch.
+  - **Device change.** After the output device changed, Enter, 5 or Backspace resumed playback on the new output. Now only Space does.
+  - **Test coverage.** The JS tests could not see the page's behaviour. The new `tests/test_ui_page.py` runs the real page code against a real server.
+  - **Low-severity fixes:**
+    - the votes-folder guard went by path spelling (case, `/System/Volumes/Data`);
+    - a lone surrogate gave a 500;
+    - heard bars past bar 32 aliased;
+    - a system interruption was logged as paused while audio ran;
+    - cleared marks kept their times;
+    - the shootout tally counted hidden repeats twice;
+    - a long-looping round split its micro-session;
+    - the break nudge restarted on reload.
+- **Rejected by the verifiers, so not fixed:**
+  - macOS `fsync` does not flush the drive cache. The spec asks for fsync. `F_FULLFSYNC` would cost a median 3.94 ms against 0.022 ms (verifier's measurement); it is a possible later hardening.
+  - A batch without `brief_id` loads. RATING.md makes the field optional, so the queue job must always write it.
+- **Build-time fix.** `HTTPServer.server_bind` does a reverse DNS lookup that took 35.0 s on this laptop (build agent's measurement), so every `make rate` would have stalled. The server skips it.
+- **Tests:**
+  - **UI tests:** 152 in 2.86 s; the budget is 3 s.
+  - **Full suite**, on a clean worktree of `78ab83c` plus only this commit's files: 647 passed in 50.70 s.
+  - **JS tests** run the page code in macOS's built-in JavaScriptCore shell (`jsc`), because Homebrew node crashes on start (missing `libsimdjson.33.dylib`). They skip where jsc is missing, which includes the cluster.
+- **Browser check.** It ran in the desktop app's browser pane (Chromium) through the new `rate-demo` entry in `.claude/launch.json`, on a demo batch of synthetic tones. The page's AudioContext was routed to no output device (`setSinkId({type: 'none'})`) so nothing played aloud on the laptop speakers. No sound was judged.
+  - The page loaded with no console messages and made only localhost requests, all 200. It preloaded the 8 clips of rounds 1–2.
+  - **The key sequence:**
+    - Space started auto-play on clip 1, and 2 switched to clip 2;
+    - Q, X and K marked best 1, worst 2 and "no groove", and marking the playing clip jumped to clip 3;
+    - Enter saved, and round 2 started by itself;
+    - Esc logged `abandon` and `session end` and moved round 2 to the back of the batch.
+  - **The saved line** (`<votes>/demo-bws4.jsonl`) holds:
+    - best, worst and the tag on the right clips;
+    - heard bars per clip: `11111000`, `00000011`, `01110000`, `00000000`;
+    - switches 1, play_order [1, 2, 3], sr 44100.
+
+    The files are mode 600 and the folder 700.
+  - **Not covered:** Safari (FLAC decoding, its autoplay policy), a real AirPods disconnect, and how anything sounds.
+- **Votes folder.** The private `slipstr34m/lofi-rl-votes` (empty) is now cloned at `data/votes/`, as D-010 sets out. `make rate` writes into the private repo, and its `main` tracks `origin/main` for `make backup-votes`. `data/` stays ignored by git.
+- **Kept deviations from the spec**, all documented in RATING.md:
+  - votes go to `<votes>/<batch>.jsonl`, not a date-named file;
+  - each vote line keeps the real clip ids and the hidden labels, which are never sent to the page;
+  - **clip files must be exactly one pass of the loop** (within 2 %). The page loops them, so the seam is still heard. Batch builders must write one-pass FLACs; a two-pass ear-check render is refused.
+  - `configs/` holds run settings, as taste_pipeline.md names them (rating, CLAP theme, GRPO); it sits beside `config/budget.yaml`.
+
+**Failed approaches and why:** Homebrew node crashes on start, so the JS checks run on `jsc` instead (no install needed).
+
+**SU spent:** 0.
+
+**Next:** review, verify and commit the compiler + renderer workflow (`wf_189b194e-1e1`) when it finishes. Then the asset download, on Shresth's OK.
 
 ---
 

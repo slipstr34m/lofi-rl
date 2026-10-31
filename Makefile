@@ -50,3 +50,7 @@ backup-votes: ## commit+push data/votes (private repo), then copy to the cluster
 	@[ -d data/votes/.git ] || { echo "data/votes is not the private votes repo yet (see docs/DECISIONS.md D-010)"; exit 1; }
 	cd data/votes && git add -A && { git diff --cached --quiet || git commit -qm "votes $$(date +%F_%H%M)"; } && git push -q
 	$(RS) data/votes/ $(HOST):$(REMOTE_KEEP)/votes/
+
+.PHONY: rate
+rate: ## serve the rating UI on 127.0.0.1:8596 (BATCH=inbox/<date>/<batch>)
+	@PYTHONPATH=src $(PY) -m lofi_rl.ui.serve $(if $(BATCH),"$(BATCH)",)

@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "rate-demo",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "D=$(mktemp -d) && echo \"demo dir: $D\" && PYTHONPATH=src .venv/bin/python -m lofi_rl.ui.manifest demo \"$D/inbox/2026-11-03/demo-bws4\" --mode bws4 && LOFI_VOTES=\"$D/votes\" PYTHONPATH=src exec .venv/bin/python -m lofi_rl.ui.serve \"$D/inbox/2026-11-03/demo-bws4\" --no-browser --port 8596"
+      ],
+      "port": 8596
+    }
+  ]
+}

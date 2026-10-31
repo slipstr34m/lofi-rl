@@ -1,0 +1,23 @@
+# Rating UI settings (docs/RATING.md). The server reads this at start (src/lofi_rl/ui/serve.py) and hands the
+# page what it needs (GET /api/config). Unknown keys are errors.
+
+port: 8596                    # make rate serves http://127.0.0.1:8596 (127.0.0.1 only, never another interface)
+
+heard:                        # docs/design/taste_pipeline.md §1 and open issue 2 (Claude's default: 4 bars)
+  bar_fraction: 0.75          # a bar counts as heard if the clip's gain was up for at least 75 % of it
+  min_bars: 4                 # a clip counts as heard at 4 or more distinct bars; pairs with unheard clips are dropped at fit time
+  toss_min_bars: 2            # a triage Toss needs only 2 heard bars
+
+autoplay:                     # open issue 3 (a): each clip's 8 bars in turn, 1 -> k
+  bars_per_clip: 8
+  wrap_bars: 2                # single-clip rounds (triage) play bars 1-2 once more, so the seam is heard (open issue 4 (a))
+  start_next_round: true      # after Enter the next round starts by itself
+
+switch_ramp_ms: 5             # switching moves only gains: 5 ms raised-cosine ramps, no crossfade (BS.1534)
+nudge_minutes: 25             # a break nudge after 25 minutes of listening (BS.1116)
+micro_gap_minutes: 10         # a gap under 10 minutes continues the micro-session
+playlist_plays: [2, 4]        # playlist mode plays each loop 2 to 4 times (unless the manifest says)
+daily_budget_minutes: 60      # 1 h a day of listening (docs/TASTE.md, Listening); the audit compares against it
+
+devices: [airpods, headphones, laptop, speakers]   # "Listening on" choices, logged with every event
+default_device: airpods
