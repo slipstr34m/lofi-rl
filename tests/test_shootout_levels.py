@@ -24,8 +24,8 @@ from lofi_rl.dsl import parse
 from lofi_rl.palette import Plugin, load_palette
 from lofi_rl.render.loudness import lufs
 from lofi_rl.render.pipeline import fluid_stems
-from lofi_rl.shootout.levels import (LevelsError, chain_lufs, faders, linear_check, main, post_check, run_levels,
-                                     sax_target, trims, with_trim)
+from lofi_rl.shootout.levels import (LevelsError, chain_lufs, faders, input_lufs, linear_check, main, post_check,
+                                     run_levels, sax_target, trims, with_trim)
 from lofi_rl.shootout.palettes import generate
 from lofi_rl.shootout.plan import load_plan
 
@@ -106,6 +106,21 @@ def test_the_linear_range_check_passes_a_gu_stem_and_flags_an_input_that_drives_
     L_low, _ = chain_lufs(chain, hot, -6.02, 44100)
     flagged = linear_check({"hot": L}, {"hot": L_low})
     assert not flagged["ok"] and flagged["median_drop_db"] < 5.0, "the compressor takes part of the 6.02 dB"
+
+
+def test_the_input_loudness_does_not_depend_on_the_minus_70_lufs_gate():
+    # A converted bank can render its bus input below BS.1770's -70 LUFS absolute gate (the VSCO 2 pizz bass on L4
+    # and L6, 2026-10-31), where the plain integrated loudness is -inf. P is read 40 dB up, then 40 dB is taken off.
+    k = np.arange(4 * 44100)
+    burst = ((k // 11025) % 2 == 0) * np.sin(2 * np.pi * 110.0 * k / 44100.0)    # 0.25 s on, 0.25 s off
+    loud = np.tile((0.05 * burst).astype(np.float32), (2, 1))
+    plain = lufs(loud, 44100)
+    assert input_lufs(loud) == pytest.approx(plain, abs=0.01)
+    quiet = (loud * np.float32(10 ** (-50 / 20))).astype(np.float32)
+    assert lufs(quiet, 44100) == float("-inf") or lufs(quiet, 44100) < plain - 50.5
+    assert input_lufs(quiet) == pytest.approx(plain - 50.0, abs=0.01)
+    with pytest.raises(LevelsError, match="silent"):
+        input_lufs(np.zeros((2, 44100), dtype=np.float32))
 
 
 def test_with_trim_replaces_the_trim_slot_and_refuses_a_chain_without_one():
@@ -300,3 +315,14 @@ def test_after_matching_every_bus_sits_at_its_target_on_two_loops(tmp_path, monk
         for loop in TWO:
             assert abs(post["lufs"][loop] - (rec["L"][loop] + rec["F"])) <= 0.1, (vid, loop)
         assert rec["t"] == 0.0 or rec["source"] != "gu"
+    # The generated palettes carry those trims exactly: a render's manifest reports the measured L on every bus.
+    from lofi_rl.render.pipeline import render
+    (tmp_path / "levels.json").write_text(json.dumps(doc))
+    got = generate(PLAN_PATH, tmp_path / "stage", stage="day1", levels=tmp_path / "levels.json", without=missing)
+    entry = next(p for p in got.index["palettes"] if p["file"] == "k1/vcsl_upright_knight.yaml")
+    m = render(PLAN.loop_text("L1"), PLAN.briefs()["l1_melancholy_low"],
+               load_palette(tmp_path / "stage" / entry["file"], verify=True)).manifest
+    for bus, vid in entry["instruments"].items():
+        assert m["buses"][bus]["lufs"] == doc["variants"][vid]["L"]["l1_melancholy_low"], bus
+        assert m["buses"][bus]["gain_db"] == doc["variants"][vid]["F"], bus
+    assert m["gates"]["G7"] == "pass"

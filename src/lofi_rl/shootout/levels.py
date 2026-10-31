@@ -8,7 +8,8 @@ the trims and faders it writes are carried by the palette generator as CD-51 say
 For every instrument variant i of the stage and every loop l of `--loops` (its briefs.yaml; the 9 reference loops):
 1. stems: i's bus input with trim 0, from the measuring palettes (`lofi_rl.shootout.palettes --levels none`): the
    FluidSynth stem, or the drum sampler's cycle. One run renders one variant of each bus at once (8 runs on Day 1);
-2. P(i, l), the integrated loudness of the bus input over the kept cycle. t(i) = median_l P(g, l) - median_l P(i, l),
+2. P(i, l), the integrated loudness of the bus input over the kept cycle, read 40 dB up so BS.1770's -70 LUFS gate
+   does not bias a quiet input (input_lufs). t(i) = median_l P(g, l) - median_l P(i, l),
    g the level anchor of i's bus (plan.yaml `levels.anchors`); every instrument of `levels.zero_trim_source` (GU)
    gets t = 0;
 3. L(i, l): the bus after its chain with the trim, before the fader;
@@ -68,6 +69,7 @@ TRIM_BUSES = ("sax", "keys", "bass")
 STAGES = ("day1", "day2", "day3")
 BUILT = ("day1",)
 MOVE_DB = 0.1                               # a trim or fader that moves more is listed (§3, drift)
+INPUT_LIFT_DB = 40.0                        # P is read this far up, then taken off: see input_lufs
 _LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
@@ -131,6 +133,22 @@ def post_check(post: Mapping[str, Mapping[str, float]], L: Mapping[str, Mapping[
 
 
 # ------------------------------------------------------------------------------------- chains and trims
+def input_lufs(x: np.ndarray, lift_db: float = INPUT_LIFT_DB) -> float:
+    """P, the integrated loudness of a bus input (§3 step 2), read `lift_db` up and taken back down.
+
+    BS.1770's -70 LUFS absolute gate is its only part that depends on the level, and inputs sit at very different
+    levels: the VSCO 2 pizz bass stem peaks near -65 dBFS on L4 (the GU bass, -27). Read plain (2026-10-31, the 9
+    reference loops), its loudness is -inf on L4 and L6, and up to 7.37 LU too high on the others, where the gate keeps
+    only its loudest blocks; the sparse GU drums read 0.38 LU high on L1. 40 dB up, the gate sits at -110 LUFS of the
+    input and drops only near-silence, so two inputs compare alike however quiet either is. On the other GU anchors'
+    inputs the two readings differ by 0.02 LU at most. L and the post-fader levels stay plain BS.1770, as the render
+    manifest measures them."""
+    level = float(lufs(np.ascontiguousarray(x, dtype=np.float64) * 10.0 ** (lift_db / 20.0), SR)) - lift_db
+    if not math.isfinite(level):
+        raise LevelsError(f"the bus input is silent, or under {-70 - lift_db:.0f} LUFS: no trim can match it")
+    return level
+
+
 def with_trim(chain: Sequence[Plugin], trim: float) -> tuple[Plugin, ...]:
     """A pitched bus's chain with its trim slot (the leading [Gain, {gain_db}], CD-51) set to `trim` dB."""
     if not chain or chain[0].name != "Gain" or set(chain[0].params) != {"gain_db"}:
@@ -292,7 +310,10 @@ class AudioBench:
 
     def input_lufs(self, run, case, bus):
         n = run.compiled[case.name].n
-        return float(lufs(np.ascontiguousarray(self._stem(run, case, bus, 0.0)[:, -n:]), SR))
+        try:
+            return input_lufs(self._stem(run, case, bus, 0.0)[:, -n:])
+        except LevelsError as err:
+            raise LevelsError(f"{run.instruments[bus]} on {case.name} ({run.id}): {err}") from err
 
     def chain_lufs(self, run, case, bus, trim, keep=False):
         n = run.compiled[case.name].n
@@ -393,6 +414,7 @@ def run_levels(plan_path: Path | str, loops_dir: Path | str, measure_dir: Path |
            "zero_trim_source": lv.zero_trim_source, "targets": targets,
            "tolerances": {"linear_drop_db": lv.linear_drop_db, "linear_tol_db": lv.linear_tol_db,
                           "median_tol_lu": lv.median_tol_lu, "loop_tol_lu": lv.loop_tol_lu},
+           "input_lift_db": INPUT_LIFT_DB,
            "runs": [{"run": r.id, "file": r.file, "palette_sha256": r.sha256, "instruments": dict(r.instruments),
                      "measure": list(r.measure)} for r in runs],
            "drift": drift, "prior": None, "reused": False, "moved": []}

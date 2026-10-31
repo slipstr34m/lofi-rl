@@ -102,6 +102,14 @@ def canonical_sha256(value: Any) -> str:
     return sha256_bytes(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8"))
 
 
+def label(path: Path, root: Path) -> str:
+    """A path as the index records it: repo-relative when it lies in the repo, so a pulled index reads the same."""
+    try:
+        return Path(path).resolve().relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
 # --------------------------------------------------------------------------------------- instruments
 @dataclass(frozen=True)
 class Instrument:
@@ -331,8 +339,9 @@ def write_measuring(inputs: Inputs, out: Path, stage: str, plan_path: Path) -> G
         variants[vid] = {"bus": inst.bus, "source": inst.source, "source_sha256": inst.source_sha256,
                          "bank": inst.bank, "prog": inst.prog, "kit_map_sha256": inst.kit_map_sha256,
                          "flags": dict(DAY1_FLAGS), "run": first_run[vid]}
-    index = {"schema": MEASURE_SCHEMA, "stage": stage, "plan": str(plan_path), "plan_sha256": inputs.plan.sha256,
-             "base": str(inputs.base_path), "base_sha256": inputs.base_sha256, "without": list(inputs.without),
+    index = {"schema": MEASURE_SCHEMA, "stage": stage, "plan": label(plan_path, inputs.root),
+             "plan_sha256": inputs.plan.sha256, "base": label(inputs.base_path, inputs.root),
+             "base_sha256": inputs.base_sha256, "without": list(inputs.without),
              "anchors": dict(inputs.plan.levels.anchors), "sources": inputs.sources_index(),
              "variants": variants, "runs": runs}
     files[Path("measure") / "index.json"] = (json.dumps(index, indent=1, sort_keys=False) + "\n").encode("utf-8")
@@ -412,13 +421,14 @@ def write_stage(inputs: Inputs, out: Path, stage: str, plan_path: Path, levels_p
                                     "scene": b.scene},
                           "tiles": list(s.tiles), "kit": s.kit, "sub": dict(st.sub),
                           "text_sha256": sha256_bytes(inputs.plan.loop_text(s.loop).encode("utf-8"))})
-    index = {"schema": INDEX_SCHEMA, "stage": stage, "plan": str(plan_path), "plan_sha256": inputs.plan.sha256,
-             "base": str(inputs.base_path), "base_sha256": inputs.base_sha256,
-             "levels": {"file": str(levels_path), "sha256": file_sha256(levels_path)}, "draw": None,
+    index = {"schema": INDEX_SCHEMA, "stage": stage, "plan": label(plan_path, inputs.root),
+             "plan_sha256": inputs.plan.sha256, "base": label(inputs.base_path, inputs.root),
+             "base_sha256": inputs.base_sha256,
+             "levels": {"file": label(levels_path, inputs.root), "sha256": file_sha256(levels_path)}, "draw": None,
              "without": list(inputs.without), "band": dict(inputs.plan.days[inputs.day].band),
              "sources": inputs.sources_index(), "palettes": palettes, "slots": slots}
     if draw is not None:
-        index["draw"] = {"file": str(draw_path), "sha256": file_sha256(draw_path)}
+        index["draw"] = {"file": label(draw_path, inputs.root), "sha256": file_sha256(draw_path)}
         files[Path("clips.json")] = (json.dumps(clips(inputs, draw, palettes, slots, index["draw"]), indent=1)
                                      + "\n").encode("utf-8")
     files[Path("index.json")] = (json.dumps(index, indent=1) + "\n").encode("utf-8")
