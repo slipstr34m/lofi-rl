@@ -3,11 +3,54 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 298.5 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 04:08).
-- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way: the rating page and the compiler + renderer are committed (entries below). Next: a second review, a cluster render check, fader calibration, then the shootout batches (these need the asset download OK).
+- **SU used:** 419.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 08:17).
+- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way: the rating page and the compiler + renderer are committed, and cluster renders are deterministic across CPU models (entries below). Next: land the second review, loosen the seam tolerance to what Linux gives, then fader calibration and the shootout batches (these need the asset download OK).
 - **Waiting on Shresth:**
   - the download OK for `docs/SHOOTOUT_ASSETS.md` (14 sources, 944 MB, all free licenses), and the Freesound rain file, which needs his login;
   - whether `scancel` may be used on our own jobs. It matters only for 13624408, which waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots.
+
+---
+
+## 2026-10-31 (08:20 PDT): cluster render check: deterministic across CPU models; Linux bus chains repeat only to 1.4e-6
+
+**What was done**
+- **`lofi-render-check`**, a new job type (main, 8 CPU, max 360 SU, registered by Claude), ran once per CPU model on mirror `cc426bd`:
+
+  | job | CPU model | node |
+  |---|---|---|
+  | 13630298 | epyc-7513 | a01-09 |
+  | 13630299 | epyc-7542 | b22-13 |
+  | 13630300 | xeon-4116 | d05-26 |
+
+  - **Renders are deterministic across CPU models.** Each of the six gate-passing fixtures went through the CLI with a cold cache and got the same pcm_sha256 on all three nodes (example.ls `18980abc…`), with the laptop's N, LUFS and true peak (`runs/render-check-*/summary/fixtures.json`). The 7 golden cases recorded under `Linux-x86_64/fluidsynth-2.6.1/numpy-1.26.4` are identical on all three (`render_hashes.json`), so one Linux golden key serves the partition.
+  - **Gate fixtures:** all 6 exited 3, as expected.
+  - **Node suite:** 6 failed, 1013 passed, 21 skipped, 33 deselected, 1 xfailed, in 105–160 s (`pytest.txt`). All 6 failures are `test_seam.py::test_every_fixture_repeats_at_other_tempos`, the same cases on every model:
+    - span1_dotted at 61 and 71 BPM;
+    - example and leniency_lower_x at 87 and 95 BPM.
+- **`lofi-seam-diag`**, a new job type (max 120 SU, registered by Claude), ran as 13630343 on epyc-7513, mirror `61138c2`.
+  - **Clean sync.** The second review had uncommitted work in the tree, so I synced from a clean clone of HEAD. The dry run showed 0 deletions and only the two job files changed.
+  - **FluidSynth is exactly periodic on Linux.** Every keys, bass and sax stem had bit-identical MIDI cycles 2–5 (max difference 0.0) in all 21 cases (`runs/seam-diag-13630343/summary/seam.json`), so `fluid_tick` and the pre-roll hold there too.
+  - **The bus chains are not.** Fed an exactly periodic input, their cycles 2 and 3 differ by 5.7e-7 to 1.4e-6; example.ls at 95 BPM is the largest.
+    - The differences are scattered through the cycle, and they do not grow over a 4th cycle.
+    - The seam regions (the first and last second of the cycle) differ by at most 9.1e-7.
+    - The laptop gives 0.0 for the same chains. On Linux, the pedalboard chains settle to float32 rounding level, not to an exact repeat.
+  - **Size:** 1.4e-6 is about −117 dBFS, under half an LSB (1.5e-5) of the 16-bit listening copies, which are dithered at ±1 LSB.
+- **SU** (`python3 scripts/session_report.py`):
+
+  | job | SU |
+  |---|---|
+  | 13630298 | 29.8 |
+  | 13630299 | 35.2 |
+  | 13630300 | 45.8 |
+  | 13630343 | 10.4 |
+  | **total** | **121.2** |
+
+**Failed approaches and why:** `test_seam.py` holds cycles to 1e-6, which assumes exact repetition. The macOS ARM build gives it; the Linux build does not.
+
+**Next:** once the second review lands:
+1. set the seam tolerance to 1e-5 and record this measurement in RENDER.md §4;
+2. rerun `lofi-render-check` on the new code;
+3. merge its Linux golden key into `tests/golden/render_hashes.json`.
 
 ---
 
