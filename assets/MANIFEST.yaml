@@ -2,6 +2,11 @@
 # - every committed file under assets/ is listed here, with a matching sha256;
 # - nothing non-commercial (NC) is ever committed: NC sources are mode=fetch and live in assets/big/ (gitignored).
 # Fields: path (relative to the repo), sha256, license, mode (commit|fetch), url, upstream (commit or version), notes.
+# Fetch-only entries (docs/SHOOTOUT_ASSETS.md) live under assets/big/ on the laptop and in $REMOTE_KEEP/assets/ on the
+# cluster, never in git. A GitHub sample set also gives `include` (path rules applied to the git tree at `upstream`),
+# `extra` (files from another commit), `files`, `bytes` and `list_sha256`: the sha256 of its sorted
+# 'path<TAB>size<TAB>git-sha1' lines, which that tree reproduces. Every file was checked by its git blob SHA-1 when
+# fetched; assets/big/_locks/<id>.tsv lists each with its sha256. An archive gives `bytes` and `extracts` (its SF2).
 assets:
   - path: assets/soundfonts/generaluser-gs/GeneralUser-GS.sf2
     sha256: 9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe
@@ -17,3 +22,142 @@ assets:
     url: https://github.com/mrbumpy409/GeneralUser-GS/blob/main/documentation/LICENSE.txt
     upstream: 684543d5e5efaef08d02be50dcda8d552478fa60
     notes: kept next to the bank, as the license asks
+  - path: assets/big/karoryfer-weresax/
+    sha256: null
+    license: "CC0 1.0 (v1.002 and later; older copies are CC BY 4.0)"
+    mode: fetch
+    url: https://github.com/sfzinstruments/karoryfer.weresax
+    upstream: "a4d756b21d2a573aca0d840cce7e71ba5effd4c6 (v1.003)"
+    include: ["^Samples/alto/[^/]+_cnd\\.wav$", "^Programs/[^/]+\\.sfz$", "^LICENSE$", "^readme\\.txt$"]
+    files: 143
+    bytes: 101315389
+    list_sha256: 5788903ddc2b2c62dd3cf7170c76201d0d86b74f1cb22a4b23f1e4bde27749d6
+    notes: "sax shootout: Weresax alto, clean condenser mic and programs; SFZ, to be converted to SF2. Every file is checked by its git blob SHA-1 (assets/big/_locks/karoryfer-weresax.tsv)."
+  - path: assets/big/mtg-solo-sax/
+    sha256: null
+    license: "CC BY 4.0 (SFZ mapping by kinwie) and CC BY 3.0 (samples by MTG, Universitat Pompeu Fabra, via Freesound): attribution required, see assets/ATTRIBUTION.md"
+    mode: fetch
+    url: https://github.com/sfzinstruments/MTG.SoloSax
+    upstream: "b494d256549b3d088fdec176ce82867f8a1f58b2 (2 commits, no tags)"
+    include: ["^MTG Solo Saxophones/MTG (Tenor|Alto) Sax( \\(NL\\))?\\.sfz$", "^MTG Solo Saxophones/Data/(xtension|volpan)\\.txt$", "^MTG Solo Saxophones/Data/(group|noise)_(ten|alt)\\.txt$", "^MTG Solo Saxophones/Data/(ten|alt)_[pf]_rr[123]\\.txt$", "^MTG Solo Saxophones/Samples/(ten|alt)_[pf]_\\d\\d\\.flac$", "^(LICENSE|README\\.md)$"]
+    files: 156
+    bytes: 47644221
+    list_sha256: 4db3645ba21629bb94ef3fcceea9044ba39d935d9c97d0949bfe3dfec5688464
+    notes: "sax shootout: tenor and alto note samples (p and f layers) with their NL programs; SFZ, to be converted. Every file is checked by its git blob SHA-1 (assets/big/_locks/mtg-solo-sax.tsv)."
+  - path: assets/big/jrhodes3d/
+    sha256: null
+    license: "CC BY-NC 4.0 (samples; the SFZ files are CC0): non-commercial, never committed or shared; music made with it is CC0"
+    mode: fetch
+    url: https://github.com/sfzinstruments/jlearman.jRhodes3d
+    upstream: "aea5b8d3e11e2f7102593789a4e0a0e41b30271a (no tags)"
+    include: ["^jRhodes3d-mono/[^/]+$", "^jRhodes3d-mono-no-xfade\\.sfz$", "^LICENSE$", "^README\\.md$"]
+    files: 70
+    bytes: 22915733
+    list_sha256: 942b046c01ae6fe7489047dd6fc5d4817b2bfb7da7a2eb9648a22c8b9656d0ff
+    notes: "keys shootout: jRhodes3d 1977 Rhodes Mk I, mono variant; SFZ, to be converted. Every file is checked by its git blob SHA-1 (assets/big/_locks/jrhodes3d.tsv)."
+  - path: assets/big/vcsl/
+    sha256: null
+    license: "CC0 1.0"
+    mode: fetch
+    url: https://github.com/sgossner/VCSL
+    upstream: "dfcf4a4918771eee884b96ad4493de82ef84daf6 (sfz branch); LICENSE from c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e"
+    include: ["^Chordophones/Zithers/Upright Piano, Knight/Sustains/[^/]+\\.wav$", "^Chordophones/Zithers/Upright Piano, Knight\\.sfz$", "^Idiophones/Struck Idiophones/Shaker, (Small|Large)/[^/]+\\.wav$"]
+    extra: ["LICENSE at c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e"]
+    files: 114
+    bytes: 368229242
+    list_sha256: a23e6239810965b3cb8db684d2aea9c3d4bf160ee7a497e087c0dd0220b98fcd
+    notes: "keys shootout: Upright Piano, Knight (sustains + SFZ, to be converted); drums: Shaker, Small and Large one-shots. Every file is checked by its git blob SHA-1 (assets/big/_locks/vcsl.tsv)."
+  - path: assets/big/gsullivan-epianos/
+    sha256: null
+    license: "CC BY 3.0 (Greg Sullivan; SFZ mapping by kinwie): attribution required, see assets/ATTRIBUTION.md"
+    mode: fetch
+    url: https://github.com/sfzinstruments/GregSullivan.E-Pianos
+    upstream: "8c3e581acda3594b553948ff0222d4f84a698376 (v1.1, no tags)"
+    include: ["^Wurlitzer EP200/[^/]+\\.sfz$", "^Wurlitzer EP200/Samples/[^/]+\\.flac$", "^LICENSE$", "^README\\.md$"]
+    files: 45
+    bytes: 2417317
+    list_sha256: eb738e8fba02a58769b47a637f4308e45a4806ec7af97eceaf4fb6c8d5bd83f3
+    notes: "keys shootout: Wurlitzer EP200; SFZ, to be converted. Every file is checked by its git blob SHA-1 (assets/big/_locks/gsullivan-epianos.tsv)."
+  - path: assets/big/virtuosity-drums/
+    sha256: null
+    license: "CC0 1.0"
+    mode: fetch
+    url: https://github.com/sfzinstruments/virtuosity_drums
+    upstream: "9f04cf9a734527edfbb0a4eee1f674e45bbf71bc (v0.925)"
+    include: ["^Samples/(kickmic|snaremic|oh|mid|room|lofi)/(kick|snare|hh|ride)/\\1_(kick_snon|snare_center|snare_rimshot|snare_crossstick|hh_closed|hh_open|ride_ride)_vl\\d+(_rr\\d+)?\\.flac$", "^Samples/perc/(close|mid|oh|room)/shaker/LShaker_Shake1[DU]_rr[1-7]_[A-Za-z]+\\.wav$", "^LICENSE$"]
+    files: 777
+    bytes: 213446190
+    list_sha256: 494f58f03f10ee16e9110e88a7e5d1fe2ae8676f14d9496d20e6d432d61aaa6e
+    notes: "drums shootout: lane picks (kick, snare center/rimshot/cross-stick, hats, ride) on all 6 mics, plus the perc shakers. Every file is checked by its git blob SHA-1 (assets/big/_locks/virtuosity-drums.tsv)."
+  - path: assets/big/karoryfer-swirly-drums/
+    sha256: null
+    license: "CC0 1.0 (v1.104 and later)"
+    mode: fetch
+    url: https://github.com/sfzinstruments/karoryfer.swirly-drums
+    upstream: "c40dafe0011cb2e54c0c220ff0fa308a11fc60f5 (v1.104)"
+    include: ["^Samples/(marching_kick|snare_main|snare_edge|snare_stir|hat_closed|hat_tight|hat_foot|hat_open)/[^/]+\\.wav$", "^license$"]
+    files: 585
+    bytes: 91219492
+    list_sha256: 399e2bf3b66b6c72ba62538642a082c8336557e3f91c1bf277e6fda489fc1cb0
+    notes: "drums shootout: brushes, dry only (marching kick, snare main/edge/stir, hats closed/tight/foot/open). Every file is checked by its git blob SHA-1 (assets/big/_locks/karoryfer-swirly-drums.tsv)."
+  - path: assets/big/vsco2-ce/
+    sha256: null
+    license: "CC0 1.0 (its readme asks for credit: Versilian Studios / Sam Gossner)"
+    mode: fetch
+    url: https://github.com/sgossner/VSCO-2-CE
+    upstream: "6dd651d55dde97fd4028699be9d4481f26917891 (SFZ branch)"
+    include: ["^Strings/Solo Contrabass/Pizz/[^/]+\\.wav$", "^ContrabassPizz\\.sfz$"]
+    files: 41
+    bytes: 20804952
+    list_sha256: e9813566109dc87ed5eeb450c8b0df790c06abe13d1f0df70011f7e4c3db76f1
+    notes: "bass shootout: Solo Contrabass pizzicato; SFZ, to be converted. Every file is checked by its git blob SHA-1 (assets/big/_locks/vsco2-ce.tsv)."
+  - path: assets/big/freepats-tenor-sax/TenorSaxophone-SF2-20200717.tar.bz2
+    sha256: f7640cf2039662b15b4521bb5615e1ddc426731559b4c31079cb5e9f50e16fa0
+    license: "CC0 1.0"
+    mode: fetch
+    url: https://freepats.zenvoid.org/Reed/TenorSaxophone/TenorSaxophone-SF2-20200717.tar.bz2
+    upstream: "version 2020-07-17"
+    bytes: 25757059
+    extracts:
+      - {path: "assets/big/freepats-tenor-sax/x/TenorSaxophone-SF2-20200717/TenorSaxophone-20200717.sf2", bytes: 28117404, sha256: 3b4f4cdabe5c9a9825cd0dd1469a35117b86876256a089bba5f97d4abf1e9b46}
+    notes: "sax shootout: FreePats Tenor Saxophone, full SF2 (built from VCSL samples); sha256 pinned on first fetch (none published)."
+  - path: assets/big/freepats-fm-piano-1/FM-Piano1-SF2-20190916.7z
+    sha256: 543774e268e00eaf13968c53d9a42eada7f13564e559d51534ed552507c971ad
+    license: "CC0 1.0"
+    mode: fetch
+    url: https://github.com/freepats/fm-piano1/releases/download/2019-09-16/FM-Piano1-SF2-20190916.7z
+    upstream: "tag 2019-09-16"
+    bytes: 13727542
+    extracts:
+      - {path: "assets/big/freepats-fm-piano-1/x/FM-Piano1 SF2-20190916/FM-Piano1 20190916.sf2", bytes: 43783782, sha256: 5bbf457fa4ec98b1007fcae75f8e2f7ab39dbddea7a5f49c974059a5efdf7af4}
+    notes: "keys shootout: FM Synthesized Piano #1 (DX7 E.Piano 1 model), SF2; sha256 pinned on first fetch (none published)."
+  - path: assets/big/freepats-upright-piano-kw/UprightPianoKW-SF2-20220221.7z
+    sha256: 17c084c6e4205233dc49b34e4bc44a9b2d7c7a2c02b04729ecda77079b07c826
+    license: "CC0 1.0"
+    mode: fetch
+    url: https://freepats.zenvoid.org/Piano/UprightPianoKW/UprightPianoKW-SF2-20220221.7z
+    upstream: "version 2022-02-21"
+    bytes: 28832466
+    extracts:
+      - {path: "assets/big/freepats-upright-piano-kw/x/UprightPianoKW-SF2-20220221/UprightPianoKW-20220221.sf2", bytes: 57377848, sha256: d9f5157720963671906727ca2e12b3293fd822c831bb0de477dd1c5f3ad37108}
+    notes: "keys shootout: Upright Piano KW, full SF2; sha256 pinned on first fetch (none published)."
+  - path: assets/big/freepats-fsbs-jazz-guitar/EGuitarFSBS-jazz-bridge-small-SF2-20260807.7z
+    sha256: d2090931a0339ba6b60c6713bc6d701393d3a420c20e56ad69a8d50de645135d
+    license: "CC0 1.0"
+    mode: fetch
+    url: https://github.com/freepats/electric-guitar-FSBS-jazz/releases/download/2026-08-07/EGuitarFSBS-jazz-bridge-small-SF2-20260807.7z
+    upstream: "tag 2026-08-07"
+    bytes: 5232868
+    extracts:
+      - {path: "assets/big/freepats-fsbs-jazz-guitar/x/EGuitarFSBS-jazz bridge small SF2-20260807/EGuitarFSBS-jazz bridge small 20260807.sf2", bytes: 7768134, sha256: 1baca0ebb66627bbd4c08d4137c41728253588ce85504ed5148f06ea7c000d22}
+    notes: "keys shootout: FSBS Electric Guitar Clean #2 (jazz), bridge, small SF2; sha256 as GitHub publishes it."
+  - path: assets/big/freepats-finger-bass-yr/FingerBassYR-SF2-20190930.7z
+    sha256: f5b5cfe04435a9e9037d1f97d515dc596535acf26637db9579d724cd757f179e
+    license: "CC0 1.0"
+    mode: fetch
+    url: https://github.com/freepats/electric-bass-YR/releases/download/2019-09-30/FingerBassYR-SF2-20190930.7z
+    upstream: "tag 2019-09-30"
+    bytes: 2613000
+    extracts:
+      - {path: "assets/big/freepats-finger-bass-yr/x/FingerBassYR SF2-20190930/FingerBassYR 20190930.sf2", bytes: 4220300, sha256: bd1332696f61c0cb254ce7f202fb6b945ff46ccb1dcdd62e345a50bde3afb165}
+    notes: "bass shootout: Finger Bass YR, SF2; sha256 pinned on first fetch (none published)."

@@ -4,10 +4,48 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ## Status
 - **SU used:** 419.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 08:17).
-- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way: the rating page and the compiler + renderer are committed, and cluster renders are deterministic across CPU models (entries below). Next: land the second review, loosen the seam tolerance to what Linux gives, then fader calibration and the shootout batches (these need the asset download OK).
-- **Waiting on Shresth:**
-  - the download OK for `docs/SHOOTOUT_ASSETS.md` (14 sources, 944 MB, all free licenses), and the Freesound rain file, which needs his login;
-  - whether `scancel` may be used on our own jobs. It matters only for 13624408, which waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots.
+- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way: the rating page and the compiler + renderer are committed, and cluster renders are deterministic across CPU models (entries below). The 14 shootout sources are downloaded and verified. Next: land the second review, loosen the seam tolerance to what Linux gives, copy the assets to the cluster, build the SFZ → SF2 converter, then fader calibration and the shootout batches.
+- **Waiting on Shresth:** the Freesound rain file, which needs his login (`docs/SHOOTOUT_ASSETS.md`).
+
+---
+
+## 2026-10-31 (09:05 PDT): the 14 shootout sources downloaded and verified; stuck job 13624408 cancelled
+
+**What was done**
+- **Shresth's answers** (chat): "1. Yes, if we need it. 2. Yes, if we don't need it." I checked both conditions first.
+- **13624408 cancelled.**
+  - **Why it was not needed:** `scontrol show job` showed a `lofi-env-scorer` build, PENDING on `afterok:13624406(failed)` since 2026-10-30 18:54, so it could never start. 13624724 later built the scorer env, and smoke 13628361 passed on it.
+  - **Result:** `scancel` left it CANCELLED after 0:00 (`sacct`), so it cost 0 SU and frees its 960 SU reservation and a job slot.
+- **Assets fetched** into `assets/big/` (gitignored): 944,155,471 bytes in 13 folders, in 2 min 20 s. All 14 are planned shootout candidates (instrument.md §6, `docs/SHOOTOUT_ASSETS.md`).
+  - **GitHub sets** (8 repos, 1,931 files, 867,992,536 bytes):
+    - each was listed once through the trees API at its pinned commit (read-only `gh api`) and selected by the rules now in `assets/MANIFEST.yaml`;
+    - every file was checked against its git blob SHA-1 before it was moved into place;
+    - the selections matched the request file for file and byte for byte, with two additions: VCSL's LICENSE from master `c1ea7bcc` (its sfz branch has none) and Virtuosity's LICENSE, 7,048 bytes each;
+    - jRhodes3d's third SFZ is the root-level `jRhodes3d-mono-no-xfade.sfz`.
+  - **Archives** (5, 76,162,935 bytes):
+    - each matched its exact published size;
+    - the FSBS archive also matched GitHub's published sha256 `d2090931…`. The other four have no published hash, so their sha256 is pinned now in MANIFEST.yaml;
+    - each archive's entries were checked (relative paths, no `..`, files and folders only) before it was extracted into a new folder.
+  - **What came down:**
+    - **Licence files** are as researched: the CC0 legal code `a2010f34…` for Weresax, Swirly, Virtuosity, VCSL and the FreePats archives; CC BY 4.0 for MTG; CC BY 3.0 for the Wurlitzer; jRhodes3d's split licence.
+    - **SF2 presets:** (0, 0) in each archive, plus (0, 1)–(0, 3) in FM Piano #1.
+    - **Sample rates:** 44.1 kHz, except MTG (132 files) and the Virtuosity kit (720), which are 48 kHz 24-bit.
+- **Records:**
+  - `assets/MANIFEST.yaml` gains 13 fetch-only entries with rules, counts, bytes, list_sha256, and the archive and SF2 sha256s;
+  - per-file locks with sha256 go in `assets/big/_locks/` (not committed);
+  - `assets/ATTRIBUTION.md` is new;
+  - `docs/SHOOTOUT_ASSETS.md` gets a status block.
+- **Side effects:** read-only `gh api` calls for the 8 trees and 3 release listings.
+
+**Failed approaches and why:** none.
+
+**SU spent:** 0 (13624408 never ran).
+
+**Next:**
+1. Copy `assets/big/` to `$REMOTE_KEEP/assets/`. Only the owner can reach it, because `/project2/anakano_429/shresthr` is `drwx--S---`.
+2. The SFZ → SF2 converter for the 6 SFZ banks.
+3. A deterministic 48 → 44.1 kHz path for the Virtuosity one-shots.
+4. The rain file is still Shresth's.
 
 ---
 

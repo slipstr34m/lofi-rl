@@ -1,6 +1,12 @@
 # Phase-1 shootout assets
 
-**Status: waiting for Shresth's download OK** (asked 2026-10-31). Nothing below has been downloaded.
+**Status: downloaded and verified on 2026-10-31**, after Shresth's OK ("Yes, if we need it"; every source below is a planned shootout candidate).
+- **Size:** 944,155,471 bytes in 13 folders under `assets/big/` (the VCSL piano and shakers share one).
+- **Records:** `assets/MANIFEST.yaml` (one fetch-only entry each) and `assets/ATTRIBUTION.md`.
+- **Two files beyond the table:** VCSL's LICENSE from master `c1ea7bcc` (its sfz branch has none) and Virtuosity's LICENSE, 7,048 bytes each. jRhodes3d's third SFZ is the root-level `jRhodes3d-mono-no-xfade.sfz`.
+- **Archive SF2s** (bank, program): tenor sax, Upright KW, FSBS jazz and Finger Bass YR hold one preset each, (0, 0). FM Piano #1 holds (0, 0) to (0, 3).
+- **Sample rates:** 44.1 kHz everywhere except the MTG sax samples (132, 48 kHz 24-bit) and the Virtuosity kit (720, 48 kHz 24-bit); its perc shakers are 44.1 kHz.
+- **Still Shresth's to download:** the Freesound rain file (below).
 
 Every size is a byte count from a HEAD request or the GitHub API. A second agent re-checked each one, and each license, independently (workflow `wf_57c1b524-c49`, 2026-10-31), and two sizes plus five license texts were spot-checked by hand. Already in the repo: GeneralUser GS (tenor 66, alto 65, Tine EP 4, Drawbar Organ 16, Acoustic Bass 32, Jazz kit 32).
 
@@ -10,7 +16,8 @@ Every size is a byte count from a HEAD request or the GitHub API. A second agent
 - Git gets only `assets/MANIFEST.yaml` (URL, hash, license) and `ATTRIBUTION.md`, so the public repo stays small and every asset is reproducible from its URL.
 - **jRhodes3d is non-commercial.** It, and anything converted from it, never enters git and is never shared. Music made with it is CC0, by its license.
 
-## May Claude download these? (14 sources, 944,168,732 bytes ≈ 944 MB)
+## The 14 sources (approved 2026-10-31)
+Requested as 944,168,732 bytes; 944,155,471 were fetched. The request counted MTG's four shared files (LICENSE, README and two Data includes: 20,309 bytes) once per sax, and it left out Virtuosity's 7,048-byte LICENSE.
 
 | # | For | Source | What is fetched | Bytes | License | Pinned at |
 |---|---|---|---|---|---|---|
