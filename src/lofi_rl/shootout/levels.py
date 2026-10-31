@@ -53,7 +53,6 @@ from lofi_rl.brief import Brief
 from lofi_rl.compile.compiler import CompileError, compile_loop
 from lofi_rl.compile.events import CompiledLoop
 from lofi_rl.dsl import parse
-from lofi_rl.dsl.vocab import LANES
 from lofi_rl.palette import ROOT, Palette, PaletteError, Plugin, parse_palette, sf2_presets
 from lofi_rl.render.loudness import lufs
 from lofi_rl.render.mix import bus_chain, process

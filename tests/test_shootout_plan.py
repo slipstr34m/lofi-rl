@@ -7,7 +7,7 @@ are recomputed from the plan's slots. The plan is public (§2.3): its tiles hold
 from __future__ import annotations
 
 import re
-from collections import Counter, defaultdict
+from collections import Counter
 from itertools import combinations
 from pathlib import Path
 
