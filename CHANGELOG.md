@@ -3,9 +3,57 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 241.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-30 23:53).
-- **Phase:** 0 (setup), started 2026-10-30. Smoke 13624734 failed 2 checks, both with known causes, and the fixes are in (entry below). The Phase-0 gate waits on the rerun `lofi-smoke-env` **13628361**, submitted 2026-10-31 00:57 with the mirror at `0508c2f`. It is queued on debug behind 2 jobs, and Slurm estimates a 03:30 start.
-- **Waiting on Shresth:** whether `scancel` may be used on our own jobs. It now matters only for 13624408, which waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots. Racing the smoke on the gpu partition is dropped.
+- **SU used:** 298.5 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 04:08).
+- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target (entry below). Phase 1 (instrument) is next: the compiler, then the shootout batches.
+- **Waiting on Shresth:**
+  - download OKs for the Phase-1 shootout assets (sax, keys, drums, basses; the Freesound rain file is his to download);
+  - whether `scancel` may be used on our own jobs. It matters only for 13624408, which waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots.
+
+---
+
+## 2026-10-31 (early): smoke 13628361 passes; Phase 0 done
+
+**What was done**
+- **Smoke run.** `lofi-smoke-env` 13628361 ran on b11-09 (A40), 03:59:58–04:02:20, after 3 h 3 min in the debug queue (submitted 00:57:17; guard log and `sacct`). It ran the mirror at `0508c2f` with dirty 0 (`facts.json`). All three steps and the node's test run passed, and the log ends in `SMOKE_OK`.
+- **The CLAUDE.md §5 list**, all passed: imports and a bf16 GPU in both envs; FluidSynth gives the same PCM twice; `example.ls` renders to exactly N samples at −14 ± 0.1 LUFS with true peak ≤ −1 dBTP; vLLM generates one completion; MERT, CLAP and Audiobox run, with timings recorded.
+- **Log warnings checked** (`/scratch1/shresthr/lofi-rl/logs/lofi-smoke-env_13628361.out`, 95 lines, no traceback):
+  - **MERT.** "feature_extractor_cqt requires the libray 'nnAudio'" does not apply: the pinned snapshot's `config.json` has `"feature_extractor_cqt": false`. "pos_conv … newly initialized" is the spurious weight-norm warning explained in the entry below.
+  - **CLAP.** "RobertaModel … pooler newly initialized" is overwritten on load. laion_clap 1.1.7's `load_ckpt` (`hook.py`) passes the whole checkpoint to the model's `load_state_dict`, which is strict by default, so a missing pooler key would have raised.
+  - **vLLM.** FlashInfer kernels are disabled (no `flashinfer-cubin`, no nvcc). That is a speed question for the GRPO smoke, not a correctness one. "engine core exited unexpectedly" follows vLLM's own SIGTERM at shutdown, after `POLICY_OK`.
+  - **Deprecations, no action:** torch.meshgrid indexing, `weight_norm`, torchaudio's switch to torchcodec in 2.9 (the scorer env pins 2.8), mismatched key_padding_mask/attn_mask types.
+
+**Jobs** (`scripts/session_report.py`)
+
+| Job | Name | State | Minutes | SU | Result (log under `/scratch1/shresthr/lofi-rl/logs/`) |
+|---|---|---|---|---|---|
+| 13628361 | smoke-env | COMPLETED | 2.4 | 56.8 | b11-09; 10 of 10 checks and 462 tests passed; `SMOKE_OK` |
+
+**Numbers** (`runs/smoke-13628361/summary/{facts,scorer,policy}.json`, `pytest.txt`)
+- **Node:** b11-09, AMD EPYC 7313 16-Core, NVIDIA A40 (46,068 MiB, driver 580.159.04, compute mode Default), glibc 2.28, `CUDA_VISIBLE_DEVICES=0`. huggingface.co is reachable (200).
+- **Scorer env** (torch 2.8.0+cu128, CUDA 12.8, bf16):
+  - FluidSynth 2.6.1 gives the same PCM twice (`afb1f6a4…`, 221,056 samples);
+  - `example.ls` passes its gate with 0 repairs and renders to N = 1,032,576 samples, −14.05 LUFS, −1.378 dBTP in 4 iterations (`eb2cadc5…`);
+  - MERT: finite hidden states [13, 1, 1755, 768], 72.0 ms per clip;
+  - CLAP: 4 windows of 280,973 samples give embeddings [4, 512], and the 2 prompts give text embeddings [2, 512]. Two runs differ by at most 0.0, batch 1 vs batch 4 by 5.96e-8; 5.8 ms per window at batch 4. The loop's cosine is 0.0936 with "city at night, rain on the window" and 0.0449 with "sunny beach at noon";
+  - Audiobox: CE 6.276, CU 6.768, PC 5.121, PQ 6.968, 65.4 ms per clip.
+- **Across jobs on one node:** the FluidSynth and `example.ls` PCM hashes, and all four Audiobox scores to 3 decimals, equal 13624734's. The timings are single timed calls, not benchmarks (13624734: MERT 61.4 ms, Audiobox 335.7 ms).
+- **Policy env** (torch 2.13.0+cu130, CUDA 13.0, bf16), vLLM 0.32.0, Qwen3-4B-Instruct-2507 @cdbee75f, eager, greedy:
+  - the engine core started with `fork`, and the parent never initialised CUDA; Triton found gcc 13.3.0;
+  - load 37.0 s; 343 prompt tokens, then 279 completion tokens in 6.51 s (42.9 tok/s end to end), finish_reason `stop`; the whole check took 58.5 s;
+  - `example.ls` is 269 tokens with the 2507 tokenizer.
+- **The completion** fails its gate: G5, "line 1: 'Dm7' is a note name or absolute chord", with 1 repair. 15 of its 18 lines are verbatim lines of `example.ls`, which the prompt contained. The other 3 are `vamp: Dm7 G7 span 2`, `keys: piano w/ reverb` and a 15-step `@7 ohat` grid (line diff against `tests/fixtures/loops/example.ls`, this session). One greedy sample is not a junk rate; see Next.
+- **Tests on the node** (`-m "not laptop"`): 462 passed, 33 deselected, 37.02 s.
+
+**Phase-0 gate** (CLAUDE.md §9: ssh, rsync and the Makefile work; `smoke_env` passes on debug; the skeleton is committed and pushed): met, 2026-10-31.
+
+**Failed approaches and why:** none this unit.
+
+**SU spent:** 56.8 (13628361). Total: 298.5 (`scripts/session_report.py`, 04:08).
+
+**Next**
+1. **Phase-1 compiler** (`docs/design/instrument.md` §3–4): degrees → pitches per tonic and mode, voicings, swing, the drum one-shot sampler, the sax expression and the bus chain; then `docs/COMPILER.md`. Built like the parser: implement, adversarial review, fix.
+2. **Shootout assets.** Ask Shresth for download OKs, giving the file, source and size of each. `.rsyncignore` drops `*.wav` and `*.flac` everywhere, so committed drum one-shots would never reach the mirror. Settle that route (convert to SF2, an rsync include, or a cluster fetch) before the first shootout render.
+3. **The junk-rate prompt** (Phase-1 gate). The smoke's one-example prompt drew a near-copy. The junk-rate prompt should spell out the vocabulary (chord numerals, instrument names), and `junk.json` should count near-copies of any in-prompt example, so copies cannot carry the gate. Record the choice in DECISIONS.md before the run.
 
 ---
 
