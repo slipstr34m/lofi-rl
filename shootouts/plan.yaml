@@ -427,5 +427,5 @@ levels:
   zero_trim_source: gu               # "GU instruments get t = 0"
   linear_drop_db: 6.02               # check (a)
   linear_tol_db: 0.1
-  median_tol_lu: 0.05                # check (b)
-  loop_tol_lu: 0.1
+  median_tol_lu: 0.05                # check (b): the median fader, which the frozen palette takes
+  clip_tol_lu: 0.1                   # check (c): every clip at its own fader (CD-52)

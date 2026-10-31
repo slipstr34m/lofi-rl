@@ -25,11 +25,17 @@ builder stops before writing any batch; an infrastructure fault gets status `err
 - **Per clip** (section 3, "Recorded per instrument variant ... Per clip"): every bus's trim (a chain-head `Gain`
   for keys, bass and sax; the kit's kick-lane dB for drums, CD-51), fader (`mix.bus_gain_db`), loudness before
   the fader and after it, the master gain, the final LUFS and true peak, and the lead's MIDI range.
+- **The clip's own level** (CD-52): a clip palette's entry in the generator's index.json beside it carries a
+  `level` (the bus its round varies, the level tool's L before the clip's fader, the fader, and the loudness the
+  tool measured after it). The record copies it, and the render must play that very bus: its pre-fader loudness
+  within AGREE_LU of L, at the same fader, with the measured loudness within the clip tolerance of S* + T. A render
+  that does not gets status `level` (the batch builder refuses it). A palette with no index beside it (a test's
+  stand-in) gets no level.
 - `summary/renders.json` collects every record, plus the wall time of each render (kept out of the records, so
   a record is as deterministic as its render).
 
-Exit 0 when every render succeeded, 3 when one failed a gate or did not compile, 1 on an infrastructure fault,
-2 for bad arguments or palettes. Sound claims: none.
+Exit 0 when every render succeeded, 3 when one failed a gate, did not compile or missed its level, 1 on an
+infrastructure fault, 2 for bad arguments or palettes. Sound claims: none.
 """
 from __future__ import annotations
 
@@ -60,8 +66,10 @@ FLAC_FORMAT = "pcm16/tpdf-splitmix64"
 RECORD_KEYS = ("schema", "render", "status", "error", "loop", "brief", "stage", "option", "what", "bus", "variant",
                "palette", "clip", "n", "sr", "bpm", "lufs", "true_peak_dbtp", "master_gain_db", "pcm_sha256",
                "music_sha256", "flac_sha256", "flac_frames", "canon_sha256", "compiled_sha256", "gates", "buses",
-               "bed_lufs", "sax_range", "expect_pcm_sha256")
-__all__ = ["RECORD_KEYS", "RECORD_SCHEMA", "clip_id", "loop_samples", "main", "render_all", "verify_palettes"]
+               "bed_lufs", "sax_range", "expect_pcm_sha256", "level")
+AGREE_LU = 0.001        # a clip's bus before its fader against the level tool's L (both read the same signal)
+__all__ = ["AGREE_LU", "RECORD_KEYS", "RECORD_SCHEMA", "clip_id", "loop_samples", "main", "palette_levels",
+           "render_all", "verify_palettes", "with_level"]
 
 
 def clip_id(manifest: dict) -> str:
@@ -163,14 +171,59 @@ def _record(rid: str, entry: dict, pal: Palette | None, status: str, error: str 
     return rec
 
 
+def palette_levels(files: list[Path]) -> dict[Path, dict | None]:
+    """Each palette's `level` (CD-52) from the generator's index.json in its folder, None for a palette the index
+    gives none or with no index beside it (a test's stand-in). Each index is read once. ValueError for an index that
+    is not readable JSON."""
+    by_dir: dict[Path, dict[str, dict | None]] = {}
+    out: dict[Path, dict | None] = {}
+    for f in files:
+        f = Path(f)
+        if f.parent not in by_dir:
+            index = f.parent / "index.json"
+            try:
+                doc = json.loads(index.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                doc = {}
+            except (OSError, ValueError) as err:
+                raise ValueError(f"{index}: {err}") from err
+            by_dir[f.parent] = {e["file"]: e.get("level") for e in (doc.get("palettes") or [])}
+        out[f] = by_dir[f.parent].get(f.name)
+    return out
+
+
+def with_level(rec: dict, level: dict) -> dict:
+    """The record of a clip whose palette names a level (CD-52), with that level, the render's own pre-fader
+    loudness of its bus (`render_lufs`) and their difference (`agree_lu`). Status `level` unless the render plays
+    the bus the level tool measured (within AGREE_LU), at the clip's fader, and the tool's loudness after that fader
+    sits within its tolerance of S* + T."""
+    got = rec["buses"][level["bus"]]
+    pre, problems = got["lufs"], []
+    agree = None if pre is None else pre - level["L"]
+    if pre is None:
+        problems.append(f"the {level['bus']} bus is silent")
+    elif abs(agree) > AGREE_LU:
+        problems.append(f"the {level['bus']} bus reads {pre:.4f} LUFS before its fader, the level tool's L is "
+                        f"{level['L']:.4f} ({agree:+.4f} LU, more than {AGREE_LU})")
+    if got["fader_db"] != level["F"]:
+        problems.append(f"the {level['bus']} fader is {got['fader_db']} dB, the clip's own is {level['F']} dB")
+    if abs(level["off_lu"]) > level["tol_lu"]:
+        problems.append(f"the level tool measured the bus {level['off_lu']:+.3f} LU from S* + T, more than "
+                        f"{level['tol_lu']} LU")
+    out = dict(rec, level={**level, "render_lufs": pre, "agree_lu": agree, "ok": not problems})
+    if problems and out["status"] == "ok":
+        out.update(status="level", error="; ".join(problems))
+    return out
+
+
 def _write_json(path: Path, obj) -> None:
     path.write_text(json.dumps(obj, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def render_one(rid: str, entry: dict, palette_path: str, out_dir: str, workers: int = 1,
-               cache: str | None = None) -> tuple[dict, float]:
+               cache: str | None = None, level: dict | None = None) -> tuple[dict, float]:
     """Render one clip into <out_dir>/<rid>/ and return (its record, wall seconds). Never raises for a gate or
-    compile failure: the record says so."""
+    compile failure: the record says so. `level` is the clip palette's level (CD-52), checked by `with_level`."""
     t0 = time.perf_counter()
     final = Path(out_dir) / rid
     part = Path(out_dir) / f".{rid}.part"
@@ -189,6 +242,8 @@ def render_one(rid: str, entry: dict, palette_path: str, out_dir: str, workers: 
         flac = write_flac(part / "render.flac", r.audio)
         _sr, _ch, frames = audio_info(flac)
         rec = _record(rid, entry, pal, "ok", None, r, sha256_file(flac), frames)
+        if level is not None:
+            rec = with_level(rec, level)
         want = entry.get("expect_pcm_sha256")
         if want and rec["pcm_sha256"] != want:
             rec.update(status="error", error=f"pcm_sha256 {rec['pcm_sha256']} differs from the first showing's {want}")
@@ -212,7 +267,9 @@ def render_all(doc: dict, palettes_dir: Path | str, out_dir: Path | str, *, jobs
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     todo = {rid: e for rid, e in sorted(doc["renders"].items()) if not only or rid in only}
-    tasks = [(rid, e, str(palette_file(e, Path(palettes_dir))), str(out), workers, None if cache is None else str(cache))
+    files = {rid: palette_file(e, Path(palettes_dir)) for rid, e in todo.items()}
+    levels = palette_levels(list(files.values()))
+    tasks = [(rid, e, str(files[rid]), str(out), workers, None if cache is None else str(cache), levels[files[rid]])
              for rid, e in todo.items()]
     records: dict[str, dict] = {}
     seconds: dict[str, float] = {}
@@ -251,6 +308,13 @@ def main(argv: list[str] | None = None) -> int:
     if problems:
         print("error: the palettes do not verify:\n  - " + "\n  - ".join(problems), file=sys.stderr)
         return 2
+    try:
+        own = sum(x is not None for x in palette_levels(files).values())
+    except ValueError as err:
+        print(f"error: {err}", file=sys.stderr)
+        return 2
+    if own:
+        print(f"render: {own} of the {len(files)} palettes carry their clip's own level (CD-52)", flush=True)
     print(f"render: {len(files)} palettes verified ({time.perf_counter() - t0:.1f} s); "
           f"{len(only) or len(doc['renders'])} renders, {a.jobs} at a time", flush=True)
     recs = render_all(doc, a.palettes, a.out, jobs=a.jobs, workers=a.workers, cache=a.cache,

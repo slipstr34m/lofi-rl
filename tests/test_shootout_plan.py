@@ -304,7 +304,7 @@ def test_the_fixed_band_and_level_anchors_are_the_gu_instruments():
                                  "sax": "sax_gu_tenor"}
     lv = PLAN.levels
     assert lv.anchors == PLAN.days[1].band and lv.sax_target == "sax_gu_tenor" and lv.zero_trim_source == "gu"
-    assert (lv.linear_drop_db, lv.linear_tol_db, lv.median_tol_lu, lv.loop_tol_lu) == (6.02, 0.1, 0.05, 0.1)
+    assert (lv.linear_drop_db, lv.linear_tol_db, lv.median_tol_lu, lv.clip_tol_lu) == (6.02, 0.1, 0.05, 0.1)
     dev = load_palette(DEV, verify=False)
     for reg in ("tenor", "alto"):
         r, d = PLAN.registers[reg], dev.sax[reg]

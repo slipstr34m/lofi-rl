@@ -74,7 +74,7 @@ def tiny_plan(loops: Path) -> dict:
         "cuts": [],
         "levels": {"anchors": {"keys": "gu_tine_ep", "drums": "kit_gu_jazz", "bass": "bass_gu_acoustic",
                                "sax": "sax_gu_tenor"}, "sax_target": "sax_gu_tenor", "zero_trim_source": "gu",
-                   "linear_drop_db": 6.02, "linear_tol_db": 0.1, "median_tol_lu": 0.05, "loop_tol_lu": 0.1},
+                   "linear_drop_db": 6.02, "linear_tol_db": 0.1, "median_tol_lu": 0.05, "clip_tol_lu": 0.1},
     }
 
 

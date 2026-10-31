@@ -30,9 +30,9 @@ def _sbatch(name: str) -> str:
 
 
 def test_the_job_script_asks_for_what_section_7_7_prices():
-    # Walltime from the Day-1 dry run (laptop, 2026-10-31: every stage in 87.9-89.4 s, peak memory 3.0 GB): the
-    # cluster's slowest render node (x 2.7), 8 CPUs that may be 4 cores' hyperthreads (x 2) and 2 min of start-up
-    # come to about 10 min, so 20 min leaves twice that.
+    # Walltime from the Day-1 dry runs (laptop, 2026-10-31: every stage in 87.9-96.7 s over five runs, per-clip
+    # faders included, peak memory 3.0 GB): the cluster's slowest render node (x 2.7), 8 CPUs that may be 4 cores'
+    # hyperthreads (x 2) and 2 min of start-up come to about 10.7 min, so 20 min is 1.9 times that.
     s = SCRIPT.read_text()
     assert _sbatch("job-name") == "lofi-shootout" and _sbatch("partition") == "main"
     assert _sbatch("cpus-per-task") == "8" and _sbatch("mem") == "16G" and _sbatch("time") == "00:20:00"
@@ -72,8 +72,9 @@ def test_the_runner_writes_every_argument_into_leaders_json_and_lists_the_stages
     assert "--cut w1-two" in lines["draw"] and "--seed" not in lines["draw"]
     assert lines["measure"].endswith(f"lofi_rl.shootout.palettes --plan {job.PLAN} --stage day3 --levels none "
                                      f"--out {s}/palettes")
-    assert f"--palettes {s}/palettes/measure --stage day3 --prior {tmp_path}/runs/shootout-13640001/summary/levels.json" \
-        in lines["levels"] and f"--out {s}/levels.json --workers 8" in lines["levels"]
+    assert f"--palettes {s}/palettes/measure --stage day3 --draw {s}/draw.json " \
+           f"--prior {tmp_path}/runs/shootout-13640001/summary/levels.json" in lines["levels"] \
+        and f"--out {s}/levels.json --workers 8" in lines["levels"]
     assert lines["palettes"].endswith(f"lofi_rl.shootout.palettes --plan {job.PLAN} --stage day3 --levels "
                                       f"{s}/levels.json --draw {s}/draw.json --out {s}/palettes")
     assert f"lofi_rl.shootout.render --draw {s}/draw.json --palettes {s}/palettes --out {run}/renders " \
@@ -110,7 +111,8 @@ def test_every_stage_command_is_one_its_tool_takes(tmp_path, capsys, monkeypatch
     arg = {name: dict(zip(argv[3:], argv[4:])) for name, argv in steps.items()}
     assert arg["levels"]["--palettes"] == arg["measure"]["--out"] + "/measure", "the measuring palettes' folder"
     assert arg["palettes"]["--levels"] == arg["levels"]["--out"] and arg["render"]["--palettes"] == arg["palettes"]["--out"]
-    assert arg["render"]["--draw"] == arg["palettes"]["--draw"] == arg["build"]["--draw"]
+    assert arg["render"]["--draw"] == arg["palettes"]["--draw"] == arg["build"]["--draw"] == arg["levels"]["--draw"]
+    assert arg["levels"]["--draw"] == arg["draw"]["--summary"] + "/draw.json", "the levels see every clip drawn"
     assert arg["build"]["--renders"] == arg["render"]["--out"] and "--draw" not in arg["measure"]
     assert {arg[n]["--stage"] for n in ("draw", "measure", "levels", "palettes", "build")} == {"day1"}
 

@@ -1,7 +1,9 @@
-"""The level-matching tool (docs/SHOOTOUTS.md §3 steps 1-6; §7.1 acceptance tests 4-7; no palette field yet).
+"""The level-matching tool (docs/SHOOTOUTS.md §3 steps 1-6 and CD-52; §7.1 acceptance tests 4-7; no palette field yet).
 
 Tests 4 and 7 run on tables of made-up loudness values (no audio), the linear-range check (5) on one FluidSynth
-stem and one synthetic signal, and the end-to-end match (6) on the real banks with `-m cluster`."""
+stem and one synthetic signal, and the end-to-end match (6) on the real banks with `-m cluster`. Every shootout
+clip takes its own fader on the bus its round varies (CD-52), so the tool also measures each (candidate, loop) a
+clip plays, the anchor's sour copy included when it is given the job's draw."""
 from __future__ import annotations
 
 import hashlib
@@ -24,10 +26,12 @@ from lofi_rl.dsl import parse
 from lofi_rl.palette import Plugin, load_palette
 from lofi_rl.render.loudness import lufs
 from lofi_rl.render.pipeline import fluid_stems
-from lofi_rl.shootout.levels import (LevelsError, chain_lufs, faders, input_lufs, linear_check, main, post_check,
-                                     run_levels, sax_target, trims, with_trim)
+from lofi_rl.shootout.levels import (CLIP_FIX_LU, CLIP_STEPS, LevelsError, chain_lufs, clip_check, clip_fader, faders,
+                                     input_lufs, linear_check, main, post_check, run_levels, sax_target, trims,
+                                     with_trim)
 from lofi_rl.shootout.palettes import generate
 from lofi_rl.shootout.plan import load_plan
+from lofi_rl.shootout.sour import raise_accidentals
 
 PLAN = load_plan(PLAN_PATH)
 needs_fluidsynth = pytest.mark.skipif(shutil.which("fluidsynth") is None, reason="fluidsynth not on PATH")
@@ -71,7 +75,10 @@ def test_trims_and_faders_from_a_synthetic_table():
         trims(dict(P, jrhodes3d={"a": float("-inf"), "b": -1.0}), BUS, ANCHORS, zero=GU)
 
 
-def test_the_post_fader_check_holds_the_median_to_005_and_each_loop_to_01():
+def test_the_median_check_holds_the_median_fader_to_005_lu():
+    # §3 step 6b: the median fader F, the one the frozen palette takes, puts the median post-fader loudness at
+    # S* + T within 0.05 LU. How far each loop moved from its own L + F through BS.1770's -70 LUFS gate is kept
+    # as information: a shootout clip plays its own fader (step 6c), not F.
     L = {"x": {"a": -40.0, "b": -30.0, "c": -35.0}}
     F, s_star, T = {"x": 3.0}, -32.0, 0.0
     exact = {"x": {k: v + 3.0 for k, v in L["x"].items()}}
@@ -80,9 +87,45 @@ def test_the_post_fader_check_holds_the_median_to_005_and_each_loop_to_01():
     r = post_check(gated, L, F, {"x": s_star + T})["x"]
     assert r["ok"] and r["median_lufs"] == -32.04 and r["worst_loop_lu"] == pytest.approx(0.07)
     off = {"x": {"a": -36.8, "b": -27.0, "c": -32.0}}                   # loop a 0.2 LU off its own L + F
-    assert not post_check(off, L, F, {"x": s_star + T})["x"]["ok"]
+    r = post_check(off, L, F, {"x": s_star + T})["x"]
+    assert r["ok"] and r["worst_loop_lu"] == pytest.approx(0.2), "no longer a flag: loop a's clips take their own"
     median_off = {"x": {"a": -36.94, "b": -26.94, "c": -31.94}}         # each 0.06 off: the median breaks 0.05
     assert not post_check(median_off, L, F, {"x": s_star + T})["x"]["ok"]
+
+
+def test_a_clips_fader_is_corrected_by_the_loudness_it_measures_until_the_clip_sits_on_its_target():
+    # §3 step 5 per clip (CD-52): F(i, l) = S* + T - L(i, l), rounded to 0.01 dB, then corrected by the loudness
+    # the bus measures after that fader. A pure gain moves a quiet bus through BS.1770's -70 LUFS gate: the Day-1
+    # dry run's kit_virtuosity drum bus on L1 (-55.0 LUFS before the fader) measured 0.101 LU under its L + F.
+    calls = []
+
+    def gated(F):                                       # 0.1 LU under L + F, as that bus measured
+        calls.append(F)
+        return -55.0 + F - 0.1
+
+    c = clip_fader(-55.0, -20.0, gated)
+    assert calls == [35.0, 35.1] and c["F"] == 35.1 and c["tried"] == 2
+    assert c["lufs"] == pytest.approx(-20.0, abs=1e-9) and c["off_lu"] == pytest.approx(0.0, abs=1e-9)
+    assert (c["L"], c["target_lufs"]) == (-55.0, -20.0)
+    loud = clip_fader(-31.234, -26.5, lambda F: -31.234 + F)            # no gate: one measurement
+    assert loud["F"] == 4.73 and loud["tried"] == 1 and abs(loud["off_lu"]) <= CLIP_FIX_LU
+    growing = clip_fader(-40.0, -20.0, lambda F: -40.0 + F - 0.02 * (F - 10.0))   # the gate grows with the gain
+    assert growing["F"] == 20.2 and growing["tried"] == 2 and abs(growing["off_lu"]) <= CLIP_FIX_LU
+    # out of corrections, the fader whose measured loudness sat closest wins
+    worse = clip_fader(-30.0, -20.0, lambda F: -30.0 + F - (0.1 if F == 10.0 else -0.3), steps=1)
+    assert worse["F"] == 10.0 and worse["tried"] == 2 and worse["off_lu"] == pytest.approx(-0.1)
+    assert clip_fader(-30.0, -20.0, lambda F: -30.0 + F + 0.3)["tried"] <= 1 + CLIP_STEPS
+    with pytest.raises(LevelsError, match="silent"):
+        clip_fader(float("-inf"), -20.0, gated)
+
+
+def test_the_clip_check_holds_every_clip_to_01_lu():
+    # §3 step 6c: every clip, at its own fader, sits at S* + T within 0.1 LU.
+    clips = {"x": {"a": {"off_lu": 0.004}, "b": {"off_lu": -0.09}},
+             "y": {"a": {"off_lu": 0.0}, "a.sour": {"off_lu": 0.12}}}
+    out = clip_check(clips, 0.1)
+    assert out["x"] == {"worst_off_lu": 0.09, "cases": 2, "off": [], "ok": True}
+    assert out["y"] == {"worst_off_lu": 0.12, "cases": 2, "off": ["a.sour"], "ok": False}
 
 
 # --------------------------------------------------------------------------- §3 step 6a, the linear range
@@ -211,11 +254,93 @@ def test_the_tool_measures_each_variant_once_and_writes_t_f_and_the_checks(rig):
     assert all(rec["checks"]["linear"]["ok"] for k, rec in v.items() if k != "sax_mtg_alto")
     assert all(rec["checks"]["post_fader"]["ok"] for k, rec in v.items() if k != "sax_mtg_alto")
     assert doc["flags"] == ["sax_mtg_alto"]
+    # CD-52: each (variant, loop) the tool measured has its own fader, corrected for the bench's +0.02 LU gate
+    for vid, rec in v.items():
+        target = s_star + rec["T"]
+        assert set(rec["clips"]) == set(TWO), vid
+        for loop, c in rec["clips"].items():
+            assert c["L"] == rec["L"][loop] and c["target_lufs"] == target, (vid, loop)
+            assert c["lufs"] == pytest.approx(c["L"] + c["F"] + 0.02) and c["F"] == round(c["F"], 2)
+            assert abs(c["off_lu"]) <= CLIP_FIX_LU + 1e-9 and c["off_lu"] == pytest.approx(c["lufs"] - target)
+            assert c["lu"] == pytest.approx(c["lufs"] - s_star) and c["tried"] == 2, (vid, loop)
+        assert rec["checks"]["clips"]["ok"] and rec["checks"]["clips"]["cases"] == 2
+    assert doc["tolerances"]["clip_tol_lu"] == 0.1 and doc["extra_cases"] == {} and doc["draw"] is None
     assert doc["drift"]["stamp"] == "a1b2c3d 0 0"
     assert doc["drift"]["base_sha256"] == hashlib.sha256(rig["base"].read_bytes()).hexdigest()
     assert set(doc["drift"]["digests"]) == {f"m{i}" for i in range(1, 9)}
     assert all(set(d) == set(TWO) for d in doc["drift"]["digests"].values())
     assert doc["prior"] is None and doc["reused"] is False
+
+
+def tiny_draw(path: Path, victim: str, loop: str, *, renders_on: str | None = None) -> Path:
+    """What the level tool reads of the job's draw.json (lofi_rl.shootout.draw): an S1 round's renders on `loop` with
+    the GU tenor and `victim`, and the anchor's sour copy of it for `victim`, each with its clip palette's `level`
+    (the bus, the option and the case its fader is measured on). `renders_on` puts the GU tenor's clip on another
+    loop."""
+    lp = PLAN.loop_named(loop)
+    renders, palettes = {}, {}
+    for opt, sour, where in ((victim, False, loop), (victim, True, loop), ("sax_gu_tenor", False, renders_on or loop)):
+        wl = PLAN.loop_named(where)
+        text = PLAN.loop_text(wl.id)
+        b = wl.brief
+        key = f"s1_{opt}_{wl.id.lower()}" + ("_sour" if sour else "")
+        renders[f"S1.{where}.{opt}" + (".sour" if sour else "")] = {
+            "loop": where, "brief": {"energy": b.energy, "mood": b.mood, "bpm": b.bpm, "tonic": b.tonic},
+            "text": raise_accidentals(text) if sour else text, "variant": "sour" if sour else "base",
+            "palette": key, "stage": "S1", "option": opt, "what": "sour copy" if sour else "sax source", "bus": "sax"}
+        palettes[key] = {"stage": "S1", "day": "day1", "fills": "sax", "option": opt, "base": f"s1_{opt}",
+                         "level": {"bus": "sax", "variant": opt, "case": where + (".sour" if sour else "")}}
+    assert lp.brief.bpm == renders[f"S1.{loop}.{victim}"]["brief"]["bpm"]
+    path.write_text(json.dumps({"schema": "lofi-rl/shootout-draw/1", "stage": "day1",
+                                "plan": {"path": str(PLAN_PATH), "sha256": PLAN.sha256},
+                                "renders": renders, "palettes": palettes}))
+    return path
+
+
+def test_with_the_draw_the_tool_measures_the_anchors_sour_copy_in_its_candidates_run(rig, tmp_path):
+    # CD-52: every clip's varied-bus fader comes from its candidate's bus loudness on the round's own loop. The
+    # anchor's sour copy plays its own text, a (candidate, loop) pair the reference loops do not hold, so the draw's
+    # sour clip joins the measure plan: once, in its candidate's run, with that candidate's trim. The trim and the
+    # median fader (the frozen palette's) still come from the reference loops alone.
+    loop, victim = "l9_hopeful_high", "sax_mtg_alto"
+    sour = f"{loop}.sour"
+    L0 = {v: dict(t) for v, t in rig["L0"].items()}
+    L0[victim][sour] = L0[victim][loop] - 1.25
+    bench = TableBench(rig["P"], L0, gate=0.02)
+    path = tiny_draw(tmp_path / "draw.json", victim, loop)
+    doc = levels(rig, bench, draw=path)
+    rec = doc["variants"][victim]
+    run = rec["run"]
+    extra = [p for p in bench.prepared if p[1] != TWO]
+    assert extra == [(run, (sour,), ("sax",))], "the sour copy is staged once, on the sax bus of its run"
+    c = rec["clips"][sour]
+    assert c["L"] == pytest.approx(L0[victim][sour] + rec["t"]) and c["target_lufs"] == doc["S_star"]
+    assert abs(c["off_lu"]) <= CLIP_FIX_LU + 1e-9 and c["lufs"] == pytest.approx(c["L"] + c["F"] + 0.02)
+    assert set(rec["L"]) == set(rec["P"]) == set(TWO), "the trim and the median fader see the reference loops only"
+    assert rec["F"] == round(doc["S_star"] + rec["T"] - statistics.median(rec["L"].values()), 2)
+    assert all(sour not in r["clips"] for v, r in doc["variants"].items() if v != victim)
+    assert doc["extra_cases"] == {sour: {"loop": loop, "variant": "sour", "variants": [victim],
+                                         "text_sha256": hashlib.sha256(raise_accidentals(
+                                             PLAN.loop_text(PLAN.loop_named(loop).id)).encode()).hexdigest(),
+                                         "brief": doc["loops"][loop]["brief"], "n": doc["loops"][loop]["n"]}}
+    assert set(doc["drift"]["digests"][run]) == set(TWO) | {sour}
+    assert all(set(d) == set(TWO) for r, d in doc["drift"]["digests"].items() if r != run)
+    assert doc["draw"] == {"file": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def test_a_draw_off_the_tools_loops_or_its_plan_is_refused(rig, tmp_path):
+    # Every clip the draw makes needs its fader from this measurement: a render on a loop that --loops does not
+    # hold, or a draw of another plan, stops the tool before it measures anything.
+    bench = TableBench(rig["P"], rig["L0"])
+    with pytest.raises(LevelsError, match="l5_wistful_mid"):
+        levels(rig, bench, draw=tiny_draw(tmp_path / "a.json", "sax_mtg_alto", "l9_hopeful_high",
+                                         renders_on="l5_wistful_mid"))
+    other = json.loads(tiny_draw(tmp_path / "b.json", "sax_mtg_alto", "l9_hopeful_high").read_text())
+    other["plan"]["sha256"] = "0" * 64
+    (tmp_path / "c.json").write_text(json.dumps(other))
+    with pytest.raises(LevelsError, match="another plan"):
+        levels(rig, bench, draw=tmp_path / "c.json")
+    assert bench.prepared == []
 
 
 def test_prior_reuses_when_nothing_drifted_and_re_measures_a_changed_base_or_digest_recording_both(rig, tmp_path):
@@ -292,6 +417,15 @@ def test_the_cli_writes_levels_json_and_exits_2_on_bad_arguments(rig, tmp_path, 
     with pytest.raises(SystemExit) as ex:
         main(args[:-4] + ["--stage", "day4", "--out", str(out)])
     assert ex.value.code == 2
+    with pytest.raises(SystemExit) as ex:
+        main(args + ["--draw", str(tmp_path / "no-draw.json")])
+    assert ex.value.code == 2
+    L0 = {v: dict(t, **{"l9_hopeful_high.sour": t["l9_hopeful_high"]}) for v, t in rig["L0"].items()}
+    draw = tiny_draw(tmp_path / "draw.json", "sax_gu_alto", "l9_hopeful_high")
+    assert main(args + ["--draw", str(draw)], bench=TableBench(rig["P"], L0)) == 0
+    doc = json.loads(out.read_text())
+    assert "l9_hopeful_high.sour" in doc["variants"]["sax_gu_alto"]["clips"] and doc["draw"]["file"] == str(draw)
+    assert "clips" in capsys.readouterr().out
 
 
 # ------------------------------------------------------------------------ the real banks (§7.1 test 6)
@@ -299,7 +433,9 @@ BIG = os.environ.get("LOFI_ASSETS") or os.environ.get("LOFI_ASSETS_BIG")
 
 
 @pytest.mark.cluster
-def test_after_matching_every_bus_sits_at_its_target_on_two_loops(tmp_path, monkeypatch):
+def test_after_matching_every_clip_sits_at_its_target_on_two_loops(tmp_path, monkeypatch):
+    # CD-52 replaced "each loop within 0.1 LU of its own L + F", which kit_virtuosity missed on L1 (0.1007 LU through
+    # the -70 LUFS gate, a pure gain on a bus at -55 LUFS): each clip now takes its own fader, measured after it.
     if not BIG or not (Path(BIG) / "converted").is_dir():
         pytest.skip("LOFI_ASSETS (or LOFI_ASSETS_BIG) does not name the fetched assets folder")
     monkeypatch.setenv("LOFI_ASSETS", BIG)
@@ -311,18 +447,29 @@ def test_after_matching_every_bus_sits_at_its_target_on_two_loops(tmp_path, monk
     for vid, rec in doc["variants"].items():
         target = s_star + rec["T"]
         post = rec["checks"]["post_fader"]
-        assert abs(statistics.median(post["lufs"].values()) - target) <= 0.05, vid
-        for loop in TWO:
-            assert abs(post["lufs"][loop] - (rec["L"][loop] + rec["F"])) <= 0.1, (vid, loop)
-        assert rec["t"] == 0.0 or rec["source"] != "gu"
-    # The generated palettes carry those trims exactly: a render's manifest reports the measured L on every bus.
+        assert abs(statistics.median(post["lufs"].values()) - target) <= 0.05, vid   # the frozen palette's median F
+        for loop in TWO:                                                              # every clip at its own fader
+            c = rec["clips"][loop]
+            assert c["L"] == rec["L"][loop] and c["F"] == round(c["F"], 2), (vid, loop)
+            assert abs(c["lufs"] - target) <= 0.1 and abs(c["off_lu"]) <= CLIP_FIX_LU + 1e-9, (vid, loop)
+        assert rec["checks"]["clips"]["ok"], vid
+        assert rec["t"] == 0.0 or rec["source"] != "gu", vid
+    # A clip's palette carries its own fader on the bus its round varies and the median ones elsewhere; its render
+    # reports the tool's L before every fader, so the bus it plays is the one the tool measured after it.
     from lofi_rl.render.pipeline import render
+    from lofi_rl.shootout.palettes import Inputs, clip_palette
     (tmp_path / "levels.json").write_text(json.dumps(doc))
     got = generate(PLAN_PATH, tmp_path / "stage", stage="day1", levels=tmp_path / "levels.json", without=missing)
-    entry = next(p for p in got.index["palettes"] if p["file"] == "k1_vcsl_upright_knight.yaml")
+    base = next(p for p in got.index["palettes"] if p["id"] == "k1_vcsl_upright_knight")
+    inputs = Inputs(PLAN, ROOT / PLAN.base, 1, missing, ROOT)
+    rel, data, entry = clip_palette(inputs, doc, base, "k1_vcsl_upright_knight_l1",
+                                    {"bus": "keys", "variant": "vcsl_upright_knight", "case": "l1_melancholy_low"})
+    (tmp_path / "stage" / rel).write_bytes(data)
     m = render(PLAN.loop_text("L1"), PLAN.briefs()["l1_melancholy_low"],
-               load_palette(tmp_path / "stage" / entry["file"], verify=True)).manifest
+               load_palette(tmp_path / "stage" / rel, verify=True)).manifest
+    clip = doc["variants"]["vcsl_upright_knight"]["clips"]["l1_melancholy_low"]
+    assert entry["fader_db"] == {**base["fader_db"], "keys": clip["F"]} and entry["level"]["lufs"] == clip["lufs"]
     for bus, vid in entry["instruments"].items():
         assert m["buses"][bus]["lufs"] == doc["variants"][vid]["L"]["l1_melancholy_low"], bus
-        assert m["buses"][bus]["gain_db"] == doc["variants"][vid]["F"], bus
+        assert m["buses"][bus]["gain_db"] == entry["fader_db"][bus], bus
     assert m["gates"]["G7"] == "pass"

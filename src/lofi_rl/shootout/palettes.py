@@ -15,12 +15,18 @@ fixed band's included (§3 step 5).
   each variant is measured once (§3 step 1: 8 runs on Day 1). Trims and faders are 0. measure/index.json says which
   variant each run measures on which bus.
 - `--levels <levels.json>` writes one palette per (stage, option) of the day, and for R2, whose rounds each play one
-  kit, one per (kit, bass): <out>/<id>.yaml, the id being `<stage>_<option>` or `r2_<kit>_<bass>`, the key the
-  job's draw gives it (§7.6) and the file the render driver reads. <out>/index.json lists them with their
+  kit, one per (kit, bass): <out>/<id>.yaml, the id being `<stage>_<option>` or `r2_<kit>_<bass>`. These carry each
+  instrument's median fader F, the one the frozen palette takes. <out>/index.json lists them with their
   instruments, trims, faders and sha256, and the day's round slots (loop, brief, tiles in symbols).
 - `--draw <draw.json>` (optional; the job passes it): the batch builder's draw (lofi_rl.shootout.draw). It must be
   this day's draw of this plan, each stage's maps must meet its draw rule (plan.yaml), and every palette its
-  `palettes` table asks for must be one written here with the same band; the index records its sha256.
+  `palettes` table asks for must be one written here with the same band; the index records its sha256. A draw
+  palette with a `level` is a clip's own palette (CD-52): its stage palette (`base`) with the fader of the bus its
+  round varies set to that clip's own, the levels file's clips[case].F for the clip's option, written as
+  <out>/<key>.yaml, the file the render driver reads. A clip the levels file has no fader for (the level tool ran
+  without --draw), or one that sits more than clip_tol_lu from S* + T after matching, is refused. The index gives
+  each clip palette its `base` and its `level` (bus, variant, case, the tool's L, F, the loudness it measured after
+  F, that loudness re S*, the target, the miss and the tolerance), which the render driver copies into its record.
 - `--without` leaves options out (a kit whose §7.4 archive is not built yet, say) and records them; the band and the
   level anchors cannot be left out.
 
@@ -404,6 +410,38 @@ def stage_entries(inputs: Inputs) -> list[dict]:
     return out
 
 
+def clip_palette(inputs: Inputs, levels: Mapping, base: Mapping, key: str, level: Mapping) -> tuple[Path, bytes, dict]:
+    """One clip's own palette (CD-52): the stage palette `base` (an index entry) with the fader of `level["bus"]`
+    set to the levels file's clips[level["case"]].F of `level["variant"]`, every other value as `base`. Returns
+    (file, bytes, index entry). GenerateError when the levels file has no such clip or the clip sits more than its
+    clip_tol_lu from S* + T."""
+    bus, vid, case = level["bus"], level["variant"], level["case"]
+    if base["instruments"].get(bus) != vid:
+        raise GenerateError(f"clip palette {key} takes the {bus} fader of {vid}, but its base {base['id']} plays "
+                            f"{base['instruments'].get(bus)} on that bus")
+    clip = ((levels["variants"].get(vid) or {}).get("clips") or {}).get(case)
+    if clip is None:
+        raise GenerateError(f"the levels file has no fader for {vid} on {case} (the level tool measures every clip "
+                            f"of the draw it is given with --draw, §3)")
+    tol, s_star = (levels.get("tolerances") or {}).get("clip_tol_lu"), levels.get("S_star")
+    if not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in (tol, s_star, clip["F"])):
+        raise GenerateError(f"the levels file gives no clip_tol_lu, S_star or fader for {vid} on {case}")
+    if abs(clip["off_lu"]) > tol:
+        raise GenerateError(f"{vid} on {case} sits {clip['off_lu']:+.3f} LU from S* + T after matching, more than "
+                            f"its clip_tol_lu of {tol} LU (§3 step 6c): see the levels file's flags")
+    trims = dict(base["trim_db"])
+    faders = {**base["fader_db"], bus: float(clip["F"])}
+    rel = Path(f"{key}.yaml")
+    data = inputs.dump(inputs.palette_doc(key, base["instruments"], trims, faders), str(rel))
+    entry = {"stage": base["stage"], "option": base["option"], "kit": base["kit"], "file": rel.as_posix(), "id": key,
+             "sha256": sha256_bytes(data), "instruments": dict(base["instruments"]), "trim_db": trims,
+             "fader_db": faders, "base": base["id"],
+             "level": {"bus": bus, "variant": vid, "case": case, "L": clip["L"], "F": faders[bus],
+                       "lufs": clip["lufs"], "lu": clip["lufs"] - s_star, "target_lufs": clip["target_lufs"],
+                       "off_lu": clip["off_lu"], "tol_lu": tol}}
+    return rel, data, entry
+
+
 def write_stage(inputs: Inputs, out: Path, stage: str, plan_path: Path, levels_path: Path,
                 draw_path: Path | None) -> Generated:
     levels = read_levels(levels_path, inputs, stage)
@@ -421,6 +459,27 @@ def write_stage(inputs: Inputs, out: Path, stage: str, plan_path: Path, levels_p
         palettes.append({"stage": e["stage"], "option": e["option"], "kit": e["kit"], "file": rel.as_posix(),
                          "id": pid, "sha256": sha256_bytes(data), "instruments": inst, "trim_db": trims,
                          "fader_db": faders})
+    if draw is not None:                         # each clip's own palette (CD-52), from its stage palette
+        by_id = {p["id"]: p for p in palettes}
+        for key, spec in sorted(draw["palettes"].items()):
+            if not spec.get("level"):
+                continue
+            base = by_id.get(spec.get("base"))
+            if base is None:
+                raise GenerateError(f"draw: clip palette {key} copies {spec.get('base')}, which is not one of the "
+                                    f"{len(by_id)} stage palettes of this day")
+            loop, _, variant = str(spec["level"].get("case")).partition(".")
+            try:
+                lid = inputs.plan.loop_named(loop).id
+            except PlanError as err:
+                raise GenerateError(f"draw: clip palette {key}: {err}") from err
+            want = "_".join([base["id"], lid.lower()] + ([variant] if variant else []))
+            if key != want:
+                raise GenerateError(f"draw: clip palette {key} must be named {want}, from its base and its case "
+                                    f"{spec['level']['case']} (lofi_rl.shootout.draw)")
+            rel, data, entry = clip_palette(inputs, levels, base, key, spec["level"])
+            files[rel] = data
+            palettes.append(entry)
     briefs = inputs.plan.briefs()
     slots = []
     for st in inputs.stages:
@@ -600,8 +659,9 @@ def main(argv: list[str] | None = None) -> int:
         for e in got.index["palettes"]:
             print(f"{e['file']} {e['sha256'][:12]} " + " ".join(f"{b}:t={e['trim_db'][b]:+.2f},F={e['fader_db'][b]:+.2f}"
                                                                 for b in BUSES))
+        own = sum(1 for e in got.index["palettes"] if e.get("level"))
         print(f"wrote {len(got.index['palettes'])} palettes to {a.out}"
-              + (", every one the draw asks for" if a.draw else ""))
+              + (f", every one the draw asks for ({own} clips' own, CD-52)" if a.draw else ""))
     if got.index["without"]:
         print("left out: " + ", ".join(got.index["without"]))
     return 0
