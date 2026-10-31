@@ -4,7 +4,10 @@ applies the hygiene rules every job script follows (name, log path, Cost line, m
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from lofi_rl.rl import junk
 
@@ -74,3 +77,37 @@ def test_junk_job_writes_one_run_dir_and_never_the_inbox():
     assert code.count('--run "$RUN"') == 3 and "inbox" not in code
     assert re.search(r"^N=\$\{1:-500\}$", s, re.M) and re.search(rf"^SEED=\$\{{2:-{junk.DEFAULT_SEED}\}}$", s, re.M)
     assert f"--k {junk.RENDER_K}" in code and "JUNK_RATE_OK" in code
+
+
+def _args_block(s: str) -> str:
+    """The job's argument lines, from N= to the end of the CONSTRAINED check, to run in bash on the laptop."""
+    lines = s.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("N="))
+    end = next(i for i, line in enumerate(lines) if line.strip() == "esac")
+    return "\n".join(lines[start:end + 1])
+
+
+@pytest.mark.parametrize("args, flag", [((), ""), (("500", "2026"), ""), (("500", "2026", "0"), ""),
+                                        (("500", "2026", "1"), "--constrained")])
+def test_the_third_arg_constrained_reaches_generate_as_its_flag(args, flag):
+    s = JOB.read_text()
+    assert re.search(r"^CONSTRAINED=\$\{3:-0\}$", s, re.M), "default 0: v0's unconstrained run"
+    gen = next(line for line in _code(s) if "-m lofi_rl.rl.junk generate" in line)
+    assert gen.rstrip().endswith("$CONSTRAIN_FLAG || FAIL=1"), "passed through to generate"
+    script = "set -euo pipefail\n" + _args_block(s) + '\nprintf "%s|%s|%s" "$N" "$SEED" "$CONSTRAIN_FLAG"\n'
+    out = subprocess.run(["bash", "-c", script, "job", *args], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout == f"{args[0] if args else 500}|{args[1] if args else junk.DEFAULT_SEED}|{flag}"
+
+
+@pytest.mark.parametrize("bad", ["2", "yes", "true", "-1", "01"])
+def test_a_constrained_arg_other_than_0_or_1_stops_the_job_before_any_work(bad):
+    script = "set -euo pipefail\n" + _args_block(JOB.read_text()) + '\necho REACHED\n'
+    out = subprocess.run(["bash", "-c", script, "job", "500", "2026", bad], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 2 and "REACHED" not in out.stdout and "CONSTRAINED must be 0 or 1" in out.stderr
+
+
+def test_the_header_states_the_third_arg_and_how_to_submit_a_constrained_run():
+    s = JOB.read_text()
+    assert "Args: [N=500] [SEED=2026] [CONSTRAINED=0]" in s
+    assert "make submit JOB=jobs/junk_rate.sbatch ARGS='500 2026 1'" in s
