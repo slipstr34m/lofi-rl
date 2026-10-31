@@ -3,7 +3,7 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 477.5 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 ~14:30).
+- **SU used:** 477.5 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 12:19).
 - **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way:
   - committed: the rating page, the compiler + renderer, two reviews, voicing rules V2, the SFZ → SF2 converter and the shootout plan (`docs/SHOOTOUTS.md`);
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
@@ -58,7 +58,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
-## 2026-10-31 (14:30 PDT): voicing rules V2, SFZ → SF2 converter, shootout plan; Linux golden key
+## 2026-10-31 (12:19 PDT): voicing rules V2, SFZ → SF2 converter, shootout plan; Linux golden key
 
 **What was done**
 - **Voicing rules V2 and three drum/seed fixes** (workflow `wf_b54901ca-e65`: 2 builders, 2 review lenses with verifiers; 6 agents, 522 tool calls, 2 h 5 min). Committed as `bfe1d32`.
