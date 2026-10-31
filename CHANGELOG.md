@@ -4,9 +4,41 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ## Status
 - **SU used:** 170.1 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-30 ~19:05).
-- **Phase:** 0 (setup), started 2026-10-30.
-- **Running:** `lofi-env-scorer` 13624724 (rebuild). The smoke runs once the scorer env and the parser are in.
-- **Waiting on Shresth:** whether `scancel` may be used on our own jobs. 13624408 waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots.
+- **Phase:** 0 (setup), started 2026-10-30. Both envs are built. The Phase-0 gate waits on `lofi-smoke-env` 13624734: it is queued on debug behind other users (Slurm estimate 23:00) and will run the mirror at `5380ff0`, LoopScript render included.
+- **Waiting on Shresth:** whether `scancel` may be used on our own jobs. With it, the smoke could race on the gpu partition, and 13624408 could be cleared: it waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots.
+
+---
+
+## 2026-10-30 (late): LoopScript v1 parser lands; smoke wired to a real LoopScript
+
+**What was done**
+- `src/lofi_rl/dsl` (commit `cb605f4`, stdlib only, 995 lines), built by a workflow in three steps:
+  1. implement: 237 tests, plus a mutation fuzz of about 60k parses with no crash;
+  2. adversarial review: 8 findings, 3 medium and 5 low, each with a failing test;
+  3. fix: all 8.
+- The medium findings:
+  - forbidden header lines (`tempo: 90`, `key: ...`) before or after the loop slipped out as "prose" instead of G5;
+  - a snare edit on a rim loop was dropped, so the seam fixture never reached the verifiers;
+  - `#notes` and `#3 hat:` lines were eaten as comments.
+- `compile/stub_from_loop.py` plus the `smoke.py` update (commit `5380ff0`): the smoke renders `tests/fixtures/loops/example.ls` (D dorian, 82 BPM) whenever the parser passes it.
+
+**Numbers**
+- `pytest tests/test_dsl_*`: 282 passed. Full `pytest -q`: 480 passed. `-m "not laptop"`: 445 passed (run before the last 2 adapter tests were added).
+- Every fixture in `tests/fixtures/loops/` lands on its named gate. `example.ls` parses with 0 repairs and canon round-trips it exactly.
+- Adapter on `example.ls` (laptop preview render; the cluster render is canonical):
+  - first sax note A3 at sample 0; sax range D3–D4; 24 bass onsets;
+  - N = 1,032,576 samples, −14.05 LUFS, −1.38 dBTP.
+
+**Decisions the implementer made, all pinned by tests; review in Phase 1**
+- `parse(..., mode=)` is needed for the bare-numeral repair.
+- Whitespace, comment and case normalization are not logged as repairs.
+- When snare and rim both have a base, the first base lane in the text wins.
+- `bass: lock` forces an onset at chord changes at level `x`.
+- The sax octave fold belongs in the compiler, not the parser.
+
+**Spec issue for the Phase 1 verifiers** (found by the implementer): the instrument.md §5 fixture "1-bar bases, no edits → f_new = 0" cannot occur. The bar signature includes the chord, and a vamp always has 2 distinct chords, so f_new ≥ 1/7. Re-specify that fixture when the verifiers are written.
+
+**SU spent:** 0 (all laptop work).
 
 ---
 
