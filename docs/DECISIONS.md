@@ -138,3 +138,13 @@ no GRPO had run.
   - **pass_not_copy ≥ 60 %:** GRPO run 1 starts from the base model.
   - **Below that, with syntax failures (G1, G2, G5) the main cause:** grammar-constrained decoding comes first (D-016).
   - **Below that, with other causes:** the prompt gets fixed as v2 and re-registered here before a re-run.
+- **Outcome, 2026-10-31** (`lofi-junk-rate` 13632676, A40 node b11-13, mirror `63b208a`, 86.4 SU; `runs/junk-13632676/summary/junk.json`):
+  - pass 98/500 = 19.6 % (Wilson 95 % CI 16.4–23.3 %); **pass_not_copy 20/500 = 4.0 %** (2.6–6.1 %), far under the 60 % bar.
+  - Failures: G1 389, G6 11, G2 2; G3–G5, compile and crashes 0. The commonest G1 details are a per-bar edit given two grids
+    (`@4 hat takes at most 1 grid(s)` 100, `@6 hat` 78, `@6 bass` 56, …). Grids of the wrong length are common too
+    (pad_grid in 316 loops, trunc_grid in 146).
+  - 78 of the 98 passing loops are near-copies of the in-prompt example. By mood, wistful (the example's) passes 83/183,
+    melancholy 8/152 and hopeful 7/165.
+  - **Per this entry's rule, syntax failures are the main cause, so grammar-constrained decoding comes first (D-016).** The
+    copying is a second, separate cause. If it still sinks pass_not_copy under constraints, the prompt becomes v2,
+    re-registered here before its run.

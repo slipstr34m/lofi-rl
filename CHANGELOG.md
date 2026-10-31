@@ -3,15 +3,37 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 477.5 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 12:19).
+- **SU used:** 563.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 15:20).
 - **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way:
   - committed: the rating page, the compiler + renderer, two reviews, voicing rules V2, the SFZ → SF2 converter and the shootout plan (`docs/SHOOTOUTS.md`);
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
   - all 14 shootout sources and the rain file are on the laptop and the cluster;
   - running: the job-1 shootout tooling (due Nov 2 evening) and V2.1 voicing refinements, in 4 worktree branches.
-- **No GRPO yet.** The plan has the GRPO smoke on Nov 11–12. Shresth asked why nothing has trained (2026-10-31); pulling the base-model test and the GRPO smoke forward awaits his answer.
-- **Waiting on Shresth:** that answer, plus the `grpo-smoke` SU OK if yes. `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords) is due by Nov 4 morning.
+- **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
+  - base-model test v0 done: pass_not_copy 4.0 % against a 60 % bar, so grammar-constrained decoding comes first (D-016, D-019);
+  - GRPO smoke 13632679 queued on an L40S.
+- **Waiting on Shresth:** `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords), due by Nov 4 morning.
 
+---
+
+## 2026-10-31 (15:20 PDT): base-model test v0: 4.0 % pass_not_copy; syntax dominates, so constrained decoding comes next
+
+**What was done**
+- **`lofi-junk-rate` 13632676:** A40 node b11-13, COMPLETED, 4.8 min, 86.4 SU (`session_report.py`). It ran the D-019 settings exactly: prompt v1 `7aceb2bc…`, Qwen3-4B @cdbee75f, 500 briefs at seed 2026, T 1.0, bf16.
+  - **Generation:** 500 completions in 66.7 s (2,230 tok/s batched, against 42.9 single-stream in the Phase-0 smoke); the model loaded in 24.6 s. Prompts ran 1,389–1,391 tokens; completions p50 288, p99 406, with 2 truncated.
+  - **Readout** (`runs/junk-13632676/summary/junk.json`):
+    - pass 98/500 = 19.6 % (CI 16.4–23.3 %);
+    - pass_not_copy 20/500 = 4.0 % (CI 2.6–6.1 %);
+    - failures G1 389, G6 11, G2 2;
+    - 78/98 of the passing loops are near-copies of the example;
+    - wistful passes 83/183, melancholy 8/152, hopeful 7/165;
+    - all 50 sample renders passed G7.
+  - **Failure modes:** the commonest G1 failure is a per-bar edit given two grids (the base lines' format), and many grids are the wrong length. Raw completions are in `completions.jsonl`.
+- **Decision**, per the rule pre-registered in D-019 (outcome appended there): grammar-constrained decoding comes first (D-016). The copying is the next cause to address if it still sinks the bar.
+
+**SU spent:** 86.4, for a total of 563.9.
+
+**Next:** build grammar-constrained decoding for LoopScript (vLLM structured outputs), pre-register its run as D-020, and re-run the base-model test. The GRPO smoke 13632679 is still queued.
 ---
 
 ## 2026-10-31 (13:56 PDT): deck-only reference sample from vikhyatk/lofi recorded; GRPO path merged and queued
