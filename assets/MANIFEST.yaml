@@ -241,3 +241,21 @@ assets:
     bytes: 342088110
     list_sha256: 54ff60da0f3c33148d3208ea2155af869ebb020ac112235a29f76e09db848887
     notes: "MusicGen-generated lofi. 294 clips whose prompts (from the first 5,000 indexed rows) match the night, city, jazz or rain word groups in the folder's fetch.py; each 29.0 s, 32 kHz mono MP3. list_sha256 hashes sorted 'file<TAB>size<TAB>sha256' lines; per-clip sha256 in the folder's manifest.jsonl. Deck reference only, e.g. an embedding map."
+  # Drum kits imported from the fetched sample sets (src/lofi_rl/convert/kit.py, docs/KITS.md): 44.1 kHz mono float32
+  # one-shots in byte-deterministic USTAR archives, with the importer's printed document beside each. Fetch-only.
+  - path: assets/big/derived/kits/kit_virtuosity.tar
+    sha256: 5ca78cde9f96a1e42e1fd558195125529d40508b53cea1aeb2a34735ca66cd9e
+    license: "CC0 1.0 (Virtuosity Drums v0.925)"
+    mode: fetch
+    url: null
+    upstream: "python -m lofi_rl.convert.kit with shootouts/kits/kit_virtuosity.yaml, from assets/big/virtuosity-drums/"
+    bytes: 30986240
+    notes: "65 one-shots from 181 inputs (mic premix, lead-in trim, 48 -> 44.1 kHz); document derived/kits/kit_virtuosity.yaml; import report kit_virtuosity.import.json"
+  - path: assets/big/derived/kits/kit_swirly.tar
+    sha256: 539f8ca94b189fe9e107859d46caa010e538263844a560a74dec4c01004b0ba5
+    license: "CC0 1.0 (Swirly Drums v1.104; VCSL shakers)"
+    mode: fetch
+    url: null
+    upstream: "python -m lofi_rl.convert.kit with shootouts/kits/kit_swirly.yaml, from assets/big/karoryfer-swirly-drums/ and assets/big/vcsl/"
+    bytes: 18145280
+    notes: "64 one-shots from 100 inputs (96 Swirly, 4 VCSL shaker); document derived/kits/kit_swirly.yaml; import report kit_swirly.import.json"
