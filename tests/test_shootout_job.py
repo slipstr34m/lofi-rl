@@ -97,6 +97,18 @@ def test_a_missing_tool_stops_the_job_before_any_stage(tmp_path, capsys, monkeyp
     assert not (tmp_path / "run").exists()
 
 
+def test_a_batch_already_in_the_inbox_stops_the_job_before_it_renders(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(job, "find_spec", lambda name: object())
+    ran = []
+    monkeypatch.setattr(job, "run_step", lambda name, argv: ran.append(name) or 0)
+    (tmp_path / "inbox" / "2026-11-03" / "b1103-3-sax").mkdir(parents=True)
+    rc = job.main(["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"), "--stage", "day1"])
+    assert rc == 2 and ran == [] and "b1103-3-sax" in capsys.readouterr().err
+    assert job.main(["--run", str(tmp_path / "run2"), "--inbox", str(tmp_path / "inbox"), "--stage", "day2",
+                     "--leaders", "keys=gu_tine_ep+fp_fm_ep1+gu_organ/kit=kit_swirly/bass=bass_fp_finger_yr/"
+                                  "sax=sax_mtg_tenor+sax_gu_alto"]) == 0 and ran[-1] == "build"
+
+
 def test_the_first_failing_stage_ends_the_job(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(job, "find_spec", lambda name: object())
     ran = []

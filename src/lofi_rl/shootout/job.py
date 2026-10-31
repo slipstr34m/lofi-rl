@@ -18,8 +18,10 @@ with the ARGS `make submit JOB=jobs/shootout.sbatch ARGS='...'` passes: `--stage
 7. `build`: `python -m lofi_rl.shootout.batch build` writes the batches into the inbox and checks each folder.
 
 The first stage that fails ends the job with its exit code, so a gate or compile failure stops it before any
-batch is written. Before any stage runs, the runner checks its arguments and that the generator and the levels
-tool are present in this mirror (they are built in their own workflows, sections 7.1 and 7.8).
+batch is written. Before any stage runs, the runner checks its arguments, that the generator and the levels
+tool are present in this mirror (they are built in their own workflows, sections 7.1 and 7.8), that every
+`--prior` run has its batches.json, and that none of the day's batch folders is already in the inbox (the build
+never overwrites one, so a re-run fails here instead of after its renders).
 """
 from __future__ import annotations
 
@@ -158,6 +160,12 @@ def main(argv: list[str] | None = None) -> int:
             if not (Path(r) / "summary" / "batches.json").is_file():
                 print(f"error: --prior: {r}/summary/batches.json is missing", file=sys.stderr)
                 return 2
+        there = [str(a.inbox / b.date / b.name) for b in load_plan(a.plan).batches_of(a.stage)
+                 if (a.inbox / b.date / b.name).exists()]
+        if there:                                   # the build would refuse them after every render: fail now
+            print(f"error: {there} exist; a built batch is never overwritten, so move them aside to re-run "
+                  f"{a.stage}", file=sys.stderr)
+            return 2
     summary = a.run / "summary"
     summary.mkdir(parents=True, exist_ok=True)
     (summary / "leaders.json").write_text(json.dumps({**doc, "argv": list(argv or sys.argv[1:])}, indent=1) + "\n",
