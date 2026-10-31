@@ -229,3 +229,15 @@ assets:
     upstream: "Freesound 235827 by Metadex, uploaded 2014-05-02"
     bytes: 56448120
     notes: "WAV PCM 24-bit, 48 kHz, stereo, 9,408,000 frames (196.000 s); the page notes a suburban hum, a few birds and distant thunder, so the excerpt needs an ear check"
+  # Deck-only outside reference: the renderer never loads it. Shresth approved it in a side session on 2026-10-31
+  # ("Yes, for the deck"), which fetched it. Never for the policy, the taste RM, seeds or the rating page.
+  - path: assets/big/ref/vikhyatk-lofi/
+    sha256: null
+    license: "CC BY-NC 4.0 (dataset card): non-commercial, fetch-only, never committed or redistributed"
+    mode: fetch
+    url: https://huggingface.co/datasets/vikhyatk/lofi
+    upstream: "revision 966a2d3065aac26c0385b4ef2d50983c0429a305, the datasets-server's MP3 transcode"
+    files: 294
+    bytes: 342088110
+    list_sha256: 54ff60da0f3c33148d3208ea2155af869ebb020ac112235a29f76e09db848887
+    notes: "MusicGen-generated lofi. 294 clips whose prompts (from the first 5,000 indexed rows) match the night, city, jazz or rain word groups in the folder's fetch.py; each 29.0 s, 32 kHz mono MP3. list_sha256 hashes sorted 'file<TAB>size<TAB>sha256' lines; per-clip sha256 in the folder's manifest.jsonl. Deck reference only, e.g. an embedding map."

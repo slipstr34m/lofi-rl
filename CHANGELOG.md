@@ -14,6 +14,29 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-10-31 (13:40 PDT): deck-only reference sample from vikhyatk/lofi recorded; GRPO path merged and queued
+
+**What was done**
+- **Reference sample.** Shresth asked in a side session (`local_4dee338e…`) whether the HF dataset `vikhyatk/lofi` helps. That session's answer was "not for training": the dataset is audio only, its MusicGen textures are ones TASTE.md rules out, and it carries no taste signal. Shresth approved it for the Nakano deck only ("Yes, for the deck").
+  - **What was fetched:** 294 clips into `assets/big/ref/vikhyatk-lofi/` (git-ignored), at revision `966a2d30…`, CC BY-NC 4.0.
+  - **My checks:** 294 MP3s totalling 342,088,110 bytes; 5 spot-checked clips match their sha256 and decode to 32 kHz mono, 29.00 s.
+  - **Records:** assets/MANIFEST.yaml, list_sha256 `54ff60da…`.
+  - **Use:** never for training, the RM, seeds or the rating page. It is not on the cluster; `make push-assets` copies it once the deck's embeddings need it.
+- **GRPO path** (workflow `wf_78adab16-2fe`, three builders in their own worktree branches, 44 min) merged into main:
+  - `wt/verify`: the symbolic verifiers, docs/VERIFIERS.md;
+  - `wt/prompt`: prompt v1 and the junk-rate pipeline;
+  - `wt/rl`: the interim reward, curriculum and trainer, and the smoke job and check.
+
+  The suite gave 1495 passed, 1 skipped. D-019 pre-registers the base-model test v0 (`63b208a`).
+- **Queued:**
+  - `lofi-junk-rate` 13632676 on an A40, at most 450 SU;
+  - `lofi-grpo-smoke` 13632679 on an L40S, at most 500 SU.
+
+  Both job types are registered by Claude, each at or under 500 SU. The mirror stays at `63b208a` until both finish.
+
+**SU spent:** 0 so far (both jobs pending).
+---
+
 ## 2026-10-31 (12:30 PDT): rain file in; Shresth's rating-page test worked; shootout defaults; worktrees kept out of the mirror
 
 **What was done**
