@@ -1,8 +1,10 @@
 """Synthetic shootout assets for the plan, palette and level tests (docs/SHOOTOUTS.md §7.1, §7.4, §7.8). Not a test
 module.
 
-- `tiny_sf2`: a RIFF sfbk file whose only chunk is pdta/phdr. palette.sf2_presets reads it, so a palette naming its
-  presets passes load_palette(verify=True); FluidSynth could not play it, and nothing here renders it.
+- `tiny_sf2`: a SoundFont written by the converter's writer (lofi_rl.convert.sf2): one 64-point sample, one
+  instrument zone over every key and velocity, and one preset per (bank, prog) asked for. palette.sf2_presets and
+  palette.sf2_coverage read it, so a palette naming its presets passes load_palette(verify=True), coverage check
+  (SHOOTOUTS.md §7.5) included; nothing here renders it.
 - `kit_archive`: what the §7.4 importer writes: derived/kits/<kit>.tar (44.1 kHz mono float32 one-shots, sorted
   members, mtime 0) and derived/kits/<kit>.yaml, its printed `lanes:` and `choke:` blocks.
 - `synthetic_base`: shootouts/palettes/base.yaml with every SoundFont replaced by a tiny_sf2 under `assets`.
@@ -13,7 +15,6 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-import struct
 import tarfile
 from pathlib import Path
 
@@ -21,6 +22,7 @@ import numpy as np
 import soundfile as sf
 import yaml
 
+from lofi_rl.convert.sf2 import Instrument, Preset, Sample, Zone, sf2_bytes
 from lofi_rl.dsl.vocab import LANES
 from lofi_rl.palette import LAYERS
 
@@ -33,13 +35,12 @@ CHOKE = [["ohat", "hat"], ["ohat", "ohat"]]
 
 
 def tiny_sf2(path: Path, presets) -> str:
-    recs = b"".join(struct.pack("<20sHHHIII", f"p{b}_{p}".encode(), p, b, i, 0, 0, 0)
-                    for i, (b, p) in enumerate(sorted(presets)))
-    recs += struct.pack("<20sHHHIII", b"EOP", 0, 0, len(presets), 0, 0, 0)
-    phdr = b"phdr" + struct.pack("<I", len(recs)) + recs
-    body = b"sfbk" + b"LIST" + struct.pack("<I", 4 + len(phdr)) + b"pdta" + phdr
+    """A SoundFont whose presets each play one instrument zone covering keys 0-127 at velocities 0-127."""
+    sample = Sample("tick", np.arange(64, dtype=np.int32) * 256, 44100)
+    inst = Instrument("all", (Zone(sample="tick"),))
+    banks = [Preset(f"p{b}_{p}", b, p, (Zone(instrument="all"),)) for b, p in sorted(presets)]
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
+    path.write_bytes(sf2_bytes(name="tiny", presets=banks, instruments=[inst], samples=[sample]))
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
