@@ -45,7 +45,8 @@ r.pre_limiter, r.compiled # the kept cycle after the master chain, and the Compi
   - a relative value is relative to the repo root (`root=`), never to the current directory;
   - any other unset or empty variable in `assets_root` is a `PaletteError`, which the CLI reports as exit 2.
   On the cluster, `<repo>/assets/big` is inside the code mirror, which never holds assets, so a fetch-mode
-  palette fails `verify` there ("missing", exit 2) until jobs export `LOFI_ASSETS` (§11).
+  palette would fail `verify` there ("missing", exit 2), so `scripts/job_env.sh` exports
+  `LOFI_ASSETS=${LOFI_ASSETS:-$REMOTE_KEEP/assets}`, where `make push-assets` copies `assets/big/`.
 - **`workers`** sets how many FluidSynth processes and pedalboard threads run at once. The output never
   depends on it (`tests/test_determinism.py`, `tests/test_mix.py`).
 
@@ -229,7 +230,17 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
   0.25–0.28 s).
 - **Seam checks.** In 24 random valid loops (5 palette variants, random briefs), the whole chain's cycles 2 and
   3 were bit-identical both with and without the pre-roll (fuzz run, 2026-10-31). With the pre-roll, cycles 2 and
-  3 agree within 1e-6 for 5 gate-passing fixtures × 4 tempos (61, 71, 87, 95 BPM; `test_seam.py -m cluster`).
+  3 are bit-identical on the laptop for 5 gate-passing fixtures × 4 tempos (61, 71, 87, 95 BPM;
+  `test_seam.py -m cluster`).
+- **Linux.** On the cluster (Linux x86_64; epyc-7513, epyc-7542 and xeon-4116 alike) every FluidSynth stem is
+  still bit-identical from cycle to cycle, but the pedalboard bus chains repeat only to float32 rounding:
+  - fed an exactly periodic input, their cycles 2 and 3 differ by 5.7e-7 to 1.4e-6 over 21 fixture × tempo cases
+    (`lofi-seam-diag` 13630343, `runs/seam-diag-13630343/summary/seam.json`);
+  - the differences are scattered through the cycle, are at most 9.1e-7 in its first and last second, and do not
+    grow over a 4th cycle.
+  So `test_seam` holds the whole chain to `SEAM_TOL` = 1e-5 (−100 dBFS, a third of the 16-bit listening copy's
+  LSB) and FluidSynth stems and the limiter tile to 1e-6. Renders stay deterministic: the same inputs give the
+  same bits on all three CPU models (`lofi-render-check` 13630298–13630300).
 - **Causality.** Every stage is causal, so the production render's kept cycle (C = 2) is bit-identical to
   cycle 2 of the 3-cycle render that `test_seam` checks.
 - **Limiter.** The 3× tile keeps the steady-state cycle: on a 2.9 s synthetic loop with peaks at the seam, the
@@ -362,29 +373,29 @@ Each is pinned by a test and can be changed.
     (CHANGELOG, 2026-10-31). An archive source avoids that.
 - **§4 Assets: two places for fetched assets.** §4 puts `$LOFI_ASSETS` at
   `/project2/anakano_429/shresthr/lofi-rl-assets`; CLAUDE.md §1, docs/SHOOTOUT_ASSETS.md (Route) and
-  `scripts/cluster_setup.sh init` put fetched assets in `$REMOTE_KEEP/assets`. The renderer follows CLAUDE.md
-  (§11); §4's path is not defined anywhere else.
+  `scripts/cluster_setup.sh init` put fetched assets in `$REMOTE_KEEP/assets`. The renderer follows CLAUDE.md:
+  `scripts/job_env.sh` exports `LOFI_ASSETS=$REMOTE_KEEP/assets`; §4's path is not defined anywhere else.
 
 ## 11. What the cluster still has to do
-- **Canonical hashes.** Write `jobs/lofi-determinism.sbatch` (`main` partition, CPU only, scorer env;
-  registered in `jobs/APPROVED.yaml` before its first run). It should render every case of
-  `tests/test_determinism.py::CASES` on two different CPU models and write each one's
-  `{golden_key: {case: hashes}}` into `$REMOTE_SCR/runs/<run>/summary/`, using `LOFI_RECORD_GOLDEN=<that file>`
-  with `pytest -m cluster tests/test_determinism.py`. Each node should get its own `LOFI_CACHE`, so neither
-  reuses the other's one-shots. The job records whether the two models agree; after `make pull`, the hashes are
-  merged into `tests/golden/render_hashes.json`. The golden key carries no CPU model, so if the two models
-  disagree the key needs one.
-- **Seam and tempo sweep.** Run `tests/test_seam.py -m cluster` there too (5 fixtures × 4 tempos; 20 s on the
-  laptop).
+- **Canonical hashes.** The determinism job this item asked for is `jobs/render_check.sbatch` (next item). Run it
+  once per CPU model (`OVR='--constraint=<model>'`). Each run records `{golden_key: {case: hashes}}` into
+  `$REMOTE_SCR/runs/render-check-<job>/summary/render_hashes.json` with `LOFI_RECORD_GOLDEN`, in its own
+  `LOFI_CACHE`. After `make pull`, the hashes are merged into `tests/golden/render_hashes.json`. The golden key
+  carries no CPU model, which holds while every model gives the same hashes.
+- **Done 2026-10-31: canonical hashes and the seam sweep.** `jobs/render_check.sbatch` (`lofi-render-check`) ran
+  the node suite, recorded the golden hashes and rendered every fixture on epyc-7513, epyc-7542 and xeon-4116
+  (13630298–13630300). All three gave the same hashes, so one Linux key serves the partition. Its seam failures
+  were the bus-chain rounding of §4 (Linux), measured by `lofi-seam-diag` 13630343. The Linux key goes into
+  `tests/golden/render_hashes.json` after a rerun records every case, the two below included.
 - **Golden entries added 2026-10-31.** The determinism job should also record `example.ls|melancholy|low|87|9`
   and `oneshots|dev_gu|jazz` for each cluster key (the one-shot test runs in the default suite and records under
   `LOFI_RECORD_GOLDEN` like the renders).
 - **Fetch-mode sources** (every shootout palette; §1, Where the palette's files are). Two pieces are outside the
   renderer and not done:
-  - `scripts/job_env.sh` should export `LOFI_ASSETS=${LOFI_ASSETS:-$REMOTE_KEEP/assets}`. Until then every job
-    resolves fetch-mode sources inside the mirror, finds nothing, and the palette fails to load (exit 2);
-  - nothing pushes `assets/big/` to `$REMOTE_KEEP/assets/`. The push must not reuse `.rsyncignore`, which drops
-    `assets/big/`, `*.wav` and `*.flac`, and must not use `--delete`.
+  - done: `scripts/job_env.sh` exports `LOFI_ASSETS=${LOFI_ASSETS:-$REMOTE_KEEP/assets}`;
+  - done: `make push-assets` copies `assets/big/` to `$REMOTE_KEEP/assets/` without `.rsyncignore` (which drops
+    `assets/big/`, `*.wav` and `*.flac`) and without `--delete`, owner-only. The 14 shootout sources went up on
+    2026-10-31, checked by rsync checksums (1,960 files).
 - **Smoke.** `src/lofi_rl/smoke.py` still renders through the Phase-0 stub chain (`compile/stub.py`). Moving
   the smoke's `loop_render` to `render.pipeline.render` is a separate change; smoke.py was out of scope here.
 - **Spectral fingerprints.** `tests/golden/fingerprints.json` (§7: laptop vs cluster within a tolerance) is
@@ -397,7 +408,7 @@ Each is pinned by a test and can be changed.
 |---|---|---|
 | `test_sampler` | `tests/test_sampler.py` | layers and fallback, round-robin from compiled hits, the 8 ms choke (also into the next cycle), folding at the seam, the pan law, order independence, file one-shots, the GU kit build, cache reuse and rebuild, the drum-channel program, a missing drum kit as an error, a user config that never reaches the cache, each lane's own pan and dB through `kit_shots` and `render_drums` |
 | `test_render` | `tests/test_render.py` | length N, −14 ± 0.1 LUFS, true peak ≤ −1 dBTP on the repeating loop, the manifest against the audio, the bed at −Δ ± 0.5 LU, gates G1–G6 and G7. On synthetic loops (no FluidSynth): a loop that needs 2–4 loudness iterations (and fails G7 with `iters: 1`), the bed at Δ = 18, 24 and 30 with the reported level, the G7 music floor at −55 and −45 LUFS, the G7 true-peak limit at −0.69 and −0.94 dBTP, an overshoot at the seam. With the audio stages stubbed: parser plus compiler repairs and P_fix in the manifest, and a bare numeral parsed in the brief's mode |
-| `test_seam` | `tests/test_seam.py` | 3-cycle render, cycle 2 vs cycle 3 < 1e-6; the render keeps exactly cycle 2; the pre-roll case; the 3× limiter tile; `-m cluster`: 5 fixtures × 4 tempos |
+| `test_seam` | `tests/test_seam.py` | 3-cycle render, cycle 2 vs cycle 3 < 1e-5 for the whole chain (§4, Linux); the render keeps exactly cycle 2; the pre-roll case; the 3× limiter tile; `-m cluster`: 5 fixtures × 4 tempos |
 | `test_determinism` | `tests/test_determinism.py` | the same process in A-B-A order; a fresh CLI process with 1 worker against the in-process render with 4 (WAV, FLAC and manifest), run alongside the A-B-A renders to save wall time; golden hashes; the kit's one-shots built into an empty cache against their golden hashes and the warm cache's |
 | `test_fluid_cli` | `tests/test_fluid_cli.py` | version 2.6.1, the exact flags, the version check and its memo, the rejected limiter flag, one process per non-empty stem with the pre-roll; an empty home for every render, a user config that cannot reach the PCM, the two config files FluidSynth tries, a system config that stops the render, substituted presets, errors in the log, short, silent and wrong-rate output as `FluidSynthError` |
 | (CLI) | `tests/test_render.py` | exit 2 on an out-of-range `--bpm` or `--tonic`, a missing loop or palette file, or a palette that does not load, before anything renders |

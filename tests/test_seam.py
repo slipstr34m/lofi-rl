@@ -17,7 +17,12 @@ from lofi_rl.render import pipeline
 from lofi_rl.render.loudness import _limiter, limit_loop, limiter_latency
 from lofi_rl.render.pipeline import music_cycles
 
-TOL = 1e-6
+TOL = 1e-6        # FluidSynth stems and the limiter tile: exact on both machines
+# The whole chain, through the pedalboard bus effects. It repeats bit for bit on the laptop (macOS arm64). On Linux
+# x86_64 the bus chains settle to float32 rounding, not to an exact repeat: cycles 2 and 3 differ by 5.7e-7 to 1.4e-6
+# over 21 fixture x tempo cases on all three cluster CPU models, while every FluidSynth stem stays bit-identical
+# (lofi-seam-diag 13630343, CHANGELOG 2026-10-31). 1e-5 is -100 dBFS, a third of the 16-bit listening copy's LSB.
+SEAM_TOL = 1e-5
 # A random valid loop from the compiler's fuzz run (docs/COMPILER.md §4.3 caveat): without the pre-roll cycle,
 # FluidSynth's 2nd and 3rd sax cycles differ by 4.7e-5 in the first block, where the first note starts while
 # the previous cycle's last note still sounds. Its 3rd and later cycles are identical.
@@ -52,7 +57,7 @@ def _cycles(name: str, brief: Brief, count: int = 3):
 def test_cycle_2_equals_cycle_3_and_is_what_the_render_keeps():
     n, (c1, c2, c3) = _cycles("example.ls", EXAMPLE_BRIEF)
     assert np.abs(c2).max() > 0.01
-    assert np.abs(c2 - c3).max() < TOL
+    assert np.abs(c2 - c3).max() < SEAM_TOL
     assert np.abs(c1 - c2).max() > 1e-4, "cycle 1 lacks the previous cycle's tails, so the check can fail"
     assert np.array_equal(rendered("example.ls").pre_limiter, c2), "the 2-cycle render keeps exactly cycle 2"
 
@@ -89,4 +94,4 @@ def test_the_limiter_on_the_3x_tile_keeps_the_steady_state_cycle():
 def test_every_fixture_repeats_at_other_tempos(name, bpm):
     brief = Brief(energy="mid", mood="melancholy", bpm=bpm, tonic=bpm % 12)
     _, (_, c2, c3) = _cycles(name, brief)
-    assert np.abs(c2 - c3).max() < TOL
+    assert np.abs(c2 - c3).max() < SEAM_TOL

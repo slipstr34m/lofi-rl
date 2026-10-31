@@ -17,6 +17,7 @@ export PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=${OPENB
 export HF_HOME=$KIT_CLUSTER_HF_HOME HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1} HF_HUB_DISABLE_TELEMETRY=1
 export UV_CACHE_DIR=$REMOTE_SCR/cache/uv UV_LINK_MODE=copy PIP_CACHE_DIR=$REMOTE_SCR/cache/pip
 export LOFI_CACHE=${LOFI_CACHE:-$REMOTE_SCR/cache/lofi-rl}   # rendered one-shots: scratch, never the small home
+export LOFI_ASSETS=${LOFI_ASSETS:-$REMOTE_KEEP/assets}   # fetch-only sources (make push-assets), never the mirror
 export VLLM_USE_FLASHINFER_SAMPLER=0 VLLM_NO_USAGE_STATS=1 DO_NOT_TRACK=1   # no vLLM usage telemetry from compute nodes
 export PATH="$REMOTE_KEEP/opt/bin:$PATH" PYTHONPATH="$REMOTE_PROJ/src${PYTHONPATH:+:$PYTHONPATH}"
 case "${MODE:-scorer}" in

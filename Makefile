@@ -10,7 +10,7 @@ SYNC := $(RS) --delete --max-delete=200 --exclude-from=.rsyncignore
 PY := .venv/bin/python
 HOST := $(KIT_CLUSTER_HOST)
 
-.PHONY: help sync pull test status submit facts init approve backup-votes
+.PHONY: help sync pull test status submit facts init approve backup-votes push-assets
 
 help:
 	@awk -F':.*## ' '/^[a-z-]+:.*## /{printf "  %-13s %s\n", $$1, $$2}' Makefile
@@ -54,3 +54,6 @@ backup-votes: ## commit+push data/votes (private repo), then copy to the cluster
 .PHONY: rate
 rate: ## serve the rating UI on 127.0.0.1:8596 (BATCH=inbox/<date>/<batch>)
 	@PYTHONPATH=src $(PY) -m lofi_rl.ui.serve $(if $(BATCH),"$(BATCH)",)
+
+push-assets: ## copy assets/big/ (fetch-only sources) to $REMOTE_KEEP/assets/: no --delete, no .rsyncignore, owner-only
+	$(RS) --chmod=Dgo-rwx,Fgo-rwx --exclude=.DS_Store assets/big/ $(HOST):$(REMOTE_KEEP)/assets/
