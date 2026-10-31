@@ -37,3 +37,9 @@ def test_votes_and_audio_never_reach_the_mirror():
     rules = (ROOT / ".rsyncignore").read_text().split()
     for pattern in ("data/", "inbox/", "runs/", "*.wav", "*.flac", ".env", ".git/", "jobs/submissions.log"):
         assert pattern in rules, pattern
+
+
+def test_agent_worktrees_never_reach_git_or_the_mirror():
+    # Workflow agents run in full checkouts under .claude/worktrees/; a sync must never copy them to the cluster.
+    assert ".claude/worktrees/" in (ROOT / ".rsyncignore").read_text().split()
+    assert ".claude/worktrees/" in (ROOT / ".gitignore").read_text().split()

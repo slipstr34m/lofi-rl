@@ -39,3 +39,4 @@ dist/
 
 # --- autonomous-run lock (CLAUDE.md §10) ---
 .claude-run.lock
+.claude/worktrees/

@@ -21,3 +21,4 @@ assets/big/
 *.safetensors
 jobs/submissions.log
 .claude-run.lock
+.claude/worktrees/
