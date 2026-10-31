@@ -1,0 +1,71 @@
+# GRPO smoke (docs/design/taste_pipeline.md §6, smoke row; docs/GRPO.md): 10 steps, saved every 5, then a
+# relaunch from checkpoint-5 that must train steps 6-10 (jobs/grpo_smoke.sbatch). Read by
+# src/lofi_rl/rl/config.py: unknown top-level keys are errors.
+#
+# `trainer` and `profiles` hold TRL 1.17.1 GRPOConfig / transformers 5.19 TrainingArguments field names.
+# UNVERIFIED: no TRL source was on the laptop when this was written (only uv's resolver metadata for
+# trl 1.17.1). On the cluster, `lofi_rl.rl.train` checks every name against the installed GRPOConfig before
+# it loads the model: it refuses a required name GRPOConfig lacks, and drops and reports one listed in
+# `optional_fields`. tests/test_rl_train.py::test_trl_knows_every_setting_of_the_smoke checks the same in the
+# policy env.
+run: grpo-smoke
+model:                                   # D-006; the pin jobs/fetch.sbatch cached (lofi_rl.smoke.QWEN)
+  repo: Qwen/Qwen3-4B-Instruct-2507
+  revision: cdbee75f17c01a7cc42f958dc650907174af0554
+palette: palettes/dev_gu.yaml            # until palettes/lofi_rain_v1.yaml is frozen (D-017)
+briefs:                                  # brief.sample_briefs(seed, count, start): one dataset row per brief
+  seed: 596                              # training stream; held-out and dev briefs must use other seeds
+  count: 40                              # 10 steps x 4 prompts: no brief repeats within the smoke
+  start: 0
+prompts_per_step: 4                      # x num_generations 8 = 32 completions per optimizer step
+lora: {r: 16, alpha: 32, dropout: 0.0, target_modules: all-linear}
+
+trainer:
+  learning_rate: 1.0e-5                  # constant after 3 warmup steps (taste.md C4); 1e-5 would read as text
+  lr_scheduler_type: constant_with_warmup
+  warmup_steps: 3
+  max_steps: 10
+  num_generations: 8
+  num_iterations: 1
+  max_completion_length: 512
+  mask_truncated_completions: true
+  beta: 0.04                             # KL to the adapter-off base (no-collapse is pre-registered)
+  loss_type: dapo
+  scale_rewards: batch                   # group-std scaling amplifies RM noise in near-identical groups
+  temperature: 1.0                       # T 1, top_p 1, top_k 0: no IS bias (taste.md C2)
+  top_p: 1.0
+  top_k: 0
+  use_vllm: true
+  vllm_mode: colocate
+  max_prompt_length: 3072                # optional: TRL 0.2x defaulted to 512 and cut longer prompts on the left
+  vllm_max_model_length: 4096            # optional: otherwise vLLM may size its KV cache for the 262k context
+  save_strategy: steps
+  save_steps: 5
+  save_only_model: false                 # keep optimizer, scheduler and RNG state: the relaunch resumes from them
+  logging_steps: 1
+  bf16: true
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs: {use_reentrant: false}
+  remove_unused_columns: false           # the reward reads the brief and brief_id columns
+  log_completions: false                 # the reward's rewards.jsonl already has every completion
+  report_to: none                        # no telemetry or credentials from compute nodes
+  seed: 596
+
+profiles:                                # chosen by the GPU's memory (the largest min_gib it meets), or --gpu-profile
+  a100-80gb:
+    min_gib: 70
+    per_device_train_batch_size: 8
+    gradient_accumulation_steps: 4
+    vllm_gpu_memory_utilization: 0.25
+    vllm_enable_sleep_mode: false
+  48gb:                                  # L40S or A40 (jobs/grpo_smoke.sbatch, OVR)
+    min_gib: 40
+    per_device_train_batch_size: 4
+    gradient_accumulation_steps: 8
+    vllm_gpu_memory_utilization: 0.30
+    vllm_enable_sleep_mode: true
+
+optional_fields: [max_prompt_length, vllm_max_model_length, vllm_enable_sleep_mode, log_completions]
+
+smoke:
+  resume_from_step: 5
