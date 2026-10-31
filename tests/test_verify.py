@@ -496,7 +496,7 @@ def test_near_identical_loops_cost_0_15_and_cousins_pass():
     """The example has 162 events (126 drum hits, 28 sax notes, 8 bar chords). One base hat cell changed adds a hit
     in bars 1, 5 and 7: sim 162/165 >= 0.875, near-identical. Three edits rewritten (bar 3's hats on the off-16ths,
     bar 4's kick on the beats, bar 6's rim accented on 1 and 3) remove 14 events and add 12: sim 148/174 = 0.851,
-    a cousin. §5's ramp would charge 0.3 and 0.077; the plan's two levels charge 0.15 and 0. PLAIN, whose 1-bar
+    a cousin. §5's ramp would charge 0.3 and 0.10; the plan's two levels charge 0.15 and 0. PLAIN, whose 1-bar
     base hat changes in all 8 bars, is near-identical too (140/148)."""
     one_cell = EXAMPLE.replace("hat: x.x.x.x.x.x.x.x. x", "hat: x.x.x.x.x.x.xxx. x")
     cousin = (EXAMPLE.replace("@3 hat: x.x.x.x.x.x.x.xx", "@3 hat: .x.x.x.x.x.x.x..")

@@ -27,6 +27,8 @@ phrase over at most 17 semitones, with no note that is not free).
 """
 from __future__ import annotations
 
+from lofi_rl.dsl.ast import PHRASE_STEPS
+
 from .view import SaxItem, View, chord_rel, is_free
 
 LONG_STEPS = 8
@@ -34,7 +36,6 @@ SAX_WEIGHTS = {"f_long": 0.25, "f_land": 0.25, "f_open": 0.20, "f_ans": 0.15, "f
 ANSWER_BAND = (0.2, 0.8)
 BREATH_SHARE = (0.12, 0.6)
 BREATH_MIN_REST = 2
-PHRASE_STEPS = 64
 CHROM_EACH, CHROM_CAP = 0.1, 0.3
 CHROM_MAX_STEPS = 2
 CHROM_STEP = (1, 2)             # semitones to the resolving note

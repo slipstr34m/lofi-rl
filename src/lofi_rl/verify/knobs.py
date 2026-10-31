@@ -44,7 +44,8 @@ def energy(view: View) -> float:
     keys = sum(c in STRIKES for c in "".join(view.bars.comp))
     bass = sum(c in STRIKES for c in "".join(view.bars.bass))
     w_h, w_x, w_k, w_b = ENERGY_WEIGHTS
-    return w_h * min(1.0, h / H_FULL) + w_x * accents + w_k * min(1.0, keys / KEYS_FULL) + w_b * min(1.0, bass / BASS_FULL)
+    return (w_h * min(1.0, h / H_FULL) + w_x * accents + w_k * min(1.0, keys / KEYS_FULL)
+            + w_b * min(1.0, bass / BASS_FULL))
 
 
 def _band(level: str, bands: tuple[float, float]) -> tuple[float, float]:
@@ -64,18 +65,22 @@ def energy_fit(e: float, target: str, bands: tuple[float, float] = ENERGY_BANDS)
     return math.exp(-max(lo - e, 0.0, e - hi) / ENERGY_SCALE)
 
 
+def mood_sign(pc: int, mode: str) -> int:
+    """s_m(pc), pc in semitones above the tonic: +1 in the mode, 0 in its Alt set, -1 otherwise."""
+    return 1 if pc in MODES[mode] else 0 if pc in ALT[mode] else -1
+
+
 def mood_scores(vamp: Vamp) -> dict[str, float]:
     """score_m for aeolian, dorian and ionian (§5's table: Im9 IV13 gives dorian 34, aeolian 26)."""
     bars = chord_bars(vamp)
     out = {}
-    for mode in ("aeolian", "dorian", "ionian"):
-        scale, alt, total = frozenset(MODES[mode]), ALT[mode], 0.0
+    for mode in ALT:
+        total = 0.0
         for chord in vamp.chords:
             q, root = quality(chord.quality), NUMERAL_SEMITONES[chord.numeral]
-            guide = {0, q.third, q.seventh}
-            tones = sum((1.0 if t in guide else 0.5) * (1 if (root + t) % 12 in scale else
-                                                       0 if (root + t) % 12 in alt else -1) for t in q.tones)
-            total += bars.count(chord) * tones
+            guide = {0, q.third, q.seventh}             # w = 1 for the root, the 3rd (the 4th of 7sus) and the 7th
+            total += bars.count(chord) * sum((1.0 if t in guide else 0.5) * mood_sign((root + t) % 12, mode)
+                                             for t in q.tones)
         out[mode] = total
     return out
 
