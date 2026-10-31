@@ -196,8 +196,11 @@ def cost48(a, b) -> int:
 
 
 def best_pair(cands_a, cands_b) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    """The minimum-cost pair, ties to the lexicographically smallest (A, B), over two candidate sets."""
-    return min(((a, b) for a in cands_a for b in cands_b), key=lambda ab: (cost48(*ab), ab))
+    """The minimum-cost pair, ties to the lexicographically smallest (A, B), over two candidate sets. V2.1: only
+    pairs of two different voicings count, unless no such pair exists (both sets are the same one voicing)."""
+    pairs = [(a, b) for a in cands_a for b in cands_b]
+    moving = [(a, b) for a, b in pairs if a != b]
+    return min(moving or pairs, key=lambda ab: (cost48(*ab), ab))
 
 
 def root_of(numeral: str, tonic: int) -> int:

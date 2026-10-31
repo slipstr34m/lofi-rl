@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 
 import helpers_voicing
-from helpers_voicing import (added, avoids, colour, cost48, dropped, guide, inverted, is_stack, mode_pcs, named,
-                             normal, note_names, oracle_candidates, oracle_vamp, placed, quartal_stacks,
+from helpers_voicing import (added, avoids, best_pair, colour, cost48, dropped, guide, inverted, is_stack, mode_pcs,
+                             named, normal, note_names, oracle_candidates, oracle_vamp, placed, quartal_stacks,
                              register_ok, root_of, rootless_template, sharp9_above_third, shell_template)
 from lofi_rl.dsl.ast import Chord
 from lofi_rl.dsl.vocab import MODES, NUMERALS, QUALITIES, VOICINGS
@@ -248,7 +248,7 @@ def test_the_example_vamp_voicing_is_pinned():
 SHOOTOUT_AT_D = {
     "Aruarian": ["G3 D4 F#4 | G3 B3 C#4 F#4", "G3 D4 F#4 | G3 C#4 F#4", "D3 G3 F#4 | C#3 G3 B3 F#4",
                  "D3 G3 C#4 F#4 | E3 G3 C#4 F#4"],
-    "Royal-half": ["B3 D4 F#4 | A3 C#4 E4", "B3 F#4 | A3 E4", "F#3 D4 B4 | E3 C#4 A4", "F#3 B3 E4 A4 | F#3 B3 E4 A4"],
+    "Royal-half": ["B3 D4 F#4 | A3 C#4 E4", "B3 F#4 | A3 E4", "F#3 D4 B4 | E3 C#4 A4", "C#4 F#4 B4 | C#4 E4 A4"],
     "Two-of-us": ["B3 D4 F#4 | Bb3 C#4 E4", "B3 F#4 | Bb3 E4", "F#3 D4 B4 | E3 C#4 Bb4", "F#3 B3 E4 | F#3 Bb3 E4"],
     "Lift": ["F#3 C#4 E4 | A3 B3 F#4", "F#3 C#4 E4 | A3 B3 F#4", "E3 C#4 F#4 | F#3 B3 A4",
              "E3 A3 C#4 F#4 | F#3 B3 E4 A4"],
@@ -327,6 +327,43 @@ def test_v21_quartal_adds_only_the_quality_s_available_tensions():
         assert not {(p - root) % 12 for p in v} & foreign, (chord, note_names(v))
 
 
+def test_v21_the_vamp_moves_whenever_some_candidate_pair_differs():
+    # TH-3 and R1: the cost is least when nothing moves, so under V2 both chords often played the same keys pitches and
+    # only the bass moved: 29 of the 576 (shootout vamp, style, tonic) cases, all quartal (at tonic 2 Royal-half was
+    # F#3 B3 E4 A4 twice), and span1_dotted.ls.
+    for name, (mode, a, b) in SHOOTOUT.items():
+        for style in VOICINGS:
+            for tonic in range(12):
+                va, vb = voice_vamp(Chord(*a), Chord(*b), tonic, mode, style)
+                assert va != vb, (name, style, tonic, note_names(va))
+    # The cheapest pair that differs wins, though the equal pair costs less. Two equal one-candidate sets leave no
+    # other pair.
+    c, e = (60, 64, 67), (48, 52, 55)
+    assert pair_cost(c, c) < pair_cost(e, c) and choose([c, e], [c]) == (e, c) == best_pair([c, e], [c])
+    assert choose([c], [c]) == (c, c) == best_pair([c], [c])
+
+
+def test_v21_no_vamp_of_the_vocabulary_repeats_a_voicing_unless_it_has_no_other_pair():
+    # R1's sweep: every unordered pair of distinct chords (11 numerals x 14 qualities) at every tonic, and in every mode
+    # for quartal (the other styles do not read the mode). Only two chords whose candidate sets meet can repeat one
+    # voicing; under V2 every such pair did: rootless 480, shell 540, spread 480 and quartal 22,612 cases.
+    chords = [(n, q) for n in NUMERALS for q in QUALITIES]
+    met, repeats = {}, {}
+    for style in VOICINGS:
+        for mode in (MODES if style == "quartal" else ("dorian",)):
+            for tonic in range(12):
+                cands = {(n, q): _candidates(root_of(n, tonic), q, style, n, mode) for n, q in chords}
+                sets = {c: set(v) for c, v in cands.items()}
+                for x, y in combinations(chords, 2):
+                    if sets[x] & sets[y]:
+                        met[style] = met.get(style, 0) + 1
+                        va, vb = choose(cands[x], cands[y])
+                        if va == vb:
+                            assert sets[x] == sets[y] == {va}, (style, mode, tonic, x, y, note_names(va))
+                            repeats[style] = repeats.get(style, 0) + 1
+    assert met == {"rootless": 480, "shell": 540, "spread": 480, "quartal": 11294} and repeats == {}, (met, repeats)
+
+
 # ------------------------------------------------------------------- section 3 rules that V2 leaves unchanged
 def test_inversions_and_drop2():
     assert inversions((3, 10, 14)) == ((3, 10, 14), (10, 14, 15), (14, 15, 22))
@@ -344,14 +381,18 @@ def test_rule_2_rejects_low_clusters_and_minor_ninths():
 
 
 def test_ties_break_lexicographically():
+    # Brute force over the pairs that move (V2.1 R8): two different voicings.
+    def brute(xs, ys):
+        return min(((x, y) for x in xs for y in ys if x != y), key=lambda p: (pair_cost(*p), p))
+
     a = [(60, 64, 67), (48, 52, 55)]
-    b = [(60, 64, 67)]
-    assert choose(a, b) == ((60, 64, 67), (60, 64, 67))
+    b = [(60, 65, 69)]
+    assert choose(a, b) == ((60, 64, 67), (60, 65, 69))   # the cheaper pair, though (48, 52, 55) sorts first
     sym = [(55, 59, 62), (58, 62, 65)]                  # mirror images around 60: equal cost against each other
     assert pair_cost(sym[0], sym[1]) == pair_cost(sym[1], sym[0])
-    assert choose(sym, sym) == min(((x, y) for x in sym for y in sym), key=lambda p: (pair_cost(*p), p))
+    assert choose(sym, sym) == (sym[0], sym[1]) == brute(sym, sym)
     mixed = [(55, 60, 64), (50, 55, 60, 65), (59, 65)]  # 3, 4 and 2 notes: one exact scale for every pair
-    assert choose(mixed, mixed) == min(((x, y) for x in mixed for y in mixed), key=lambda p: (pair_cost(*p), p))
+    assert choose(mixed, mixed) == brute(mixed, mixed)
 
 
 def test_voice_leading_pairs_outer_voices_for_unequal_sizes():
