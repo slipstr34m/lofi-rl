@@ -6,7 +6,10 @@ GPU.
   estimates); `docs/design/instrument.md` §2 (gates) and §5 (verifiers); `CLAUDE.md` §8.
 - **Code:** `src/lofi_rl/rl/`: `curriculum.py`, `reward.py`, `config.py`, `train.py`, `smoke_check.py`.
 - **Config:** `configs/grpo_smoke.yaml`. **Job:** `jobs/grpo_smoke.sbatch` (`lofi-grpo-smoke`).
-- **Tests:** `tests/test_rl_{reward,train,smoke_check,imports}.py`, with the stand-ins in `tests/helpers_rl.py`.
+- **Tests:** `tests/test_rl_{reward,train,smoke_check,imports,rehearsal}.py`, with the stand-ins in
+  `tests/helpers_rl.py`. `test_rl_rehearsal.py` runs `train()` twice (10 steps, then a resume from checkpoint-5)
+  against stand-in torch, transformers, TRL, PEFT and datasets modules that call the reward the way GRPOTrainer
+  does. `smoke_check` then judges what those two runs wrote. That tests the wiring; real TRL is the cluster's to test.
 - **Interfaces used:** `lofi_rl.prompt` (`PROMPT_VERSION`, `build_messages`, `template_sha256`) and
   `lofi_rl.verify` (`score`, `group_penalties`) are written by other builders. The tests use fakes that follow
   their shared interfaces exactly.
