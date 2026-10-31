@@ -4,7 +4,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ## Status
 - **SU used:** 241.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-30 23:53).
-- **Phase:** 0 (setup), started 2026-10-30. Smoke 13624734 failed 2 checks, both with known causes, and the fixes are in (entry below). The Phase-0 gate waits on the smoke rerun.
+- **Phase:** 0 (setup), started 2026-10-30. Smoke 13624734 failed 2 checks, both with known causes, and the fixes are in (entry below). The Phase-0 gate waits on the rerun `lofi-smoke-env` **13628361**, submitted 2026-10-31 00:57 with the mirror at `0508c2f`. It is queued on debug behind 2 jobs, and Slurm estimates a 03:30 start.
 - **Waiting on Shresth:** whether `scancel` may be used on our own jobs. It now matters only for 13624408, which waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots. Racing the smoke on the gpu partition is dropped.
 
 ---
