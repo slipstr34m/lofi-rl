@@ -1,0 +1,373 @@
+# The Phase-1 shootout plan in symbols: docs/SHOOTOUTS.md sections 4 and 6, read by `lofi_rl.shootout.plan`.
+#
+# Public by design (SHOOTOUTS.md section 2.3): the candidate lists, each stage's design in symbols with its
+# constraints, the loop of each round slot, and each batch's contents. No option id is ever placed on a tile.
+# Which option each symbol stands for, the order of the rounds and the hidden controls (anchors, repeats) are
+# drawn at job time by `python -m lofi_rl.shootout.batch draw` from a 64-bit seed that is never committed
+# (CD-21), and recorded only in runs/shootout-<job>/summary/draw.json, batches.json and the hidden manifests.
+#
+# Sound claims: none. Every candidate here is a starting point for Shresth's ear.
+v: 1
+scene: city at night
+loops_dir: loops                 # relative to this file; briefs in <loops_dir>/briefs.yaml (section 5)
+
+loops:                           # section 5: one loop per mood x energy cell [CD-3]
+  L1: l1_melancholy_low
+  L2: l2_melancholy_mid
+  L3: l3_melancholy_high
+  L4: l4_wistful_low
+  L5: l5_wistful_mid
+  L6: l6_wistful_high
+  L7: l7_hopeful_low
+  L8: l8_hopeful_mid
+  L9: l9_hopeful_high
+
+alto_above: [L2, L4, L8]         # section 4.4: both alto phrases sit 12 above the tenor's on these loops
+
+registers:                       # instrument.md section 3, sounding MIDI (play, comfort, home)
+  tenor: {play: [44, 75], comfort: [48, 72], home: [50, 61]}
+  alto: {play: [49, 80], comfort: [55, 77], home: [57, 68]}
+
+# Option ids are the hidden manifests' `option` values (section 4). Each carries its stage's prefix where the
+# section 6 rule asks for one, so a batch holding several stages splits cleanly by category. The fields after
+# the id are for the palette generator (section 7.8) and the reader; the batch builder reads `family`,
+# `register`, `mood` and `line`.
+candidates:
+  keys:                          # section 4.1
+    jrhodes3d: {family: rhodes, source: "jRhodes3d mono, converted SFZ -> SF2 (converter bank jrhodes3d-mono)", preset: [0, 0], licence: "CC BY-NC 4.0, fetch-only"}
+    gu_tine_ep: {family: rhodes, source: GeneralUser GS, preset: [0, 4], licence: permissive}
+    fp_fm_ep1: {family: other_ep, source: "FreePats FM Piano #1", preset: [0, 0], licence: CC0}
+    gs_wurli_ep200: {family: other_ep, source: "Greg Sullivan Wurlitzer EP200, converted (gsullivan-wurlitzer)", preset: [0, 0], licence: CC BY 3.0}
+    fp_upright_kw: {family: piano, source: FreePats Upright Piano KW, preset: [0, 0], licence: CC0}
+    vcsl_upright_knight: {family: piano, source: "VCSL Upright Piano, Knight, converted (vcsl-upright-knight)", preset: [0, 0], licence: CC0}
+    fp_fsbs_jazz_guitar: {family: guitar_organ, source: "FreePats FSBS jazz guitar, bridge", preset: [0, 0], licence: CC0}
+    gu_organ: {family: guitar_organ, source: GeneralUser GS, preset: [0, 16], licence: permissive}
+  kits:                          # section 4.2; lane maps in section 7.4
+    kit_virtuosity: {source: "Virtuosity Drums v0.925, kickmic + snaremic + oh premix", licence: CC0}
+    kit_swirly: {source: "Karoryfer Swirly Drums v1.104, brushes, dry; shaker from VCSL Shaker, Large", licence: CC0}
+    kit_gu_jazz: {source: "GeneralUser GS Jazz kit 32 as one-shots (dev_gu)", licence: permissive}
+  basses:                        # section 4.2
+    bass_vsco2_pizz: {source: "VSCO 2 CE contrabass pizzicato, converted (vsco2-contrabass-pizz)", preset: [0, 0], licence: CC0}
+    bass_fp_finger_yr: {source: FreePats Finger Bass YR, preset: [0, 0], licence: CC0}
+    bass_gu_acoustic: {source: GeneralUser GS, preset: [0, 32], licence: permissive}
+  saxes:                         # section 4.4
+    sax_fp_tenor: {register: tenor, source: "FreePats Tenor Saxophone, full SF2", preset: [0, 0], licence: CC0}
+    sax_weresax_alto: {register: alto, source: "Karoryfer Weresax v1.003 alto, converted (weresax-alto)", preset: [0, 0], licence: CC0}
+    sax_mtg_tenor: {register: tenor, source: "MTG Solo Saxophones tenor, converted (mtg-tenor)", preset: [0, 0], licence: "CC BY 4.0 / 3.0"}
+    sax_mtg_alto: {register: alto, source: "MTG Solo Saxophones alto, converted (mtg-alto)", preset: [0, 0], licence: "CC BY 4.0 / 3.0"}
+    sax_gu_tenor: {register: tenor, source: GeneralUser GS, preset: [0, 66], licence: permissive}
+    sax_gu_alto: {register: alto, source: GeneralUser GS, preset: [0, 65], licence: permissive}
+  swing:                         # section 4.2, R3a; MPC 16th swing on every timing lane, the sax included [CD-12]
+    swing_50: {swing: 0.50}
+    swing_55: {swing: 0.55}
+    swing_58: {swing: 0.58}
+    swing_split: {swing: 0.54, hat: 0.60, ohat: 0.60}
+  humanize:                      # section 4.2, R3b (COMPILER.md section 3.6)
+    humanize_off: {humanize: "off"}
+    humanize_h1: {humanize: bar}
+    humanize_h2: {humanize: loop}
+  sax_variants:                  # section 4.4, S2a
+    sax_plain: {sax_warm: false, sax_expr: true}
+    sax_warm_on: {sax_warm: true, sax_expr: true}
+    sax_expr_off: {sax_warm: false, sax_expr: false}
+  timing:                        # section 4.4, S2b (COMPILER.md section 3.7)
+    timing_grid: {timing: grid}
+    timing_lag: {timing: lag, lag_ms: 25.0}
+    timing_swung: {timing: swung, swing8: 0.6}
+  vamps:                         # section 4.3: chords and spans as instrument.md section 6 lists them
+    aruarian: {mood: hopeful, line: "IIm9 V13 span 2", margin: 12, borrowed: false}
+    royal_half: {mood: hopeful, line: "IVmaj7 IIIm7 span 1", margin: 18, borrowed: false}
+    two_of_us: {mood: hopeful, line: "IVmaj7 III7 span 2", margin: 22, borrowed: false}
+    lift: {mood: hopeful, line: "Imaj9 IVmaj9 span 2", margin: 20, borrowed: false}
+    i_iv: {mood: wistful, line: "Im9 IV13 span 2", margin: 8, borrowed: false}
+    pulse: {mood: wistful, line: "Im9 IV9 span 1", margin: 8, borrowed: false}
+    step: {mood: wistful, line: "Im11 IIm7 span 2", margin: 4, borrowed: false}
+    float: {mood: wistful, line: "Im9 bVIImaj7 span 2", margin: 8, borrowed: true}
+    drift: {mood: melancholy, line: "Im9 bVImaj7 span 2", margin: 8, borrowed: true}
+    plagal: {mood: melancholy, line: "Im9 IVm9 span 2", margin: 8, borrowed: false}
+    backdoor: {mood: melancholy, line: "IVm9 bVII13 span 2", margin: 16, borrowed: true}
+    rise: {mood: melancholy, line: "bVImaj7 bVII13 span 2", margin: 16, borrowed: true}
+  excerpts:                      # section 4.5, W1: start_s from shootouts/rain_excerpts.json (section 7.2)
+    excerpt_e1: {rank: 1}
+    excerpt_e2: {rank: 2}
+    excerpt_e3: {rank: 3}
+  rain:                          # section 4.5, W2: the bed at LUFS_music - delta (RENDER.md section 3.4)
+    rain_none: {delta_lu: null}
+    rain_d30: {delta_lu: 30}
+    rain_d24: {delta_lu: 24}
+    rain_d18: {delta_lu: 18}
+
+# The fixed band [CD-7]: every slot a round does not test. `leaders` slots come from the job's --leaders
+# (section 7.7); a null there means the job must name it, a value is the default when it does not.
+band:
+  day1:
+    fixed: {keys: gu_tine_ep, kit: kit_gu_jazz, bass: bass_gu_acoustic, sax: sax_gu_tenor, swing: swing_55,
+            humanize: humanize_off, sax_variant: sax_plain, timing: timing_grid, bed: null, rain: rain_none}
+  day2:                          # the Day-1 leaders: keys the K1 leader, the R1 kit with its R2 bass, the S1 sax
+    fixed: {swing: swing_55, humanize: humanize_off, sax_variant: sax_plain, timing: timing_grid, bed: null,
+            rain: rain_none}
+    leaders: {keys: null, kit: null, bass: null, sax: null}
+  day3:                          # the Day-2 picks: the keys leader over K1 + K2, the R3 picks, the sax and its S2 picks
+    fixed: {bed: null, rain: rain_none}
+    leaders: {keys: null, kit: null, bass: null, sax: null, swing: swing_55, humanize: humanize_off,
+              sax_variant: sax_plain, timing: timing_grid}
+
+# Stages (section 4). `fills`: the band slot the option takes; `bus`: the candidate's bus (section 3, levels);
+# `band`: slots this stage fixes for all its clips; `draw`: how symbols map to options (a symbols list longer
+# than the options takes its first ones); `slots`: the round slots, tiles 1-4 left to right, in symbols only.
+stages:
+  K1:                            # keys tournament, rootless [CD-8]: twins P1-P4 are the four families
+    day: day1
+    category: keys
+    fills: keys
+    bus: keys
+    what: rootless
+    repeat_group: keys
+    draw:
+      - {pairs: [[P1a, P1b], [P2a, P2b], [P3a, P3b], [P4a, P4b]], options: keys, by: family}
+    slots:
+      - {id: K1.1, loop: L5, tiles: [P1a, P1b, P2a, P2b]}
+      - {id: K1.2, loop: L1, tiles: [P1b, P3a, P3b, P1a]}
+      - {id: K1.3, loop: L9, tiles: [P4a, P4b, P1a, P1b]}
+      - {id: K1.4, loop: L5, tiles: [P3a, P3b, P4a, P4b]}
+      - {id: K1.5, loop: L1, tiles: [P2b, P4a, P4b, P2a]}
+      - {id: K1.6, loop: L9, tiles: [P2a, P2b, P3a, P3b]}
+  R1:                            # kits x patterns, GU acoustic bass in every clip; Latin square
+    day: day1
+    category: kits
+    fills: kit
+    bus: drums
+    what: kit on the dev bass
+    repeat_group: drums_bass
+    draw:
+      - {symbols: [k1, k2, k3], options: kits}
+    slots:
+      - {id: R1.1, loop: L3, tiles: [k1, k2, k3]}
+      - {id: R1.2, loop: L4, tiles: [k2, k3, k1]}
+      - {id: R1.3, loop: L8, tiles: [k3, k1, k2]}
+  R2:                            # basses on the kits, one round per kit [CD-9]; Latin square
+    day: day1
+    category: bass
+    fills: bass
+    bus: bass
+    what: bass on its round's kit
+    repeat_group: drums_bass
+    draw:
+      - {symbols: [b1, b2, b3], options: basses}
+    slots:
+      - {id: R2.1, loop: L6, kit: R1.k1, tiles: [b1, b2, b3]}
+      - {id: R2.2, loop: L7, kit: R1.k2, tiles: [b2, b3, b1]}
+      - {id: R2.3, loop: L2, kit: R1.k3, tiles: [b3, b1, b2]}
+  S1:                            # sax sources [CD-17]: each source on every tile once; L4 is the alto-above loop
+    day: day1
+    category: sax
+    fills: sax
+    bus: sax
+    what: source
+    repeat_group: sax_sources
+    draw:
+      - {symbols: [t1, t2, t3], options: saxes, where: {register: tenor}}
+      - {symbols: [a1, a2, a3], options: saxes, where: {register: alto}}
+    slots:
+      - {id: S1.1, loop: L4, tiles: [t3, a1, a2, a3]}
+      - {id: S1.2, loop: L3, tiles: [a3, t1, t2, t3]}
+      - {id: S1.3, loop: L1, tiles: [t1, a2, a3, a1]}
+      - {id: S1.4, loop: L5, tiles: [a1, t2, t3, t1]}
+      - {id: S1.5, loop: L9, tiles: [t2, a3, a1, a2]}
+      - {id: S1.6, loop: L7, tiles: [a2, t3, t1, t2]}
+  R3a:                           # swing on the R1 leader with its R2 bass, humanize off; advisory [CD-13]
+    day: day2
+    category: swing
+    fills: swing
+    bus: drums
+    what: swing
+    default: swing_55
+    repeat_group: drums_bass
+    draw:
+      - {symbols: [w1, w2, w3, w4], options: swing}
+    slots:
+      - {id: R3a.1, loop: L9, tiles: [w1, w2, w3, w4]}
+      - {id: R3a.2, loop: L4, tiles: [w4, w3, w2, w1]}
+  R3b:                           # humanize at swing 0.55; Latin square [CD-14]
+    day: day2
+    category: humanize
+    fills: humanize
+    bus: drums
+    what: humanize
+    default: humanize_off
+    repeat_group: drums_bass
+    draw:
+      - {symbols: [n1, n2, n3], options: humanize}
+    slots:
+      - {id: R3b.1, loop: L3, tiles: [n1, n2, n3]}
+      - {id: R3b.2, loop: L7, tiles: [n2, n3, n1]}
+      - {id: R3b.3, loop: L5, tiles: [n3, n1, n2]}
+  S1f:                           # the S1 final [CD-18]: the S1 top 2 (3 on a tie) on the three loops S1 did not use
+    day: day2
+    category: sax
+    fills: sax
+    bus: sax
+    what: source
+    repeat_group: sax_sources
+    draw:
+      - {symbols: [f1, f2, f3], options: leaders.sax}
+    slots_by_count:
+      2:
+        - {id: S1f.1, loop: L2, tiles: [f1, f2]}
+        - {id: S1f.2, loop: L6, tiles: [f2, f1]}
+        - {id: S1f.3, loop: L8, tiles: [f1, f2]}
+      3:
+        - {id: S1f.1, loop: L2, tiles: [f1, f2, f3]}
+        - {id: S1f.2, loop: L6, tiles: [f2, f3, f1]}
+        - {id: S1f.3, loop: L8, tiles: [f3, f1, f2]}
+  S2a:                           # warmth with the control, on the S1 leader [CD-19]; Latin square
+    day: day2
+    category: sax_warmth
+    fills: sax_variant
+    bus: sax
+    what: sax variant
+    default: sax_plain
+    repeat_group: sax_variants
+    draw:
+      - {symbols: [m1, m2, m3], options: sax_variants}
+    slots:
+      - {id: S2a.1, loop: L1, tiles: [m1, m2, m3]}
+      - {id: S2a.2, loop: L4, tiles: [m2, m3, m1]}
+      - {id: S2a.3, loop: L9, tiles: [m3, m1, m2]}
+  S2b:                           # timing at warm off; Latin square
+    day: day2
+    category: sax_timing
+    fills: timing
+    bus: sax
+    what: sax timing
+    default: timing_grid
+    repeat_group: sax_variants
+    draw:
+      - {symbols: [g1, g2, g3], options: timing}
+    slots:
+      - {id: S2b.1, loop: L3, tiles: [g1, g2, g3]}
+      - {id: S2b.2, loop: L5, tiles: [g2, g3, g1]}
+      - {id: S2b.3, loop: L7, tiles: [g3, g1, g2]}
+  K2:                            # the K1 top 3 with the spread voicing (4 on a tie at third, the second reversed)
+    day: day2
+    category: keys
+    fills: keys
+    bus: keys
+    what: spread
+    sub: spread
+    repeat_group: keys
+    draw:
+      - {symbols: [u1, u2, u3, u4], options: leaders.keys}
+    slots_by_count:
+      3:
+        - {id: K2.1, loop: L3, tiles: [u1, u2, u3]}
+        - {id: K2.2, loop: L8, tiles: [u2, u3, u1]}
+      4:
+        - {id: K2.1, loop: L3, tiles: [u1, u2, u3, u4]}
+        - {id: K2.2, loop: L8, tiles: [u4, u3, u2, u1]}
+  V:                             # vamps, one mood per round [CD-15]; per mood 3 rows of a 4x4 Latin square
+    day: day2
+    category: vamps
+    fills: null
+    bus: keys+bass
+    what: sax muted
+    sub: vamp
+    sax_muted: true
+    repeat_group: vamps
+    draw:                        # plagal and float always on the central tile sums 7 or 8 [CD-16]
+      - {symbols: [v1, v2, v3, v4], options: vamps, where: {mood: melancholy}, pin: {plagal: [v2, v3]}, slots: [V.1, V.2, V.3]}
+      - {symbols: [v1, v2, v3, v4], options: vamps, where: {mood: wistful}, pin: {float: [v2, v3]}, slots: [V.4, V.5, V.6]}
+      - {symbols: [v1, v2, v3, v4], options: vamps, where: {mood: hopeful}, slots: [V.7, V.8, V.9]}
+    slots:
+      - {id: V.1, loop: L1, tiles: [v1, v2, v3, v4]}
+      - {id: V.2, loop: L2, tiles: [v2, v1, v4, v3]}
+      - {id: V.3, loop: L3, tiles: [v3, v4, v1, v2]}
+      - {id: V.4, loop: L4, tiles: [v1, v2, v3, v4]}
+      - {id: V.5, loop: L5, tiles: [v2, v1, v4, v3]}
+      - {id: V.6, loop: L6, tiles: [v3, v4, v1, v2]}
+      - {id: V.7, loop: L7, tiles: [v1, v2, v3, v4]}
+      - {id: V.8, loop: L8, tiles: [v2, v1, v4, v3]}
+      - {id: V.9, loop: L9, tiles: [v3, v4, v1, v2]}
+  W1:                            # rain excerpts at delta 18, the loudest bed under test [CD-20]; Latin square
+    day: day3
+    category: rain_excerpt
+    fills: bed
+    bus: bed
+    what: rain excerpt at delta 18
+    default: excerpt_e1
+    band: {rain: rain_d18}
+    draw:
+      - {symbols: [z1, z2, z3], options: excerpts}
+    slots:
+      - {id: W1.1, loop: L1, tiles: [z1, z2, z3]}
+      - {id: W1.2, loop: L7, tiles: [z2, z3, z1]}
+      - {id: W1.3, loop: L5, tiles: [z3, z1, z2]}
+  W2:                            # rain levels on excerpt e1; Latin square
+    day: day3
+    category: rain_level
+    fills: rain
+    bus: bed
+    what: rain level on excerpt e1
+    default: rain_d24
+    band: {bed: excerpt_e1}
+    draw:
+      - {symbols: [y1, y2, y3, y4], options: rain}
+    slots:
+      - {id: W2.1, loop: L2, tiles: [y1, y2, y3, y4]}
+      - {id: W2.2, loop: L4, tiles: [y2, y3, y4, y1]}
+      - {id: W2.3, loop: L6, tiles: [y3, y4, y1, y2]}
+      - {id: W2.4, loop: L8, tiles: [y4, y1, y2, y3]}
+
+# Batches (section 6), in serving order [CD-49]. `anchor`: the batch holds its day's broken anchor (section 2.5).
+# Batches with the same `split` share their stages' rounds, split by the builder into equal halves.
+batches:
+  - {name: b1103-1-keys, date: "2026-11-03", day: day1, category: keys, note: "Which keys do you like best?", stages: [K1]}
+  - {name: b1103-2-groove, date: "2026-11-03", day: day1, category: "kits, bass", note: "Which drums and bass do you like best?", stages: [R1, R2]}
+  - {name: b1103-3-sax, date: "2026-11-03", day: day1, category: sax, note: "Which sax do you like best?", stages: [S1], anchor: true}
+  - {name: b1104-1-groove, date: "2026-11-04", day: day2, category: "swing, humanize", note: "Which groove do you like best?", stages: [R3a, R3b]}
+  - {name: b1104-2-sax, date: "2026-11-04", day: day2, category: "sax, sax_warmth, sax_timing", note: "Which sax do you like best?", stages: [S1f, S2a, S2b], anchor: true}
+  - {name: b1104-3-keys, date: "2026-11-04", day: day2, category: keys, note: "Which keys do you like best?", stages: [K2]}
+  - {name: b1104-4-vamps, date: "2026-11-04", day: day2, category: vamps, note: "Which chords do you like best? There is no sax in this batch.", stages: [V]}
+  - {name: b1106-1-mix, date: "2026-11-06", day: day3, category: mix, note: "Pick the best and the worst in each round.", stages: [W1, W2], anchor: true, split: mix}
+  - {name: b1106-2-mix, date: "2026-11-06", day: day3, category: mix, note: "Pick the best and the worst in each round.", stages: [W1, W2], anchor: true, split: mix}
+
+# Hidden repeats (D-013; section 2.5): one per group, on day 3, from the --prior batches, tiles reversed; never
+# the first round served of a stage [CD-24]; only from the stages the job's --repeats names.
+repeats:
+  day: day3
+  groups:
+    keys: [K1, K2]
+    drums_bass: [R1, R2, R3a, R3b]
+    vamps: [V]
+    sax_sources: [S1, S1f]
+    sax_variants: [S2a, S2b]
+
+# The S2 re-run (section 4.4): on day 3 with --rerun-s2 <sax id>, these stages run again on that sax.
+rerun_s2: {day: day3, stages: [S2a, S2b]}
+
+# The cut list (section 2.7) [CD-50], applied by the job's --cut <name>+<name>.
+cuts:
+  vamps-high:                    # each vamp heard in 2 loops; the 2 rounds per mood play the second reversed
+    day: day2
+    edits:
+      - stage: V
+        keep: [V.1, V.2, V.4, V.5, V.7, V.8]
+        tiles: {V.2: [v4, v3, v2, v1], V.5: [v4, v3, v2, v1], V.8: [v4, v3, v2, v1]}
+  latin3:                        # the third round of R3b, S2a and S2b; the default on the middle tile sum
+    day: day2
+    edits:
+      - {stage: R3b, keep: [R3b.1, R3b.2], pin: {humanize_off: [n1]}}
+      - {stage: S2a, keep: [S2a.1, S2a.2], pin: {sax_plain: [m1]}}
+      - {stage: S2b, keep: [S2b.1, S2b.2], pin: {timing_grid: [g1]}}
+  final:                         # the S1 final: S1 alone picks the sax
+    day: day2
+    edits:
+      - {stage: S1f, drop: true}
+  rain-w1:                       # W1 down to 2 rounds, e1 on the middle tile sum
+    day: day3
+    edits:
+      - {stage: W1, keep: [W1.1, W1.2], pin: {excerpt_e1: [z1]}}
+  rain-w2:                       # W2 down to 2 rounds, the second reversed
+    day: day3
+    edits:
+      - {stage: W2, keep: [W2.1, W2.2], tiles: {W2.2: [y4, y3, y2, y1]}}
