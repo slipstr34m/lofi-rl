@@ -29,8 +29,8 @@
 # make pull brings back both, never the renders.
 # Walltime: the Day-1 dry run on the laptop (Apple M4, --jobs 8, 2026-10-31) took 87.9-89.4 s for every stage
 # (levels 43.8-44.8 s, 67 renders 42.8-43.3 s, the rest 1.3 s) at a peak of 3.0 GB. The cluster renders a fixture
-# 1.3-2.7 x slower (SHOOTOUTS.md section 7.7); with 8 CPUs that may be 4 cores' hyperthreads (x 2) and 2 min of
-# start-up that is 4-10 min, about 50-120 SU. 20 min leaves twice the slowest of those.
+# 1.3-2.7 x slower (2.86-5.95 s, SHOOTOUTS.md 7.7, against 2.2 s, RENDER.md 7); with 8 CPUs that may be 4 cores'
+# hyperthreads (x 2) and 2 min of start-up that is 4-10 min, about 50-120 SU. 20 min leaves twice the slowest.
 # Cost: 8 CPU + 4 (16 GB) = 12 SU/min -> at most 240 SU.
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/..}"
