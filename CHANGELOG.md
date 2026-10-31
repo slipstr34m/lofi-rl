@@ -3,9 +3,68 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 419.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 08:17).
-- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way: the rating page and the compiler + renderer are committed, and cluster renders are deterministic across CPU models (entries below). The 14 shootout sources are downloaded and verified. Next: land the second review, loosen the seam tolerance to what Linux gives, copy the assets to the cluster, build the SFZ → SF2 converter, then fader calibration and the shootout batches.
+- **SU used:** 447.5 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 11:25).
+- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way:
+  - committed: the rating page, the compiler + renderer and the second review; cluster renders are deterministic across CPU models and pass the seam tests on Linux;
+  - the 14 shootout sources are on the laptop and the cluster;
+  - running: the voicing amendment (V2) and the SFZ → SF2 converter;
+  - next: the shootout tooling, loops, palettes and batches.
 - **Waiting on Shresth:** the Freesound rain file, which needs his login (`docs/SHOOTOUT_ASSETS.md`).
+
+---
+
+## 2026-10-31 (11:30 PDT): second review landed; seam tolerance fits Linux; assets on the cluster; voicing amendment and converter running
+
+**What was done**
+- **Assets on the cluster.** rsync copied `assets/big/` to `$REMOTE_KEEP/assets/` (1.0 GB in 6 min 51 s), owner-only: folders 700, files 600. A `--checksum` dry run then found no differences over all 1,960 files. `make push-assets` now does this copy, with no `--delete` and no `.rsyncignore`.
+- **Second review** (workflow `wf_ddc78253-994`: three pre-decided fixes, then 3 lenses with a verifier each, then fixes test-first; 8 agents, 686 tool calls, 1 h 35 min). Committed as `2a03893`.
+  - **Pre-decided fixes:**
+    - `docs/DSL.md`, the live LoopScript reference: every example is checked by the parser, and `sax:` is optional and ignored;
+    - `brief._draw` is keyed by chained SplitMix64, so streams from different seeds are independent;
+    - `tests/test_licenses.py` now uses `palette.licence_problem`'s allow-list.
+  - **Test strength:** 25 surviving mutants, 5 of them high: the keys could ignore the tonic, the sax could ignore the mood, a wrong aeolian or ionian interval passed, the keys style was unchecked, and brief fields could share a draw. Each now has a test that its mutant fails. No render changed.
+  - **Shootout readiness:**
+    - SR-1 was confirmed and fixed in `palette.py`. Fetch-mode sources resolve under `$LOFI_ASSETS`, default `<repo>/assets/big`, relative to the repo root.
+    - The 7 other findings were rejected as following the spec, but they are exactly what the shootout tooling still needs:
+      - per-candidate level matching;
+      - a one-time 48 → 44.1 kHz conversion for one-shots and the bed;
+      - a no-sax render for the vamp shootout;
+      - one-shot import (lead-in trim, mic premix, stereo);
+      - SF2 coverage checks;
+      - a batch builder that puts only opaque FLACs in the inbox.
+  - **Theory:** 8 findings, all rejected because the code follows instrument.md §3 literally. The rules themselves break TASTE.md's harmony row:
+    - in rootless and spread, 13 = 9, m11 = m9 and maj7#11 = maj9;
+    - quartal major chords have no 7th;
+    - quartal dominants add an unnamed 13 outside the mode in 126 of 462 mode × chord cases;
+    - m7b5 never sounds its b5;
+    - the #9 sits a semitone under the 3rd.
+
+    So I wrote voicing rules V2, a Claude's default amending instrument.md §3, to be recorded in COMPILER.md:
+    - the 3rd and 7th always;
+    - the top named extension always;
+    - no tone outside chord + mode;
+    - distinct symbols in rootless, shell and spread;
+    - the #9 above the 3rd.
+
+    The amendment workflow is implementing them.
+  - **Suite:** 1123 passed, 28 deselected, 1 xfailed in 64.96 s; `-m cluster` 28 passed; `example.ls` still renders to `6061a4a3…` on the laptop.
+- **Seam tolerance** (`310ccaa`): the whole chain is held to `SEAM_TOL` = 1e-5 (−100 dBFS, a third of the 16-bit copy's LSB), and the FluidSynth stems and the limiter tile to 1e-6. `scripts/job_env.sh` exports `LOFI_ASSETS=$REMOTE_KEEP/assets`.
+- **`lofi-render-check` 13630522** (epyc-7513, mirror `310ccaa`): `RENDER_CHECK_OK`.
+  - Node suite: 1095 passed, 23 skipped, 33 deselected, 1 xfailed, 0 failed (`runs/render-check-13630522/summary/pytest.txt`).
+  - Golden recording: 8 passed. All six fixtures gave the same hashes as 13630298–13630300.
+  - The Linux golden key is not merged yet: the voicing amendment changes renders, so it gets recorded after that lands.
+- **Running:**
+  - `wf_33cf4146-4f5`: the SFZ → SF2 converter, in its own worktree on branch `converter`;
+  - `wf_b54901ca-e65`, in the main tree: voicing V2, the open-hat choke, round robin at the seam, and a groove-only humanize seed.
+
+**Failed approaches and why:** none.
+
+**SU spent:** 27.8 (13630522), for a total of 447.5 (`python3 scripts/session_report.py`).
+
+**Next:**
+1. Land the amendments and the converter.
+2. Rerun `lofi-render-check` and merge the Linux golden key.
+3. Build the shootout tooling above, then the shootout loops and palettes, then the batches.
 
 ---
 
