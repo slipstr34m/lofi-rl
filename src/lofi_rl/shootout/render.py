@@ -5,7 +5,10 @@
 
 Renders every render the draw lists, `--jobs` at a time with `--workers` each (8 and 1 on the job's 8 CPUs;
 the output never depends on either), through the real pipeline (`render.pipeline.render`, two cycles, the master
-chain and -14 LUFS as usual). Each render gets its own folder `<out>/<render id>/`:
+chain and -14 LUFS as usual). The renders run in a thread pool: the pipeline already runs its FluidSynth stems and
+bus chains in threads, FluidSynth is a subprocess with its own empty HOME, and the one-shot cache writes through
+unique temporary files, so concurrent renders share nothing that races; four renders gave the same pcm_sha256 in
+threads as in separate processes (laptop, 2026-10-31), and finished in 2.6-3.0 s against 4.1 s. Each render gets its own folder `<out>/<render id>/`:
 `loop.ls` (the exact text), `render.wav`, `music.wav`, `manifest.json` (the render manifest), `render.flac` (the
 16-bit TPDF-dithered listening copy, RENDER.md section 3.6) and `record.json`, the line the batch builder reads.
 A loop that fails a gate or does not compile gets a record with status `gate` or `compile` and no audio, so the
@@ -38,7 +41,7 @@ import shutil
 import sys
 import time
 import traceback
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 
@@ -201,15 +204,11 @@ def render_one(rid: str, entry: dict, palette_path: str, out_dir: str, workers: 
     return rec, time.perf_counter() - t0
 
 
-def _job(args: tuple) -> tuple[dict, float]:
-    return render_one(*args)
-
-
 def render_all(doc: dict, palettes_dir: Path | str, out_dir: Path | str, *, jobs: int = 8, workers: int = 1,
                cache: Path | str | None = None, summary_dir: Path | str | None = None,
                only: list[str] | None = None) -> dict[str, dict]:
-    """Every render of the draw (or `only` those), `jobs` processes at a time. Returns {render id: record} and
-    writes summary/renders.json when `summary_dir` is given."""
+    """Every render of the draw (or `only` those), `jobs` at a time. Returns {render id: record} and writes
+    summary/renders.json when `summary_dir` is given."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     todo = {rid: e for rid, e in sorted(doc["renders"].items()) if not only or rid in only}
@@ -217,11 +216,8 @@ def render_all(doc: dict, palettes_dir: Path | str, out_dir: Path | str, *, jobs
              for rid, e in todo.items()]
     records: dict[str, dict] = {}
     seconds: dict[str, float] = {}
-    if jobs <= 1:
-        results = [_job(t) for t in tasks]
-    else:
-        with ProcessPoolExecutor(max_workers=jobs) as ex:
-            results = list(ex.map(_job, tasks))
+    with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
+        results = list(ex.map(lambda t: render_one(*t), tasks))
     for (rid, *_), (rec, s) in zip(tasks, results):
         records[rid], seconds[rid] = rec, round(s, 2)
     if summary_dir is not None:

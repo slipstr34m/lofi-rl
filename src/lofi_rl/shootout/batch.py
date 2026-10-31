@@ -274,7 +274,7 @@ def build(doc: Mapping, renders_dir: Path | str, out_root: Path | str, *, summar
     out_root.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".staging-", dir=out_root))
     try:
-        checks = []
+        folders = []
         for b, public, hidden, files, _ in built:
             d = staging / b["date"] / b["name"]
             d.mkdir(parents=True)
@@ -282,9 +282,9 @@ def build(doc: Mapping, renders_dir: Path | str, out_root: Path | str, *, summar
                 shutil.copyfile(src, d / name)
             (d / HIDDEN_NAME).write_text(json.dumps(hidden, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             (d / PUBLIC_NAME).write_text(json.dumps(public, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            if check:
-                checks.append((b["name"], _check_folder(d)))
-        bad = [f"{name}: {out}" for name, (rc, out) in checks if rc != 0]
+            folders.append(d)
+        checks = check_folders(folders) if check else []
+        bad = [f"{d.name}: {out}" for d, (rc, out) in zip(folders, checks) if rc != 0]
         if bad:
             raise BuildError(["ui.manifest check failed: " + x for x in bad])
         moved = []
@@ -319,12 +319,17 @@ def _stage_options(plan: Plan | None, stages: set[str]) -> set[str]:
     return out
 
 
-def _check_folder(d: Path) -> tuple[int, str]:
-    """`python -m lofi_rl.ui.manifest check <d>` in a fresh interpreter, as the rating page will load it."""
+def check_folders(folders: list[Path]) -> list[tuple[int, str]]:
+    """`python -m lofi_rl.ui.manifest check <folder>` for each folder, each in a fresh interpreter as the rating
+    page's server would load it, all at once. (exit code, output) per folder, in order."""
     env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(SRC), os.environ.get("PYTHONPATH", "")]).rstrip(os.pathsep)}
-    p = subprocess.run([sys.executable, "-m", "lofi_rl.ui.manifest", "check", str(d)], capture_output=True,
-                       text=True, env=env)
-    return p.returncode, (p.stdout + p.stderr).strip()
+    procs = [subprocess.Popen([sys.executable, "-m", "lofi_rl.ui.manifest", "check", str(d)], stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True, env=env) for d in folders]
+    out = []
+    for p in procs:
+        text, _ = p.communicate()
+        out.append((p.returncode, text.strip()))
+    return out
 
 
 # ------------------------------------------------------------------------------------------------ CLI
