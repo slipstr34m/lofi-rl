@@ -121,6 +121,13 @@ R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix)
   - the four names in `optional_fields` (`max_prompt_length`, `vllm_max_model_length`, `vllm_enable_sleep_mode`,
     `log_completions`) are dropped and reported instead;
   - `run.json` lists the names it verified and the ones it dropped, and saves the full resolved `GRPOConfig.to_dict()`.
+- **Grammar-constrained decoding** (D-016; docs/GRAMMAR.md). The top-level key `structured_outputs: loopscript_regex`
+  is optional; `configs/grpo_smoke_constrained.yaml` is the smoke with that key added.
+  - `load_config` builds `lofi_rl.grammar.loopscript_regex` from the config's palette, and `resolve` sets it as
+    `vllm_structured_outputs_regex` in every profile.
+  - The regex is never in the YAML: writing that field in `trainer` or a profile is refused, and so is listing it in
+    `optional_fields`.
+  - The dry run and `run.json` record its builder, field, sha256 and length under `structured_outputs`.
 
 ## 4. The trainer (`lofi_rl.rl.train`)
 
@@ -242,7 +249,8 @@ check always runs inside the walltime.
   - temperature, top_p, top_k, use_vllm, vllm_mode, vllm_gpu_memory_utilization;
   - save_strategy, save_steps, save_only_model, logging_steps, bf16, gradient_checkpointing,
     gradient_checkpointing_kwargs, remove_unused_columns, report_to, seed;
-  - optional: max_prompt_length, vllm_max_model_length, vllm_enable_sleep_mode, log_completions.
+  - optional: max_prompt_length, vllm_max_model_length, vllm_enable_sleep_mode, log_completions;
+  - constrained config only: vllm_structured_outputs_regex (required there, never optional).
 - **Values:**
   - `top_k: 0` means "off" (vLLM 0.32 reads 0 or −1 as all tokens);
   - `scale_rewards: batch` and `loss_type: dapo` exist in this TRL;

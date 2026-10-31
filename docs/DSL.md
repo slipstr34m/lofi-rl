@@ -17,6 +17,8 @@ swing, effects, levels or the bed: the brief and the palette supply those.
 - **Tests:** `tests/test_dsl_{parse,leniency,gates,canon,expand,review}.py`, plus `tests/test_compile.py` for `sax:`.
 - **After parsing:** the compiler turns the loop into events (`docs/COMPILER.md`). The renderer turns those into
   audio and owns gate G7 (`docs/RENDER.md`).
+- **Constrained decoding:** `src/lofi_rl/grammar.py` builds one regex that matches §8's canonical text without
+  `sax:`, for vLLM's structured outputs (`docs/GRAMMAR.md`).
 - **Sound claims:** none.
 
 ## 1. Entry point
