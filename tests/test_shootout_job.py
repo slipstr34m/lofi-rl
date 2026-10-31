@@ -1,7 +1,7 @@
 """The `lofi-shootout` job (docs/SHOOTOUTS.md section 7.7): jobs/shootout.sbatch and the stage runner it calls.
 
 The script follows tests/test_job_scripts.py (name, scratch log, job_env, cost header) and section 7.7's numbers
-(partition main, 8 CPU, 16 GB, 30 min: 12 SU/min, at most 360 SU). The runner, `python -m lofi_rl.shootout.job`,
+(partition main, 8 CPU, 16 GB, 20 min: 12 SU/min, at most 240 SU). The runner, `python -m lofi_rl.shootout.job`,
 takes the job's ARGS, writes them all into summary/leaders.json, and runs the stages in order (the draw, the
 generator with --levels none, the levels tool, the generator, the clip renders, the batches); the first stage that
 fails ends the job before any batch is written. Its registration in jobs/APPROVED.yaml is left to `make approve`."""
@@ -27,14 +27,18 @@ def _sbatch(name: str) -> str:
 
 
 def test_the_job_script_asks_for_what_section_7_7_prices():
+    # Walltime from the Day-1 dry run (laptop, 2026-10-31: every stage in 87.9-89.4 s, peak memory 3.0 GB): the
+    # cluster's slowest render node (x 2.7), 8 CPUs that may be 4 cores' hyperthreads (x 2) and 2 min of start-up
+    # come to about 10 min, so 20 min leaves twice that.
     s = SCRIPT.read_text()
     assert _sbatch("job-name") == "lofi-shootout" and _sbatch("partition") == "main"
-    assert _sbatch("cpus-per-task") == "8" and _sbatch("mem") == "16G" and _sbatch("time") == "00:30:00"
+    assert _sbatch("cpus-per-task") == "8" and _sbatch("mem") == "16G" and _sbatch("time") == "00:20:00"
     assert _sbatch("output") == "/scratch1/%u/lofi-rl/logs/%x_%j.out"
-    cpus, gb, minutes = 8, 16, 30
+    cpus, gb, minutes = 8, 16, 20
     rate = cpus + gb / 4                                     # 1 SU per CPU-min, 1 SU per 4 GB-min (CLAUDE.md 4)
-    assert rate == 12 and rate * minutes == 360
-    assert "Cost: 8 CPU + 4 (16 GB) = 12 SU/min -> at most 360 SU." in s
+    assert rate == 12 and rate * minutes == 240
+    assert "Cost: 8 CPU + 4 (16 GB) = 12 SU/min -> at most 240 SU." in s
+    assert "summary/stages.json" in s, "the results list names the stage timings"
     assert "MODE=scorer source scripts/job_env.sh" in s and "make submit JOB=jobs/shootout.sbatch" in s
     code = "\n".join(l for l in s.splitlines() if not l.lstrip().startswith("#"))
     assert '-m lofi_rl.shootout.job' in code and '"$@"' in code and 'echo "SHOOTOUT_OK"' in code

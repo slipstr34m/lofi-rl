@@ -11,14 +11,16 @@ with the ARGS `make submit JOB=jobs/shootout.sbatch ARGS='...'` passes: `--stage
 1. Everything the job was given goes into `summary/leaders.json` first.
 2. `draw`: `python -m lofi_rl.shootout.batch draw` writes `summary/draw.json` (the maps, the order, the anchors and
    repeats, and the renders and palettes the job must make), from a seed drawn there and recorded only there.
-3. `measure`: the palette generator (section 7.8) with `--levels none`: the measuring palettes.
+3. `measure`: the palette generator (section 7.8) with `--levels none`: the measuring palettes, in
+   `summary/palettes/measure/`.
 4. `levels`: the levels tool (section 7.1), with `--prior` the first prior job's levels.json (its drift keys).
-5. `palettes`: the generator again, with the measured trims and faders.
+5. `palettes`: the generator again, with the measured trims and faders and the draw: `summary/palettes/<key>.yaml`
+   for every palette the draw asks for.
 6. `render`: every clip, `--jobs` at a time with 1 worker each (`python -m lofi_rl.shootout.render`).
 7. `build`: `python -m lofi_rl.shootout.batch build` writes the batches into the inbox and checks each folder.
 
-The first stage that fails ends the job with its exit code, so a gate or compile failure stops it before any
-batch is written. Before any stage runs, the runner checks its arguments, that the generator and the levels
+Each stage's exit code and wall time go into `summary/stages.json` as it ends, and into the log. The first stage
+that fails ends the job with its exit code, so a gate or compile failure stops it before any batch is written. Before any stage runs, the runner checks its arguments, that the generator and the levels
 tool are present in this mirror (they are built in their own workflows, sections 7.1 and 7.8), that every
 `--prior` run has its batches.json, and that none of the day's batch folders is already in the inbox (the build
 never overwrites one, so a re-run fails here instead of after its renders).

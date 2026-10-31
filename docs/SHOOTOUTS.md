@@ -5,8 +5,10 @@ inside the plan's "about 55 min") and on **Nov 6** (about 15 minutes: rain, and 
 call for). They prune each sound choice to its survivors; the survivors go into `palettes/lofi_rain_v1.yaml`,
 which freezes on Nov 6 and never changes after (docs/DECISIONS.md D-017).
 
-- **Status (2026-10-31, revised after two reviews):** plan only. The 9 reference loops in `shootouts/loops/` exist
-  and pass the gates (§5). No shootout clip is rendered; the tooling of §7 is not built.
+- **Status (2026-10-31, revised after two reviews):** the job-1 tooling of §7.11 is built and integrated on one
+  plan (§7.1–§7.8, below). A laptop dry run of job 1 rendered all 67 Day-1 clips and built the three Day-1 batches
+  (§7.7, "Dry run"); those laptop clips are not canonical (LESSONS 38) and none is queued for listening. No cluster
+  shootout job has run. The 9 reference loops in `shootouts/loops/` exist and pass the gates (§5).
 - **Sound claims:** none. Every candidate, variant and level here is a starting point for Shresth's ear. Claude
   records counts and picks, never descriptions of sound (TASTE.md: "Shootout prunes, votes decide").
 - **Blind by construction.** This file gives every round in symbols (`P1a`, `k2`, `v3`, ...). Which option sits
@@ -239,6 +241,14 @@ level-independent up to about +14 dB, but at +21 dB the drum chain took 1.7 dB m
    (RENDER.md §3.3 proposes +13.92 dB on the fixtures), so the master chain sees more drums than it does today.
 8. **Per round:** each candidate's post-fader bus loudness on that round's loop is recorded; a spread above 1.0 LU
    flags the round in the tally report (§8).
+   - **Measured in the Day-1 dry run** (laptop, real banks and the two §7.4 kits, 2026-10-31; §7.7): every
+     variant's median post-fader bus loudness sat within 0.005 LU of S\* + T, and the renders carried the tool's L
+     and F exactly (264 render-bus pairs, largest difference 0). But matching medians over the 9 loops leaves the
+     candidates of a round apart on that round's loop: 10 of the 18 Day-1 design rounds, and the anchor, have a
+     spread above 1.0 LU (K1 0.66–2.95, R1 0.89–4.20, R2 0.95–3.85, S1 0.49–2.73 LU; the largest R1.3 on L8).
+     Step 6b also flagged `kit_virtuosity`: on L1 its drum bus, at −55.0 LUFS before the fader, sits 0.101 LU under
+     its own L + F after it (the −70 LUFS gate), against the 0.1 LU tolerance. Not changed here; put to Shresth
+     with the job-1 push.
 
 **Not matched:**
 - **Variants that move notes in time** (swing, humanize, sax lag and swung timing) keep the instrument's trim and
@@ -788,36 +798,64 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   7. No hidden value appears in the public manifest: a test searches it for every option, loop and palette name,
      with `ui/manifest.py`'s category-word exemption (`b1103-3-sax` and its note may say "sax").
   8. A missing render, a failed gate or a clip that is not one pass stops the build with nothing written.
+- **Built (2026-10-31):** `src/lofi_rl/shootout/{draw,batch,sour,render}.py` and their tests
+  (`tests/test_shootout_{draw,batch,sour,e2e}.py`); every test above passes. The interface is two steps,
+  `python -m lofi_rl.shootout.batch draw --plan … --stage … --summary <run>/summary [--leaders …] [--prior …]
+  [--repeats …] [--rerun-s2 …] [--cut …] [--seed <hex>]` and `… batch build --plan … --stage … --renders
+  <run>/renders --out <inbox root> [--draw …]`, because the palettes and the renders depend on the draw (R2 plays
+  each bass on its round's kit, an anchor's sour copy must be rendered). The draw keys every random choice by the
+  seed and a label (stage, batch, group), so a seed gives the same draw anywhere; its `palettes` table names each
+  palette the renders need by key (`<stage>_<option>`, R2 `r2_<kit>_<bass>`) and the band it plays.
 
 ### 7.7 Cluster job type `lofi-shootout`
-- **Script:** `jobs/shootout.sbatch`, job name `lofi-shootout`, partition `main`, 8 CPU, 16 GB, 30 min, logs to
-  `/scratch1/%u/lofi-rl/logs/%x_%j.out`, `MODE=scorer source scripts/job_env.sh` (so `LOFI_ASSETS` and `LOFI_CACHE`
-  are set). Header cost line: 8 CPU + 4 (16 GB) = 12 SU/min, **at most 360 SU**. Claude registers it
-  (`make approve JOB=jobs/shootout.sbatch MAX=360 BY=Claude`; ≤ 500 SU).
+- **Script:** `jobs/shootout.sbatch`, job name `lofi-shootout`, partition `main`, 8 CPU, 16 GB, 20 min (was 30;
+  set from the dry run below), logs to `/scratch1/%u/lofi-rl/logs/%x_%j.out`, `MODE=scorer source
+  scripts/job_env.sh` (so `LOFI_ASSETS` and `LOFI_CACHE` are set). Header cost line: 8 CPU + 4 (16 GB) =
+  12 SU/min, **at most 240 SU**. Claude registers it (`make approve JOB=jobs/shootout.sbatch MAX=240 BY=Claude`;
+  ≤ 500 SU).
 - **Submitted only by** `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>'`.
   `ARGS` reach the script as arguments, so they need no comma-safe `--export`; they hold no spaces. Day 3 adds
   `--prior <job>+<job>`, `--repeats <stage>+...` (the stages first heard at least 2 days before Nov 6),
   and, if needed, `--rerun-s2 <sax id>`. A cut adds `--cut vamps-high+latin3+final`. The job writes all of it into
   `summary/leaders.json`. `scripts/submit.sh` refuses a dirty or unsynced tree (exit 3; `ALLOW_DIRTY=1` would ship
   other workflows' edits), so each job waits for a clean, synced tree.
-- **Stages:** generator `--levels none` (§7.8) → levels (§7.1) → generator → clip renders, 8 at a time with 1
-  worker each → FLACs → batches (§7.6) → `SHOOTOUT_OK`. Every palette source is hashed once per job, not once per
-  palette. Any gate or compile failure fails the job before any batch is written.
+- **Stages** (`python -m lofi_rl.shootout.job`): the draw (§7.6) → generator `--levels none` (§7.8) → levels
+  (§7.1) → generator with the levels and the draw → clip renders, 8 at a time with 1 worker each → FLACs →
+  batches (§7.6) → `SHOOTOUT_OK`. Every palette source is hashed once per stage process, not once per palette. Any
+  gate or compile failure fails the job before any batch is written. Each stage's exit code and wall time go into
+  `summary/stages.json` and the log.
 - **SU estimate:**
 
   | Run | Measuring runs (stage level) | Clip renders | Wall at 8 in parallel, + 2 min | Expected SU (12/min) |
   |---|---|---|---|---|
-  | day1 (Nov 2) | 72 (8 per loop) | 67 | 3.0–4.1 min | 36–49 |
+  | day1 (Nov 2) | 72 (8 per loop) | 67 | 4.0–10 min (from the dry run below; first estimate 3.0–4.1) | 48–120 |
   | day2 (Nov 3) | 27 (3 per loop) | 84 | 2.9–3.8 min | 34–45 |
   | day3 (Nov 5) | re-measures only on drift | 26 (+18 for an S2 re-run) | 2.2–2.5 min | 27–30 (+2–4) |
 
-  About 97–124 SU expected for the three runs; at most 1,080 SU (3 × 360) if each used its full walltime; a re-run
-  costs about one day2 run. **Basis:** the cluster render check took 2.86–3.66 s per fixture on EPYC and 4.94–5.95 s
-  on Xeon 4116 (CLI, 4 workers, 82 BPM, start-up included;
+  About 109–195 SU expected for the three runs (days 2 and 3 still on the first basis); at most 720 SU (3 × 240)
+  if each used its full walltime; a re-run costs about one day2 run. **First basis:** the cluster render check took
+  2.86–3.66 s per fixture on EPYC and 4.94–5.95 s on Xeon 4116 (CLI, 4 workers, 82 BPM, start-up included;
   `runs/render-check-{13630298,13630299,13630300,13630522}/summary/fixtures.json`); × 1.35 for 1 worker (RENDER.md
   §7: 1.54 against 1.14 s) and × 1.08 for 76 BPM gives 4.2–8.7 s a render; 94 % efficiency at 8 workers
   (LESSONS 37); a measuring run counts as 0.6 of a render on Day 1 and 0.3 on Day 2 (one stem); 2 min of fixed cost
   per run.
+- **Dry run** (2026-10-31, laptop, Apple M4 with 10 cores; `python -m lofi_rl.shootout.job --stage day1 --jobs 8`
+  with a scratch seed, the real banks and the two §7.4 archives under a scratch `LOFI_ASSETS`; twice, the first
+  with an empty one-shot cache): every stage passed. The draw gave 3 batches, 19 rounds (6 + 6 + 7 with the
+  anchor), 67 renders, 26 palettes and 1 gate-passing sour copy (P_chrom 0.3); the levels tool measured 20
+  variants in 8 runs; all 67 renders passed G1–G7 at −14.09 … −13.99 LUFS, true peak at most −1.468 dBTP; each
+  batch passed `python -m lofi_rl.ui.manifest check`. The second run gave byte-identical batches (76 files),
+  draw.json, palettes (all 34; only the index, which names each run's own files, differs), level values and render
+  records.
+
+  | Stage | draw | measure | levels | palettes | render (67) | build | all |
+  |---|---|---|---|---|---|---|---|
+  | seconds, run 1 / run 2 | 0.1 / 0.1 | 0.4 / 0.4 | 44.8 / 43.8 | 0.5 / 0.5 | 43.3 / 42.8 | 0.3 / 0.3 | 89.4 / 87.9 |
+
+  A render took 2.98–7.31 s (median 4.71) with 8 at a time; the peak memory over every stage was 3.0 GB. The
+  levels stage costs about as much as the renders, not the 0.6 of a render per measuring run assumed above. On
+  the cluster (× 1.3–2.7 a render, × 2 if the 8 CPUs are 4 cores' hyperthreads, + 2 min of start-up) Day 1 comes
+  to about 4–10 min, 50–120 SU, inside the 20-min walltime twice over.
 
 ### 7.8 Shootout plan and palette generator
 - **Plan:** `shootouts/plan.yaml` transcribes §4 and §6 in symbols: candidates (source, preset, register, family,
@@ -839,21 +877,32 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   `tests/test_shootout_plan.py` (the doc's tables written out a second time, and the design properties) and
   `tests/test_shootout_palettes.py`. Choices the spec left open:
   - **CLI:** `--stage day1|day2|day3` was added, and `--draw` is optional. The palettes do not depend on the draw:
-    Day 1 writes all 26, one per (stage, option), and R2's as `r2/<kit>/<bass>.yaml`, since each R2 round plays
-    one kit. With `--draw`, `clips.json` is also written, the render list. The draw is read as `{"stage": "day1",
-    "symbols": {stage: {symbol: option}}}` and checked against each stage's rule (K1 family pairs, S1 registers,
-    `central` for the vamps). Only day1 is built; day2 and day3 exit 2.
+    Day 1 writes all 26, one per (stage, option) and for R2 one per (kit, bass), since each R2 round plays one kit,
+    each as `<id>.yaml`, the id being the key the draw gives it (`k1_jrhodes3d`, `r2_kit_swirly_bass_gu_acoustic`),
+    which the render driver reads. With `--draw` (the job passes the batch builder's draw.json) the draw must be this
+    day's draw of this plan, each stage's maps must meet its rule (K1 family pairs, S1 registers, `central` for the
+    vamps), and every palette its `palettes` table asks for must be one written here with the same band. Only day1
+    is built; day2 and day3 exit 2.
   - **The base** is a loadable palette: the dev band under `ep`, `dusty` and `tenor`, and every SoundFont
     candidate's source, pinned as in assets/MANIFEST.yaml. Each pitched chain starts with a trim slot,
     `[Gain, {gain_db: 0.0}]`, which leaves the output bit-identical at 0 dB. A palette's id names its stage and
     option, the one difference the round diff allows besides the candidate's block, trim and fader.
-  - **The §7.4 kits** are read from `$LOFI_ASSETS`: `derived/kits/<kit>.tar` and the importer's printed `lanes:`
-    and `choke:` blocks saved as `derived/kits/<kit>.yaml` (plan.yaml `archive`). Every one-shot must name one
-    source, the tar, which is added to every palette with its sha256; the plan's `archive.sha256` pin is checked
-    once it is set. `--without` leaves an unbuilt kit out and records it.
+  - **The §7.4 kits** are read from `$LOFI_ASSETS`: `derived/kits/<kit>.tar` and the importer's printed document
+    (`sources`, `choke` and `lanes`) saved as `derived/kits/<kit>.yaml` (plan.yaml `archive`); a printed sources
+    entry whose sha256 is not the tar's is refused. Every one-shot must name one source, the tar, which is added to
+    every palette with its sha256; the plan's `archive.sha256` pin is checked once it is set (both are null until
+    the archives are pinned in assets/MANIFEST.yaml: KITS.md §4). `--without` leaves an unbuilt kit out and records
+    it.
   - **Measuring palettes** (`--levels none`): `measure/m1.yaml` … `m8.yaml` and `measure/index.json`.
   - **YAML** is written by libyaml when PyYAML has it; a test checks that it gives the same bytes as the
     pure-Python dumper. Two runs give identical bytes.
+- **One plan for every tool (2026-10-31).** The level side and the batch side each wrote a plan; they are now one
+  `plan.yaml` and one loader, with `substitute` and `apply_cuts`. Where the two read this doc differently, the plan
+  follows the doc: the vamps are one stage `V` (§6 "V ×9", §2.5's one vamps group, CD-24's one warm-up round) with a
+  draw per mood on its three loops (`V.1`–`V.9`); the repeat group of R1, R2, R3a and R3b is `drums_bass` (§2.5
+  "drums + bass"); the batch categories are §6's words ("kits, bass", "swing, humanize", "sax, sax_warmth,
+  sax_timing", and `per_round` for the Nov-6 pair); K2's substitution is the line `keys: ep spread` (§5); R2's kits
+  are k1–k3 (§4.2). The day-3 cuts, which this doc does not name, are `w1-two` and `w2-two`.
 
 ### 7.9 Tally tool (laptop)
 - **Interface:** `python -m lofi_rl.shootout.tally --votes data/votes --inbox inbox [--batch <name> ...]` reads the
@@ -1030,4 +1079,4 @@ Questions in plain words, each with its deadline and what happens without an ans
 4. **The rain file. DONE 2026-10-31:** in `assets/big/rain/`, pinned in assets/MANIFEST.yaml (sha256 `60f7398e…`) and on the
    cluster.
 
-And the listening itself. No job type needs his approval (`lofi-shootout` is at most 360 SU).
+And the listening itself. No job type needs his approval (`lofi-shootout` is at most 240 SU).
