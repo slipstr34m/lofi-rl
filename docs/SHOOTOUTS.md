@@ -670,6 +670,8 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   loader accepts the converted rain file and refuses the original. The picker returns three stretches that are
   pairwise disjoint (warm-ups included), each at least 33.5 s and inside the file; it is deterministic; on a
   synthetic file with one steady stretch it returns that stretch as e1; a file shorter than 3 × 33.5 s is refused.
+- **Built 2026-10-31, the resampler only** (`src/lofi_rl/convert/resample.py`, `tests/test_resample.py`; docs/KITS.md
+  §2): every resampler test above passes. The rain picker is not built.
 
 ### 7.3 Sax mute for the vamp rounds (no code)
 - The palette generator (§7.8) writes the vamp palettes with `[Gain, {gain_db: -200.0}]` at the head of the sax
@@ -719,6 +721,10 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   (L + R)/2; the printed choke list equals `dev_gu`'s; a borrowed lane's offset reproduces the GU shaker-to-snare
   difference within 0.1 LU on the test grid; a palette with the printed blocks loads with `verify=True`, with every
   lane of all six non-empty.
+- **Built 2026-10-31** (`src/lofi_rl/convert/kit.py`, `shootouts/kits/kit_virtuosity.yaml` and `kit_swirly.yaml`,
+  `tests/test_kit_import.py`; docs/KITS.md §3): every test above passes, on synthetic kits and on the real banks.
+  Swirly's VCSL shaker lane is inside `kit_swirly.tar`. The two archives' sha256s, counts and lead-in trims are in
+  docs/KITS.md §3.2; they are not yet pinned in `assets/MANIFEST.yaml` or under `assets/big/derived/kits/`.
 
 ### 7.5 SF2 coverage checks at palette load
 - **Interface:** `palette.sf2_coverage(path, bank, prog) -> frozenset[(key, vel)]` from the SoundFont's preset and
@@ -732,6 +738,9 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
 - **Acceptance tests:** the GU presets and the five archive SF2s above pass; a synthetic SF2 with no zone at key 60
   fails naming 60; a preset whose zones stop at velocity 63 fails at 104; a sax whose zones cover 48–72 fails for
   `play: [44, 75]` with 44–47 and 73–75 listed.
+- **Built 2026-10-31** (`src/lofi_rl/palette.py`, `tests/test_sf2_coverage.py`; docs/KITS.md §1): every test above
+  passes, the seven converted banks pass in their roles, and the reader agrees with FluidSynth 2.6.1 on global zones
+  and generator order. With humanize on, the keys and bass velocities checked widen by the humanize range.
 
 ### 7.6 Batch builder
 - **Interface:** `python -m lofi_rl.shootout.batch --plan shootouts/plan.yaml --stage day1|day2|day3 --renders <run>/renders --out <inbox root> [--prior <run>/summary/batches.json ...] [--seed <hex>]`

@@ -1,0 +1,42 @@
+# Karoryfer Swirly Drums v1.104 (CC0), brushes, dry, as one-shots for the drums shootout, with the VCSL Shaker, Large
+# (CC0) as its shaker lane: docs/SHOOTOUTS.md §4.2 and §7.4 (kit maps, CD-30 to CD-35). Read by
+# `python -m lofi_rl.convert.kit shootouts/kits/kit_swirly.yaml --big assets/big
+# --out assets/big/derived/kits/kit_swirly.tar`; paths are relative to --big. Swirly is mono 16-bit 44.1 kHz and the
+# VCSL shakers stereo 44.1 kHz, so nothing is resampled. Every value is a starting point for the shootout, not a
+# claim about how anything sounds.
+id: kit_swirly
+license: CC0 1.0 (Swirly Drums v1.104; VCSL Shaker, Large)
+attribution: null
+lanes:
+  # [CD-33] soft / med / hard = velocity layers floor(0.25 N + 1/2), floor(0.6 N + 1/2), floor(0.9 N + 1/2) of N.
+  kick:                       # marching_kick, beater + reso at 0 dB, N = 22, round robins 1-4
+    mics: {beater: 0.0, reso: 0.0}
+    path: karoryfer-swirly-drums/Samples/marching_kick/marching_kick_vl{vl}_rr{rr}_{mic}.wav
+    vl: {soft: 6, med: 13, hard: 20}
+    rr: [1, 2, 3, 4]
+  snare:                      # snare_main (snare_hit), top + bottom at 0 dB, N = 12
+    mics: {top: 0.0, btm: 0.0}
+    path: karoryfer-swirly-drums/Samples/snare_main/snare_hit_vl{vl}_rr{rr}_{mic}.wav
+    vl: {soft: 3, med: 7, hard: 11}
+    rr: [1, 2, 3, 4]
+  rim:                        # the kit has no rim click: snare_edge, top + bottom, N = 10 (SHOOTOUT_ASSETS.md)
+    mics: {top: 0.0, btm: 0.0}
+    path: karoryfer-swirly-drums/Samples/snare_edge/snare_edge_vl{vl}_rr{rr}_{mic}.wav
+    vl: {soft: 3, med: 6, hard: 9}
+    rr: [1, 2, 3, 4]
+  hat:                        # hat_closed, N = 12; hat_tight and hat_foot are not used [CD-32]
+    path: karoryfer-swirly-drums/Samples/hat_closed/hh_closed_vl{vl}_rr{rr}.wav
+    vl: {soft: 3, med: 7, hard: 11}
+    rr: [1, 2, 3, 4]
+  ohat:                       # hat_open, N = 14
+    path: karoryfer-swirly-drums/Samples/hat_open/hh_open_vl{vl}_rr{rr}.wav
+    vl: {soft: 4, med: 8, hard: 13}
+    rr: [1, 2, 3, 4]
+  shaker:                     # [CD-34] the kit has none: VCSL Shaker, Large, single down and up shakes, the same
+    borrowed: true            # in every layer; its level is set as a borrowed lane [CD-30]
+    path: "vcsl/Idiophones/Struck Idiophones/Shaker, Large/LShaker_Shake1{dir}_rr{rr}_Mid.wav"
+    all_layers:
+      - {dir: D, rr: 2}
+      - {dir: U, rr: 1}
+      - {dir: D, rr: 3}
+      - {dir: U, rr: 4}
