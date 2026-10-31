@@ -3,13 +3,63 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 447.5 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 11:25).
+- **SU used:** 477.5 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 ~14:30).
 - **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way:
-  - committed: the rating page, the compiler + renderer and the second review; cluster renders are deterministic across CPU models and pass the seam tests on Linux;
-  - the 14 shootout sources are on the laptop and the cluster;
-  - running: the voicing amendment (V2) and the SFZ → SF2 converter;
-  - next: the shootout tooling, loops, palettes and batches.
-- **Waiting on Shresth:** the Freesound rain file, which needs his login (`docs/SHOOTOUT_ASSETS.md`).
+  - committed: the rating page, the compiler + renderer, two reviews, voicing rules V2, the SFZ → SF2 converter and the shootout plan (`docs/SHOOTOUTS.md`);
+  - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
+  - next: the shootout tooling for job 1 (due Nov 2 evening) and V2.1 voicing refinements.
+- **No GRPO yet.** The plan has the GRPO smoke on Nov 11–12. Shresth asked why nothing has trained (2026-10-31); pulling the base-model test and the GRPO smoke forward awaits his answer.
+- **Waiting on Shresth:**
+  - that answer, plus the `grpo-smoke` SU OK if yes;
+  - the Freesound rain file;
+  - `docs/SHOOTOUTS.md` §11 questions 1 and 3 (defaults apply without an answer).
+
+---
+
+## 2026-10-31 (14:30 PDT): voicing rules V2, SFZ → SF2 converter, shootout plan; Linux golden key
+
+**What was done**
+- **Voicing rules V2 and three drum/seed fixes** (workflow `wf_b54901ca-e65`: 2 builders, 2 review lenses with verifiers; 6 agents, 522 tool calls, 2 h 5 min). Committed as `bfe1d32`.
+  - **V2** amends instrument.md §3, as a Claude's default recorded in docs/COMPILER.md §9:
+    - guide tones always;
+    - the top named extension always;
+    - quartal stacks built from chord and mode tones;
+    - the #9 above the 3rd;
+    - distinct symbols in rootless, shell and spread.
+
+    An independent test oracle checks every mode × numeral × quality × style × tonic. In the shootout vamps at tonic 2, 22 of 48 pairs changed, e.g. IV13 now holds its 13: F3 A3 B3 E4.
+  - **Goldens:** 7 laptop golden renders changed, each only in its keys stem (example.ls `6061a4a3…` → `08e69650…`).
+  - **Drums and seed:**
+    - an open hat is cut by any later hat, closed or open (dev_gu choke [[ohat, hat], [ohat, ohat]]);
+    - round robin avoids a repeat at the seam when R ≥ 3;
+    - the humanize seed no longer hashes the keys, drums and sax names, so the `sax:` xfail now passes.
+  - **Review:** 0 of 8 findings confirmed. Three show gaps in my V2 rules, and they go into V2.1:
+    - the avoid-note rule ignores the bass root, so quartal can put a b9 over it;
+    - borrowed chords pick up neighbour tensions;
+    - in quartal, both vamp chords often get identical keys notes, because zero voice-leading movement is cheapest.
+- **SFZ → SF2 converter** (workflow `wf_33cf4146-4f5`, in its own worktree on branch `converter`; 6 agents, 534 tool calls, 2 h 43 min). Committed as `07ccf73` and merged as `8a69b53`.
+  - **Output:** 7 banks, byte-deterministic, every key sounding at velocities 40, 80 and 120, and within 0.3 cents of each source SFZ's own pitch.
+  - **FluidSynth 2.6.1 quirks it compensates for:** initialAttenuation × 0.4 and sustain × 0.96.
+  - **Review:** 3 of 5 findings confirmed and fixed, the main one being that the Wurlitzer's FLAC-embedded loops were ignored.
+  - **My checks:** the suite on the branch passed 1111; the real-bank tests passed 17; a re-conversion under another hash seed gave the same sha256 for all 7 banks.
+- **Converted banks.** The 7 banks are in `assets/big/converted/` (565 MB, fetch-only) and pinned in assets/MANIFEST.yaml with sha256, source and licence (`be034b1`). `make push-assets` copied them to the cluster, and a checksum dry run of all of `assets/big/` found no differences.
+- **Shootout plan** (workflow `wf_0a403bc7-2dd`: draft, 2 reviews, revision; 4 agents, 2 h 8 min). `docs/SHOOTOUTS.md` (984 lines) and 9 reference loops in `shootouts/loops/`, which all pass G1–G6 in all 3 moods, are committed as `be034b1`.
+  - **Listening:** 51.3 min on Nov 3–4, about 66.7 min in all.
+  - **Protocol:** blinding by an uncommitted draw; D-013 repeats and anchors.
+  - **Tooling:** 7.1–7.11, with job 1's set due Nov 2 evening.
+- **Linux golden key** (`f89c8a4`) from `lofi-render-check` 13632135 (epyc-7513, mirror `be034b1`): `RENDER_CHECK_OK`.
+  - Node suite: 1189 passed, 40 skipped, 33 deselected.
+  - Golden recording: 8 passed. example.ls renders to `2686834c…` on Linux, at −14.006 LUFS and −1.496 dBTP, as on the laptop.
+  - The job's recording step now selects every determinism test, so the one-shots entry gets recorded too; re-registered at 360 SU.
+- **Open from the converter:**
+  - **VSCO 2 pizz:** keys 29 and 31 (inside the bass register) are 16–18 cents off in the source samples. A measured-pitch retune is to be decided before the bass round.
+  - **Weresax:** the sax line's releases overlap the next note, because the SFZ's monophonic choke cannot cross our alternating sax channels.
+
+**Failed approaches and why:** none.
+
+**SU spent:** 30.0 (13632135), for a total of 477.5.
+
+**Next:** the job-1 shootout tooling (SHOOTOUTS.md §7.11) and V2.1. On Shresth's yes, the base-model test and the GRPO smoke.
 
 ---
 
