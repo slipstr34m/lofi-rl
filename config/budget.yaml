@@ -1,0 +1,15 @@
+# Budget guard config, enforced by scripts/sbatch_guard.sh on EVERY submission (never call sbatch directly).
+# Discovery bills SUs per MINUTE of reserved resources: CPU 1, 4 GB memory 1, A100/A40/L40S GPU 8, V100/P100 4.
+# The guard counts used SUs (sacct) + the remaining reservation of every queued/running job + the new job at
+# its full time limit. Flat "key: value" lines only (the guard reads this with awk on the login node).
+max_project_sus: 1200000
+target_sus: 1000000
+max_concurrent_jobs: 8
+max_gpu_nodes_per_job: 2
+max_job_hours: 47.5
+warn_at_fraction: 0.5
+project_start_date: "2026-10-30"
+account: "anakano_429"
+job_name_prefix: "lofi-"
+approvals_file: "jobs/APPROVED.yaml"
+self_approve_max_su: 500

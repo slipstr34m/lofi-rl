@@ -1,0 +1,8 @@
+# Job-type registry read by scripts/sbatch_guard.sh. One entry per line:
+#   <job path>: {sha: <sha256[:16] of #SBATCH + non-comment lines>, max_su: <n>, by: <who>, date: <yyyy-mm-dd>}
+# Entries above budget.yaml self_approve_max_su must say by: Shresth (his yes in chat).
+# Write entries with scripts/approve_job.py (or `make approve`), never by hand.
+jobs/env_policy.sbatch: {sha: 2bafd8e52ab13bc0, max_su: 960, by: Shresth, date: 2026-10-30}
+jobs/env_scorer.sbatch: {sha: 948d77571a5bb968, max_su: 960, by: Shresth, date: 2026-10-30}
+jobs/fetch.sbatch: {sha: 68298be22c7a752b, max_su: 720, by: Shresth, date: 2026-10-30}
+jobs/tools.sbatch: {sha: 2f181c7e6e3e4859, max_su: 270, by: Claude, date: 2026-10-30}

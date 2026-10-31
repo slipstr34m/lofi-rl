@@ -1,0 +1,11 @@
+# Laptop venv: parser/compiler/render tests and the rating UI. No torch, no training (CLAUDE.md §1).
+numpy==1.26.4
+scipy
+soundfile
+mido
+pretty_midi
+pedalboard==0.9.26
+pyloudnorm==0.2.0
+pyyaml
+pytest
+matplotlib

@@ -1,0 +1,10 @@
+# Policy env (cluster, GPU): generation + GRPO. vLLM pins torch and transformers (5.16.1-5.19.x).
+vllm==0.32.0
+trl==1.17.1
+transformers>=5.19,<5.20
+peft>=0.17
+accelerate>=1.11
+datasets>=4.7
+huggingface_hub[hf_xet]
+pyyaml
+pytest

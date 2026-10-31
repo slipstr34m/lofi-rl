@@ -1,0 +1,38 @@
+# --- secrets (never) ---
+.env
+.env.*
+*.key
+*.pem
+
+# --- private or heavy data: lives on the laptop and the cluster, never in git (CLAUDE.md §7, §11) ---
+data/
+inbox/
+runs/
+ckpt/
+assets/big/
+*.wav
+*.flac
+*.mp3
+*.safetensors
+*.bin
+*.pt
+*.parquet
+
+# --- sync bookkeeping ---
+.sync-stamp
+jobs/submissions.log
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+
+# --- os / editor ---
+.DS_Store
+.idea/
+.vscode/
+*.swp

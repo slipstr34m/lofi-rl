@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lofi-rl"
+version = "0.0.1"
+description = "An RL-trained small LLM that writes 8-bar jazzhop loops in LoopScript, shaped by one listener's taste"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+# Environments are pinned lock files, not package metadata: requirements/{laptop,policy,scorer}.lock.txt.
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -m 'not cluster and not gpu'"
+pythonpath = ["src"]
+markers = [
+  "laptop: needs the laptop venv or Homebrew tools (FluidSynth)",
+  "cluster: runs only on a Discovery compute node (golden hashes, real envs)",
+  "gpu: needs a GPU",
+]

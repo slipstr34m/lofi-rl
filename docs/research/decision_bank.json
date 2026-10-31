@@ -1,0 +1,3378 @@
+{
+ "decisions": [
+  {
+   "id": "meta-elicitation",
+   "category": "process-elicitation",
+   "question": "Are your multiple-choice answers about sound final, or starting priors that blind A/B listening on the hand-written loops then settles?",
+   "options": [
+    {
+     "label": "Answers are final",
+     "consequence": "Fastest Phase 1, but values picked in words (MPC 58%, rain at -24 dB) may not be what your ears prefer."
+    },
+    {
+     "label": "Answers set a range, blind A/B picks the value",
+     "consequence": "Example: swing 54 vs 58 vs 62, or rain -24 vs -18, on 2-3 hand loops. About 1-2 h, and the rating UI must exist by about Nov 5."
+    },
+    {
+     "label": "Every palette constant settled by a blind A/B tournament",
+     "consequence": "Most faithful to your ear. About 3-5 h of listening squeezed into Nov 2-8."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "rating UI (Phase 1 audition mode)",
+    "schedule (Phase 1)",
+    "docs/DECISIONS.md"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "snd-job",
+   "category": "sound-identity",
+   "question": "What is the loop's main job?",
+   "options": [
+    {
+     "label": "Background for focus (study or work)",
+     "consequence": "Caps note density and lead prominence, keeps bar 8 unsurprising, favors sparse steady loops."
+    },
+    {
+     "label": "Mood piece (rainy-night atmosphere)",
+     "consequence": "Bed and reverb more prominent, slow harmony, lead optional."
+    },
+    {
+     "label": "Head-nod groove",
+     "consequence": "Drums and bass forward, motif repetition welcome, looser density caps."
+    },
+    {
+     "label": "Varies per brief",
+     "consequence": "The job becomes a brief knob. The RM, density caps and knob obedience must all take it into account."
+    }
+   ],
+   "changes": [
+    "knob definitions",
+    "verifiers/gates (density caps)",
+    "palettes/lofi_rain_v1.yaml (mix levels)",
+    "brief generator",
+    "RM training (conditioning)"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": false
+  },
+  {
+   "id": "snd-subgenre",
+   "category": "sound-identity",
+   "question": "Which lineage sets the default sound?",
+   "options": [
+    {
+     "label": "Jazzhop (Nujabes / J Dilla)",
+     "consequence": "80-100 BPM, 9th to 13th chords, Rhodes, sax, flute or vibes, layered swing, light crackle."
+    },
+    {
+     "label": "Study beats / chillhop (Lofi Girl)",
+     "consequence": "70-90 BPM, soft drums derived from boom-bap with rimshots and shakers, jazzed-up I-vi-ii-V, cleaner sound."
+    },
+    {
+     "label": "Sleepy / ambient lo-fi",
+     "consequence": "55-80 BPM, brushes or no drums, 2-4 slow chords, understated melody, steady noise floor."
+    },
+    {
+     "label": "Dusty 90s boom-bap",
+     "consequence": "85-96 BPM, hard kick, swung hats, 12-bit grit, sine-like bass doubling the roots."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml (tempo, kit, instruments, bus)",
+    "DSL grammar (chord vocabulary)",
+    "seed-pool generator (prompts)",
+    "brief generator"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": false
+  },
+  {
+   "id": "pal-style-count",
+   "category": "sound-identity",
+   "question": "Does one sound serve every brief, or can a brief pick a second style?",
+   "options": [
+    {
+     "label": "One style for all briefs (as planned)",
+     "consequence": "Every vote compares like with like. Least audition and licensing work."
+    },
+    {
+     "label": "One palette with 2-3 presets the brief can pick (tempo, mix, swing)",
+     "consequence": "More variety, but the pair sampler must match presets and the RM sees the preset as a confound."
+    },
+    {
+     "label": "Two full sub-palettes (e.g. jazzhop and sleepy)",
+     "consequence": "Doubles audition and licensing work, gives each style about half of the ~1,500 votes, and needs a change to CLAUDE.md section 8."
+    }
+   ],
+   "changes": [
+    "palettes/ (one or more YAMLs)",
+    "brief generator",
+    "knob definitions",
+    "rating UI (pair sampler)",
+    "RM training",
+    "schedule"
+   ],
+   "depends_on": [
+    "snd-subgenre",
+    "snd-job"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "snd-tempo",
+   "category": "sound-identity",
+   "question": "What is the tempo policy, given that the model never writes tempo?",
+   "options": [
+    {
+     "label": "One fixed tempo (e.g. 80 BPM, so every loop is 24.0 s)",
+     "consequence": "A/B toggling synced to the bar is trivial, and tempo never confounds votes. Least variety."
+    },
+    {
+     "label": "Small fixed set the brief picks from (e.g. 72/80/88)",
+     "consequence": "Loops last 26.7, 24.0 or 21.8 s. You can only toggle between same-tempo pairs, and LFO periods are recomputed per tempo."
+    },
+    {
+     "label": "Continuous band the brief picks from (e.g. 70-90)",
+     "consequence": "Most variety, but pairs are rarely the same length and the RM must learn to ignore tempo."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "brief generator",
+    "knob definitions",
+    "rating UI (pair matching, synced toggling)",
+    "renderer (LFO periodicity k/L)"
+   ],
+   "depends_on": [
+    "snd-subgenre",
+    "pal-style-count"
+   ],
+   "missed_by_interviewer": false
+  },
+  {
+   "id": "snd-key-mode",
+   "category": "sound-identity",
+   "question": "The model writes scale degrees but never the key. Who sets the tonic and the mode?",
+   "options": [
+    {
+     "label": "One fixed key and mode (e.g. D Dorian)",
+     "consequence": "No key confound, and registers and sample zones are the same everywhere. But every loop has one tonal color, which may tire you over 1,500 votes."
+    },
+    {
+     "label": "Fixed tonic, brief picks the mode (Aeolian, Dorian, Ionian, Lydian)",
+     "consequence": "Mode becomes a strong mood knob. The chord vocabulary and verifiers must be mode-aware."
+    },
+    {
+     "label": "Brief picks the tonic from 3-4 keys, mode fixed",
+     "consequence": "Transposing moves SoundFont sample zones and register clamps, and key becomes a nuisance variable for the RM."
+    },
+    {
+     "label": "Brief picks both tonic and mode",
+     "consequence": "Most variety, most confounds, and the largest audition matrix."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "compiler (degree-to-pitch)",
+    "brief generator",
+    "knob definitions",
+    "verifiers (mode-aware consonance)",
+    "RM training"
+   ],
+   "depends_on": [
+    "snd-subgenre"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "feel-swing-values",
+   "category": "time-feel",
+   "question": "How much swing per layer, in MPC % (50 is straight, 54 loosens without sounding swung, 66 is about triplet, 75 is the maximum)?",
+   "options": [
+    {
+     "label": "Everything straight (50)",
+     "consequence": "Tight and quantized, the clean chillhop end. Nothing to tune."
+    },
+    {
+     "label": "Light, the same on every layer (54-58)",
+     "consequence": "Loose but coherent. The even 16ths land 15-30 ms late at 80 BPM."
+    },
+    {
+     "label": "Split: kick and snare 8th-note swing about 57, hats 16th-note swing 62-74",
+     "consequence": "The shape of Attack's boom-bap recipe (57/74): lazy hats over a steady backbone."
+    },
+    {
+     "label": "Heavy, the same on every layer (62-66)",
+     "consequence": "Shuffle or jazz feel. The even 16ths land 40-69 ms late at 70-90 BPM."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml (per-layer swing)",
+    "compiler/renderer timing"
+   ],
+   "depends_on": [
+    "snd-subgenre",
+    "snd-tempo"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "feel-swing-owner",
+   "category": "time-feel",
+   "question": "Where does swing live?",
+   "options": [
+    {
+     "label": "Frozen palette constant",
+     "consequence": "The model can't change it, so votes judge composition only. You set the feel once, by ear."
+    },
+    {
+     "label": "Brief knob",
+     "consequence": "Adds variety and a knob-obedience target. The RM must treat feel as a covariate."
+    },
+    {
+     "label": "Bounded field the model writes in LoopScript (e.g. 50-66)",
+     "consequence": "The RM can teach the model your feel, but it widens the hack surface and votes mix feel with composition."
+    }
+   ],
+   "changes": [
+    "DSL grammar",
+    "palettes/lofi_rain_v1.yaml",
+    "knob definitions",
+    "RM training",
+    "verifiers (bounds)"
+   ],
+   "depends_on": [
+    "feel-swing-values"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "feel-microtiming",
+   "category": "time-feel",
+   "question": "On top of swing, should some drum layers sit at fixed early or late offsets (the Dilla-style tug between layers)?",
+   "options": [
+    {
+     "label": "None: every layer on the swung grid",
+     "consequence": "Clean, predictable feel."
+    },
+    {
+     "label": "Snare laid back by 10-20 ms",
+     "consequence": "Lazy backbeat, with kick and hats on the grid."
+    },
+    {
+     "label": "Clap or snare about 10 ms early, hats late",
+     "consequence": "Tension in the style of 'Get Dis Money'. Drunker."
+    },
+    {
+     "label": "Kick and snare well behind the hats (up to a septuplet, about 95 ms at 90 BPM)",
+     "consequence": "Very drunk. Treat it as a feel idea and audition it carefully."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml (per-layer ms offsets)",
+    "renderer (sample-accurate drums vs FluidSynth ~1.45 ms blocks)",
+    "determinism tests"
+   ],
+   "depends_on": [
+    "feel-swing-values"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "feel-lead-lag",
+   "category": "time-feel",
+   "question": "Should the pitched parts (lead, keys) sit behind the beat like a relaxed soloist?",
+   "options": [
+    {
+     "label": "On the grid",
+     "consequence": "Lead locks to the drums. The most programmed feel."
+    },
+    {
+     "label": "Slightly behind (15-30 ms late)",
+     "consequence": "Relaxed. The same offset feels different on soft and sharp sounds, so audition it in context."
+    },
+    {
+     "label": "Strongly behind (40-80 ms late)",
+     "consequence": "Jazz-soloist drag (the figure of about 100 ms for soloists is UNVERIFIED). Can come across as late or sloppy."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml (per-track offset)",
+    "compiler/renderer timing"
+   ],
+   "depends_on": [
+    "feel-microtiming"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "feel-humanize",
+   "category": "time-feel",
+   "question": "Should timing and velocity variation repeat exactly every bar, or vary from hit to hit?",
+   "options": [
+    {
+     "label": "Repeat exactly every bar",
+     "consequence": "Like Dilla's repeated offsets. Loops perfectly, but can sound programmed."
+    },
+    {
+     "label": "Small fixed per-hit jitter on all layers (about +/-5-10 ms from a hash PRNG seeded by the loop)",
+     "consequence": "Livelier. No two rendered bars are identical, yet the WAV stays bit-identical."
+    },
+    {
+     "label": "Jitter on hats and ghost notes only",
+     "consequence": "Movement on top over a stable kick and snare."
+    }
+   ],
+   "changes": [
+    "renderer (integer-hash PRNG, no numpy RNG)",
+    "palettes/lofi_rain_v1.yaml",
+    "determinism tests"
+   ],
+   "depends_on": [
+    "feel-microtiming"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "harm-vocab",
+   "category": "harmony",
+   "question": "How large is the chord vocabulary?",
+   "options": [
+    {
+     "label": "7ths only (maj7, m7, 7)",
+     "consequence": "Safest and plainest."
+    },
+    {
+     "label": "Add 9ths (maj9, m9, 9, add9)",
+     "consequence": "Classic lo-fi color."
+    },
+    {
+     "label": "Add 11ths and 13ths (m11, 13, maj7#11)",
+     "consequence": "Jazzhop color, with more notes per voicing."
+    },
+    {
+     "label": "Add altered dominants, m7b5 and tritone subs",
+     "consequence": "Most jazz. How often lo-fi uses these is UNVERIFIED, and they feed RL's drift toward chromatic color (SMART)."
+    }
+   ],
+   "changes": [
+    "DSL grammar (chord vocabulary)",
+    "compiler (voicings)",
+    "verifiers"
+   ],
+   "depends_on": [
+    "snd-subgenre"
+   ],
+   "missed_by_interviewer": false
+  },
+  {
+   "id": "harm-progression-freedom",
+   "category": "harmony",
+   "question": "Can the model write any chord sequence, or does it choose from familiar progression families?",
+   "options": [
+    {
+     "label": "Any sequence from the vocabulary",
+     "consequence": "Most novelty, but many progressions that don't sound idiomatic. The theory verifier carries the load."
+    },
+    {
+     "label": "Free, but the verifier rewards known families",
+     "consequence": "ii-V vamp, I-vi-ii-V, Royal Road, Just the Two of Us, borrowed iv or bVII. Nudges toward idiom."
+    },
+    {
+     "label": "A template plus one substitution slot",
+     "consequence": "Almost always idiomatic, with little harmonic search. Creativity moves to melody, bass and drums."
+    },
+    {
+     "label": "The brief supplies the progression",
+     "consequence": "Harmony becomes a knob, and the RM learns only melody, bass and drums."
+    }
+   ],
+   "changes": [
+    "DSL grammar",
+    "verifiers",
+    "brief generator",
+    "seed-pool generator",
+    "knob definitions"
+   ],
+   "depends_on": [
+    "harm-vocab",
+    "snd-key-mode"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "harm-resolution",
+   "category": "harmony",
+   "question": "Should loops float, or resolve?",
+   "options": [
+    {
+     "label": "Float: avoid strong V-I arrivals",
+     "consequence": "Endless and background-friendly. The verifier penalizes cadences."
+    },
+    {
+     "label": "Resolve only at the seam (bar 8 leads to the tonic at bar 1)",
+     "consequence": "The loop turns around every cycle. Ties in with the bar-8 policy."
+    },
+    {
+     "label": "Functional cadences allowed anywhere",
+     "consequence": "Most song-like, least loop-like."
+    }
+   ],
+   "changes": [
+    "verifiers (cadence detection)",
+    "seed-pool generator (prompts)",
+    "brief generator"
+   ],
+   "depends_on": [
+    "harm-progression-freedom"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "harm-comping",
+   "category": "harmony",
+   "question": "How should the chords move and be played?",
+   "options": [
+    {
+     "label": "One chord per bar, held",
+     "consequence": "Pad-like and sleepy, with the fewest notes."
+    },
+    {
+     "label": "One chord per bar, with rhythmic stabs on the offbeats",
+     "consequence": "The study-beats Rhodes style. Needs a field for the comping rhythm."
+    },
+    {
+     "label": "Two chords in some bars (a ii-V inside one bar)",
+     "consequence": "Jazzhop movement and denser harmony."
+    },
+    {
+     "label": "The model chooses each chord's duration and rhythm",
+     "consequence": "Most freedom, but more room to hack (the density drift SMART reported)."
+    }
+   ],
+   "changes": [
+    "DSL grammar (chord duration/rhythm)",
+    "compiler",
+    "verifiers (harmonic-rhythm bounds)"
+   ],
+   "depends_on": [
+    "snd-job",
+    "harm-progression-freedom"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "harm-voicing",
+   "category": "harmony",
+   "question": "What voicing shape should the compiler produce?",
+   "options": [
+    {
+     "label": "3-note rootless close voicings, about C3-C5",
+     "consequence": "Airy jazz-piano sound with little mud. The bass supplies the root."
+    },
+    {
+     "label": "4-note close voicings, about C3-C5",
+     "consequence": "Fuller and warmer, with a risk of mud near C3."
+    },
+    {
+     "label": "Spread across two octaves",
+     "consequence": "Lush and ballad-like, but clashes more with the lead's register."
+    },
+    {
+     "label": "The model picks a voicing style for each chord",
+     "consequence": "The RM can learn your voicing taste. Adds a DSL field and more room to hack."
+    }
+   ],
+   "changes": [
+    "compiler (voicing algorithm, register clamps)",
+    "palettes/lofi_rain_v1.yaml (registers)",
+    "DSL grammar (optional voicing field)"
+   ],
+   "depends_on": [
+    "harm-vocab"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "harm-voice-leading",
+   "category": "harmony",
+   "question": "Between chords, should the voices move smoothly or slide as parallel shapes?",
+   "options": [
+    {
+     "label": "Automatic smooth voice leading (nearest inversion, shared notes held)",
+     "consequence": "Pianistic and seamless."
+    },
+    {
+     "label": "Parallel planing (the same shape slides up or down)",
+     "consequence": "The sound of chopped samples, like Dilla's chords."
+    },
+    {
+     "label": "Top voice leads (the compiler keeps the top note moving by step)",
+     "consequence": "The chords carry a hidden melody."
+    },
+    {
+     "label": "The model specifies each chord's inversion",
+     "consequence": "More control, and more ways to sound clumsy."
+    }
+   ],
+   "changes": [
+    "compiler",
+    "DSL grammar (inversion field)"
+   ],
+   "depends_on": [
+    "harm-voicing"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "harm-chromatic",
+   "category": "harmony",
+   "question": "How many out-of-scale notes are allowed, and where?",
+   "options": [
+    {
+     "label": "In-scale notes only",
+     "consequence": "Safest, and blocks RL's drift toward chromatic notes. Less jazz."
+    },
+    {
+     "label": "Chromatic approach notes in the bass only",
+     "consequence": "The jazzy bass habit of notes that surround the target."
+    },
+    {
+     "label": "Approach notes in bass and lead, at most 1-2 per bar",
+     "consequence": "Expressive, with a guard against hacking."
+    },
+    {
+     "label": "Any accidentals, judged by the verifier",
+     "consequence": "Most expression, and the easiest drift for RL to exploit."
+    }
+   ],
+   "changes": [
+    "DSL grammar (accidentals)",
+    "verifiers/gates (caps)",
+    "penalties",
+    "hack-signature logging"
+   ],
+   "depends_on": [
+    "harm-vocab",
+    "snd-key-mode"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "harm-clash",
+   "category": "harmony",
+   "question": "What happens when the lead clashes with the chord (a minor 2nd or b9) on a strong beat?",
+   "options": [
+    {
+     "label": "Hard gate",
+     "consequence": "Any clash on beat 1 or 3 zeroes the reward. Clean, but may kill tasteful crunch."
+    },
+    {
+     "label": "Soft theory penalty",
+     "consequence": "Discouraged, and the penalty fades as the theory weight decays from 0.5 to 0.1."
+    },
+    {
+     "label": "Allowed if the next note resolves it by step",
+     "consequence": "The jazz appoggiatura. The verifier needs logic to detect resolution."
+    },
+    {
+     "label": "Allowed freely",
+     "consequence": "Crunch is part of the sound, and the RM decides."
+    }
+   ],
+   "changes": [
+    "verifiers/gates",
+    "reward weights (theory component)"
+   ],
+   "depends_on": [
+    "harm-chromatic"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "mel-density",
+   "category": "melody",
+   "question": "How busy may the lead be?",
+   "options": [
+    {
+     "label": "No lead",
+     "consequence": "A pure bed. Lead instruments leave the palette, and the RM judges only harmony and groove."
+    },
+    {
+     "label": "Sparse: one short motif every 2 bars, with rests",
+     "consequence": "Understated. A hard cap on notes per bar guards against RL's drift toward more notes."
+    },
+    {
+     "label": "Call and response across 4 bars",
+     "consequence": "Melodic, yet still loop-like."
+    },
+    {
+     "label": "A continuous lead line",
+     "consequence": "Hook-first and the least background-friendly. Still needs a density cap."
+    }
+   ],
+   "changes": [
+    "verifiers/gates (note-density caps)",
+    "DSL grammar",
+    "knob definitions",
+    "penalties",
+    "palettes/lofi_rain_v1.yaml (lead instruments)"
+   ],
+   "depends_on": [
+    "snd-job"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "inst-choice",
+   "category": "instrumentation",
+   "question": "Who chooses the instruments, and from how many options per role?",
+   "options": [
+    {
+     "label": "One fixed band in the palette",
+     "consequence": "Votes judge the writing and there is no timbre to hack. Smallest audition job."
+    },
+    {
+     "label": "The model picks from 2-3 options per role",
+     "consequence": "The RM can learn which sounds you like, but votes become partly about timbre."
+    },
+    {
+     "label": "The brief names the instruments from the list",
+     "consequence": "Instrument choice becomes part of knob obedience, and two loops for the same brief share a band."
+    },
+    {
+     "label": "The model picks freely from 10+ instruments",
+     "consequence": "Most variety, the biggest confound, and the most audition and licensing work."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "DSL grammar",
+    "brief generator",
+    "knob definitions",
+    "RM training",
+    "schedule (auditions)"
+   ],
+   "depends_on": [
+    "snd-subgenre",
+    "snd-job",
+    "pal-license-tier"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "inst-matched-pairs",
+   "category": "instrumentation",
+   "question": "Should the two loops in a vote use the same instruments, so you judge the writing and not the timbre?",
+   "options": [
+    {
+     "label": "Always the same instruments",
+     "consequence": "The RM learns composition. You set timbre directly in the palette."
+    },
+    {
+     "label": "Usually the same (about 80/20)",
+     "consequence": "The RM also learns some timbre preference."
+    },
+    {
+     "label": "Random, no matching",
+     "consequence": "Your likes and dislikes of instruments may drive the votes, and the RM risks becoming an instrument detector."
+    }
+   ],
+   "changes": [
+    "rating UI (pair sampler)",
+    "seed-pool generator (several loops per instrument set)",
+    "RM training"
+   ],
+   "depends_on": [
+    "inst-choice"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "bass-style",
+   "category": "bass",
+   "question": "What bass sound and what kind of bass line?",
+   "options": [
+    {
+     "label": "Upright pizz, holding the root through each chord",
+     "consequence": "Sleepy or jazzhop. The simplest line."
+    },
+    {
+     "label": "Electric finger bass: root, fifth and chromatic approach notes",
+     "consequence": "Chillhop movement."
+    },
+    {
+     "label": "A sine-like sub doubling the roots sparsely",
+     "consequence": "Boom-bap minimalism."
+    },
+    {
+     "label": "Walking quarter notes on upright",
+     "consequence": "Jazzier and busier, with more density risk."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml (bass instrument, register ~E1-G2)",
+    "verifiers (chord tones on strong beats)",
+    "DSL grammar"
+   ],
+   "depends_on": [
+    "snd-subgenre"
+   ],
+   "missed_by_interviewer": false
+  },
+  {
+   "id": "bass-kick",
+   "category": "bass",
+   "question": "Should the bass lock to the kick?",
+   "options": [
+    {
+     "label": "Bass notes start with the kicks",
+     "consequence": "Tight and punchy, and suits sidechain."
+    },
+    {
+     "label": "Independent and held",
+     "consequence": "Floaty and sleepy."
+    },
+    {
+     "label": "Anticipates the bar by an 8th or a 16th",
+     "consequence": "Pushes forward. Jazzy."
+    },
+    {
+     "label": "No rule, the RM decides",
+     "consequence": "Fewer verifiers, but the RM must learn this from about 1,500 votes."
+    }
+   ],
+   "changes": [
+    "verifiers (kick/bass alignment)",
+    "seed-pool generator (prompts)"
+   ],
+   "depends_on": [
+    "bass-style"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "drum-kit",
+   "category": "drums-rhythm",
+   "question": "Which drum kit, and which drum voices are on the list?",
+   "options": [
+    {
+     "label": "Minimal: kick, snare, closed hat",
+     "consequence": "Few pieces at once. The simplest audition."
+    },
+    {
+     "label": "Chillhop: soft kick, rim or cross-stick backbeat, closed hat, shaker",
+     "consequence": "Suits ghost notes. Sources: VCSL and Virtuosity, both CC0."
+    },
+    {
+     "label": "Brushes/jazz: soft kick, brush snare with stirs, ride, no hats",
+     "consequence": "Sleepy or jazzhop. Karoryfer Swirly is CC0 but 1.7 GB, so extract only the hits you need."
+    },
+    {
+     "label": "Boom-bap: harder kick, dusty snare with a short plate, swung hats, an occasional open hat cut off by the closed hat",
+     "consequence": "The most energy."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml (one-shots)",
+    "DSL grammar (drum lanes)",
+    "sampler (choke groups)",
+    "assets manifest/LICENSES"
+   ],
+   "depends_on": [
+    "snd-subgenre",
+    "pal-license-tier"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "drum-pattern-freedom",
+   "category": "drums-rhythm",
+   "question": "Does the model write raw drum grids, or pick from grooves you approved?",
+   "options": [
+    {
+     "label": "Free step grid for each drum",
+     "consequence": "The model can discover grooves, but produces the most junk, and the RM must learn your groove taste."
+    },
+    {
+     "label": "Free grids plus a backbone check (kick on 1, snare on 2 and 4, cap on hat density)",
+     "consequence": "An idiomatic floor with room above it."
+    },
+    {
+     "label": "Pick from 8-12 groove templates you approve, plus a fill slot",
+     "consequence": "You fix the groove taste by hand. Creativity moves to harmony and melody."
+    },
+    {
+     "label": "The brief picks the groove",
+     "consequence": "Drums leave the model's control."
+    }
+   ],
+   "changes": [
+    "DSL grammar",
+    "verifiers",
+    "palettes/lofi_rain_v1.yaml (groove library)",
+    "seed-pool generator"
+   ],
+   "depends_on": [
+    "drum-kit"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "drum-hats-ghosts",
+   "category": "drums-rhythm",
+   "question": "Which hat grid, and ghost notes or not?",
+   "options": [
+    {
+     "label": "Straight 8th-note hats, no ghost notes",
+     "consequence": "Calm and suits sleepy loops."
+    },
+    {
+     "label": "16th-note hats with accents (on-beats loudest, off-beats softer)",
+     "consequence": "Busier chillhop movement."
+    },
+    {
+     "label": "Shaker-led 16ths with sparse hats",
+     "consequence": "Softer top end."
+    },
+    {
+     "label": "8th-note hats plus very soft snare ghost notes around the backbeat",
+     "consequence": "Boom-bap groove. Needs soft ghost-note samples."
+    }
+   ],
+   "changes": [
+    "DSL grammar (ghost marking)",
+    "verifiers (hat density caps)",
+    "palettes/lofi_rain_v1.yaml",
+    "sampler"
+   ],
+   "depends_on": [
+    "drum-kit",
+    "drum-pattern-freedom"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "drum-round-robin",
+   "category": "drums-rhythm",
+   "question": "Is the 'machine-gun' effect (the identical sample on every hit) a dealbreaker for you?",
+   "options": [
+    {
+     "label": "One sample per drum",
+     "consequence": "Simplest and true to sampled loops, but can sound mechanical."
+    },
+    {
+     "label": "Fixed rotation of 2-4 samples per drum",
+     "consequence": "More natural and still bit-identical. More audition work."
+    },
+    {
+     "label": "Soft and hard sample layers for snare and hats",
+     "consequence": "Ghost notes sound like real ghost notes."
+    },
+    {
+     "label": "Both the rotation and the soft/hard layers",
+     "consequence": "Most natural, and the most palette work."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml (samples per voice)",
+    "sampler",
+    "determinism tests",
+    "schedule (auditions)"
+   ],
+   "depends_on": [
+    "drum-kit"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "grid-resolution",
+   "category": "drums-rhythm",
+   "question": "What rhythmic grid can the model write on?",
+   "options": [
+    {
+     "label": "16 steps per bar, with swing added by the renderer",
+     "consequence": "Simple, but no triplets or flams."
+    },
+    {
+     "label": "16 steps plus small per-step nudges, within limits",
+     "consequence": "The model can push and pull hits, so it can learn feel, and also hack it."
+    },
+    {
+     "label": "24 steps per bar (allows triplets)",
+     "consequence": "Triplets are written out, so the renderer must not add its swing on top."
+    },
+    {
+     "label": "32 steps per bar",
+     "consequence": "Hat rolls and flams. Close to trap, probably not your taste."
+    }
+   ],
+   "changes": [
+    "DSL grammar",
+    "compiler",
+    "verifiers"
+   ],
+   "depends_on": [
+    "feel-swing-owner",
+    "feel-microtiming"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "arr-layers",
+   "category": "arrangement",
+   "question": "How many layers can play at once?",
+   "options": [
+    {
+     "label": "3 (drums, bass, chords), with a lead allowed only in A'",
+     "consequence": "Sparse and background-friendly."
+    },
+    {
+     "label": "4 (drums, bass, chords, lead)",
+     "consequence": "Standard."
+    },
+    {
+     "label": "5 (add a pad or counter-melody)",
+     "consequence": "Lush, with more masking and mud."
+    },
+    {
+     "label": "The model chooses, up to 5, capped by a verifier",
+     "consequence": "The RM decides. Note that Audiobox PC literally rewards more parts."
+    }
+   ],
+   "changes": [
+    "DSL grammar (track count)",
+    "verifiers/gates",
+    "palettes/lofi_rain_v1.yaml (mix)",
+    "reward weights (Audiobox PC)"
+   ],
+   "depends_on": [
+    "snd-job",
+    "inst-choice"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "arr-structure-repetition",
+   "category": "arrangement",
+   "question": "What shape should the 8 bars take, and how much literal repetition is good?",
+   "options": [
+    {
+     "label": "A 2- or 4-bar cell, repeated",
+     "consequence": "The most loop-like. The '>3 identical bars' penalty must be loosened or redefined."
+    },
+    {
+     "label": "A (bars 1-4) then A' (bars 5-8) with small changes",
+     "consequence": "The usual default, and fits the penalty as written."
+    },
+    {
+     "label": "A then a contrasting B in bars 5-8",
+     "consequence": "More song-like, less hypnotic."
+    },
+    {
+     "label": "Every bar different",
+     "consequence": "The least loop-like, and may get tiring on repeat."
+    }
+   ],
+   "changes": [
+    "DSL grammar (repeat syntax)",
+    "penalties (identical-bar threshold)",
+    "verifiers"
+   ],
+   "depends_on": [
+    "snd-job"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "arr-bar8",
+   "category": "arrangement",
+   "question": "What does bar 8 do by default, as enforced by the verifier?",
+   "options": [
+    {
+     "label": "Must stay plain",
+     "consequence": "Repeats seamlessly and suits background listening. No fill syntax needed."
+    },
+    {
+     "label": "A fill or drop-out is allowed but not required",
+     "consequence": "The RM learns whether you like them."
+    },
+    {
+     "label": "Turnaround harmony required (V7alt, bII7, or ii-V back to bar 1)",
+     "consequence": "The verifier checks it, giving a cadence every cycle."
+    },
+    {
+     "label": "Drum variation or drop-out required",
+     "consequence": "Marks the loop point, but risks sounding formulaic."
+    }
+   ],
+   "changes": [
+    "verifiers",
+    "DSL grammar (fill/drop syntax)",
+    "rating UI (bars heard)"
+   ],
+   "depends_on": [
+    "arr-structure-repetition",
+    "harm-resolution"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "arr-seam",
+   "category": "arrangement",
+   "question": "Do you judge loops as they repeat, or as a single pass?",
+   "options": [
+    {
+     "label": "Always heard looped (two cycles)",
+     "consequence": "You judge the seam where bar 8 returns to bar 1. The renderer must wrap note tails and keep the LFOs and bed periodic."
+    },
+    {
+     "label": "Single pass",
+     "consequence": "Faster votes, but the seam is never judged or learned."
+    },
+    {
+     "label": "Votes on a single pass; ear checks and the final A/B looped",
+     "consequence": "The seam is checked but not rewarded."
+    }
+   ],
+   "changes": [
+    "renderer (two-cycle render, tail wrap, bed crossfade)",
+    "rating UI",
+    "eval protocol"
+   ],
+   "depends_on": [
+    "arr-bar8"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "gate-min-content",
+   "category": "arrangement",
+   "question": "Can a nearly empty loop (a few notes over pleasant rain) pass?",
+   "options": [
+    {
+     "label": "Hard minimum-content gate (each core part plays in at least N bars)",
+     "consequence": "Blocks a 'rain plus silence' hack, but rules out near-empty ambient loops."
+    },
+    {
+     "label": "Soft penalty for empty bars",
+     "consequence": "Discouraged but still possible."
+    },
+    {
+     "label": "Allowed; your votes decide",
+     "consequence": "If you vote sparse loops up, the model may drift there. Log it as a hack signature."
+    }
+   ],
+   "changes": [
+    "verifiers/gates",
+    "penalties",
+    "hack-signature logging"
+   ],
+   "depends_on": [
+    "mel-density",
+    "arr-layers"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "gate-fine-definition",
+   "category": "gates",
+   "question": "What does 'fine' mean in the Phase 1 ear check of 50 clips, where at least 30% must be fine?",
+   "options": [
+    {
+     "label": "I'd leave it playing while I study",
+     "consequence": "Strict and tied to the loop's job, so the SFT fallback is more likely to trigger."
+    },
+    {
+     "label": "Nothing makes me skip it on the first listen",
+     "consequence": "A lenient floor that is easy to reach."
+    },
+    {
+     "label": "Scores 3 or more on a 1-5 scale",
+     "consequence": "Produces absolute labels you can reuse for the 'pairwise vs absolute' ablation."
+    }
+   ],
+   "changes": [
+    "Phase 1 gate (CLAUDE.md section 9)",
+    "rating UI (ear-check mode)",
+    "eval protocol"
+   ],
+   "depends_on": [
+    "snd-job"
+   ],
+   "missed_by_interviewer": false
+  },
+  {
+   "id": "tex-bed-level",
+   "category": "texture-bed",
+   "question": "How loud is the rain bed relative to the music? (It is set relative before normalizing to -14 LUFS, so sparse loops don't end up with louder rain.)",
+   "options": [
+    {
+     "label": "-30 dB",
+     "consequence": "Felt rather than heard."
+    },
+    {
+     "label": "-24 dB",
+     "consequence": "Present on headphones, gone on speakers."
+    },
+    {
+     "label": "-18 dB",
+     "consequence": "Clearly audible rain."
+    },
+    {
+     "label": "-12 dB",
+     "consequence": "A featured texture that masks quiet parts and colors both votes and CLAP."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "renderer (relative mix, normalize, true-peak limit)"
+   ],
+   "depends_on": [
+    "snd-job"
+   ],
+   "missed_by_interviewer": false
+  },
+  {
+   "id": "tex-rain-character",
+   "category": "texture-bed",
+   "question": "What kind of rain?",
+   "options": [
+    {
+     "label": "Light rain on a window, heard from inside (Freesound 161705, 37.6 s, mono)",
+     "consequence": "Intimate. It has hits on an air-conditioner unit to edit out, and is short, so it needs crossfades to hide repetition."
+    },
+    {
+     "label": "Soft rain on a roof window (Freesound 235827, 3:16, 48 kHz/24-bit stereo)",
+     "consequence": "Rich and wide. Pick excerpts that avoid its birdsong and thunder."
+    },
+    {
+     "label": "Steady, heavier rain",
+     "consequence": "Masks more. A CC0 source still has to be found and checked."
+    },
+    {
+     "label": "Rain with occasional distant thunder",
+     "consequence": "Dramatic, but thunder falls on different bars in each loop and can sway individual votes."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "assets (CC0 originals + manifest with URL, author, license, SHA256)",
+    "renderer"
+   ],
+   "depends_on": [
+    "tex-bed-level",
+    "pal-license-tier"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "tex-bed-variation",
+   "category": "texture-bed",
+   "question": "Does every loop get the same rain excerpt, or a different one chosen deterministically?",
+   "options": [
+    {
+     "label": "The same excerpt everywhere",
+     "consequence": "Perfectly constant within pairs, but you will hear the same raindrops about 3,000+ times over 1,500 votes."
+    },
+    {
+     "label": "Excerpt chosen by the brief",
+     "consequence": "Two loops for the same brief share the rain. The harness must write the bed offset into the LoopScript header so the same LoopScript still gives the same WAV."
+    },
+    {
+     "label": "Excerpt chosen by a hash of the LoopScript",
+     "consequence": "Most variety, but differences in the bed add noise inside every pair."
+    }
+   ],
+   "changes": [
+    "renderer",
+    "palettes/lofi_rain_v1.yaml",
+    "determinism tests",
+    "rating UI"
+   ],
+   "depends_on": [
+    "tex-rain-character",
+    "fb-same-brief"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "tex-crackle",
+   "category": "texture-bed",
+   "question": "Vinyl crackle or tape hiss on top of the rain?",
+   "options": [
+    {
+     "label": "None, rain only",
+     "consequence": "Cleaner, closer to chillhop."
+    },
+    {
+     "label": "Subtle crackle (synthesized random clicks, or CC0 Freesound 471007, with a whole number of 1.8 s record turns per loop)",
+     "consequence": "Classic lo-fi warmth."
+    },
+    {
+     "label": "Featured crackle with pops",
+     "consequence": "Deliberately dusty, but it competes with the rain."
+    },
+    {
+     "label": "Tape hiss only (CC0 Freesound 443338)",
+     "consequence": "Cassette character instead of vinyl."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "renderer (numpy crackle, hash PRNG)",
+    "assets manifest"
+   ],
+   "depends_on": [
+    "tex-bed-level"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "mix-lpf",
+   "category": "master-bus",
+   "question": "How dark is the master bus: where does the low-pass filter start? (Assumes a steep 24 dB/oct filter, because pedalboard's LowpassFilter is only 6 dB/oct.)",
+   "options": [
+    {
+     "label": "About 6 kHz",
+     "consequence": "Very dark, like a cassette."
+    },
+    {
+     "label": "About 8 kHz",
+     "consequence": "Dark and warm."
+    },
+    {
+     "label": "About 10 kHz",
+     "consequence": "Gently rolled off."
+    },
+    {
+     "label": "12 kHz or higher",
+     "consequence": "Clean, leaning toward chillhop."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "renderer (filter type)"
+   ],
+   "depends_on": [
+    "snd-subgenre"
+   ],
+   "missed_by_interviewer": false
+  },
+  {
+   "id": "mix-wow",
+   "category": "master-bus",
+   "question": "How much tape wobble in pitch (wow and flutter)? Real consumer decks measure 0.05-0.10%, and plugins exaggerate this.",
+   "options": [
+    {
+     "label": "None",
+     "consequence": "Steady pitch, so held Rhodes chords stay in tune."
+    },
+    {
+     "label": "Subtle: 0.1% peak (about 1.7 cents) at about 0.5 Hz",
+     "consequence": "Warmth you feel more than hear."
+    },
+    {
+     "label": "Obvious: 0.3% (about 5 cents)",
+     "consequence": "Classic seasick tape."
+    },
+    {
+     "label": "Heavy: 1% (about 17 cents)",
+     "consequence": "A deliberate warble that sours held chords."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "renderer (fractional-delay modulation, rates k/L)"
+   ],
+   "depends_on": [
+    "snd-tempo"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "mix-grit",
+   "category": "master-bus",
+   "question": "How much digital grit from bit-depth and sample-rate reduction?",
+   "options": [
+    {
+     "label": "Clean",
+     "consequence": "Modern and hi-fi."
+    },
+    {
+     "label": "Gentle tape-style saturation only",
+     "consequence": "Warmth without crunch. pedalboard Distortion's default 25 dB drive is far too hot."
+    },
+    {
+     "label": "SP-1200-style crush (12-bit, 26.04 kHz) on the drums only",
+     "consequence": "Dusty drums over clean keys, with aliasing from the cheap resampling."
+    },
+    {
+     "label": "The same crush on the whole mix",
+     "consequence": "The most lo-fi, with harsh aliasing on the keys."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "renderer",
+    "drum one-shot processing"
+   ],
+   "depends_on": [
+    "snd-subgenre",
+    "mix-lpf"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "mix-sidechain",
+   "category": "master-bus",
+   "question": "Sidechain pumping?",
+   "options": [
+    {
+     "label": "None",
+     "consequence": "A static mix."
+    },
+    {
+     "label": "Subtle: the kick ducks chords and bass by 1-2 dB",
+     "consequence": "Glues the mix."
+    },
+    {
+     "label": "Obvious: the whole mix pumps, rain included",
+     "consequence": "The classic breathing lo-fi sound."
+    },
+    {
+     "label": "Duck only the rain bed",
+     "consequence": "The rain breathes with the kick while the music stays steady."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "renderer (deterministic sidechain from the kick lane)"
+   ],
+   "depends_on": [
+    "tex-bed-level"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "mix-reverb",
+   "category": "master-bus",
+   "question": "What space does the loop sit in? (FluidSynth's built-in reverb and chorus get turned off; all reverb comes from pedalboard or a CC0 impulse response.)",
+   "options": [
+    {
+     "label": "Dry or a small room",
+     "consequence": "Intimate, like a bedroom."
+    },
+    {
+     "label": "Short plate on the snare, small room on the keys",
+     "consequence": "Boom-bap."
+    },
+    {
+     "label": "Vintage spring or plate sound on the keys",
+     "consequence": "Classic lo-fi."
+    },
+    {
+     "label": "Large, washy space",
+     "consequence": "Dreamy, but producers warn against cathedral-sized tails."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "renderer",
+    "assets (impulse responses)"
+   ],
+   "depends_on": [
+    "snd-job"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "mix-balance-stereo",
+   "category": "master-bus",
+   "question": "Which part sits on top, and how wide is the mix?",
+   "options": [
+    {
+     "label": "Keys on top, drums tucked in, close to mono",
+     "consequence": "Background-friendly, like radio."
+    },
+    {
+     "label": "Drums and bass forward, keys behind",
+     "consequence": "Head-nod."
+    },
+    {
+     "label": "Lead forward",
+     "consequence": "Hook-first."
+    },
+    {
+     "label": "Keys and pads wide, drums and bass centred",
+     "consequence": "Lush on headphones, thinner on laptop speakers."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml (per-track gain/pan)",
+    "renderer"
+   ],
+   "depends_on": [
+    "snd-job",
+    "fb-rig-level"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "pal-license-tier",
+   "category": "palette-sourcing",
+   "question": "Which licenses can committed palette assets have, given the repo may go public?",
+   "options": [
+    {
+     "label": "CC0 or public domain only",
+     "consequence": "The cleanest repo (FreePats, VCSL, VSCO2 CE, Virtuosity, Freesound CC0), but no sampled Rhodes, felt piano, muted trumpet, celesta or music box."
+    },
+    {
+     "label": "Also permissive custom licenses and CC-BY, with an ATTRIBUTION file",
+     "consequence": "GeneralUser GS, Greg Sullivan E-Pianos, YDP Grand, MSLP Vibes and MuldjordKit cover nearly every role."
+    },
+    {
+     "label": "Also non-commercial assets, downloaded by script and never committed",
+     "consequence": "Allows jRhodes3d (CC-BY-NC). The repo is no longer self-contained and needs a fetch script with SHA256 checks."
+    },
+    {
+     "label": "Also GPL SoundFonts",
+     "consequence": "TimGM6mb (GPL-2) and FreePats GM (GPL-3+) bring copyleft obligations into a public repo."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "assets/ + LICENSES manifest",
+    "fetch scripts",
+    "README"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "pal-rhodes",
+   "category": "palette-sourcing",
+   "question": "Which electric piano? (This is the weakest spot for licensing.)",
+   "options": [
+    {
+     "label": "GeneralUser GS Tine EP",
+     "consequence": "Permissive, about 30 MB, can be committed. General-MIDI-grade realism, and its author can't vouch for where every sample came from."
+    },
+    {
+     "label": "Greg Sullivan Wurlitzer EP200 (CC-BY 3.0)",
+     "consequence": "A barkier Wurlitzer tone. Needs SFZ-to-SF2 conversion with Polyphone, plus attribution."
+    },
+    {
+     "label": "jRhodes3d, a 1977 Mk I (CC-BY-NC, download-only)",
+     "consequence": "The most realistic Rhodes, with up to 5 velocity layers, but it can't be committed."
+    },
+    {
+     "label": "FM electric piano (FreePats, or VCSL TX81Z; CC0)",
+     "consequence": "80s DX7 character, not a Rhodes."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml",
+    "assets",
+    "conversion pipeline (Polyphone CLI)",
+    "schedule (auditions)"
+   ],
+   "depends_on": [
+    "pal-license-tier",
+    "inst-choice"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "pal-reference-audio",
+   "category": "palette-sourcing",
+   "question": "Can tracks from your own library serve as private references, never committed?",
+   "options": [
+    {
+     "label": "Names only, no audio",
+     "consequence": "Taste comes in only through words and votes."
+    },
+    {
+     "label": "Private A/B on the laptop, loudness-matched against palette renders",
+     "consequence": "Tunes timbre and darkness against real records, and nothing leaves the laptop."
+    },
+    {
+     "label": "The above, plus embeddings of the reference tracks as a prior for the RM",
+     "consequence": "A stronger prior, but copyrighted audio would sit on cluster scratch. Check policy first."
+    }
+   ],
+   "changes": [
+    "palette audition process",
+    "RM training",
+    "CLAUDE.md data-handling rule"
+   ],
+   "depends_on": [
+    "pal-license-tier",
+    "meta-elicitation"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "pal-freeze-criteria",
+   "category": "palette-process",
+   "question": "What must pass before palette_v1 freezes on Nov 8?",
+   "options": [
+    {
+     "label": "You approve the 10 hand-written loops by ear",
+     "consequence": "As planned, but RL may find corners of the palette you never heard."
+    },
+    {
+     "label": "Also a stress set you approve by ear (extreme registers, the densest allowed loop, every instrument with every chord quality, bar-8 fills)",
+     "consequence": "Catches the mud and harshness RL will find. About 1 h more."
+    },
+    {
+     "label": "Also the stress set re-checked on a second playback system",
+     "consequence": "Holds up across devices. About 30 min more."
+    }
+   ],
+   "changes": [
+    "palettes/lofi_rain_v1.yaml (register clamps)",
+    "compiler",
+    "Phase 1 gate (CLAUDE.md section 9)",
+    "schedule"
+   ],
+   "depends_on": [
+    "meta-elicitation"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "pal-post-freeze",
+   "category": "palette-process",
+   "question": "If, after voting, you dislike something in the palette (say, the snare), what happens?",
+   "options": [
+    {
+     "label": "Never change palette_v1",
+     "consequence": "Votes and the RM stay valid, and you live with the snare."
+    },
+    {
+     "label": "Make a v2, re-render the pool, keep the old votes",
+     "consequence": "Cheap, but votes cast on the old audio now label new audio."
+    },
+    {
+     "label": "Make a v2 only with fresh votes",
+     "consequence": "Valid, but costs listening hours you may not have."
+    },
+    {
+     "label": "Only mix tweaks of +/-1 dB, without re-voting",
+     "consequence": "A narrow escape hatch, logged in DECISIONS.md."
+    }
+   ],
+   "changes": [
+    "docs/DECISIONS.md",
+    "palette versioning",
+    "RM training",
+    "schedule"
+   ],
+   "depends_on": [
+    "pal-freeze-criteria"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "seed-handwritten",
+   "category": "seed-and-prompt",
+   "question": "Who writes the 10 reference loops?",
+   "options": [
+    {
+     "label": "You write all 10 in LoopScript",
+     "consequence": "Your biases go in most directly, and it tests how usable the DSL is. About 2-4 h."
+    },
+    {
+     "label": "Claude drafts 20, you keep and edit 10 by ear",
+     "consequence": "Faster, and still filtered by your ear."
+    },
+    {
+     "label": "Claude writes 10 from your MCQ answers, you approve or reject",
+     "consequence": "Fastest, but your biases enter only through approval."
+    },
+    {
+     "label": "You write 3, Claude writes 7",
+     "consequence": "Balances your time against authorship."
+    }
+   ],
+   "changes": [
+    "DSL docs/examples",
+    "seed-pool generator (few-shot)",
+    "penalties (near-copy set)",
+    "schedule (Phase 1)"
+   ],
+   "depends_on": [
+    "meta-elicitation"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "prompt-fewshot",
+   "category": "seed-and-prompt",
+   "question": "Should the policy's prompt include example loops?",
+   "options": [
+    {
+     "label": "No examples, only the grammar spec",
+     "consequence": "Pure discovery, with a higher junk rate at step 0."
+    },
+    {
+     "label": "1-2 deliberately plain syntax examples",
+     "consequence": "Teaches the format, not taste."
+    },
+    {
+     "label": "1-3 of your approved or favorite loops",
+     "consequence": "A strong style prior. These loops must join the near-copy penalty set."
+    },
+    {
+     "label": "Examples rotated from the triaged good pool",
+     "consequence": "Varied priors, but the frontier model's style leaks in."
+    }
+   ],
+   "changes": [
+    "prompt template / brief generator",
+    "penalties (near-copy set)",
+    "Phase 1 junk-rate gate"
+   ],
+   "depends_on": [
+    "seed-handwritten",
+    "fb-favorites"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "brief-knob-ranges",
+   "category": "briefs-knobs",
+   "question": "Should knob ranges stay inside the region you like?",
+   "options": [
+    {
+     "label": "Full ranges (e.g. energy from sleepy to busy)",
+     "consequence": "The 90% obedience claim then forces loops you dislike at the extremes, so the knob reward fights the taste RM."
+    },
+    {
+     "label": "Limited to your taste (density from sparse to medium, mood from melancholy to warm)",
+     "consequence": "Obedience and taste pull the same way, with less variety."
+    },
+    {
+     "label": "Mixed: wide where you're neutral, narrow where you care",
+     "consequence": "Tuned knob by knob."
+    }
+   ],
+   "changes": [
+    "knob definitions",
+    "brief generator",
+    "eval protocol (>=90% obedience)",
+    "reward weights"
+   ],
+   "depends_on": [
+    "snd-job",
+    "mel-density"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "brief-obedience-measure",
+   "category": "briefs-knobs",
+   "question": "How is the 90% knob-obedience target judged?",
+   "options": [
+    {
+     "label": "Automatically, from LoopScript features",
+     "consequence": "Cheap and objective, but may not match what you hear."
+    },
+    {
+     "label": "Automatically, plus you check 30 briefs by ear",
+     "consequence": "Validates the metric. About 20-30 min."
+    },
+    {
+     "label": "By ear only",
+     "consequence": "Most faithful. About 1-1.5 h for 100 briefs."
+    }
+   ],
+   "changes": [
+    "eval protocol",
+    "rating UI (obedience mode)",
+    "schedule"
+   ],
+   "depends_on": [
+    "brief-knob-ranges"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "brief-clap-themes",
+   "category": "briefs-knobs",
+   "question": "Should CLAP's theme-matching score earn reward?",
+   "options": [
+    {
+     "label": "Yes: your curated themes, scored against other themes on fixed windows of up to 10 s aligned to bars",
+     "consequence": "Keeps CLAP, but its default random cropping must be bypassed."
+    },
+    {
+     "label": "Yes, but scored on a render without the rain",
+     "consequence": "Stops the constant rain from saturating rain themes. Needs a rain-free version of each render."
+    },
+    {
+     "label": "Weight 0, logged only",
+     "consequence": "CLAP misses negation and tracks human ratings weakly. Themes stay as flavor text in briefs."
+    }
+   ],
+   "changes": [
+    "reward weights",
+    "brief generator",
+    "renderer (bedless stem)",
+    "eval protocol"
+   ],
+   "depends_on": [
+    "tex-bed-level"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "brief-heldout-authorship",
+   "category": "briefs-knobs",
+   "question": "Who writes the 100 held-out briefs for the final A/B?",
+   "options": [
+    {
+     "label": "You write all 100",
+     "consequence": "Closest to your intent. About 1-2 h."
+    },
+    {
+     "label": "You write 20, and the generator varies them into 100",
+     "consequence": "Your voice at a fifth of the effort."
+    },
+    {
+     "label": "Generated with a fixed seed, and you review the list",
+     "consequence": "Cheapest, and the least yours."
+    }
+   ],
+   "changes": [
+    "eval protocol",
+    "brief generator",
+    "schedule"
+   ],
+   "depends_on": [
+    "brief-knob-ranges"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-favorites",
+   "category": "feedback-triage",
+   "question": "Do you want a 'love it' button?",
+   "options": [
+    {
+     "label": "No",
+     "consequence": "A simpler UI."
+    },
+    {
+     "label": "Yes, for eval reference points and demo material only",
+     "consequence": "A gold set for sanity checks and the README."
+    },
+    {
+     "label": "Yes, and favorites also become prompt examples or SFT data",
+     "consequence": "Pulls the model toward your best moments. Favorites must join the near-copy penalty set."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "prompt template",
+    "penalties",
+    "eval protocol"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-triage",
+   "category": "feedback-triage",
+   "question": "How is the seed pool of 1,500-2,500 loops screened before voting?",
+   "options": [
+    {
+     "label": "Automatic only (gates, verifier thresholds, an Audiobox floor)",
+     "consequence": "You never hear the rejects, so the thresholds are never checked against your ear."
+    },
+    {
+     "label": "Automatic, plus you quickly keep or skip about 200 clips",
+     "consequence": "Calibrates the thresholds to your ear (LESSONS 33). About 20-30 min."
+    },
+    {
+     "label": "You sort every clip into trash, ok or good",
+     "consequence": "Gives absolute labels for an acceptability model. About 2-4 h."
+    },
+    {
+     "label": "No screening: vote on everything that parses",
+     "consequence": "Wastes votes on obvious junk."
+    }
+   ],
+   "changes": [
+    "rating UI (triage mode)",
+    "seed-pool pipeline",
+    "RM training (acceptability labels)",
+    "schedule"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-bad-share",
+   "category": "feedback-triage",
+   "question": "What share of clearly bad loops stays in the voting pool?",
+   "options": [
+    {
+     "label": "0%",
+     "consequence": "Votes go to fine distinctions, but the RM never hears what 'broken' sounds like, so the gates must catch all of it."
+    },
+    {
+     "label": "About 10%",
+     "consequence": "The RM learns the bottom of the scale, and the easy votes double as attention checks."
+    },
+    {
+     "label": "About 25%",
+     "consequence": "Copes with junk from the early policy, but fewer votes are informative."
+    }
+   ],
+   "changes": [
+    "seed-pool sampler",
+    "RM training",
+    "rating UI"
+   ],
+   "depends_on": [
+    "fb-triage"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-same-brief",
+   "category": "feedback-pool",
+   "question": "What fraction of pairs compare two loops written for the same brief?",
+   "options": [
+    {
+     "label": "About 100% same brief",
+     "consequence": "Matches how GRPO compares loops within a group. But these are the hardest pairs (about 65% agreement for loops from the same policy), so your ceiling is lowest."
+    },
+    {
+     "label": "About 50/50",
+     "consequence": "Balances how learnable the votes are against how useful they are to GRPO."
+    },
+    {
+     "label": "Mostly different briefs",
+     "consequence": "Easier, more consistent votes, but the RM may learn brief and theme preferences that GRPO can't use."
+    }
+   ],
+   "changes": [
+    "seed-pool generator (loops per brief)",
+    "rating UI (pair sampler)",
+    "held-out set",
+    "RM training"
+   ],
+   "depends_on": [
+    "inst-choice",
+    "inst-matched-pairs"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-on-policy",
+   "category": "feedback-pool",
+   "question": "Should loops from the base model you'll train be in the Phase 2 voting pool?",
+   "options": [
+    {
+     "label": "Frontier seed pool only",
+     "consequence": "High quality, but the RM is trained on loops unlike what the 4-8B model writes."
+    },
+    {
+     "label": "About 20-30% from the base model",
+     "consequence": "The RM sees where GRPO starts. Needs a GPU sampling job during Phase 1-2."
+    },
+    {
+     "label": "About 50% from the base model",
+     "consequence": "Closest to what GRPO sees, but many weak loops to sit through."
+    }
+   ],
+   "changes": [
+    "seed-pool generator",
+    "schedule (GPU sampling job)",
+    "RM training"
+   ],
+   "depends_on": [
+    "fb-triage"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-minimal-pairs",
+   "category": "feedback-pool",
+   "question": "Should some votes compare variants that differ in only one thing the model controls (9ths or not, held-root vs walking bass, sparse vs busy lead)?",
+   "options": [
+    {
+     "label": "None",
+     "consequence": "The RM has to separate the factors on its own."
+    },
+    {
+     "label": "About 20% such pairs",
+     "consequence": "Tells the RM which factors you actually care about. The pool generator needs code that makes the variants."
+    },
+    {
+     "label": "About 40% such pairs",
+     "consequence": "A strong signal per factor, but less coverage of natural loops."
+    }
+   ],
+   "changes": [
+    "seed-pool generator (mutation operators)",
+    "rating UI",
+    "RM training"
+   ],
+   "depends_on": [
+    "meta-elicitation",
+    "inst-choice"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "seed-frontier-prompt",
+   "category": "feedback-pool",
+   "question": "Should the frontier model that writes the seed pool see your taste answers?",
+   "options": [
+    {
+     "label": "Neutral prompts (DSL spec plus brief)",
+     "consequence": "The pool reflects the frontier model's defaults, and your votes do all the steering."
+    },
+    {
+     "label": "Taste-informed prompts (your answers as a style guide)",
+     "consequence": "The pool starts closer to your taste but with less contrast, so the near-copy penalty matters more."
+    },
+    {
+     "label": "Half neutral, half taste-informed",
+     "consequence": "Built-in contrast for the RM."
+    }
+   ],
+   "changes": [
+    "seed-pool generator",
+    "docs (taste spec)",
+    "penalties"
+   ],
+   "depends_on": [
+    "meta-elicitation"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "seed-providers",
+   "category": "feedback-pool",
+   "question": "One frontier provider for the seed pool, or several?",
+   "options": [
+    {
+     "label": "A single model",
+     "consequence": "Consistent style and one API key, but less diversity."
+    },
+    {
+     "label": "2-3 providers or models",
+     "consequence": "More stylistic spread for the RM, but more keys and cost on your accounts. Check each provider's terms on training models with its outputs."
+    }
+   ],
+   "changes": [
+    "seed-pool generator",
+    "laptop .env secrets",
+    "API budget"
+   ],
+   "depends_on": [
+    "seed-frontier-prompt"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-vote-format",
+   "category": "feedback-vote-format",
+   "question": "What vote format?",
+   "options": [
+    {
+     "label": "Pairwise A/B",
+     "consequence": "One bit per vote. 1,500 votes take about 10 h with 10 s synced excerpts, or about 23 h playing full loops one after the other."
+    },
+    {
+     "label": "Best and worst of 4",
+     "consequence": "Each vote implies 5 of the 6 pairwise comparisons; 300 sets take about 5.4 h. The RM must treat those comparisons as linked."
+    },
+    {
+     "label": "Rank all 4",
+     "consequence": "6 comparisons per vote, but the heaviest memory load."
+    },
+    {
+     "label": "Pairwise for same-brief pairs, best/worst for mixed briefs",
+     "consequence": "A mixed design that needs two UI modes."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "RM training (BT / MaxDiff / rank-breaking, correlated pairs batched)",
+    "schedule"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": false
+  },
+  {
+   "id": "fb-both-bad",
+   "category": "feedback-vote-format",
+   "question": "Do you want a 'both bad' answer, separate from a tie?",
+   "options": [
+    {
+     "label": "No",
+     "consequence": "Forced choice or tie only, so the information that both are unacceptable is lost."
+    },
+    {
+     "label": "Yes, as its own label that trains an acceptability check in the gate",
+     "consequence": "Your line for 'unacceptable' becomes a learned gate."
+    },
+    {
+     "label": "Yes, recorded as both losing to a fixed 'acceptable' reference",
+     "consequence": "Puts that absolute information on the same scale as the votes."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "RM training",
+    "verifiers/gates"
+   ],
+   "depends_on": [
+    "fb-vote-format"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-absolute-ratings",
+   "category": "feedback-vote-format",
+   "question": "The planned Phase 4 ablation 'pairwise vs absolute' needs absolute ratings. Where do they come from?",
+   "options": [
+    {
+     "label": "A 1-5 rating on every clip while voting",
+     "consequence": "About 5 s per clip, which is 20-40% more listening time."
+    },
+    {
+     "label": "A separate set of about 300 clips rated 1-5",
+     "consequence": "About 1-2.5 h, depending on clip length."
+    },
+    {
+     "label": "Reuse screening buckets, 'both bad' flags and ear-check 'fine' labels",
+     "consequence": "Free, but a weaker absolute signal."
+    },
+    {
+     "label": "Drop that ablation",
+     "consequence": "Saves time, at the cost of one fewer science result."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "RM training (absolute arm)",
+    "eval protocol",
+    "schedule"
+   ],
+   "depends_on": [
+    "fb-triage",
+    "fb-both-bad"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-reason-tags",
+   "category": "feedback-vote-format",
+   "question": "Where does the list of reason tags come from?",
+   "options": [
+    {
+     "label": "No tags",
+     "consequence": "Fastest votes."
+    },
+    {
+     "label": "6-10 fixed tags taken from your skip reasons and favorite moments (e.g. muddy, too busy, cheesy lead, stiff drums, harsh, boring, clash, wrong vibe)",
+     "consequence": "Feeds an extra prediction target in the RM and the catalog of hacks."
+    },
+    {
+     "label": "Free text, grouped into tags later",
+     "consequence": "Richest, but slow, and unusable for training until grouped."
+    },
+    {
+     "label": "Fixed tags, only on strong-preference votes",
+     "consequence": "Cheap, but a sparse signal."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "RM training (auxiliary head)",
+    "hack catalog"
+   ],
+   "depends_on": [
+    "fb-vote-format"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-excerpt-window",
+   "category": "feedback-presentation",
+   "question": "If you vote on excerpts, which bars do you hear?",
+   "options": [
+    {
+     "label": "All 8 bars (21-27 s)",
+     "consequence": "Bar 8 and the turnaround get judged. Slowest."
+    },
+    {
+     "label": "Bars 1-4 only",
+     "consequence": "Fast, but bar 8 is never heard, so fills and turnarounds get no signal."
+    },
+    {
+     "label": "Bars 5-8 (A' plus bar 8)",
+     "consequence": "Hears the variation and the turnaround, but misses the opening A section."
+    },
+    {
+     "label": "A fixed 4-bar window that differs from pair to pair",
+     "consequence": "Every bar gets covered across votes, and the RM still embeds the full audio."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "renderer (excerpt + re-normalized loudness)",
+    "RM training (window alignment)"
+   ],
+   "depends_on": [
+    "arr-bar8",
+    "snd-tempo"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-listening-mode",
+   "category": "feedback-presentation",
+   "question": "How are you listening when you vote?",
+   "options": [
+    {
+     "label": "Focused, critical sessions only",
+     "consequence": "Precise, but may favor detail and busyness you'd never notice in the background."
+    },
+    {
+     "label": "Background: loops play while you work, and you vote later",
+     "consequence": "Matches the loop's job, but slower and less precise."
+    },
+    {
+     "label": "A mix, with the mode recorded",
+     "consequence": "You get both signals, and the RM accounts for the mode."
+    }
+   ],
+   "changes": [
+    "rating UI (background playlist, mode logging)",
+    "RM training (covariate)",
+    "schedule"
+   ],
+   "depends_on": [
+    "snd-job"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-timebox",
+   "category": "feedback-presentation",
+   "question": "Gut reaction or considered judgment?",
+   "options": [
+    {
+     "label": "First impression within a time limit (vote within about 15-20 s)",
+     "consequence": "Captures the gut taste of background listening. Noisier but faster."
+    },
+    {
+     "label": "Unlimited replay with synced toggling",
+     "consequence": "Considered and consistent, but slower."
+    },
+    {
+     "label": "Time limit normally; unlimited for repeat checks and held-out pairs",
+     "consequence": "Careful measurement where it counts."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "schedule",
+    "RM noise model"
+   ],
+   "depends_on": [
+    "fb-listening-mode"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-rig-level",
+   "category": "feedback-presentation",
+   "question": "A fixed listening setup and volume?",
+   "options": [
+    {
+     "label": "One pair of headphones, volume locked at a calibrated level (MUSHRA-style, adjustable by at most about 4 dB)",
+     "consequence": "Consistent votes, and the final A/B uses the same setup."
+    },
+    {
+     "label": "One setup, free volume (recorded)",
+     "consequence": "Comfortable, but drifting volume biases votes."
+    },
+    {
+     "label": "Any device, including phone and AirPods (recorded)",
+     "consequence": "More votes in odd moments but less consistent. Needs a mobile UI, and the RM must account for the device."
+    }
+   ],
+   "changes": [
+    "rating UI (calibration screen, mobile layout)",
+    "RM training (device covariate)",
+    "eval protocol"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-show-brief",
+   "category": "feedback-presentation",
+   "question": "Do you see the brief (or the code) while voting?",
+   "options": [
+    {
+     "label": "Hidden: neither shown",
+     "consequence": "Pure taste, and the RM doesn't count knob obedience twice."
+    },
+    {
+     "label": "Brief shown",
+     "consequence": "Votes mix taste with fit to the brief, overlapping the knob reward."
+    },
+    {
+     "label": "Brief shown only on held-out and evaluation pairs",
+     "consequence": "Taste votes stay pure, and evaluation checks fit to the brief."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "RM semantics",
+    "eval protocol"
+   ],
+   "depends_on": [
+    "fb-same-brief"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-bed-in-votes",
+   "category": "feedback-presentation",
+   "question": "Do you vote with the rain in the mix?",
+   "options": [
+    {
+     "label": "The final mix, rain included",
+     "consequence": "Votes match the product, but the rain masks quiet detail."
+    },
+    {
+     "label": "Renders without rain",
+     "consequence": "You hear the writing clearly, but votes don't match what GRPO scores unless the RM also uses rain-free audio."
+    },
+    {
+     "label": "You hear the rain; the RM uses rain-free versions",
+     "consequence": "Listening matches the product and the RM's input is cleaner. Needs separate rain-free renders."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "renderer (stems)",
+    "RM training",
+    "reward pipeline"
+   ],
+   "depends_on": [
+    "tex-bed-level",
+    "brief-clap-themes"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-repeats",
+   "category": "feedback-consistency",
+   "question": "What share of votes are hidden repeats (sides swapped, spread over days) to measure your consistency?",
+   "options": [
+    {
+     "label": "None",
+     "consequence": "No estimate of your ceiling, so you can't tell whether 70% is reachable."
+    },
+    {
+     "label": "5% (about 75 pairs)",
+     "consequence": "Ceiling estimated to about +/-10 percentage points."
+    },
+    {
+     "label": "10% (about 150 pairs)",
+     "consequence": "About +/-7 percentage points, for about 1-2 h of listening."
+    },
+    {
+     "label": "15%",
+     "consequence": "Tighter, at growing cost."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "schedule",
+    "eval protocol (ceiling reported)"
+   ],
+   "depends_on": [
+    "fb-vote-format"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-anchors",
+   "category": "feedback-consistency",
+   "question": "Plant pairs with an obvious answer (a broken loop against a good one) to catch fatigue?",
+   "options": [
+    {
+     "label": "None",
+     "consequence": "No fatigue detection."
+    },
+    {
+     "label": "About 5% of votes",
+     "consequence": "Flags inattentive sessions after the fact."
+    },
+    {
+     "label": "About 5%, and the session stops after 2 misses",
+     "consequence": "Enforces breaks, in line with the BS.1116 limit of 20-30 min sessions."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "RM training (exclude flagged sessions)",
+    "schedule"
+   ],
+   "depends_on": [
+    "fb-bad-share"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-warmup",
+   "category": "feedback-consistency",
+   "question": "Start each session by replaying a few approved reference loops?",
+   "options": [
+    {
+     "label": "No warm-up",
+     "consequence": "Saves about 1 min per session."
+    },
+    {
+     "label": "2-3 of your approved hand-written loops first",
+     "consequence": "Resets your ear and may reduce drift from day to day."
+    },
+    {
+     "label": "Warm-up plus the same repeat pair every session",
+     "consequence": "Tracks drift directly."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "protocol"
+   ],
+   "depends_on": [
+    "seed-handwritten"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-self-stats",
+   "category": "feedback-consistency",
+   "question": "Do you see your own consistency stats while voting?",
+   "options": [
+    {
+     "label": "Live",
+     "consequence": "Motivating, but you may start voting to match your past votes."
+    },
+    {
+     "label": "Hidden until the end of Phase 2",
+     "consequence": "An unbiased estimate of your ceiling."
+    },
+    {
+     "label": "A weekly summary",
+     "consequence": "Some feedback, with little pull to match yourself."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "protocol"
+   ],
+   "depends_on": [
+    "fb-repeats"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-wear-test",
+   "category": "feedback-consistency",
+   "question": "Lo-fi gets played on repeat for hours. Should we measure whether a loop is still pleasant after 5 minutes?",
+   "options": [
+    {
+     "label": "No",
+     "consequence": "First impressions only, so 'gets annoying' is never learned."
+    },
+    {
+     "label": "Test about 30 loops, 3-5 min each on repeat in the background",
+     "consequence": "Calibrates the repetition and density penalties. About 1.5-2.5 h of passive listening."
+    },
+    {
+     "label": "Label about 100 loops this way as an extra RM target",
+     "consequence": "Teaches the RM what holds up on repeat. About 5-8 h of background listening."
+    }
+   ],
+   "changes": [
+    "rating UI (wear mode)",
+    "penalties",
+    "RM training",
+    "eval protocol"
+   ],
+   "depends_on": [
+    "arr-structure-repetition"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-ceiling-contingency",
+   "category": "feedback-consistency",
+   "question": "If week-1 repeats agree less than 58% of the time (so the ceiling is under 70%), what happens? Decide now, in advance.",
+   "options": [
+    {
+     "label": "Restate the RM target as 'within 5 points of the measured ceiling'",
+     "consequence": "Honest, as long as it is fixed before any RM results."
+    },
+    {
+     "label": "Switch to easier pairs (more different-brief pairs, more contrast)",
+     "consequence": "Raises consistency, but the votes are less useful to GRPO."
+    },
+    {
+     "label": "Switch to best/worst or graded votes, with more repeats",
+     "consequence": "Changes the UI partway through the phase."
+    },
+    {
+     "label": "Keep 70% and report the miss",
+     "consequence": "Simplest, and an honest negative result."
+    }
+   ],
+   "changes": [
+    "eval protocol",
+    "docs/DECISIONS.md",
+    "rating UI",
+    "schedule"
+   ],
+   "depends_on": [
+    "fb-repeats"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-heldout-def",
+   "category": "feedback-consistency",
+   "question": "Which pairs make up the 200 held-out votes?",
+   "options": [
+    {
+     "label": "Random pairs from the seed pool",
+     "consequence": "Easiest, but overstates the accuracy that matters for GRPO."
+    },
+    {
+     "label": "Pairs written for the same brief",
+     "consequence": "Relevant to GRPO and harder, so agreement is likely lower."
+    },
+    {
+     "label": "Same-brief pairs written by the base model",
+     "consequence": "Most relevant, but needs a sampling job."
+    },
+    {
+     "label": "A mix, with results reported for each group",
+     "consequence": "Most informative, with more bookkeeping."
+    }
+   ],
+   "changes": [
+    "eval protocol",
+    "rating UI",
+    "schedule"
+   ],
+   "depends_on": [
+    "fb-same-brief",
+    "fb-on-policy"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-laptop-refit",
+   "category": "process-schedule",
+   "question": "May the small taste model be refit on the laptop's CPU (seconds, using precomputed embeddings) to choose the next pairs, even though CLAUDE.md bans training on the laptop?",
+   "options": [
+    {
+     "label": "Yes, as a written exception in CLAUDE.md",
+     "consequence": "The next pairs are chosen between sessions, with no need for Duo."
+    },
+    {
+     "label": "No; a nightly cluster job builds the next day's pairs",
+     "consequence": "Rules unchanged, but a one-day lag and a Duo login plus sync every day."
+    },
+    {
+     "label": "No smart pair selection; pairs are random",
+     "consequence": "Simplest, but each vote carries less information."
+    }
+   ],
+   "changes": [
+    "CLAUDE.md topology rule",
+    "RM training",
+    "rating UI (pair queue)",
+    "schedule"
+   ],
+   "depends_on": [
+    "fb-vote-format"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "ops-local-render",
+   "category": "process-schedule",
+   "question": "Which renders do you listen to?",
+   "options": [
+    {
+     "label": "Cluster renders only",
+     "consequence": "Canonical and bit-identical, but every audition tweak needs a sync, a job, a pull and a Duo login."
+    },
+    {
+     "label": "Laptop renders for palette auditions; cluster renders for votes and evaluation",
+     "consequence": "Fast Phase 1 iteration. Laptop audio may differ in the lowest bits from the cluster's, and both machines need FluidSynth 2.6.1."
+    },
+    {
+     "label": "Laptop renders for all listening",
+     "consequence": "Fastest loop, but you may hear something slightly different from what was scored."
+    }
+   ],
+   "changes": [
+    "CLAUDE.md topology",
+    "laptop render env",
+    "rating UI",
+    "schedule"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "sched-listening-budget",
+   "category": "process-schedule",
+   "question": "1,500 votes take about 10 h (10 s synced excerpts) to 23 h (full loops one after the other), and Nov 9-15 is 7 days. Which plan?",
+   "options": [
+    {
+     "label": "About 1.5 h a day for 7 days, in 25 min sessions with equal breaks",
+     "consequence": "Doable with excerpts, but heavy alongside the RM work."
+    },
+    {
+     "label": "Start voting early on a pilot pool (Nov 5-8)",
+     "consequence": "Spreads the load, but those votes are lost if the palette changes before the freeze."
+    },
+    {
+     "label": "Cut to about 800-1,000 votes, plus best/worst sets",
+     "consequence": "Less time, but a lower RM ceiling."
+    },
+    {
+     "label": "Keep voting into Phase 3 (RM v1 at about 800 votes by Nov 15, v2 at 1,500 by Nov 20)",
+     "consequence": "The first GRPO run uses RM v1."
+    }
+   ],
+   "changes": [
+    "schedule (CLAUDE.md section 9)",
+    "rating UI",
+    "RM training"
+   ],
+   "depends_on": [
+    "fb-vote-format",
+    "fb-excerpt-window",
+    "pal-post-freeze",
+    "fb-repeats"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "rm-refresh",
+   "category": "taste-drift",
+   "question": "When does the RM learn from new votes?",
+   "options": [
+    {
+     "label": "Never: frozen for the whole project",
+     "consequence": "A stable reward, but the risk of the model gaming it grows (MusicRL's RM was gamed in under 2,000 steps)."
+    },
+    {
+     "label": "Between runs only",
+     "consequence": "Each run has a fixed reward, and nightly votes feed the next run."
+    },
+    {
+     "label": "Every night, mid-run",
+     "consequence": "Closest to the current policy, but a moving reward makes curves and ablations harder to read."
+    }
+   ],
+   "changes": [
+    "RM training",
+    "reward pipeline",
+    "eval protocol",
+    "schedule"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "fb-nightly-pairs",
+   "category": "taste-drift",
+   "question": "In Phases 3-4, what do the nightly votes compare?",
+   "options": [
+    {
+     "label": "Current model against itself, same brief",
+     "consequence": "Data for refreshing the RM, as Llama 2 did."
+    },
+    {
+     "label": "Current model against step 0, blind",
+     "consequence": "A human win-rate curve for the Nakano meeting and for deciding when to stop."
+    },
+    {
+     "label": "Half and half",
+     "consequence": "Both."
+    }
+   ],
+   "changes": [
+    "rating UI",
+    "eval protocol",
+    "RM training",
+    "schedule"
+   ],
+   "depends_on": [
+    "rm-refresh"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "rm-recency",
+   "category": "taste-drift",
+   "question": "How much do old votes count as your taste drifts?",
+   "options": [
+    {
+     "label": "All votes count equally",
+     "consequence": "The most data, but slow to follow drift."
+    },
+    {
+     "label": "Older votes fade (e.g. half weight after 2 weeks)",
+     "consequence": "Follows drift, with less usable data."
+    },
+    {
+     "label": "Phase 2 votes are the fixed standard; later votes only evaluate or decide when to stop",
+     "consequence": "A stable target that ignores drift."
+    }
+   ],
+   "changes": [
+    "RM training",
+    "eval protocol"
+   ],
+   "depends_on": [
+    "rm-refresh"
+   ],
+   "missed_by_interviewer": false
+  },
+  {
+   "id": "rw-rules-vs-rm",
+   "category": "reward",
+   "question": "When your hand-written taste rules and the learned RM disagree, which wins?",
+   "options": [
+    {
+     "label": "Rules are hard gates; the RM ranks only what passes",
+     "consequence": "Your stated biases are guaranteed, and nothing surprises you outside them."
+    },
+    {
+     "label": "Rules are soft penalties weighed against the RM",
+     "consequence": "Trade-offs are allowed."
+    },
+    {
+     "label": "Rules live only in the theory score, which decays from 0.5 to 0.1, so the RM dominates later",
+     "consequence": "Rules guide early, votes decide late."
+    },
+    {
+     "label": "No hand-written taste rules; only the palette and the RM",
+     "consequence": "Taste is entirely learned."
+    }
+   ],
+   "changes": [
+    "verifiers/gates",
+    "reward weights/curriculum",
+    "penalties"
+   ],
+   "depends_on": [
+    "harm-clash",
+    "mel-density",
+    "arr-structure-repetition",
+    "gate-min-content"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "rw-audiobox",
+   "category": "reward",
+   "question": "Which Audiobox scores may earn reward? (Never PC, which counts how many parts are playing.)",
+   "options": [
+    {
+     "label": "CE, PQ and CU at fixed weights, without checking them",
+     "consequence": "Simple, but rewarding CE with GRPO produced denser, more chromatic, less diverse music (SMART), and Audiobox never saw synthetic audio."
+    },
+    {
+     "label": "Each score gets weight only if it predicts your held-out votes clearly better than chance",
+     "consequence": "Weight is earned with evidence."
+    },
+    {
+     "label": "Logged only, weight 0",
+     "consequence": "Never pushes against lo-fi's sparseness."
+    }
+   ],
+   "changes": [
+    "reward weights",
+    "eval protocol"
+   ],
+   "depends_on": [
+    "fb-heldout-def"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "rl-stopping",
+   "category": "rl-risk",
+   "question": "What stops a GRPO training run?",
+   "options": [
+    {
+     "label": "A fixed number of steps (100 for run 1)",
+     "consequence": "Simple, and set in advance."
+    },
+    {
+     "label": "The nightly win rate against step 0 stops rising, or RM-human agreement on the current model's loops falls below about 60%",
+     "consequence": "Guards against the model gaming the reward, which a KL penalty mostly can't."
+    },
+    {
+     "label": "A KL budget",
+     "consequence": "Works much like early stopping (Gao et al.), but isn't tied to your ear."
+    },
+    {
+     "label": "Hack signals (notes per bar, simultaneous notes, chromaticism, rests) pass their caps",
+     "consequence": "Automatic and cheap."
+    }
+   ],
+   "changes": [
+    "eval protocol",
+    "training config",
+    "schedule"
+   ],
+   "depends_on": [
+    "fb-nightly-pairs"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "pen-copy-def",
+   "category": "penalties",
+   "question": "What counts as a near-copy or near-duplicate to your ear?",
+   "options": [
+    {
+     "label": "Same progression and same drum grid, whatever the melody",
+     "consequence": "Strict, and punishes reusing common idioms."
+    },
+    {
+     "label": "Progression, drums and melody all at least X% identical",
+     "consequence": "Lenient, and allows idiomatic reuse."
+    },
+    {
+     "label": "Audio similarity above a threshold set from about 50 of your 'same or different?' judgments",
+     "consequence": "Matches your ear. About 15 min."
+    },
+    {
+     "label": "Both the symbolic rule and the calibrated similarity",
+     "consequence": "Most robust, with more code."
+    }
+   ],
+   "changes": [
+    "penalties (within-group and seed-pool near-copy)",
+    "rating UI (same/different mode)"
+   ],
+   "depends_on": [
+    "arr-structure-repetition"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "pen-diversity-stance",
+   "category": "penalties",
+   "question": "Is it fine if the model settles on one signature sound you love?",
+   "options": [
+    {
+     "label": "Yes: loosen the diversity claim (e.g. at least 50% of step 0's spread) and soften the duplicate penalties",
+     "consequence": "Changes a claim registered in advance, so decide before Phase 1."
+    },
+    {
+     "label": "Keep the 70% claim and the planned penalties",
+     "consequence": "As registered."
+    },
+    {
+     "label": "Push harder for diversity (also penalize the same progression family across different briefs)",
+     "consequence": "Variety over polish."
+    }
+   ],
+   "changes": [
+    "penalties",
+    "eval protocol (pre-registered claim)",
+    "docs/DECISIONS.md"
+   ],
+   "depends_on": [
+    "inst-choice"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "rl-constrained-decoding",
+   "category": "rl-risk",
+   "question": "May generation be forced to follow the grammar, and does the Phase 1 gate count that?",
+   "options": [
+    {
+     "label": "No: the raw model must learn the syntax",
+     "consequence": "The gate measures raw ability, so fallbacks are more likely."
+    },
+    {
+     "label": "A fixed repair step, with every repair logged (LESSONS 32)",
+     "consequence": "Small repairs count as passes."
+    },
+    {
+     "label": "Generation constrained by the grammar (vllm_structured_outputs_regex)",
+     "consequence": "Syntax errors drop to about zero, so the gate measures musical sense. How it interacts with TRL's sampling correction is unverified."
+    }
+   ],
+   "changes": [
+    "Phase 1 gate definition",
+    "compiler front-end",
+    "training config"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "rl-sft-fallback",
+   "category": "rl-risk",
+   "question": "If the base model fails the Phase 1 gate, what does the fine-tuning warm-start (SFT) train on?",
+   "options": [
+    {
+     "label": "The frontier seed pool",
+     "consequence": "Plenty of data, but the model learns the frontier model's style and the near-copy penalty starts to bite."
+    },
+    {
+     "label": "Only the loops you screened as good or marked as favorites",
+     "consequence": "Strongly your taste, but small, so it may overfit."
+    },
+    {
+     "label": "Hand-written and template loops",
+     "consequence": "Teaches the format and is neutral on taste."
+    },
+    {
+     "label": "Skip fine-tuning and go to edit-mode rollouts",
+     "consequence": "Saves time, but riskier."
+    }
+   ],
+   "changes": [
+    "schedule",
+    "seed-pool generator",
+    "penalties",
+    "training pipeline"
+   ],
+   "depends_on": [
+    "fb-triage",
+    "fb-favorites"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "rl-base-models",
+   "category": "rl-risk",
+   "question": "Which base models go into the Phase 1 junk-rate comparison?",
+   "options": [
+    {
+     "label": "Qwen3-4B-Instruct-2507 and Granite 4.1 8B (dense, no thinking mode, Apache-2.0)",
+     "consequence": "Lowest risk of integration problems."
+    },
+    {
+     "label": "Add Qwen3.5-4B (hybrid architecture with vision, thinks by default)",
+     "consequence": "May follow instructions better, but its training kernels are unverified."
+    },
+    {
+     "label": "Add Gemma 4 E4B (multimodal)",
+     "consequence": "Medium risk, with no reported instruction-following score."
+    },
+    {
+     "label": "Qwen3-4B-Instruct-2507 alone",
+     "consequence": "Saves Phase 1 time, but nothing to compare against."
+    }
+   ],
+   "changes": [
+    "Phase 1 bake-off",
+    "env builds",
+    "schedule",
+    "docs/DECISIONS.md"
+   ],
+   "depends_on": [
+    "rl-constrained-decoding"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "eval-baselines",
+   "category": "eval",
+   "question": "What does the trained model (step N) face in the final blind A/B?",
+   "options": [
+    {
+     "label": "Step 0 only",
+     "consequence": "As registered in advance."
+    },
+    {
+     "label": "Step 0, plus frontier seed-pool loops for the same held-out briefs",
+     "consequence": "Shows whether the 4-8B model beats loops written by frontier models. About 100 more votes."
+    },
+    {
+     "label": "Step 0, plus the fine-tune-only or ablation versions",
+     "consequence": "Shows what RL added, with more votes."
+    }
+   ],
+   "changes": [
+    "eval protocol",
+    "schedule",
+    "seed-pool generator (loops for held-out briefs)"
+   ],
+   "depends_on": [
+    "brief-heldout-authorship"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "eval-checkpoint",
+   "category": "eval",
+   "question": "How is the step-N checkpoint chosen?",
+   "options": [
+    {
+     "label": "A step fixed in advance (the last checkpoint)",
+     "consequence": "Unbiased."
+    },
+    {
+     "label": "The checkpoint with the best RM agreement on held-out votes",
+     "consequence": "Uses your votes, so a mild selection bias."
+    },
+    {
+     "label": "The best on a separate blind set of about 50 votes, then a fresh 100-brief A/B",
+     "consequence": "Unbiased, but more listening."
+    },
+    {
+     "label": "The last checkpoint before the stopping rule fired",
+     "consequence": "Tied to the stopping rule."
+    }
+   ],
+   "changes": [
+    "eval protocol",
+    "schedule"
+   ],
+   "depends_on": [
+    "rl-stopping"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "eval-ties",
+   "category": "eval",
+   "question": "Are ties allowed in the final A/B?",
+   "options": [
+    {
+     "label": "No, you must choose",
+     "consequence": "The cleanest statistic."
+    },
+    {
+     "label": "Ties allowed, counted as half a win",
+     "consequence": "Lower variance."
+    },
+    {
+     "label": "Ties allowed, dropped from the count, and the number reported",
+     "consequence": "Can inflate the win rate."
+    }
+   ],
+   "changes": [
+    "eval protocol",
+    "rating UI"
+   ],
+   "depends_on": [
+    "fb-vote-format"
+   ],
+   "missed_by_interviewer": false
+  },
+  {
+   "id": "eval-listeners",
+   "category": "eval",
+   "question": "Who listens in the final evaluation?",
+   "options": [
+    {
+     "label": "Only you",
+     "consequence": "The claim is about your taste."
+    },
+    {
+     "label": "You, plus 2-3 friends as a separate secondary test",
+     "consequence": "Tests whether it generalizes, at the cost of their time."
+    },
+    {
+     "label": "You, plus automatic scores (RM, Audiobox) as secondary results",
+     "consequence": "No extra people needed."
+    }
+   ],
+   "changes": [
+    "eval protocol",
+    "rating UI (multi-user)",
+    "schedule"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "eval-nakano-pair",
+   "category": "eval",
+   "question": "Which step-0 vs step-100 pair do you show Nakano?",
+   "options": [
+    {
+     "label": "A random pick, with the seed fixed in advance",
+     "consequence": "Honest."
+    },
+    {
+     "label": "Your favorite, labeled as cherry-picked",
+     "consequence": "Persuasive, and disclosed."
+    },
+    {
+     "label": "Both",
+     "consequence": "The best of each."
+    }
+   ],
+   "changes": [
+    "eval protocol",
+    "meeting materials"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "eval-ablation-judging",
+   "category": "eval",
+   "question": "How are the Phase 4 ablations judged?",
+   "options": [
+    {
+     "label": "Automatic scores only (RM, Audiobox, verifiers)",
+     "consequence": "No listening, but comparisons judged by the RM favor the versions trained with it."
+    },
+    {
+     "label": "Blind votes on 30-50 briefs per ablation",
+     "consequence": "About 1-2 h in total, and credible."
+    },
+    {
+     "label": "Blind votes for the headline ablation only",
+     "consequence": "A compromise."
+    }
+   ],
+   "changes": [
+    "eval protocol",
+    "schedule"
+   ],
+   "depends_on": [
+    "fb-absolute-ratings",
+    "eval-freeform-ablation"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "eval-freeform-ablation",
+   "category": "eval",
+   "question": "The 'palette vs free-form' ablation needs a grammar in which the model writes pitches or effects. Keep it?",
+   "options": [
+    {
+     "label": "Keep it, with a free-form grammar",
+     "consequence": "A second compiler path, plus extra votes."
+    },
+    {
+     "label": "Redefine it as a fixed band vs instruments the model chooses",
+     "consequence": "Cheap, using the existing grammar."
+    },
+    {
+     "label": "Replace it with taste RM on vs off",
+     "consequence": "Most relevant to the claim about your taste."
+    }
+   ],
+   "changes": [
+    "DSL grammar",
+    "compiler",
+    "eval protocol",
+    "schedule"
+   ],
+   "depends_on": [
+    "inst-choice"
+   ],
+   "missed_by_interviewer": true
+  },
+  {
+   "id": "pub-votes",
+   "category": "publication",
+   "question": "Publish your vote data in the repo?",
+   "options": [
+    {
+     "label": "Raw votes plus each clip's LoopScript",
+     "consequence": "Anyone can reproduce the RM, and your taste data becomes public."
+    },
+    {
+     "label": "Summary stats and the trained RM head only",
+     "consequence": "Partly reproducible."
+    },
+    {
+     "label": "Keep it private",
+     "consequence": "Least exposure, but the results can't be reproduced."
+    }
+   ],
+   "changes": [
+    "repo contents",
+    "README",
+    "eval reproducibility"
+   ],
+   "depends_on": [],
+   "missed_by_interviewer": true
+  }
+ ],
+ "plan_facts": [
+  {
+   "fact": "Noise ceiling: if two of Shresth's votes on the same pair agree with probability p, the best possible RM agreement is q = (1+sqrt(2p-1))/2. Reaching 70% needs p >= 0.58 (p=0.65 gives 0.77, p=0.80 gives 0.89). Measure repeat agreement in week 1.",
+   "source": "Taste report section A4 (derivation); context https://arxiv.org/abs/2009.01325"
+  },
+  {
+   "fact": "Precision: 200 held-out votes at 70% have a 95% CI of about +/-6.4 pp. The 100-brief final A/B has about +/-9 pp. 100-150 repeated pairs estimate p within about +/-7-9 pp.",
+   "source": "Taste report section A4 (binomial arithmetic)"
+  },
+  {
+   "fact": "Pairs of samples from the same RL policy are the hardest pairs: researcher-researcher agreement was about 65%, and about 80% on the easiest pairs. Low-confidence votes were still worth keeping.",
+   "source": "https://arxiv.org/abs/2009.01325"
+  },
+  {
+   "fact": "Intra-rater consistency falls on single-genre material: rho 0.80 on 5-genre material vs 0.38 on single-genre material, same raters two weeks apart. Mood mattered.",
+   "source": "https://transactions.ismir.net/articles/10.5334/tismir.107"
+  },
+  {
+   "fact": "Data scale for preference RMs: TuneJury reached 70.9% with 17.5k pairs and 66.8% with 5.1k (frozen CLAP + MERT-330M, 2.8M-parameter MLP); concatenating CLAP and MERT gave no gain. MusicRL reached 60% with 285k crowd pairs. Text RMs stayed near chance below about 2k comparisons.",
+   "source": "https://arxiv.org/abs/2606.17006 ; https://arxiv.org/abs/2402.04229 ; https://arxiv.org/abs/2210.10760"
+  },
+  {
+   "fact": "Listening time at 80 BPM (24 s loops): 1,500 full loops played A then B take about 23 h (about 55 sessions of 25 min). 10 s synced excerpts take about 10 h (about 25 sessions). 300 best-worst-of-4 tuples take about 5.4 h.",
+   "source": "Taste report section A5 (derivation)"
+  },
+  {
+   "fact": "BS.1116-3: sessions of at most 20-30 min with about 10-15 trials, and rest at least as long as the session. Switching should be near-instant (about 40 ms) and click-free, and order randomized.",
+   "source": "https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.1116-3-201502-I!!PDF-E.pdf"
+  },
+  {
+   "fact": "BS.1534-3 (MUSHRA): excerpts of about 10 s (preferably at most 12 s), 5 ms raised-cosine fades on every switch, no cross-fades, loudness aligned before the test, and listener level adjustment within 4 dB.",
+   "source": "https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.1534-3-201510-I!!PDF-E.pdf"
+  },
+  {
+   "fact": "MusicRL: users compared 20 s clips, and RM accuracy fell from 60% to 56% when inputs were cut to 3-5 s. Its user-preference RM was over-optimized in under 2,000 steps even at KL 0.001. Quality predicted user preference only 53.3% of the time, and text adherence 51.6%.",
+   "source": "https://arxiv.org/abs/2402.04229"
+  },
+  {
+   "fact": "Train the expanded pairs of one ranking as a single batch element (shuffling them as independent examples overfit InstructGPT's RM). BWS-4 implies 5 of 6 pairs and beat rating scales at small budgets. Rao-Kupper BT-with-ties beat plain BT on data with ties.",
+   "source": "https://arxiv.org/abs/2203.02155 ; https://arxiv.org/abs/1712.01765 ; https://arxiv.org/abs/2410.05328"
+  },
+  {
+   "fact": "webMUSHRA provides sample-accurate Web Audio looping and switching, AB/ABX/paired modes, and YAML config. With a fixed tempo every loop shares one bar grid, so toggling between A and B at the same bar position is trivial.",
+   "source": "https://github.com/audiolabs/webMUSHRA"
+  },
+  {
+   "fact": "Audiobox Aesthetics scores PQ, PC, CE and CU on 16 kHz mono audio in 10 s windows. PC literally measures how many components are mixed together. Training used no synthetic audio. The PyPI package is audiobox_aesthetics 0.0.4.",
+   "source": "https://arxiv.org/abs/2502.05139 ; https://github.com/facebookresearch/audiobox-aesthetics"
+  },
+  {
+   "fact": "SMART (TRL GRPO, Audiobox CE reward, beta 0.04, 8 prompts x 8 completions, 200 iterations) produced more notes, more polyphony, wider pitch range, more chromaticism and fewer empty beats. A long beta=0 run collapsed diversity. Changing the renderer alone moved mean CE by more than 1 point (5.42 vs 6.60).",
+   "source": "https://arxiv.org/abs/2504.16839"
+  },
+  {
+   "fact": "Optimizing Audiobox PQ alone raised every Audiobox score by about 10% while an independent alignment check dropped (verifier hacking).",
+   "source": "https://arxiv.org/abs/2509.19831"
+  },
+  {
+   "fact": "HF laion/larger_clap_music uses 48 kHz, a 10 s maximum, truncation=rand_trunc (a random crop) and padding=repeatpad. Loops of 21-27 s therefore get nondeterministic embeddings unless they are chunked into fixed, bar-aligned windows of at most 10 s.",
+   "source": "https://huggingface.co/laion/larger_clap_music/raw/main/preprocessor_config.json"
+  },
+  {
+   "fact": "CLAP barely encodes negation, and CLAPScore correlates weakly with human ratings. The constant rain bed may saturate rain themes (hypothesis), so consider scoring CLAP on a render without the bed.",
+   "source": "https://arxiv.org/abs/2607.12290 ; https://arxiv.org/abs/2506.23553"
+  },
+  {
+   "fact": "MERT v1-95M and v1-330M are CC-BY-NC-4.0, take 24 kHz input at 75 frames/s, need trust_remote_code, and break on transformers >=4.44 unless config.conv_pos_batch_norm=False is set. vLLM 0.32.0 pins transformers >=5.16.1,<5.20.0, so the scorer environment must be planned separately.",
+   "source": "https://huggingface.co/m-a-p/MERT-v1-95M ; https://huggingface.co/m-a-p/MERT-v1-95M/discussions/4 ; https://github.com/vllm-project/vllm/releases/tag/v0.32.0"
+  },
+  {
+   "fact": "The laion_clap music checkpoint music_audioset_epoch_15_esc_90.14.pt needs amodel='HTSAT-base', enable_fusion=False and 48 kHz input, and loading may require stripping a position_ids key. The kit's fetch job does not download *.pt files, so this checkpoint needs another fetch path.",
+   "source": "https://github.com/LAION-AI/CLAP ; https://github.com/LAION-AI/CLAP/issues/127 ; /Users/shresthrana/carc-workflow-kit/jobs/fetch_weights.sbatch:36-39"
+  },
+  {
+   "fact": "TRL 1.17.1 needs Python >=3.11 and vLLM >=0.22.1,<0.33. GRPOConfig defaults: use_vllm=False, vllm_mode=colocate, num_generations=8, max_completion_length=512, beta=0.0 (no KL and no reference model), loss_type=dapo, scale_rewards=group, temperature 1.0.",
+   "source": "https://raw.githubusercontent.com/huggingface/trl/main/pyproject.toml ; https://huggingface.co/docs/trl/main/en/grpo_trainer"
+  },
+  {
+   "fact": "reward_weights are static, so the curriculum (theory 0.5 to 0.1, taste 0.2 to 0.6) must be computed inside the reward functions from trainer_state.global_step. A function that returns None is excluded for that sample, and each function logs rewards/<name>/mean and std.",
+   "source": "https://huggingface.co/docs/trl/main/en/grpo_trainer"
+  },
+  {
+   "fact": "Sampling with top_p<1, top_k>0 or min_p>0 biases the vLLM importance-sampling correction, unless running in colocate mode on vLLM >=0.28 with top_k>0. vllm_structured_outputs_regex can enforce LoopScript syntax; how it interacts with the IS correction is unverified.",
+   "source": "https://huggingface.co/docs/trl/main/en/grpo_trainer"
+  },
+  {
+   "fact": "LoRA for RL: rank 1-32 on all linear layers is enough, with a learning rate of about 1e-5 (about 10x full fine-tuning) and an effective batch below about 32. With PEFT, the reference model is the base with the adapter disabled.",
+   "source": "https://huggingface.co/docs/trl/main/en/lora_without_regret"
+  },
+  {
+   "fact": "Mitigations for reward over-optimization with evidence behind them: worst-case or uncertainty-weighted ensembles (better across different backbones than across seeds), a bounded centered reward sigmoid(r - r_ref) (PAR), and refreshing preferences on the current policy each round (Llama 2).",
+   "source": "https://arxiv.org/abs/2310.02743 ; https://arxiv.org/abs/2312.09244 ; https://arxiv.org/abs/2502.18770 ; https://arxiv.org/abs/2307.09288"
+  },
+  {
+   "fact": "Base models: Qwen3-4B-Instruct-2507 (dense, non-thinking, Apache-2.0, IFEval 83.4) and Granite 4.1 8B (dense, Apache-2.0, IFEval 87.06) are the lowest risk. Qwen3.5-4B is a hybrid Gated-DeltaNet model with vision that thinks by default. Ministral 3 8B recommends temperature below 0.1.",
+   "source": "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507 ; https://huggingface.co/ibm-granite/granite-4.1-8b ; https://huggingface.co/Qwen/Qwen3.5-4B ; https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512"
+  },
+  {
+   "fact": "MPC swing is the share of each 8th-note pair given to the first 16th: 50% is straight, 66% about triplet, 75% the maximum. Linn: 54% loosens a beat without sounding swung, and at 90 BPM 62% feels looser than 66%. The even 16th is delayed by (s-0.5) x 30/BPM s, so 58% at 80 BPM is 30 ms. On the FL/Cubase scale, 0% = MPC 50% and 100% = MPC 66.6%.",
+   "source": "https://attackmagazine.com/features/interview/roger-linn-swing-groove-magic-mpc-timing/ ; https://www.manualslib.com/manual/207365/Akai-Mpc-3000.html?page=63 ; https://attackmagazine.com/technique/passing-notes/daw-drum-machine-swing/"
+  },
+  {
+   "fact": "Dilla's offsets repeated identically, many times per song; they were not random. Perceived onset depends on the sound, so microtiming should be a fixed offset per instrument and per layer, not random jitter on each hit.",
+   "source": "https://ethanhein.substack.com/p/dilla-time ; https://iaspmjournal.net/index.php/IASPM_Journal/article/download/1503/2037/10531"
+  },
+  {
+   "fact": "An 8-bar loop lasts L = 1920/BPM s (24 s at 80 BPM, 21.3 s at 90). A seamless loop needs tails wrapped (render two cycles and keep the second), every LFO at f = k/L, and noise beds crossfaded at the seam.",
+   "source": "Sound report section A2 (derivation)"
+  },
+  {
+   "fact": "Pin FluidSynth 2.6.1 on both machines. Version 2.6.0 changed sample fine-tuning (flagged as musically breaking), made Dattorro the default reverb and dropped 7th-order sinc interpolation. Homebrew and conda-forge are both at 2.6.1.",
+   "source": "https://github.com/FluidSynth/fluidsynth/releases/tag/v2.6.0 ; https://formulae.brew.sh/formula/fluid-synth ; https://anaconda.org/conda-forge/fluidsynth"
+  },
+  {
+   "fact": "FluidSynth chorus and reverb are on by default (synth.chorus.active=1, synth.reverb.active=1) and must be turned off; synth.gain defaults to 0.2. Events are processed in 64-sample blocks (about 1.45 ms at 44.1 kHz), while the numpy drum sampler is sample-accurate.",
+   "source": "https://www.fluidsynth.org/api/settings_synth.html ; https://www.github.com/FluidSynth/fluidsynth/discussions/1260"
+  },
+  {
+   "fact": "pyfluidsynth get_samples() goes through fluid_synth_write_s16, which dithers with an index that persists across calls, so a reused synth's output depends on what it rendered before. Render float output with a fresh or reset synth per render, effects off and cpu-cores=1, and parallelize across processes.",
+   "source": "https://raw.githubusercontent.com/nwhitehead/pyfluidsynth/master/fluidsynth.py ; https://raw.githubusercontent.com/FluidSynth/fluidsynth/master/src/synth/fluid_synth_write_int.cpp"
+  },
+  {
+   "fact": "FluidSynth has no SFZ loader, and sfizz was archived on 2026-06-21. Convert SFZ to SF2 offline with the Polyphone CLI.",
+   "source": "https://www.github.com/sfztools/sfizz/releases ; https://linuxmanpag.es/man/1/polyphone"
+  },
+  {
+   "fact": "pedalboard 0.9.26: LowpassFilter and HighpassFilter are first-order (6 dB/oct). Limiter applies makeup gain and hard-clips. BrickwallLimiter with true_peak exists since 0.9.25. Distortion's default drive of 25 dB is very hot. Resample with ZeroOrderHold aliases, which suits SP-1200 emulation. Plugins that buffer can return fewer samples, so check output length.",
+   "source": "https://spotify.github.io/pedalboard/reference/pedalboard.html ; https://github.com/spotify/pedalboard/releases"
+  },
+  {
+   "fact": "pyloudnorm normalize.loudness is pure gain (no limiting, no true-peak handling). Procedure: set the bed relative to the music's LUFS, sum, gain to -14 LUFS, apply a true-peak brickwall at about -1 dB, then re-measure up to 3 times to within +/-0.1 LU. Input must be float, shaped (samples, channels).",
+   "source": "https://raw.githubusercontent.com/csteinmetz1/pyloudnorm/master/pyloudnorm/normalize.py ; https://raw.githubusercontent.com/csteinmetz1/pyloudnorm/master/pyloudnorm/util.py"
+  },
+  {
+   "fact": "numpy Generator streams and SIMD code paths can differ across builds and CPUs. Use an integer-hash PRNG (such as SplitMix64) for humanize timing, crackle and drift, pin numpy, and make canonical renders on one node type.",
+   "source": "https://numpy.org/doc/stable/reference/random/compatibility.html ; https://numpy.org/doc/stable/reference/simd/build-options.html"
+  },
+  {
+   "fact": "Byte-identical outputs differed between arm64 laptops and x86 nodes even with bitexact flags. The cluster render must be the canonical one, and laptop listening clips should be cluster renders pulled back.",
+   "source": "/Users/shresthrana/carc-workflow-kit/LESSONS.md:230-232"
+  },
+  {
+   "fact": "GitHub blocks files over 100 MiB and warns at 50 MiB. Fetch FluidR3_GM sf2 (141 MB), MuseScore_General sf2 (208 MB) and Salamander (296 MiB) by script; commit GeneralUser GS (about 30 MB), MuseScore_General sf3 (35.9 MB) and the small FreePats SF2s.",
+   "source": "https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github ; https://musescore.org/en/handbook/soundfont-0"
+  },
+  {
+   "fact": "The GeneralUser GS v2.0.3 license allows use in software and modification, with no attribution required. The author asks people not to hotlink his downloads and says he cannot be fully sure where every sample came from. It includes Tine EP, FM EP and the Jazz (32) and Brush (40) drum programs.",
+   "source": "https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/main/documentation/LICENSE.txt ; https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/main/documentation/README.md"
+  },
+  {
+   "fact": "No CC0 sampled Rhodes, felt piano, muted trumpet, celesta or music box was found. jRhodes3d samples are CC-BY-NC-4.0 (fetch only). Greg Sullivan E-Pianos (Wurlitzer EP200, CP80, Pianet T) are CC-BY 3.0.",
+   "source": "https://sfzinstruments.github.io/pianos/jrhodes3d ; https://github.com/sfzinstruments/GregSullivan.E-Pianos"
+  },
+  {
+   "fact": "CC0 options exist for most roles: FreePats upright piano, nylon guitar, clean jazz guitar, electric bass, tenor sax, pads and FM EP; VCSL and VSCO2 CE vibraphone, contrabass pizz, flute and percussion; Virtuosity Drums (1.1 GB) and Karoryfer Swirly brushes (1.7 GB), from which the needed hits should be extracted.",
+   "source": "https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html ; https://github.com/sgossner/VCSL ; https://github.com/sgossner/VSCO-2-CE ; https://versilian-studios.com/virtuosity-drums/"
+  },
+  {
+   "fact": "Do not commit Arachno (reproduction forbidden), 99Sounds (no redistribution), Pianobook, Looperman or commercial packs. Gogodze Phu Vol II is CC0 according to sfzinstruments but GPL-3 according to KVR, so check the bundled license.",
+   "source": "http://www.arachnosoft.com/main/soundfont.php ; https://99sounds.org/about/ ; https://www.kvraudio.com/product/gogodze-phu-vol-ii-by-karoryfer"
+  },
+  {
+   "fact": "Freesound serves original files only through OAuth2 (token access gives lossy previews), so commit the CC0 originals with a manifest of URL, author, license and SHA256. Rain candidates: 161705 (37.6 s, mono, with air-conditioner hits) and 235827 (3:16, 48 kHz/24-bit, with birdsong and distant thunder).",
+   "source": "https://freesound.org/docs/api/resources_apiv2.html ; https://freesound.org/people/allrealsound/sounds/161705/ ; https://freesound.org/people/Metadex/sounds/235827/"
+  },
+  {
+   "fact": "Practitioners put crackle and rain about 18-30 dB below the main elements (weak sources). Heavy, deliberate texture goes up to -12 to -8 dB.",
+   "source": "https://violetrecording.com/best-free-vinyl-crackle-samples/"
+  },
+  {
+   "fact": "Drum realism: accent beat 1 hardest, then 3, then 2 and 4, and vary the hats most. Flat velocities, copy-pasted hats and the same velocity pattern every bar sound fake. Round robins and velocity layers fix the machine-gun effect.",
+   "source": "https://splice.com/blog/humanize-your-drums/ ; https://www.kvraudio.com/forum/viewtopic.php?p=8380202"
+  },
+  {
+   "fact": "Low-interval limits: a major third goes muddy below about B1-D#2, and close voicings below C3 tend to be muddy. Rootless voicings need the root to sound in the bass.",
+   "source": "https://www.sweetwater.com/insync/low-interval-limit/ ; https://ledutu.com/en/learn/jazz/rootless-voicings/"
+  },
+  {
+   "fact": "CLAUDE.md forbids training on the laptop, so active pair selection needs either an explicit exception or a pair queue built nightly on the cluster.",
+   "source": "/Users/shresthrana/csci596-project/CLAUDE.md:14"
+  },
+  {
+   "fact": "The Phase 4 ablations (pairwise vs absolute; palette vs free-form; curriculum on/off) need absolute ratings and a free-form grammar, which nothing else in the plan produces.",
+   "source": "/Users/shresthrana/csci596-project/CLAUDE.md:106"
+  },
+  {
+   "fact": "Pre-registered final claims: in a blind A/B on 100 held-out briefs Shresth picks step-N over step-0 at least 70% of the time; knob obedience is at least 90%; within-group mean embedding distance stays at least 70% of its step-0 value.",
+   "source": "/Users/shresthrana/csci596-project/CLAUDE.md:110-113"
+  },
+  {
+   "fact": "Measure quality automatically on a small sample before asking a human to rate. Small models ignore format constraints, so use a deterministic repair stage that logs every repair, record finish_reason, and set sampling parameters explicitly (default sampling gave near-identical samples).",
+   "source": "/Users/shresthrana/carc-workflow-kit/LESSONS.md:203-210"
+  },
+  {
+   "fact": "The kit's approval format is a line of its own matching ^APPROVED by <Name> <YYYY-MM-DD>$. It can record ear-check and palette-freeze approvals.",
+   "source": "/Users/shresthrana/carc-workflow-kit/src/kit/gates.py:24 ; /Users/shresthrana/carc-workflow-kit/LESSONS.md:191-195"
+  },
+  {
+   "fact": "The kit's budget guard conflicts with CLAUDE.md. Its default max_project_sus is 250000, against the 1,000,000 SU target. It requires job names prefixed with the project name, but CLAUDE.md names jobs 'lofi-<purpose>'. It needs absolute --output log paths, but CLAUDE.md uses relative logs/%x_%j.out. A GPU job without -c/--mem is costed at 104 SU/min.",
+   "source": "/Users/shresthrana/carc-workflow-kit/config/budget.yaml:6-13 ; /Users/shresthrana/carc-workflow-kit/scripts/sbatch_guard.sh:276-279 ; /Users/shresthrana/csci596-project/CLAUDE.md:64-66"
+  },
+  {
+   "fact": "bootstrap.sh refuses any non-empty target, so it cannot run in /Users/shresthrana/csci596-project, where CLAUDE.md already exists. Bootstrap into a fresh directory and copy pieces over, or move CLAUDE.md aside first.",
+   "source": "/Users/shresthrana/carc-workflow-kit/bootstrap.sh:25-27"
+  },
+  {
+   "fact": "Project storage is /project2/<account> (1 TB shared by the class), not /project as CLAUDE.md:25 says. Scratch is about 10 TB and purged, and job $TMPDIR is a 126 GB tmpfs.",
+   "source": "/Users/shresthrana/carc-workflow-kit/LESSONS.md:59-60 ; /Users/shresthrana/carc-workflow-kit/PLAYBOOK.md:210"
+  },
+  {
+   "fact": "Discovery 'CPUs' are hardware threads: an EPYC 7542 is 32 cores / 64 threads, and render efficiency was 96/94/89/74/49% at 4/8/16/32/64 workers. A100 nodes hold 2 GPUs. Both shape the 16-to-256-core and 1-to-4-GPU scaling claims. A big render sweep should be one job with a worker pool, not a job array.",
+   "source": "/Users/shresthrana/carc-workflow-kit/LESSONS.md:37-43,226-229 ; https://www.carc.usc.edu/user-guides/hpc-systems/discovery/resource-overview-discovery"
+  },
+  {
+   "fact": "Known-good on Discovery: vllm 0.32.0, torch 2.13.0+cu130, driver 580 (CUDA 13). Compute nodes have outbound internet. No text-only instruct model has been verified there. The debug partition is one 2xA40 node that is often drained.",
+   "source": "/Users/shresthrana/carc-workflow-kit/PLAYBOOK.md:198-223 ; /Users/shresthrana/carc-workflow-kit/jobs/build_serve_env.sbatch:10-13"
+  },
+  {
+   "fact": "CLAUDE.md's make pull (runs/*/summary/ into runs/) merges same-named files from different runs. Its .rsyncignore omits logs/, opt/, jobs/submissions.log and checkpoint directories, which rsync --delete would then remove on the cluster.",
+   "source": "/Users/shresthrana/csci596-project/CLAUDE.md:52-55 ; /Users/shresthrana/carc-workflow-kit/LESSONS.md:113-119"
+  }
+ ],
+ "risks": [
+  "Listening hours overrun the Phase 2 window. About 1,500 votes on ~24 s clips take ~10 h with 10 s synced excerpts and ~23 h with full sequential A/B, which is 1.5-3.3 h/day across Nov 9-15. That is before adding triage (0.3-4 h), hidden repeats (+5-15%), anchors, Phase 1 auditions and ear checks (10 loops, the 50-clip gate, any stress set), nightly votes, the final 100-brief A/B (~40-90 min) and any by-ear ablations. BS.1116 fatigue limits (20-30 min sessions with equal rest) make more than about 1.5 h/day hard to sustain.",
+  "The 70% RM target may be at or above Shresth's own consistency ceiling. Reaching it needs repeat agreement of at least 58%. Researchers agreed only about 65% on pairs from the same policy, single-genre material roughly halved intra-rater consistency, and 200 held-out votes carry +/-6.4 pp.",
+  "1,500 votes is thin by published standards. Population music-preference RMs needed 5k-17.5k pairs to reach 67-71%, and text RMs stayed near chance below about 2k comparisons. Plan for a low-capacity head, learning curves at 200/400/800 votes, and a possible miss of the target.",
+  "Votes and RM embeddings are tied to palette_v1 renders. Any change after the freeze, or pilot votes taken before the Nov 8 freeze, invalidates those labels. Phase 1 must also fit the DSL, compiler, renderer, SFZ-to-SF2 conversions, license checks, auditions, 10 approved loops and the 500-sample gate into 7 days.",
+  "Licensing gaps. No CC0 sampled Rhodes, felt piano, muted trumpet, celesta or music box exists. jRhodes3d is non-commercial (fetch-only, so the public repo is not self-contained). Gogodze Phu has conflicting licenses, and GeneralUser's author cannot vouch for every sample. Several Freesound items were checked as CC0 only via the search filter, not on their pages. MERT is CC-BY-NC, which limits publishing anything derived from its weights. Private reference audio must never be committed.",
+  "Bit-identity will probably fail between arm64 macOS and x86 Rocky (FluidSynth, pedalboard, numpy SIMD). Within one machine, pyfluidsynth's dithered s16 path makes output depend on render order, FluidSynth effects are on by default, buffering plugins change output length, and CLAP's rand_trunc crops randomly. Canonical renders must therefore come from one cluster node type, so every laptop listening batch needs a pull and a Duo session.",
+  "The scorers may work against the lo-fi aesthetic. A CE reward under GRPO drove denser, more chromatic output and diversity collapse, and PC rewards more components. Audiobox never saw synthetic audio and shifts by more than 1 point with the renderer, and optimizing PQ hacked an independent check. CLAP is weak, misses negation, and may be saturated by the constant rain bed.",
+  "Over-optimization can arrive fast. A music user-preference RM was gamed in under 2,000 steps even with KL 0.001. TRL now defaults to beta=0 (no KL), and group-std reward scaling amplifies RM noise when completions are similar.",
+  "The scorer and training environments conflict. MERT's remote code breaks on transformers >=4.44, while vLLM 0.32 needs transformers 5.16-5.19. laion_clap needs a checkpoint patch, and the kit's fetch job skips its .pt file. Scorers may need their own environment, which costs env-build SU: the kit's serve-env build alone can reach 1,440 SU, above the 500 SU ask-first rule.",
+  "Votes can pick up confounds. If instruments, tempo, key or the rain excerpt differ within a pair, votes may reflect timbre or tempo likes rather than the writing. An identical rain excerpt heard thousands of times may fatigue or annoy the listener.",
+  "Excerpts can hide structure. A 10 s excerpt (about 3.3 bars at 80 BPM) never contains bar 8 or the loop seam unless the window is chosen deliberately, so turnarounds, fills and seams get no reward signal.",
+  "Near-empty loops over a pleasant, constant rain bed might score well with the RM or Audiobox (an inferred hack). Without a minimum-content gate the policy could drift toward sparse ambience.",
+  "The single-listener evaluation is open to bias. One person writes the briefs, picks checkpoints and judges. After ~1,500 Phase 2 votes he may recognize step-0 style, which weakens blinding, and selecting checkpoints on his votes or the tie rule can inflate the 70% claim.",
+  "Process friction. Duo means every cluster round-trip needs Shresth to open the ssh master, so a nightly vote-and-refresh loop needs him every day. Most training and env-build jobs exceed the 500 SU ask-first threshold.",
+  "Kit and CLAUDE.md conflicts must be settled before Phase 0 ends: /project vs /project2; lofi- vs lofi-rl- job names; relative log paths the guard will not create; the 250k vs 1M SU cap; git rev-parse on compute nodes; rsync --delete removing cluster-only files; make pull flattening run summaries; and bootstrap refusing the non-empty project directory.",
+  "Scaling claims rest on wrong hardware assumptions. The '64-core' main nodes are 64 hardware threads (32 cores), and A100 nodes hold 2 GPUs, so a 1-to-4 GPU step-time study needs multi-node runs or L40S nodes.",
+  "Base-model risk. Qwen3.5's hybrid layers have unverified training kernels and think by default, and Ministral recommends temperature below 0.1 while GRPO samples at 1.0. No benchmark measures DSL strictness, and constrained decoding's interaction with the IS correction is unverified.",
+  "The frontier seed pool carries the frontier model's style. If it is used for SFT, the near-copy penalty starts to bind. Provider terms on training models with their outputs also need checking; the reports do not cover this.",
+  "The GPU queue may delay early milestones. The debug partition is a single 2xA40 node that is often drained, and GPU waits depend on other jobs' age, so smoke_env and the Phase 2 GRPO smoke test may slip.",
+  "Taste drift and mood. Preferences shift across days and moods, so votes spread over 5+ weeks may not be stationary. Without repeat pairs and a recency rule, the RM chases a moving target."
+ ]
+}
