@@ -4,14 +4,79 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ## Status
 - **SU used:** 298.5 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 04:08).
-- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way: the rating page is committed (entry below); the compiler + renderer workflow is still running; then the shootout batches.
+- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way: the rating page and the compiler + renderer are committed (entries below). Next: a second review, a cluster render check, fader calibration, then the shootout batches (these need the asset download OK).
 - **Waiting on Shresth:**
   - the download OK for `docs/SHOOTOUT_ASSETS.md` (14 sources, 944 MB, all free licenses), and the Freesound rain file, which needs his login;
   - whether `scancel` may be used on our own jobs. It matters only for 13624408, which waits forever on a failed dependency and holds a 960 SU reservation plus one of the 8 concurrent-job slots.
 
 ---
 
-## 2026-10-31 (midday): rating page built, reviewed and fixed; checked in a real browser
+## 2026-10-31 (07:55 PDT): LoopScript compiler and renderer land, reviewed and fixed
+
+**What was done**
+- **Compiler + renderer** (workflow `wf_189b194e-1e1`: compiler build, then renderer build, then 3 review lenses — spec, time, determinism — with every finding re-checked by an independent verifier, then fixes with a failing test first; 9 agents, 810 tool calls, 3 h 25 min, per the workflow's completion notice). It follows instrument.md §3–4; the docs are `docs/COMPILER.md` and `docs/RENDER.md`.
+  - **Compiler:** `compile_loop(loop, brief, palette)` gives one cycle of note, controller and drum-hit events at exact sample positions.
+  - **Renderer:** `python -m lofi_rl.render.pipeline file.ls --mood … --energy … --bpm … --tonic … --palette … --out x.wav [--flac]` gives one seamless stereo cycle at −14 LUFS, plus `x.music.wav`, `x.manifest.json` and the FLAC.
+  - **New code:**
+    - `prng.py`, `brief.py`, `palette.py` and `theory/`;
+    - `compile/{timeline,drums,bass,keys,sax,expression,humanize,midi,compiler,events}.py`;
+    - `render/{sampler,mix,bed,pipeline,formats,machine}.py`.
+  - **New data:** `palettes/dev_gu.yaml` (GeneralUser GS only) and `tests/golden/render_hashes.json`.
+- **Key finding: FluidSynth's file player is not sample-accurate.** It sends events on a whole-millisecond clock at 64-sample block boundaries. With tick = sample, the cycles of a loop do not repeat: the 2nd and 3rd cycles differed by 0.043–0.095 at 61, 82, 87, 90 and 95 BPM (COMPILER.md §4.3). Two fixes together gave bit-identical cycles in every case tried:
+  - `midi.fluid_tick` puts each event in the block nearest its sample. Pitched notes land within ±32 samples; drums stay sample-exact.
+  - The MIDI holds 3 cycles, and the first is dropped as a pre-roll.
+- **Review.** It found 13 issues (6 spec, 1 time, 6 determinism). The verifiers confirmed 12, which are 9 distinct bugs: 7 fixed with a failing test first, 1 partly fixed, 1 left open.
+  - **High: FluidSynth reads `$HOME/.fluidsynth` on every start**, even with `-f`, so renders and the one-shot cache depended on the user's home. Now:
+    - every render runs with an empty HOME;
+    - it refuses to start if `/etc/fluidsynth.conf` holds commands;
+    - the one-shot cache key moved to `fluid-note/2`.
+  - **Medium:**
+    - a preset missing from its SoundFont was silently replaced by another; it is now refused at palette load and on FluidSynth's log line;
+    - a closed hat on the same step choked the open hat under humanize or per-lane swing;
+    - with an odd number of sax notes, the two notes at the seam shared a MIDI channel, so one note's scoop bent the other's release. A third channel now takes B's last note.
+  - **Low:**
+    - the palette's licence gate accepted non-commercial and all-rights-reserved sources as `mode: commit`; it is now an allow-list;
+    - a short FluidSynth output was zero-padded, and a silent stem passed; both are now errors;
+    - the CLI crashed with a traceback on a bad `--bpm` or `--tonic`; it now exits 2.
+  - **Partly fixed:** the laptop suite still takes just over 60 s, mostly `tests/test_sbatch_guard.py` (32.4 s per the fix agent).
+  - **Open:** a loop with no `sax:` line passes G3 (spec-5). The fix belongs in `dsl/parse.py`, outside this workflow's scope, and a strict xfail marks the gap.
+  - **Rejected by the verifier:** brief streams from seeds that differ by a multiple of 256 alias each other: `sample_brief(256, 0) == sample_brief(0, 1)`. No split builder uses two seeds yet. Hashing the seed first is cheap and should land before one does.
+- **My checks** (laptop, this session):
+  - **Tests:** `pytest -q` gives 1045 passed, 27 deselected, 1 xfailed in 61.40 s. `pytest -m cluster` gives 27 passed in 27.31 s.
+  - **Renders:** `example.ls` went through the CLI three ways (dev_gu, wistful, mid, 82 BPM, tonic 2):
+    - 4 workers;
+    - 1 worker with `PYTHONHASHSEED=4093`;
+    - `--cycles 3`.
+
+    All three gave `pcm_sha256` `6061a4a3…448500`, the hash in the golden file. Because the `--cycles 3` render is identical, the kept cycle is the steady state and loops seamlessly.
+  - **My own measurements of that render:**
+    - N = 1,032,576 (= 64·round(1,323,000/82));
+    - −14.003 LUFS by pyloudnorm over two loops (the pipeline says −14.008);
+    - true peak −1.495 dBTP by 4× `resample_poly` with the seam wrapped;
+    - `music.wav` equals the render (no bed);
+    - the FLAC is 16-bit, the same length, and within 2.00 LSB of the WAV.
+  - **Scope:** no file outside the workflow's scope changed, and no audio, SoundFont or MIDI file is in the commit.
+  - **Doc fix:** I added one line to COMPILER.md §4.3 pointing to the renderer's 3-cycle choice.
+- **Not calibrated yet: the bus faders.** `dev_gu` keeps `bus_gain_db` at 0. On the fixtures, the median bus loudness relative to the sax is bass −4.95, drums −15.42 and keys +1.74 LU (renderer agent's measurement). The palette's targets are −3, −1.5 and −6. The spec calibrates on the hand loops, but the shootouts come first, so calibration has to happen before any shootout render.
+- **Spec deviations**, documented in COMPILER.md and RENDER.md:
+  - MIDI ticks are not samples;
+  - the sax plays on 2–3 alternating channels;
+  - a loop's `sax:` line does not pick the sax; the palette's `sax_lead` does;
+  - FluidSynth's `synth.limiter.active` flag is dropped, because 2.6.1 rejects it;
+  - missing ±0.1 LU within 4 iterations is G7.
+
+**Failed approaches and why:** plain tick = sample MIDI, because FluidSynth's block dispatch breaks periodicity (above).
+
+**SU spent:** 0.
+
+**Next:**
+1. Settle `sax:` (the plan drops it once one sax survives) and hash the brief seed. Then a second review through lenses the first missed: music theory, cluster readiness and test strength.
+2. A cluster render check on two CPU models, giving canonical hashes and exercising the Linux FluidSynth wrapper under the new HOME rule.
+3. Calibrate the faders, then build the shootout palettes and renders once the asset download is approved.
+
+---
+
+## 2026-10-31 (07:09 PDT): rating page built, reviewed and fixed; checked in a real browser
 
 **What was done**
 - **Rating page** (workflow `wf_2d3622ca-180`: build, then 2 review lenses with every finding re-checked by an independent verifier, then fixes with a failing test first; 6 agents, 435 tool calls, 2 h 37 min, per the workflow's completion notice). It follows taste_pipeline.md §1–2:

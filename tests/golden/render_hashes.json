@@ -1,0 +1,42 @@
+{
+  "about": "pcm_sha256 (float32 little-endian samples, interleaved) of render.wav and music.wav, keyed by lofi_rl.render.machine.golden_key() and then by 'fixture|mood|energy|bpm|tonic', palette dev_gu. Cluster renders are canonical (docs/kit/LESSONS.md 38); record a key with LOFI_RECORD_GOLDEN (tests/test_determinism.py).",
+  "keys": {
+    "Darwin-arm64/fluidsynth-2.6.1/numpy-1.26.4": {
+      "example.ls|wistful|mid|82|2": {
+        "audio_sha256": "6061a4a3b372fa0a77e57e6c6f9f5efd49a59f05f2d211ed6cbf5eec1a448500",
+        "music_sha256": "6061a4a3b372fa0a77e57e6c6f9f5efd49a59f05f2d211ed6cbf5eec1a448500",
+        "n": 1032576
+      },
+      "example_leniency.ls|wistful|mid|82|2": {
+        "audio_sha256": "6061a4a3b372fa0a77e57e6c6f9f5efd49a59f05f2d211ed6cbf5eec1a448500",
+        "music_sha256": "6061a4a3b372fa0a77e57e6c6f9f5efd49a59f05f2d211ed6cbf5eec1a448500",
+        "n": 1032576
+      },
+      "leniency_lower_x.ls|wistful|mid|82|2": {
+        "audio_sha256": "ec884f970b68d8c6c8379454ddffa13825bba2ff72fcb63210a960ade76415e1",
+        "music_sha256": "ec884f970b68d8c6c8379454ddffa13825bba2ff72fcb63210a960ade76415e1",
+        "n": 1032576
+      },
+      "one_bar_base.ls|wistful|mid|82|2": {
+        "audio_sha256": "31fdfbaa4f5fd6dfd2e6af69e26972dc14d5e0c0ea43c98d6a0e309f7705cb6f",
+        "music_sha256": "31fdfbaa4f5fd6dfd2e6af69e26972dc14d5e0c0ea43c98d6a0e309f7705cb6f",
+        "n": 1032576
+      },
+      "shaker_edits.ls|hopeful|high|95|7": {
+        "audio_sha256": "98b3ef3e0df30c6dbf74283577a73b3a620d24e14d15193c7620271ab830319b",
+        "music_sha256": "98b3ef3e0df30c6dbf74283577a73b3a620d24e14d15193c7620271ab830319b",
+        "n": 891264
+      },
+      "shaker_edits.ls|wistful|mid|82|2": {
+        "audio_sha256": "bf8b4f1eb91dafe5a66e357b165cb97de3361be3c7fbbc317a5ed1f533c0a242",
+        "music_sha256": "bf8b4f1eb91dafe5a66e357b165cb97de3361be3c7fbbc317a5ed1f533c0a242",
+        "n": 1032576
+      },
+      "span1_dotted.ls|wistful|mid|82|2": {
+        "audio_sha256": "703079f8c975784839db6e7a3d4a5e923476218dc4ecb3d1bb5372826f5e97c0",
+        "music_sha256": "703079f8c975784839db6e7a3d4a5e923476218dc4ecb3d1bb5372826f5e97c0",
+        "n": 1032576
+      }
+    }
+  }
+}

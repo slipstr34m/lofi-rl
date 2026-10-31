@@ -1,0 +1,148 @@
+# Development palette: GeneralUser GS only (assets/MANIFEST.yaml), so every LoopScript compiles and renders
+# before the Phase-1 shootout assets exist. It is not a shootout result and is never frozen; the project
+# palette is palettes/lofi_rain_v1.yaml, frozen at the end of Phase 1 (docs/DECISIONS.md D-017).
+# Schema: docs/design/instrument.md section 6, validated by src/lofi_rl/palette.py (every key is required,
+# so this file's sha256 pins every value the compiler reads). Every audible value here is a starting point
+# for an ear check or a shootout (instrument.md header); none is a claim about how anything sounds.
+id: dev_gu
+frozen: null
+sr: 44100
+assets_root: $LOFI_ASSETS            # fetch-mode sources resolve here; commit-mode paths are repo-relative
+
+sources:
+  gu:
+    path: assets/soundfonts/generaluser-gs/GeneralUser-GS.sf2
+    sha256: 9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe
+    license: GeneralUser GS License v2.0 (permissive; use, modification and redistribution allowed)
+    mode: commit
+    url: https://github.com/mrbumpy409/GeneralUser-GS
+    converted_from: null
+    attribution: null
+
+# Sounding MIDI ranges from instrument.md section 3. `home` is the band the brief's tonic is placed in.
+sax:
+  tenor: {src: gu, bank: 0, prog: 66, play: [44, 75], comfort: [48, 72], home: [50, 61]}   # GU "Tenor Sax"
+  alto: {src: gu, bank: 0, prog: 65, play: [49, 80], comfort: [55, 77], home: [57, 68]}    # GU "Alto Sax"
+sax_lead: tenor          # one sax plays every loop (TASTE.md, Lead); a loop's `sax:` line does not choose it
+
+keys:
+  rhodes: {src: gu, bank: 0, prog: 4, vel: {X: 96, x: 80, g: 52}}     # GU "Tine Electric Piano"
+  organ: {src: gu, bank: 0, prog: 16, vel: {X: 96, x: 80, g: 52}}     # GM Drawbar Organ; GU 2.0.3 calls it "Tonewheel Organ"
+
+# Each kit carries its paired bass (instrument.md section 6). A one-shot here is a GU drum note: the renderer
+# renders bank/prog/note at `vel` once and caches it, then the sampler plays it at groove.drum_gain[level].
+kits:
+  jazz:
+    bass: {src: gu, bank: 0, prog: 32, vel: {X: 104, x: 88, g: 64}}  # GU "Acoustic Bass"
+    choke: [[ohat, hat]]                                              # [choked lane, choking lane]
+    lanes:
+      kick:                                                           # GU Jazz kit note 36 "Jazz Bass Drum"
+        soft: [{src: gu, bank: 128, prog: 32, note: 36, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 36, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 36, vel: 112}]
+        pan: 0.0
+        db: 0.0
+      snare:                                                          # note 38 "Jazz Snare 1"
+        soft: [{src: gu, bank: 128, prog: 32, note: 38, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 38, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 38, vel: 112}]
+        pan: 0.0
+        db: 0.0
+      rim:                                                            # note 37 "Jazz Rim Shot"
+        soft: [{src: gu, bank: 128, prog: 32, note: 37, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 37, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 37, vel: 112}]
+        pan: 0.0
+        db: 0.0
+      hat:                                                            # note 42, closed hi-hat
+        soft: [{src: gu, bank: 128, prog: 32, note: 42, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 42, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 42, vel: 112}]
+        pan: 0.0
+        db: 0.0
+      ohat:                                                           # note 46, open hi-hat
+        soft: [{src: gu, bank: 128, prog: 32, note: 46, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 46, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 46, vel: 112}]
+        pan: 0.0
+        db: 0.0
+      shaker:                                                         # note 82 "Shaker"
+        soft: [{src: gu, bank: 128, prog: 32, note: 82, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 82, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 82, vel: 112}]
+        pan: 0.0
+        db: 0.0
+
+# Dev stand-ins: every placeholder name of the DSL's default vocabulary (src/lofi_rl/dsl/vocab.py) maps
+# onto a GU instrument here, so existing fixtures and seed loops compile. Applied by parse() through
+# Palette.vocab() and by compile_loop(); the frozen palette lists only shootout survivors.
+aliases: {ep: rhodes, wurli: rhodes, piano: rhodes, guitar: rhodes, dusty: jazz, brushes: jazz}
+
+chords:
+  numerals: [I, bII, II, bIII, III, IV, V, bVI, VI, bVII, VII]
+  qualities: [maj7, maj9, "maj7#11", "7", "9", "13", 7sus, 7b9, "7#9", m7, m9, m11, m7b5, dim7]
+voicings: [rootless, shell, spread, quartal]
+
+groove:
+  swing: {default: 0.55}       # MPC 16th swing per timing lane (kick snare rim hat ohat shaker keys bass sax)
+  offset_ms: {}                # fixed per-lane nudges, e.g. {snare: -4.0}
+  humanize: "off"              # off | bar (H1, same nudge every bar) | loop (H2, varies by bar); shootout only
+  humanize_ms: 3.0             # timing, uniform within +-3 ms
+  humanize_vel: 0.08           # velocity, uniform within +-8 %
+  humanize_lanes: [kick, snare, rim, hat, ohat, shaker, bass, keys]
+  drum_gain: {X: 1.0, x: 0.71, g: 0.32}
+  metric_db:                   # per step 1..16 of each bar: steps 1, 9 at 0; 5, 13 at -1; other odd -2; even -4
+    lanes: [hat, shaker]
+    db: [0.0, -4.0, -2.0, -4.0, -1.0, -4.0, -2.0, -4.0, 0.0, -4.0, -2.0, -4.0, -1.0, -4.0, -2.0, -4.0]
+
+sax_expr:
+  enabled: true                # false: the control clip (no bend, flat CC11 and velocity)
+  timing: grid                 # grid (the band's swung grid) | lag | swung (8th-note swing), instrument.md s.8 issue 2
+  lag_ms: 25.0                 # used by timing: lag
+  swing8: 0.6                  # used by timing: swung (MPC % applied to 8ths)
+  bend_range: 2                # semitones, set by RPN 0 at t = 0
+  bend_every_ms: 10.0
+  cc11_every_ms: 20.0
+  gap_ms: 15.0                 # note-off this long before a note that follows immediately
+  scoop: {min_steps: 4, leap: 3, cents: -60.0, ms: 80.0}
+  vibrato: {min_steps: 8, start: 0.35, fade_ms: 300.0, cents: 18.0, rate_hz: 5.5}
+  cc11: {short: 110, long_steps: 8, long_base: 100, long_swell: 27, last: 80, last_share: 0.4}
+  velocity: {base: 92, bar_start: 8, beat3: 4, sixteenth: -10, phrase_start: 6, min: 60, max: 112}
+
+# Read by the renderer, not the compiler: bus chains as [pedalboard plugin, parameters] in order
+# (instrument.md section 4; parameters the spec leaves open are written out at pedalboard 0.9.26's defaults).
+mix:
+  bus_gain_db: {sax: 0.0, drums: 0.0, bass: 0.0, keys: 0.0}        # uncalibrated: set from bus_target_lu
+  bus_target_lu: {sax: 0.0, drums: -1.5, bass: -3.0, keys: -6.0}   # median bus loudness on the hand loops
+  sax_warm: false
+  buses:
+    sax:
+      - [HighpassFilter, {cutoff_frequency_hz: 140.0}]
+      - [PeakFilter, {cutoff_frequency_hz: 450.0, gain_db: -2.0, q: 1.0}]
+      - [Compressor, {threshold_db: -20.0, ratio: 3.0, attack_ms: 8.0, release_ms: 120.0}]
+      - [PeakFilter, {cutoff_frequency_hz: 2800.0, gain_db: 2.0, q: 0.8}]
+      - [Reverb, {room_size: 0.22, damping: 0.55, wet_level: 0.07, dry_level: 1.0, width: 1.0}]
+    sax_warm:                  # replaces the sax reverb when sax_warm is true
+      - [HighShelfFilter, {cutoff_frequency_hz: 4000.0, gain_db: -5.0, q: 0.70710678}]
+      - [LowpassFilter, {cutoff_frequency_hz: 9000.0}]
+      - [Reverb, {room_size: 0.35, damping: 0.7, wet_level: 0.12, dry_level: 1.0, width: 1.0}]
+    keys:
+      - [HighpassFilter, {cutoff_frequency_hz: 120.0}]
+      - [PeakFilter, {cutoff_frequency_hz: 400.0, gain_db: -3.0, q: 0.70710678}]
+      - [Compressor, {threshold_db: -18.0, ratio: 2.0, attack_ms: 20.0, release_ms: 150.0}]
+      - [Reverb, {room_size: 0.3, damping: 0.5, wet_level: 0.1, dry_level: 1.0, width: 1.0}]
+    bass:
+      - [HighpassFilter, {cutoff_frequency_hz: 30.0}]
+      - [PeakFilter, {cutoff_frequency_hz: 250.0, gain_db: -2.0, q: 0.70710678}]
+      - [Compressor, {threshold_db: -20.0, ratio: 4.0, attack_ms: 15.0, release_ms: 120.0}]
+    drums:
+      - [HighpassFilter, {cutoff_frequency_hz: 30.0}]
+      - [PeakFilter, {cutoff_frequency_hz: 350.0, gain_db: -2.5, q: 0.70710678}]
+      - [Compressor, {threshold_db: -16.0, ratio: 3.0, attack_ms: 10.0, release_ms: 80.0}]
+  master:
+    - [HighpassFilter, {cutoff_frequency_hz: 25.0}]
+    - [PeakFilter, {cutoff_frequency_hz: 300.0, gain_db: -1.5, q: 0.7}]
+    - [Compressor, {threshold_db: -12.0, ratio: 1.5, attack_ms: 30.0, release_ms: 200.0}]
+
+bed: null                      # no rain source in GeneralUser GS; the renderer renders without a bed
+loudness: {lufs: -14.0, tol: 0.1, iters: 4, ceiling_dbtp: -1.0}
