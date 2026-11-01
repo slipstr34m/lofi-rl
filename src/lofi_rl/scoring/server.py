@@ -267,7 +267,7 @@ def build_scorer(a: argparse.Namespace) -> Scorer:
         featurizer: Any = Featurizer(device=a.device, gpu_mem_gb=a.gpu_mem_gb)
     else:
         from .fakes import FakeFeaturizer
-        featurizer = FakeFeaturizer()
+        featurizer = FakeFeaturizer(render=render)      # its feat_ver names the renderer (the cache key)
     if render == "real":
         renderer: Any = RenderPool(a.palette, workers=a.workers, render_workers=a.render_workers,
                                    timeout_s=a.render_timeout_s,

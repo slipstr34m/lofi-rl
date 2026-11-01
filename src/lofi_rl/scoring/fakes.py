@@ -7,6 +7,8 @@ fake RM of the cluster smoke. Nothing here renders or hears audio, and no value 
 - FakeFeaturizer: features drawn from a generator seeded by the clip's canonical sha256, in the real shapes
   (13 x 768 MERT, 4 x 512 unit CLAP rows); Audiobox scores from the same seed, or from `audiobox` overrides.
   encode_text gives unit vectors seeded by each text. `raise_for` names clips whose featurization raises.
+  `render` is the renderer it runs with ("fake" or "real", --render), and its feat_ver names it, so records of
+  fake renders are never served to a real-render rehearsal on the same --cache, or the other way round.
 - TableRM: utilities and P_acc looked up by canonical sha256 (hand-built cases); FakeRM: computed from the
   features (the smoke, on real features). load_fake_rm(dir) is an rm.json factory for FakeRM.
 The server runs them with --backend fake; /health then says "backend": "fake", which a real client refuses.
@@ -79,9 +81,10 @@ class FakeFeaturizer:
     name = "fake"
 
     def __init__(self, *, audiobox: Mapping[str, Mapping[str, float]] | None = None,
-                 raise_for: Iterable[str] = ()) -> None:
+                 raise_for: Iterable[str] = (), render: str = "fake") -> None:
+        self.render = render
         self.src_sha8 = source_sha8()
-        self.feat_ver = feat_version("fake", src=self.src_sha8)
+        self.feat_ver = feat_version("fake", src=self.src_sha8, render=render)
         self.audiobox, self.raise_for = dict(audiobox or {}), set(raise_for)
         self.calls: list[str] = []
         self.device = "fake"

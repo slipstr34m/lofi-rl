@@ -82,7 +82,7 @@ def test_health_reports_versions_terms_and_every_missing_calibration(tmp_path):
         h = client.health()
     assert h["ok"] is True and h["protocol"] == protocol.PROTOCOL and h["backend"] == "fake"
     assert set(h["versions"]) == set(protocol.VERSION_KEYS) and h["versions"]["rm_ver"] == "null"
-    assert h["versions"]["feat_ver"].startswith("fake1.") and h["palette_sha256"] == PAL.sha256
+    assert h["versions"]["feat_ver"].startswith("fake1.render-fake.") and h["palette_sha256"] == PAL.sha256
     assert h["terms"] == {k: False for k in protocol.TERM_FLAGS}
     assert sorted(h["disabled"]) == sorted(protocol.TERM_FLAGS)
     cal = h["calibration"]

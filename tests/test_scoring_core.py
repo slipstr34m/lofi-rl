@@ -279,6 +279,23 @@ def test_a_record_for_another_feat_ver_clip_or_schema_is_a_miss(tmp_path):
     assert a_cache.get(cid) is None and a_cache.counters()["bad"] == 2
 
 
+def test_fake_features_with_another_renderer_are_another_cache(tmp_path):
+    # --backend fake with --render fake and with --render real on one --cache: neither serves the other's records
+    # (a fake render's "ok", exactly -14.0 LUFS, would hide a real G7).
+    class StandIn(fakes.FakeRenderer):                  # in place of the real pool
+        name = "real"
+    root = tmp_path / "cache"
+    a = make_scorer(tmp_path, cache_root=root)
+    assert a.score(_req([EX]))["items"][0]["diag"]["cache"] == "miss"
+    r = StandIn()
+    b = make_scorer(tmp_path, cache_root=root, renderer=r)
+    assert b.score(_req([EX]))["items"][0]["diag"]["cache"] == "miss" and len(r.calls) == 1
+    assert "render-fake" in a.featurizer.feat_ver and "render-real" in b.featurizer.feat_ver
+    assert make_scorer(tmp_path, cache_root=root).score(_req([EX]))["items"][0]["diag"]["cache"] == "disk"
+    with pytest.raises(ValueError, match="renders with 'real'"):
+        make_scorer(tmp_path, renderer=StandIn(), featurizer=fakes.FakeFeaturizer())
+
+
 def test_the_memory_lru_evicts_the_oldest_clip(tmp_path):
     renderer = fakes.FakeRenderer()
     scorer = make_scorer(tmp_path, renderer=renderer, lru=2)

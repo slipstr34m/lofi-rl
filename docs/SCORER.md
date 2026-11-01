@@ -294,7 +294,10 @@ rewarded**; PC and CU are logged as signatures (`sig`, `diag`).
 failures), `FakeFeaturizer` (features of the real shapes drawn from a seeded generator; Audiobox overrides;
 injectable exceptions), `TableRM` (hand-built utilities and P_acc), `FakeRM` and `load_fake_rm` (utilities from
 the features, for the cluster smoke). They never render or hear audio. `python -m lofi_rl.scoring.server
---backend fake` serves them; `--backend fake --render real` renders for real with fake features.
+--backend fake` serves them; `--backend fake --render real` renders for real with fake features. The fake
+featurizer's feat_ver names its renderer (`fake1.render-fake.w4.src-…`, `fake1.render-real.w4.src-…`), so the
+two rehearsals never serve each other's records from one `--cache`, and a Scorer refuses a featurizer whose
+feat_ver names another renderer than the one it runs (the real featurizer names `real`).
 
 ## 10. The reward hook (`lofi_rl.rl.reward`)
 - **Switch:** `make_reward(..., scorer=...)`: None reads `$LOFI_SCORER_SOCK` (unset or empty: no scorer), False
@@ -350,7 +353,7 @@ the features, for the cluster smoke). They never render or hear audio. `python -
 |---|---|
 | `test_scoring_protocol.py` | clip id = the shootout formula, its parts, canonical-form sharing; request round trips; 25 malformed requests; NaN; response and health checks; pinned versions |
 | `test_scoring_server.py` | the real server on a real socket with fakes: health, score (order, fields, dedup, memory hits, stats), render, 400/404/405/413, 500 with its trace, a 500 for a render from a drifted worker or of another clip id, 409, render gate and infrastructure failures, mode 0600, the path rules, close() leaving a socket that replaced its own, the client's errors, a real client refusing a fake backend, SIGTERM and SIGINT removing the socket (a subprocess), exit 2 on a foreign path |
-| `test_scoring_core.py` | G on 11 hand-built cases, PAR on hand-built utilities, the RM with and without references, the 422, the theme margin on hand-built embeddings, the prompt file, every term off without calibration and on with it, CE that fails its check, the disk cache read by a fresh scorer, an unreadable file, records of another feat_ver, clip or schema read as misses, feat_ver following the source files, LRU eviction, the fakes |
+| `test_scoring_core.py` | G on 11 hand-built cases, PAR on hand-built utilities, the RM with and without references, the 422, the theme margin on hand-built embeddings, the prompt file, every term off without calibration and on with it, CE that fails its check, the disk cache read by a fresh scorer, an unreadable file, records of another feat_ver, clip or schema read as misses, feat_ver following the source files, fake features of another renderer in another cache, LRU eviction, the fakes |
 | `test_scoring_calib_rm.py` | the calibration and RM loaders: missing, valid, every malformed case, CE thresholds, exit 2 before binding |
 | `test_scoring_render.py` | two real renders through the pool (example.ls, dev_gu): `/score`, where the mix and music stem reach the featurizer once and their hashes match the manifest and the laptop's golden hashes, and `/render` to a FLAC and manifest named by clip id with the same PCM, the clip id equal to the shootout's id of that manifest; a gate failure in a worker, a batch past its deadline, a broken pool (in flight, and found broken at submit after a worker died between batches), a worker's child process ended by the pool's kill, a worker ending itself after its server's SIGKILL, workers on other code or another palette refused at warm and after a restart, the centroid |
 | `test_scoring_reward_hook.py` | the no-scorer golden byte for byte; the env var; G, r, gate and the new fields with a stand-in client; the CE rule; failures raise; nothing sent without a pass; TRL hooks; the real client and server end to end |

@@ -13,7 +13,8 @@ audiobox_aesthetics are imported inside Featurizer, so this module imports on th
 
 feat_version(): the models, the windows, and a sha256 of the code a clip's audio and features come from (the
 render pipeline, the DSL, the compiler, this module): a render-code change starts a new cache directory instead
-of reusing features of other audio (docs/SCORER.md §8).
+of reusing features of other audio (docs/SCORER.md §8). The fake featurizer's version also names the renderer
+it runs with (fake or real), since a cached record holds that renderer's outcome.
 """
 from __future__ import annotations
 
@@ -51,10 +52,11 @@ def source_sha8(root: Path = ROOT, globs: tuple[str, ...] = SOURCE_GLOBS) -> str
     return h.hexdigest()[:8]
 
 
-def feat_version(kind: str = "real", root: Path = ROOT, *, src: str | None = None) -> str:
-    """The feature version (module docstring); `src` is the source_sha8 it names (computed from `root` if None)."""
+def feat_version(kind: str = "real", root: Path = ROOT, *, src: str | None = None, render: str = "fake") -> str:
+    """The feature version (module docstring); `src` is the source_sha8 it names (computed from `root` if None).
+    A fake kind names its renderer: `fake1.render-fake...` and `fake1.render-real...` never share a cache."""
     base = (f"feat1.mert-{MERT[1][:8]}.clap-{CLAP[1][:8]}.abx-{AUDIOBOX_PKG}.w{WINDOWS}" if kind == "real"
-            else f"{kind}1.w{WINDOWS}")
+            else f"{kind}1.render-{render}.w{WINDOWS}")
     return f"{base}.src-{source_sha8(root) if src is None else src}"
 
 
@@ -87,6 +89,7 @@ class Featurizer:
     CLAP text embeddings for the theme prompts."""
 
     name = "real"
+    render = "real"                 # the renderer its records come from: the scorer refuses another
 
     def __init__(self, *, device: str = "cuda", gpu_mem_gb: float = 6.0, tmp_dir: Path | str | None = None) -> None:
         os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")     # deterministic cuBLAS

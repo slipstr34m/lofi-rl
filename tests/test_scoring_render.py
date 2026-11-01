@@ -30,7 +30,7 @@ class RecordingFeaturizer(fakes.FakeFeaturizer):
     """The fake features, plus what the pool handed over for each clip."""
 
     def __init__(self):
-        super().__init__()
+        super().__init__(render="real")
         self.seen = []
 
     def featurize(self, clip_id, canon, mix, music):

@@ -155,9 +155,10 @@ def make_scorer(tmp_path: Path, *, calib_dir: Path | None = None, rm=None, rm_di
     from lofi_rl.scoring.cache import FeatureCache
     from lofi_rl.scoring.core import Scorer
     from lofi_rl.scoring.render_pool import render_config
-    featurizer = featurizer or fakes.FakeFeaturizer()
+    renderer = renderer or fakes.FakeRenderer()
+    featurizer = featurizer or fakes.FakeFeaturizer(render=renderer.name)
     cfg = theme.load_config()
-    return Scorer(palette=load_palette(PALETTE, verify=False), renderer=renderer or fakes.FakeRenderer(),
+    return Scorer(palette=load_palette(PALETTE, verify=False), renderer=renderer,
                   featurizer=featurizer, theme=theme.Theme(cfg, featurizer.encode_text),
                   calib=calib.load(calib_dir, theme_sha256=cfg.sha256),
                   rm=rm if rm is not None else rm_api.load_rm(rm_dir),

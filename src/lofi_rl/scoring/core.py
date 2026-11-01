@@ -112,6 +112,10 @@ class Scorer:
                          "render_ver": protocol.render_version(render_cfg)}
         if cache.feat_ver != featurizer.feat_ver:
             raise ValueError(f"the cache is for {cache.feat_ver}, the featurizer makes {featurizer.feat_ver}")
+        made_for = getattr(featurizer, "render", None)
+        if made_for is not None and made_for != renderer.name:
+            raise ValueError(f"the featurizer's feat_ver names the {made_for!r} renderer, but this scorer renders "
+                             f"with {renderer.name!r}: its records would be cached as the other renderer's")
         self.lock = threading.Lock()
         self._stats_lock = threading.Lock()
         self.t0 = time.time()
