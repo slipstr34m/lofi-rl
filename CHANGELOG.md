@@ -26,7 +26,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
-## 2026-11-01 (13:45 PST): Shresth kept 10 of the 30 drafts; no redrafts
+## 2026-11-01 (13:38 PST): Shresth kept 10 of the 30 drafts; no redrafts
 
 **What was done**
 - **`b1101-keep3` voted:** 10 of 10 rounds, 13:2x–13:37 PST, ui `2beeee4ab4b4`. No round was marked "none acceptable", so no brief needs a redraft. Votes backed up as commit `085f8d2` (private repo and `$REMOTE_KEEP/votes/`).
@@ -40,7 +40,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
-## 2026-11-01 (13:25 PST): keep3 batch and Day 3 rendered on the cluster; the v2 no-grammar measurement and GRPO prep under way
+## 2026-11-01 (13:29 PST): keep3 batch and Day 3 rendered on the cluster; the v2 no-grammar measurement and GRPO prep under way
 
 **What was done**
 - **Sync** of `de88fc4`. Its 1 deletion was not protected. The scorer smoke 13651611, still PENDING, has an unchanged code path since its submission (`e636485`; empty `git diff --stat` over scoring, render, compile, dsl, palette, kit, the job and its env).
@@ -68,7 +68,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
-## 2026-11-01 (13:40 PST): the 30 keep3 drafts, the draft palette and the lofi-drafts job merged
+## 2026-11-01 (13:24 PST): the 30 keep3 drafts, the draft palette and the lofi-drafts job merged
 
 **What was done**
 - **Merged `worktree-wf_6930ad87-bf9-1`** with no conflicts. Workflow `wf_6930ad87-bf9` had 12 agents:
@@ -96,7 +96,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
-## 2026-11-01 (13:15 PST): D-020 arm B (v2 + grammar) ran and is valid: pass_not_copy 446/500; Day 3 merged; freeze lifted
+## 2026-11-01 (13:03 PST): D-020 arm B (v2 + grammar) ran and is valid: pass_not_copy 446/500; Day 3 merged; freeze lifted
 
 **What was done**
 - **`lofi-junk-rate` 13640325** (arm B: `500 2026 1 v2`, `-p gpu`): A40 node b10-11. It started at 12:51:22 and COMPLETED 0:0 in 00:05:30, 99.0 SU (`session_report.py`), `JUNK_RATE_OK`.
