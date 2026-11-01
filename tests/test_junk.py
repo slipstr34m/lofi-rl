@@ -778,6 +778,25 @@ def test_generate_stops_at_its_deadline_and_keeps_every_finished_chunk(tmp_path,
     assert meta["generated"] == 8 and meta["requested"] == 10 and meta["stopped"] == "deadline"
 
 
+def test_a_slow_first_chunk_does_not_stop_a_run_that_fits(tmp_path, pal, monkeypatch):
+    """D-020 check F10: chunk 1 also pays the one-time grammar compile, so once later chunks exist the deadline
+    forecast reads them. Chunk 1 takes 150 s and the others 50 s, against a 400 s deadline: the old forecast
+    (longest chunk x 1.25) stopped after 12 of 16 rows (250 + 187.5 > 400); all 16 now finish by 300 s."""
+    clock = [0.0]
+
+    class Compiling(FakeEngine):
+        def chat(self, convs, sp):
+            self.step_s = 150.0 if not self.calls else 50.0
+            return super().chat(convs, sp)
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: Compiling([ORIG], clock=clock))
+    monkeypatch.setattr(junk, "_now", lambda: clock[0])
+    rc = junk.main(["generate", "--run", str(tmp_path), "--n", "16", "--chunk", "4", "--deadline-s", "400",
+                    "--palette", str(DEV), "--hang-s", "0"])
+    assert rc == 0
+    meta = json.loads((tmp_path / "summary" / "generate.json").read_text())
+    assert meta["generated"] == 16 and meta["stopped"] is None and clock[0] == 300.0
+
+
 def test_generate_records_an_engine_failure_and_exits_nonzero(tmp_path, pal, monkeypatch):
     class Broken(FakeEngine):
         def chat(self, convs, sp):
@@ -975,19 +994,22 @@ def test_render_samples_passing_loops_and_merges_g7_into_the_summary(tmp_path, p
         return {"i": row["i"], "ok": True, "gate": None, "clip": f"clips/{row['i']:04d}.flac"}
     monkeypatch.setattr(junk, "render_clip", fake_clip)
     assert junk.main(["render", "--run", str(tmp_path), "--k", "3", "--palette", str(DEV), "--no-verify"]) == 0
-    assert calls == junk.sample_indices([0, 1, 2, 3], 3, seed=1), "the brief seed from generate.json"
+    scored = {r["i"]: r for r in map(json.loads, (tmp_path / "summary" / "scored.jsonl").read_text().splitlines())}
+    pool = [i for i, r in scored.items() if r["ok"] and not r["near_copy"]]       # D-020: copies are not ear-checked
+    assert pool and len(pool) < sum(r["ok"] for r in scored.values()), "the fixture has a passing near-copy to skip"
+    assert calls == junk.sample_indices(pool, 3, seed=1), "the brief seed from generate.json"
     clips = json.loads((tmp_path / "summary" / "clips.json").read_text())
     assert [c["i"] for c in clips["clips"]] == calls and clips["k"] == 3 and clips["seed"] == 1
+    assert clips["passing"] == len(pool)
     assert all("copy_jaccard" in c and "brief" in c for c in clips["clips"])
-    scored = {r["i"]: r for r in map(json.loads, (tmp_path / "summary" / "scored.jsonl").read_text().splitlines())}
     for c in clips["clips"]:
         assert (c["copy_reference"], c["quasi_copy"]) == (scored[c["i"]]["copy_reference"], scored[c["i"]]["quasi_copy"])
         assert c["copy_reference"] == "example"
     s = json.loads((tmp_path / "summary" / "junk.json").read_text())
     want_fail = int(3 in calls)
     assert s["failures"]["G7"] == want_fail
-    assert s["render"] == {"attempted": 3, "rendered": 3 - want_fail, "G7": want_fail, "other_gates": 0,
-                           "errors": 0, "skipped": 0, "seed": 1, "k": 3}
+    assert s["render"] == {"attempted": len(calls), "rendered": len(calls) - want_fail, "G7": want_fail,
+                           "other_gates": 0, "errors": 0, "skipped": 0, "seed": 1, "k": 3}
     assert not (tmp_path / "inbox").exists()
 
 
@@ -1001,11 +1023,11 @@ def test_render_reports_infrastructure_errors_and_deadline_skips(tmp_path, pal, 
         return {"i": row["i"], "ok": False, "gate": None, "error": "FluidSynthError: no SoundFont"}
     monkeypatch.setattr(junk, "render_clip", fake_clip)
     monkeypatch.setattr(junk, "_now", lambda: clock[0])
-    rc = junk.main(["render", "--run", str(tmp_path), "--k", "4", "--deadline-s", "150", "--palette", str(DEV),
+    rc = junk.main(["render", "--run", str(tmp_path), "--k", "4", "--deadline-s", "50", "--palette", str(DEV),
                     "--no-verify"])
     assert rc == 1, "an infrastructure error is not a gate"
     s = json.loads((tmp_path / "summary" / "junk.json").read_text())
-    assert s["render"]["errors"] == 2 and s["render"]["skipped"] == 2 and s["failures"]["G7"] == 0
+    assert s["render"]["errors"] == 1 and s["render"]["skipped"] == 1 and s["failures"]["G7"] == 0   # 2 non-copies
 
 
 @pytest.mark.cluster

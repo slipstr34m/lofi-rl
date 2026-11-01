@@ -17,8 +17,9 @@
 #   2. score (policy env): gates G1-G6 and compile -> summary/junk.json: pass rate and CI, the count per gate,
 #      repairs and P_fix, token lengths and truncations, near-copies of the example each row's prompt showed and the
 #      copy readouts, the prompt version (read from generate.json) and its sha
-#   3. render (scorer env): a seeded sample of 50 gate-passing loops with dev_gu to one-pass FLACs under clips/, for
-#      a later ear check (nothing goes to the inbox); their G7 count is merged into junk.json
+#   3. render (scorer env): a seeded sample of 50 gate-passing loops that are not near-copies (D-020) with dev_gu
+#      to one-pass FLACs under clips/, for a later ear check (nothing goes to the inbox); their G7 count is merged
+#      into junk.json
 # Args: [N=500] [SEED=2026] [CONSTRAINED=0] [PROMPT=v1]. Results: $REMOTE_SCR/runs/junk-<job>/summary/ (make pull);
 # the clips stay on scratch. CONSTRAINED=1 passes --constrained to generate: grammar-constrained decoding under
 # lofi_rl.grammar's LoopScript regex (D-016, docs/GRAMMAR.md), its sha256 recorded in generate.json and junk.json.

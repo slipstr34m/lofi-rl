@@ -790,3 +790,11 @@ def test_the_gate_table_covers_every_gate():
     assert set(grammar.GUARANTEED) | set(grammar.NOT_GUARANTEED) == every
     assert not set(grammar.GUARANTEED) & set(grammar.NOT_GUARANTEED)
     assert all(isinstance(v, str) and v for v in {**grammar.GUARANTEED, **grammar.NOT_GUARANTEED}.values())
+
+
+def test_dev_gu_regex_is_the_one_d020_registered():
+    """D-020 pre-registers this regex for both arms; a change to grammar.py or to dev_gu's lists needs an amendment."""
+    regex = grammar.loopscript_regex(load_palette(DEV, verify=False))
+    assert len(regex) == 3395
+    assert hashlib.sha256(regex.encode("utf-8")).hexdigest() == (
+        "1412f11f9ebdc520b50c263eda14be12829951357c17f43496ab2ddf5235e64e")

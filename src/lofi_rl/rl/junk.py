@@ -30,7 +30,8 @@ jobs/junk_rate.sbatch runs the three in order on one GPU node, with DIR = $REMOT
   generate.json's (v1 when it names none; one this file does not know exits 2), and each row is compared with the
   example its own prompt showed. For a constrained run it also counts the completions in the recorded regex's
   language, by finish_reason (stop, length, other).
-- render: a seeded sample of --k gate-passing loops rendered with dev_gu (render.pipeline) to one-pass 16-bit
+- render: a seeded sample of --k gate-passing loops that are not near-copies (D-020), rendered with dev_gu
+  (render.pipeline) to one-pass 16-bit
   FLACs under DIR/clips/, for a later ear check. G7 comes from these renders and is merged into junk.json.
   Nothing goes to the inbox.
 
@@ -296,10 +297,14 @@ def prompt_record(version: str, palette: Palette, convs: list[list[dict]]) -> di
             "cells": cells, "chars": len(longest), "tokens_estimate_4cpt": estimate_tokens(longest)}
 
 
-def _host() -> dict:
+def _sync_stamp() -> str | None:
+    """The mirror's .sync-stamp as this process sees it (each step of the job is its own process)."""
     stamp = ROOT / ".sync-stamp"
-    info = {"node": platform.node(), "job": os.environ.get("SLURM_JOB_ID"),
-            "stamp": stamp.read_text().strip() if stamp.is_file() else None, "gpu": None}
+    return stamp.read_text().strip() if stamp.is_file() else None
+
+
+def _host() -> dict:
+    info = {"node": platform.node(), "job": os.environ.get("SLURM_JOB_ID"), "stamp": _sync_stamp(), "gpu": None}
     if shutil.which("nvidia-smi"):              # never torch.cuda here: one CUDA process on the GPU (smoke.py)
         try:
             out = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
@@ -525,7 +530,10 @@ def cmd_generate(a: argparse.Namespace) -> int:
             meta["engine"] = dict(engine.info)
             _write_json(summ / "generate.json", meta)
             for start in range(0, a.n, a.chunk):
-                elapsed, longest = _now() - t0, max((c["s"] for c in chunks), default=0.0)
+                # chunk 1 also pays the one-time grammar compile (--constrained): once later chunks exist,
+                # predict from them, so a slow compile does not stop a run that would fit (D-020 check, F10)
+                timed = chunks[1:] or chunks
+                elapsed, longest = _now() - t0, max((c["s"] for c in timed), default=0.0)
                 if elapsed >= a.deadline_s or (chunks and elapsed + 1.25 * longest > a.deadline_s):
                     meta["stopped"] = "deadline"
                     break
@@ -950,6 +958,7 @@ def summarize(rows: list[dict], scored: list[dict], meta: dict, palette: Palette
         "briefs": meta.get("briefs"), "sampling": meta.get("sampling"),
         "generate": {k: meta.get(k) for k in ("partial", "requested", "generated", "stopped", "model", "engine",
                                               "timing", "host")},
+        "score_stamp": _sync_stamp(),         # equal to generate.host.stamp when one sync served the whole job
     }
 
 
@@ -1046,7 +1055,8 @@ def cmd_render(a: argparse.Namespace) -> int:
     rows = {r["i"]: r for r in read_jsonl(summ / "completions.jsonl")[0]}
     meta = _read_json(summ / "generate.json") or {}
     seed = a.seed if a.seed is not None else int((meta.get("briefs") or {}).get("seed", DEFAULT_SEED))
-    passing = [i for i, s in scored.items() if s["ok"] and i in rows]
+    # the ear check reads loops that pass and are not near-copies: 41 of v0's 50 clips were copies (D-020)
+    passing = [i for i, s in scored.items() if s["ok"] and not s.get("near_copy") and i in rows]
     pick = sample_indices(passing, a.k, seed)
     palette = load_palette(a.palette, verify=not a.no_verify)
     clips_dir = run / "clips"

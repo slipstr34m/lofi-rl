@@ -20,6 +20,30 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-10-31 (20:45 PDT): D-020 checked, amended before either run, and the fixes it called for
+
+**What was done**
+- **Two independent checkers** reviewed D-020 against D-019, the code and both submissions (workflow `wf_ce8fc507-f15`, 2 agents, read-only). They found:
+  - one blocker: an arm cut short, or empty, could count, because score divides by the rows it read;
+  - 11 major and 17 minor findings, with much overlap between the two (pre-registration check: 1 blocker, 6 major, 10 minor; readiness check: 5 major, 7 minor).
+- **D-020 amended** with a marked block, since entries are never edited. It now states:
+  - validity: the arm is complete, as registered and constrained, the regex's guaranteed gates are at 0, and it ran from one mirror;
+  - what happens to an invalid arm;
+  - every decision in junk.json field names, with a defined overlap rule;
+  - a "neither passes" rule read from the lead arm, with three disjoint counts that cover the remaining rows exactly;
+  - one sync, `OVR='-p gpu'` (A40, as v0 ran), and no sync until both jobs end;
+  - the GRPO-side conditions.
+- **Code fixes the checkers called for:**
+  - **`scripts/submit.sh` (F3):** it now also checks the mirror's own `.sync-stamp` on the cluster, before the guard runs. Before, a failed rsync would have let both arms run the mirror's old `ba26f77` code: unconstrained v1, a repeat of v0. Tested against a matching stamp (guard runs), a stale one (exit 3) and a missing one (exit 3).
+  - **`junk.py` generate (F10):** the deadline forecast now reads the chunks after the first, since the first also pays the grammar compile. A new test has a 150 s first chunk and 50 s chunks after it, with a 400 s deadline. It finishes 16 of 16 rows by 300 s; it fails without the fix (checked with the change stashed).
+  - **`junk.py`:** `score_stamp` added to junk.json, and render samples only passing loops that are not near-copies (D020-07). Two render tests now assert that the near-copy is skipped.
+  - **`tests/test_grammar.py`:** pins the dev_gu regex (3,395 characters, sha `1412f11f…`).
+  - **`jobs/junk_rate.sbatch`:** a comment changed; the job sha is still `4a9d8685231fd573`.
+
+**SU spent:** 0.
+
+---
+
 ## 2026-10-31 (20:10 PDT): Shresth confirmed the Day-1 survivors and the 1-bar heard rule
 
 **What was done**
@@ -128,7 +152,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 **Next:**
 1. Merge the constrained-decoding fixes and prompt v2 when workflow `wf_c6a65cc9-b90` lands. Re-register `jobs/junk_rate.sbatch` (≤ 500 SU), pre-register D-020, and run the base-model test on both prompt arms with the grammar on.
-2. Before run 1: add that copy penalty to the reward, scored against the example each row's own prompt showed (prompt v2 shows a different one per brief). Then re-run the smoke with the grammar (TRL's `vllm_structured_outputs_regex`).
+2. Before run 1: add that copy penalty to the reward. It is scored against the seed pool and every example the prompt version can show: v1's one, or all 9 of `prompt_v2.reference_texts` for v2, as prompt_v2's docstring requires (corrected 2026-10-31 per D-020's amendment). Then re-run the smoke with the grammar (TRL's `vllm_structured_outputs_regex`).
 3. Build the scorer server, which supplies taste, CE, theme and the audio part of the gate.
 
 ---

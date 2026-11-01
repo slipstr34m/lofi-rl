@@ -192,3 +192,68 @@ no GRPO had run.
     - **All other failures** (G1–G5, compile, crash): the SFT warm-start, CLAUDE.md §9's next fallback. It is drafted and taken to Shresth before any job.
   - **Either way:** the official Phase 1 gate still re-runs on the frozen palette (D-017) with the chosen settings, together with the ≥ 30 % "fine" ear check.
   - **Before GRPO run 1:** a prompt-version key in the GRPO config, the copy penalty, and the backend pin and in-language count on the GRPO path. Today that path records only the regex's builder, field, sha and length.
+- **Amended 2026-10-31, before either run.** These are the findings of two independent checkers (workflow `wf_ce8fc507-f15`), applied under D-019's delegation.
+  - **What changes:** these bullets replace the original Decided-by, Jobs, Gate, Validity, What-follows and Before-GRPO bullets, and the sentence about the judge's proxy prediction. The arms, prompts, regex and run settings are unchanged.
+  - **Decided by:** Claude, under D-019's delegation.
+    - This supersedes D-019's last sentence. v2 runs now, beside v1 and with both under the grammar, instead of only after copying is shown to sink pass_not_copy under constraints.
+    - Arm A alone is the test D-019's rule asked for. Arm B can win only by the rule below.
+  - **Sources for the Why numbers:** runs/junk-13632676/summary/junk.json: `failures.G1` is 389 of 500, and `near_copy.count_passing` is 78 of `pass.count` 98.
+  - **Control cell:** mid/melancholy holds 57 of the 500 briefs. It is a readout only: its `by_cell` row is reported for both arms side by side and changes no decision.
+  - **Jobs:** both arms run from one `make sync` of the commit that holds this amendment. They run on an A40 in the `gpu` partition, as v0 did, with `OVR='-p gpu'` and the job's own `#SBATCH` lines (sha `4a9d8685231fd573`, at most 450 SU each).
+    - Arm A: `make submit JOB=jobs/junk_rate.sbatch OVR='-p gpu' ARGS='500 2026 1 v1'`.
+    - Arm B: `make submit JOB=jobs/junk_rate.sbatch OVR='-p gpu' ARGS='500 2026 1 v2'`.
+    - No `make sync`, from any tree, runs from the first submission until both jobs have ended. A job reads the mirror when it starts, and score and render start new processes later in the job.
+  - **Gate:** `pass_not_copy.count` ≥ 300, which is 60 % of 500, in a valid arm.
+  - **Validity:** an arm counts only if its `summary/junk.json` shows all of the following.
+    - **Complete:** `n` = `requested` = 500, `partial` false, `unreadable_lines` 0, and `generate.stopped` null. score divides by the rows it read, and a run stopped by its deadline still ends `JUNK_RATE_OK`.
+    - **As registered:**
+      - `generate.model.revision` is `cdbee75f17c01a7cc42f958dc650907174af0554`, `briefs.seed` is 2026, and `sampling` equals runs/junk-13632676's;
+      - `palette.sha256` is `b2e4a340b9387e49f896e235c0f1f7f3c9339308ddc307b343c2d96e9eb8fab9`, with `palette.matches_generate` true;
+      - `prompt.version` and its template sha are the arm's, `prompt.template_matches_generate` is true, `prompt.rows_matching` is 500, and `prompt.example_mismatch` is 0.
+    - **Constrained:**
+      - `constrained.enabled` is true;
+      - `constrained.regex_sha256` and `constrained.in_language.regex_sha256` are both `1412f11f9ebdc520b50c263eda14be12829951357c17f43496ab2ddf5235e64e` (tests/test_grammar.py pins it);
+      - `constrained.in_language.matches_generate` is true;
+      - `constrained.in_language.stop.out_of_language` is 0, and `constrained.in_language.other.n` is 0.
+
+      A stop completion that does not fullmatch the regex under Python's `re` means the engine did not apply this regex as `re` reads it: no grammar, another regex, or a dialect or detokenization difference.
+    - **What the regex guarantees:** `failures.G1`, `G3`, `G4`, `G5` and `crash` are all 0 (docs/GRAMMAR.md §4). A non-zero count is a defect in the regex, the parser or the checker, not a model failure.
+    - **One mirror:** in both arms, `generate.host.stamp` and `score_stamp` show the same `commit=… dirty=0`, which is the one sync's commit. Each job log's stamp lines show it too.
+    - **Not part of validity:** `constrained.backend` (the pin, whether `LLM()` took it, and what the engine reports) is recorded and decides nothing. The render step and G7 do not affect validity either.
+  - **An invalid arm** is reported and decides nothing.
+    - **A scoring defect** (a crash, or the checker): it is fixed, and the arm is re-scored from its own `completions.jsonl` with no new generation.
+    - **Anything else:** it is fixed, and the arm is re-run once. The fix, and any sha it changes, is recorded here as an amendment before the run. A fix that changes the regex, either prompt, the palette or junk.py's scoring re-runs both arms.
+    - **Invalid twice:** the arm goes to Shresth.
+    - **When the rule applies:** the rule below is read only once both arms are valid. A re-run or a re-score stands in place of its arm.
+  - **What follows,** with both arms valid. Every count is read from the arm's junk.json.
+    - **Overlap:** two `ci95` intervals overlap when the larger lower bound is at most the smaller upper bound, as junk.json prints them (4 decimals). Equal counts always overlap.
+    - **Both arms pass:** GRPO run 1 starts from the base model with the grammar and the winning arm's prompt. The winner is decided in this order:
+      - if the `pass_not_copy.ci95` intervals do not overlap, the higher `pass_not_copy.count` wins;
+      - otherwise, if the `copy.pass_not_quasi_copy.ci95` intervals do not overlap, the higher `copy.pass_not_quasi_copy.count` wins;
+      - otherwise v2 wins.
+
+      The last step is a judgment, not a measurement. v2's example always shares the brief's energy but never its mood; v1's example shares the energy only for the 166 mid briefs, and the mood for the 183 wistful briefs.
+    - **One arm passes:** GRPO run 1 starts from the base model with that arm's prompt and the grammar.
+    - **Neither passes:** the lead arm is the one with the higher `pass_not_copy.count`, or v2 on a tie. Three disjoint counts are read from the lead arm alone. Together with `pass_not_copy.count` they sum to 500, and G7 is in none of them.
+      - (a) `near_copy.count_passing`, passes that are near-copies: next is prompt v3a, the shared card with each brief shown two examples at its own energy, from the two other moods. junk.py records one example per row today, so that changes first.
+      - (b) `failures.G6` + `failures.compile`, structure the regex does not check: next is prompt v3b, the lead arm's prompt plus one card line aimed at the commonest detail in `top_details.G6` and `top_details.compile`. For phrase lengths ("phrase A is N steps (needs 64, at most 16 off)"), the line is "Each bar of a phrase adds up to 16 steps, before the first |, between two | and after the last |: h.5 er e4 is 12 + 2 + 2."
+      - (c) `failures.G2`, truncation, the one D-019 syntax class a valid arm can still have: next is the SFT warm-start (D-016, CLAUDE.md §9). It is drafted and taken to Shresth before any job.
+      - **Choosing:** the largest count sets the next step, which is registered here before its run. A tie goes to the earlier of (a), (b) and (c).
+      - **Limit:** prompt v3 is the last prompt-only step. If it also fails the bar, the SFT warm-start comes next.
+    - **Whichever settings pass, here or after the next step:** the official Phase 1 gate re-runs them on the frozen palette (D-017), with the ≥ 30 % "fine" ear check.
+      - The regex is rebuilt from that palette and gets its own sha.
+      - If that palette refuses a v2 example, that run's prompt is registered here first.
+      - The 50 ear-check clips come from loops that pass and are not near-copies. junk.py's render step changes with this amendment; 41 of v0's 50 clips were copies (runs/junk-13632676/summary/clips.json).
+  - **Quasi-copies** stay out of the bar, which stays D-019's: changing it after the v2 design and its estimates were made would move it. This replaces the sentence about the judge's proxy prediction, which no repo file records.
+  - **Before GRPO run 1:**
+    - a prompt-version key in the GRPO config;
+    - the copy penalty (taste_pipeline §5), scored against the seed pool and every example the run's prompt version can show. For v1 that is its one example; for v2 it is all 9 of `prompt_v2.reference_texts`, since across its prompts the policy sees all 9;
+    - the backend pin and the in-language count on the GRPO path, which today records only the regex's builder, field, sha and length;
+    - taste_pipeline §6's rule for the grammar lever, applied to the chosen prompt. The grammar is on only if that prompt's step-0 parse failures without it exceed 20 % (v1: G1 389 of 500 in D-019; v2: measured by neither arm), and off if the mean |log IS ratio| exceeds 0.05. If it ends up off, this entry's constrained result does not carry over, and the start of run 1 is registered here again;
+    - a GRPO smoke with the grammar and the chosen prompt.
+  - **Code changed with this amendment,** before the one sync:
+    - submit.sh checks the mirror's own `.sync-stamp` on the cluster;
+    - generate's deadline forecast reads the chunks after the first, which also pays the grammar compile;
+    - junk.json records `score_stamp`;
+    - render samples only passing loops that are not near-copies;
+    - tests/test_grammar.py pins the dev_gu regex.

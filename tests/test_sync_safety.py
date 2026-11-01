@@ -70,7 +70,8 @@ def test_submit_needs_a_matching_sync_and_clean_tree(tmp_path):
     (repo / ".sync-stamp").write_text(stamp)
     p = _submit(repo, "-t", "00:20:00", "jobs/x.sbatch", "arg one")
     assert p.returncode == 0, p.stderr
-    assert "REMOTE: GUARD_LOG=/keep/submissions.log scripts/sbatch_guard.sh -t 00:20:00 jobs/x.sbatch arg\\ one" in p.stdout
+    assert "; GUARD_LOG=/keep/submissions.log scripts/sbatch_guard.sh -t 00:20:00 jobs/x.sbatch arg\\ one" in p.stdout
+    assert "[ \"$m\" = " in p.stdout and "exit 3; }" in p.stdout, "the mirror's own stamp is checked on the cluster"
     (repo / "jobs" / "x.sbatch").write_text("#!/bin/bash\necho changed\n")     # uncommitted edit
     p = _submit(repo, "jobs/x.sbatch")
     assert p.returncode == 3, "a dirty tree no longer matches the synced stamp"
