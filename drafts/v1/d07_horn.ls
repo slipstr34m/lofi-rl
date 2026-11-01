@@ -1,4 +1,4 @@
-vamp: bVImaj9 IVm11 span 1
+vamp: bVImaj9 IVm11 span 2
 keys: wurli shell
 comp: x.x...x.x..x..x. x..x..x...x.x...
 bass: x--x--x---x--x-- x-x-----x-xx----
