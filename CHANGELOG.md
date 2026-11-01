@@ -21,6 +21,32 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (13:15 PST): D-020 arm B (v2 + grammar) ran and is valid: pass_not_copy 446/500; Day 3 merged; freeze lifted
+
+**What was done**
+- **`lofi-junk-rate` 13640325** (arm B: `500 2026 1 v2`, `-p gpu`): A40 node b10-11. It started at 12:51:22 and COMPLETED 0:0 in 00:05:30, 99.0 SU (`session_report.py`), `JUNK_RATE_OK`.
+- **Validity:** 21 of 21 checks pass on `runs/junk-13640325/summary/junk.json`, the same script as arm A. Generate and score both stamp `commit=e63648541e02 dirty=0`; xgrammar was pinned and applied; 500/500 stop completions are in the language.
+- **Readouts:**
+  - pass 500/500, ci95 [0.9924, 1.0];
+  - **pass_not_copy 446/500, ci95 [0.8617, 0.9163]**;
+  - near-copies among passes 54; `copy.pass_not_quasi_copy` 290, ci95 [0.5363, 0.6225];
+  - no gate failures;
+  - completion tokens p50 257.5, max 316, 0 truncated;
+  - prompt tokens 1,322–1,408.
+- **D-020's rule, as I read it:**
+  - Both arms are valid and both pass (355 and 446, each at least 300).
+  - The `pass_not_copy.ci95` intervals do not overlap: the larger lower bound, 0.8617, is above the smaller upper bound, 0.7481. So the higher count wins: **arm B, prompt v2**.
+  - An independent check of this reading is running (workflow `wf_5586783e-d6b`); the outcome goes into D-020 after it reports.
+- **Freeze lifted:** both D-020 jobs have ended, so `.sync-freeze` is deleted and `make sync` is unrestricted again (second amendment).
+- **Day 3 merged** (`6dad45d`). Workflow `wf_e1ef77b2-265`: 4 review findings, all fixed; verifier ok; suite 2305 passed, 3 skipped.
+  - **What it adds:** the rain picker; W1/W2 beds; the Day-3 band with every variant slot; five repeats whose `--serve-date` eligibility the job and batches enforce; the anchor's sax matched on the sax bus; and the tally's job-3 ARGS.
+  - **The converted 44.1 kHz rain** (sha256 `e6884875…`, 69,148,858 bytes) is in `assets/big/derived/rain/` and, through `make push-assets`, in `$REMOTE_KEEP/assets/derived/rain/`, with the same sha there.
+  - **A measured point for later:** Δ is applied before the limiter. In the dry-run renders the bed sits 0.0–2.0 LU closer to the music than Δ, depending on the loop, and within a round all clips share the offset to within 0.03 LU. W2's comparisons are therefore fair within each round.
+
+**SU spent:** 99.0. Total 1095.0 (`session_report.py`).
+
+---
+
 ## 2026-11-01 (12:55 PST): D-020 arm A (v1 + grammar) ran and is valid: pass_not_copy 355/500; arm B still queued
 
 **What was done**
