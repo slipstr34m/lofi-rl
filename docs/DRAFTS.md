@@ -68,16 +68,26 @@ row of docs/TASTE.md (quoted in *italics*) or to a Claude's default it lists.
   .25·min(1, bass strikes/48), H being the drum hits of all six lanes over 8 bars (a ghost counts half). The brief's
   band is required: low below 0.38, mid 0.38 to 0.59, high from 0.59 (provisional bands, VERIFIERS.md §7 item 9).
   The reference loops sit at 0.29–0.30 (low), 0.46–0.48 (mid) and 0.70–0.72 (high); X accents rise with energy.
+  The vamp's `span` is no energy cue (the row names drums, accents, keys and bass): pick it for the vamp and the line
+  at any energy.
 - **Something new every bar** (*Variation*): with per-bar edits, no bar repeats an earlier one in chord, drums, bass
-  and comp together. **No fill at the seam** (*Drums*): bar 8 keeps the groove: at most 2 non-ghost snare or rim hits
-  in its steps 9–16, at most 6 drum cells changed from the base bar, the backbeat kept, and enough hats. Drop-outs
-  are welcome mid-loop but not in bar 8 (TASTE.md, Claude's defaults).
+  and comp together. Bar 5 plays bar 1's chord under the answer's opening, which restates the call's, so give bar 5
+  more than a ghost or a level (a ghost plays at 0.32 of an accent): a hit, a strike or a push. **No fill at the
+  seam** (*Drums*): bar 8 keeps the groove: at most 2 non-ghost snare or rim hits in its steps 9–16, at most 6 drum
+  cells changed from the base bar, the backbeat kept, and enough hats. Drop-outs are welcome mid-loop but not in bar 8
+  (TASTE.md, Claude's defaults).
 - **The sax** (*Sax*; one alto, the palette's lead): *a few long notes* (2–4 notes of 8 steps or more over the whole
   line); *phrase in bars 1–4, answer in bars 5–8; each lands on a downbeat* (A and B each open on step 1 with a tone
   of that bar's chord); *the answer hangs open* (B ends off degree 1); the answer *starts like the call, ends
-  differently* (Claude's default); rests in each phrase (12–60 % of its 64 steps, one rest of 2 steps or more).
-  *Blue notes are welcome*: the ♭3, ♭5 (`#4` or `b5`) and ♭7 above the tonic are always free. Each phrase is exactly
-  64 steps.
+  differently* (Claude's default): on another note than the call's last, in any octave; rests in each phrase (12–60 %
+  of its 64 steps, one rest of 2 steps or more), and *up front like a vocal*, never more than 3 bars (48 steps)
+  without one, the call's end running into the answer included. *Blue notes are welcome*: the ♭3, ♭5 (`#4` or `b5`)
+  and ♭7 above the tonic are always free. Each phrase is exactly 64 steps.
+- **The sax with the keys** (*Dealbreakers: sour notes*): no sax note sounds a beat (4 steps) or more a semitone or a
+  minor 9th from a keys or bass tone while the keys leave its own pitch class out: the root over a voiced maj7, the 5th
+  over a voiced #11, a held blue #4 over a voiced 11. The compiler keeps a minor 9th out of the keys voicing itself
+  (theory/voicing.py) but never reads the line, and the theory terms count every mode tone as free, so only the
+  validator's `rubs` column (§5) shows one: it should read 0. A long note on a tone the voicing plays never rubs.
 - **The sax guardrail** (*Soft penalties on busy, wide or chromatic lines that never fade*): at most 16 notes a phrase,
   a range of at most 19 semitones over the line, and at most 1 note in 5 outside the mode, the blue notes and the
   chord sounding (a short one that steps to a free note is fine). Keep the line where the alto is comfortable: the
@@ -238,8 +248,12 @@ and, over the scope, **one draft per brief per persona**: exactly one file for e
 The Jaccard is the junk-rate near-copy measure (`lofi_rl.rl.junk`: character 5-grams) on each loop's copy form: its
 canonical text with no `sax:` line and the keys instrument and kit written `K` and `D`, so naming another instrument
 never lowers it. For scale, the 10 references sit at 0.22–0.44 from each other (median 0.32). E, the mood margin,
-theory and P_sax are printed as information, never failures. `--json` writes the whole report. Exit 0 when every check
-passes, 1 when one fails, 2 for bad arguments.
+theory, P_sax and `rubs` are printed as information, never failures. `rubs` counts the sax notes that sound 4 steps or
+more (as written, with the comp and the bass as heard, each sounding step playing its bar's voicing or root) a
+semitone or a minor 9th from a keys or bass tone while the keys play the note's own pitch class under it for fewer
+than 2 steps; each one is listed after the table (`d01_horn.ls: rub (information): bar 3 step 1: sax B4 +1 from keys
+Bb4 for 12 of its 12 steps`, from the draft before the review of 2026-11-01; house rules, §2.1). `--json` writes the
+whole report. Exit 0 when every check passes, 1 when one fails, 2 for bad arguments.
 
 ## 6. Redrafts
 
@@ -298,3 +312,5 @@ and none is queued for listening.
 | No hidden controls in the keep3 batch | D-013's repeats need 2 days and its anchors a sour copy; the keep3 rounds label drafts, and the RM's consistency comes from the bws4 repeats (D-008) |
 | A redraft goes to a new folder | the rejects stay as labelled negatives (TASTE.md, Labeling) |
 | Loudness held to −14 ± 0.1 LUFS and −1 dBTP, not G7's 0.5 LU and −0.9 dBTP | CLAUDE.md §5's spec for a render |
+| A rub: 4 written steps, a semitone or a minor 9th (or two octaves and a semitone) from a keys or bass tone, unless the keys play the note's pitch class 2 steps under it; information, never a failure | the review of 2026-11-01: on the 30 drafts as first written it lists exactly the 12 a scan of the compiled notes found, and no 2-step passing note; a b9 the symbol does not name may still be meant, so the column informs and the house rule asks for 0 |
+| An answer ends on another pitch class than its call; never 3 bars without a rest; bar 5 more than a ghost or a level | TASTE.md's *ends differently*, *up front like a vocal* and *something new every bar*, read where the verifiers (f_ans, f_breath, f_new) pass by the letter: six answers ended on the call's pitch, two lines ran 56 steps, and in 11 drafts bar 5 changed only a ghost or a level; tests/test_drafts_v1.py holds drafts/v1 to them |

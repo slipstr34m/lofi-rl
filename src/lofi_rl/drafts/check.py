@@ -21,9 +21,14 @@ The Jaccard is junk-rate's near-copy measure (lofi_rl.rl.junk.grams and jaccard:
 form: its canonical text with no `sax:` line and with the keys instrument and the kit written `K` and `D`, so naming
 another instrument never lowers it. A file that does not parse is compared as plain text (junk.plain_text).
 
-E, the mood margin, theory and P_sax are printed too; they are information, never failures. The table goes to stdout,
-one line per problem after it; `--json` writes everything. Exit 0 when every check passes, 1 when one fails, 2 for bad
-arguments (no folder, no briefs file, a palette that does not load). Sound claims: none.
+E, the mood margin, theory, P_sax and the rubs are printed too; they are information, never failures. A **rub** is a
+sax note that sounds 4 steps or more (as written: the comp and the bass as heard, each sounding step playing its bar's
+voicing or root) a semitone or a minor 9th from a keys or bass tone, while the keys play the note's own pitch class
+under it for fewer than 2 steps. The compiler keeps a minor 9th out of the keys voicing itself (theory/voicing.py) but
+never reads the line against it, and the theory terms count every mode tone as free, so nothing else sees one. The
+table goes to stdout, one line per problem and per rub after it; `--json` writes everything. Exit 0 when every check
+passes, 1 when one fails, 2 for bad arguments (no folder, no briefs file, a palette that does not load). Sound claims:
+none.
 """
 from __future__ import annotations
 
@@ -39,12 +44,15 @@ import yaml
 from lofi_rl import prompt, prompt_v2
 from lofi_rl.brief import Brief
 from lofi_rl.compile.compiler import CompileError, compile_loop
+from lofi_rl.compile.events import CompiledLoop
 from lofi_rl.dsl import DEFAULT_VOCAB, Loop, canon, parse
+from lofi_rl.dsl.ast import BARS, STEPS
 from lofi_rl.dsl.vocab import MOODS
 from lofi_rl.palette import ROOT, Palette
 from lofi_rl.rl.junk import grams, jaccard, plain_text
 from lofi_rl.verify.knobs import ENERGY_BANDS, energy_band
 from lofi_rl.verify.scoring import score
+from lofi_rl.verify.view import View, make_view
 
 from . import briefs as B
 from .palette import DRAFT_PALETTE, DraftPaletteError, load
@@ -54,11 +62,43 @@ SCHEMA = "lofi-rl/draft-check/1"
 J5_MAX = 0.6                                    # a draft's Jaccard must stay below this
 SHOOTOUT_LOOPS = ROOT / "shootouts" / "loops"
 CHECKS = ("name", "gate", "compile", "energy", "mood", "refs", "drafts")
+RUB_SEMITONES = (1, 13, 25)     # a semitone or a minor 9th (or two octaves and a semitone) from a keys or bass tone
+RUB_STEPS = 4                   # written steps a sax note sounds against it before it is a rub: a beat
+DOUBLE_STEPS = 2                # ... unless the keys play the note's own pitch class this long under it
+PITCH_NAMES = ("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
 
 
 def copy_form(loop: Loop) -> str:
     """Canonical text with no `sax:` line and the keys instrument and kit written K and D."""
     return canon(replace(loop, sax=None, keys=replace(loop.keys, instrument="K"), kit="D"))
+
+
+def pitch_name(pitch: int) -> str:
+    return f"{PITCH_NAMES[pitch % 12]}{pitch // 12 - 1}"
+
+
+def rubs(view: View, compiled: CompiledLoop) -> list[str]:
+    """The sax notes that rub against the band (module doc), one line each: where the note starts, the two pitches,
+    the interval and for how many of the note's steps."""
+    first, out = view.loop.vamp.chords[0], []
+    for note in view.notes:
+        hits: dict[tuple[str, int], int] = {}
+        doubled = 0
+        for s in range(note.step, note.step + note.dur):
+            bar, cell = divmod(s % (BARS * STEPS), STEPS)
+            k = 0 if view.bars.chords[bar] == first else 1
+            keys = compiled.voicings[k] if view.comp[bar][cell] != "." else ()
+            bass = (compiled.bass_pitches[k],) if view.bass[bar][cell] != "." else ()
+            doubled += any(p % 12 == note.pitch % 12 for p in keys)
+            for stem, pitches in (("keys", keys), ("bass", bass)):
+                for p in pitches:
+                    if abs(note.pitch - p) in RUB_SEMITONES:
+                        hits[(stem, p)] = hits.get((stem, p), 0) + 1
+        if doubled < DOUBLE_STEPS:
+            out += [f"bar {note.step // STEPS + 1} step {note.step % STEPS + 1}: sax {pitch_name(note.pitch)} "
+                    f"{note.pitch - p:+d} from {stem} {pitch_name(p)} for {n} of its {note.dur} steps"
+                    for (stem, p), n in sorted(hits.items()) if n >= RUB_STEPS]
+    return out
 
 
 @dataclass
@@ -165,6 +205,7 @@ def check_one(d: Draft, palette: Palette) -> None:
         d.problems["compile"] = "the sax line needed " + ", ".join(
             f"{r.code} {r.before}->{r.after}" for r in compiled.repairs) + " to fit the alto's range"
     d.info["digest"] = compiled.digest()
+    d.info["rubs"] = rubs(make_view(res.ast, b, compiled), compiled)
     s = score(d.text, b, palette)
     k = s.knob_parts
     band = energy_band(k["E"])
@@ -261,7 +302,7 @@ def check_folder(folder: Path | str, *, scope: list[str] | None = None, against:
 
 def table(rep: Report) -> str:
     cols = ("draft", "gate", "E", "band", "mood", "refs J5", "nearest ref", "drafts J5", "nearest draft", "theory",
-            "P_sax", "verdict")
+            "P_sax", "rubs", "verdict")
     rows = []
     for d in rep.drafts:
         i = d.info
@@ -272,8 +313,9 @@ def table(rep: Report) -> str:
                      f"{i['refs_j5']:.3f}" if "refs_j5" in i else "-", str(i.get("refs_nearest") or "-"),
                      f"{i['drafts_j5']:.3f}" if "drafts_j5" in i else "-", str(i.get("drafts_nearest") or "-"),
                      f"{i['theory']:.2f}" if "theory" in i else "-", f"{i['p_sax']:.2f}" if "p_sax" in i else "-",
+                     str(len(i["rubs"])) if "rubs" in i else "-",
                      "ok" if d.ok else "FAIL " + "+".join(c for c in CHECKS if c in d.problems)))
-    rows += [(m, "missing", *["-"] * 9, "FAIL missing") for m in rep.missing]
+    rows += [(m, "missing", *["-"] * 10, "FAIL missing") for m in rep.missing]
     widths = [max(len(str(r[k])) for r in [cols, *rows]) for k in range(len(cols))]
     lines = ["  ".join(str(c).ljust(w) for c, w in zip(r, widths)).rstrip() for r in [cols, *rows]]
     n_ok = sum(d.ok for d in rep.drafts)
@@ -307,6 +349,8 @@ def main(argv: list[str] | None = None) -> int:
         for c in CHECKS:
             if c in d.problems:
                 print(f"{d.file}: {c}: {d.problems[c]}")
+        for r in d.info.get("rubs", []):
+            print(f"{d.file}: rub (information): {r}")
     for m in rep.missing:
         print(f"{m}: missing (one draft per brief per persona)")
     if a.json:

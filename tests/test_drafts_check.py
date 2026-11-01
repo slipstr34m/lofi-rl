@@ -268,6 +268,47 @@ def test_a_redraft_is_compared_with_the_drafts_it_replaces(tmp_path):
     assert got["d05_groove.ls"].info["drafts_nearest"] == "v1/d01_chords.ls"
 
 
+# drafts/v1/d01_horn.ls as committed in 6726bf5, before the review of 2026-11-01: its held Cb and Gb sat a semitone
+# above the rhodes voicing of bVImaj7#11 (Db4 Eb4 F4 Bb4), which the keys hold under them
+D01_HORN_BEFORE_REVIEW = """\
+vamp: Im11 bVImaj7#11 span 2
+keys: rhodes rootless
+comp: x-----------x--- x-------..x-----
+bass: x-------x-x----- x-----x---------
+drums: studio
+kick: x.......x.x..... x.....x........x
+rim: ....x.......x... ....x.......x.g.
+hat: x.x...x.x.x...x. x...x.x.x...x.x.
+@3 hat: x.x...x.x.x.x.x.
+@5 kick: x.......x.x...x.
+@6 rim: ....x..g....x...
+@7 comp: x-----------..x-
+@8 comp: x-----------x---
+@8 bass: x-----x-----x---
+A: e5 e7 h1' qr | q.7 e5 q4 qr | h.6 e5 e4 | e3 e2 q1 hr
+B: e5 e7 h1' qr | q.7 e5 q4 e3 e4 | q.6 e5 eb5 e4 qr | h.3 qr
+"""
+
+
+def test_a_rub_is_reported_and_never_fails(tmp_path, capsys):
+    d = _one(tmp_path, "d01_horn.ls", D01_HORN_BEFORE_REVIEW)
+    assert d.info["rubs"] == ["bar 3 step 1: sax B4 +1 from keys Bb4 for 12 of its 12 steps",
+                              "bar 7 step 1: sax B4 +1 from keys Bb4 for 6 of its 6 steps",
+                              "bar 8 step 1: sax Gb4 +1 from keys F4 for 12 of its 12 steps"]
+    assert d.ok and d.info["theory"] == 1.0 and d.info["p_sax"] == 0.0     # nothing else sees them
+    fixed = D01_HORN_BEFORE_REVIEW.replace("| h.6 e5 e4 |", "| h.5 e6 e4 |").replace(
+        "| q.6 e5 eb5 e4 qr | h.3 qr", "| q.5 e6 eb5 e4 qr | h.5 qr")      # the long notes on the keys' Bb4
+    assert _one(tmp_path, "d01_horn.ls", fixed).info["rubs"] == []
+    rep = C.check_folder(write_folder(tmp_path / "v1"))
+    assert rep.ok and by_file(rep)["d05_groove.ls"].info["rubs"] == []
+    assert "from bass B1" in by_file(rep)["d05_chords.ls"].info["rubs"][0]    # a minor 9th over the root counts too
+    folder = write_folder(tmp_path / "v1", {**FIXTURES, "d01_horn.ls": D01_HORN_BEFORE_REVIEW})
+    assert C.main([str(folder)]) == 0
+    out = capsys.readouterr().out
+    assert "d01_horn.ls: rub (information): bar 8 step 1: sax Gb4 +1 from keys F4" in out
+    assert out.splitlines()[0].split()[-2:] == ["rubs", "verdict"]
+
+
 def test_copy_form_ignores_the_instrument_names_and_the_sax_line():
     pal = load_palette().palette
     a = parse(FIXTURES["d05_groove.ls"], vocab=pal.vocab(), mode="dorian").ast
