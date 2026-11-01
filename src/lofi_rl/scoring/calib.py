@@ -82,7 +82,10 @@ def robust_sigmoid(x: float, med: float, mad: float) -> float:
 
 
 def _read(path: Path) -> tuple[dict, str]:
-    data = path.read_bytes()
+    try:
+        data = path.read_bytes()
+    except OSError as err:          # it exists (is_file) but cannot be read: a broken calibration, not a missing one
+        raise CalibError(f"{path}: cannot read it ({type(err).__name__}: {err})") from None
     try:
         doc = json.loads(data.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as err:

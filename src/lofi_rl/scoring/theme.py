@@ -56,8 +56,11 @@ def _prompts(node, where: str, n: int) -> tuple[str, ...]:
 
 def load_config(path: Path | str = DEFAULT_CONFIG) -> ThemeConfig:
     path = Path(path)
-    data = path.read_bytes()
-    doc = yaml.safe_load(data)
+    try:                            # an unreadable file or a YAML syntax error is a bad config (exit 2), never a traceback
+        data = path.read_bytes()
+        doc = yaml.safe_load(data)
+    except (OSError, yaml.YAMLError) as err:
+        raise ThemeError(f"{path}: cannot read the prompt config ({type(err).__name__}: {err})") from None
     if not isinstance(doc, dict) or set(doc) != _KEYS:
         raise ThemeError(f"{path}: expected exactly the keys {sorted(_KEYS)}")
     if not isinstance(doc["version"], str) or not doc["version"]:

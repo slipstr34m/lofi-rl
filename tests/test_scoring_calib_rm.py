@@ -1,6 +1,7 @@
 """Calibration files and the RM directory (src/lofi_rl/scoring/calib.py, rm_api.py; docs/SCORER.md §5-6): a missing
 file disables its term, a malformed or mismatched one is an error that stops the server (exit 2) before it binds."""
 import json
+import os
 
 import pytest
 
@@ -124,6 +125,14 @@ def test_a_broken_rm_directory_is_an_error(tmp_path, rm, refs, match):
         rm_api.load_rm(tmp_path)
 
 
+def test_a_factory_module_that_fails_to_import_is_an_error(tmp_path, monkeypatch):
+    (tmp_path / "lofi_badfactory.py").write_text("def load(d:\n")                   # a SyntaxError at import
+    monkeypatch.syspath_prepend(str(tmp_path))
+    _w(tmp_path / "rm", "rm.json", {"rm_ver": "x", "members": 3, "factory": "lofi_badfactory:load"})
+    with pytest.raises(rm_api.RMError, match="cannot load the factory.*SyntaxError"):
+        rm_api.load_rm(tmp_path / "rm")
+
+
 def test_the_server_exits_2_on_a_bad_calibration_before_it_binds(tmp_path, capsys):
     _w(tmp_path / "calib", "theme.json", {"med": 0.0, "mad": 0.1, "theme_sha256": "0" * 64})
     with short_sock_dir() as d:
@@ -138,3 +147,21 @@ def test_the_server_exits_2_on_a_bad_calibration_before_it_binds(tmp_path, capsy
             rc = server.main(["--sock", str(d / "s.sock"), "--backend", "fake", flag, str(tmp_path / "absent")])
             assert rc == 2 and not (d / "s.sock").exists()
         assert "does not exist" in capsys.readouterr().err
+    bad_yaml = _w(tmp_path / "t", "theme.yaml", "version: [unclosed\n")       # a YAML syntax error: exit 2
+    with short_sock_dir() as d:
+        rc = server.main(["--sock", str(d / "s.sock"), "--backend", "fake", "--theme", str(bad_yaml)])
+        assert rc == 2 and not (d / "s.sock").exists()
+    assert "cannot read the prompt config" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file of mode 000")
+def test_the_server_exits_2_on_an_unreadable_calibration_file(tmp_path, capsys):
+    ce = _w(tmp_path / "calib", "ce.json", {"agree": 0.6, "lower95": 0.55, "n_pairs": 400, "med": 5.5, "mad": 0.5})
+    ce.chmod(0)
+    try:
+        with short_sock_dir() as d:
+            rc = server.main(["--sock", str(d / "s.sock"), "--backend", "fake", "--calib", str(tmp_path / "calib")])
+            assert rc == 2 and not (d / "s.sock").exists()
+    finally:
+        ce.chmod(0o600)
+    assert "cannot read it (PermissionError" in capsys.readouterr().err

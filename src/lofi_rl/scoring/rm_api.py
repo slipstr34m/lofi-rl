@@ -129,7 +129,10 @@ def par(u: Sequence[float], ref_means: Sequence[float], k: float = PAR_K) -> tup
 
 
 def _json(path: Path) -> tuple[dict, str]:
-    data = path.read_bytes()
+    try:
+        data = path.read_bytes()
+    except OSError as err:
+        raise RMError(f"{path}: cannot read it ({type(err).__name__}: {err})") from None
     try:
         doc = json.loads(data.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as err:
@@ -174,8 +177,12 @@ def _factory(spec: Any, path: Path):
         raise RMError(f"{path}: factory must be 'package.module:callable', not {spec!r}")
     mod, name = spec.split(":")
     try:
-        fn = getattr(importlib.import_module(mod), name)
-    except (ImportError, AttributeError) as err:
+        module = importlib.import_module(mod)
+    except Exception as err:  # noqa: BLE001: whatever the module raises at import (SyntaxError too) stops the server
+        raise RMError(f"{path}: cannot load the factory {spec!r}: {type(err).__name__}: {err}") from err
+    try:
+        fn = getattr(module, name)
+    except AttributeError as err:
         raise RMError(f"{path}: cannot load the factory {spec!r}: {err}") from err
     if not callable(fn):
         raise RMError(f"{path}: {spec!r} is not callable")

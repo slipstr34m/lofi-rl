@@ -34,7 +34,8 @@ out = c.score([{"i": 0, "text": loop, "brief": {...}, "brief_id": "596:0"}], pal
 - The server prints one JSON line `{"event": "ready", "sock", "pid", "versions", "terms", "backend"}` on stdout
   when it answers, and one log line per request on stderr.
 - **Exit codes:** 0 after SIGTERM or SIGINT (the socket removed); 2 for a bad argument, calibration, RM
-  directory, theme config or socket path, before the models load where possible; 1 for anything else (a
+  directory, theme config or socket path (an unreadable file, a YAML syntax error and an RM factory module
+  that fails to import included), before the models load where possible; 1 for anything else (a
   traceback). SIGUSR1 prints every thread's stack.
 
 ## 2. Division of labour (decided): a deliberate narrowing of §5's item schema
