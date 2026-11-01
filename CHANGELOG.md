@@ -3,7 +3,7 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 589.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 17:40).
+- **SU used:** 870.4 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 18:57).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - committed: the rating page, the compiler + renderer, two reviews, voicing rules V2 and V2.1, the SFZ → SF2 converter, the shootout plan (`docs/SHOOTOUTS.md`) and the job-1 shootout tooling with per-clip level matching (CD-52);
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
@@ -12,10 +12,40 @@ Newest entry first. Every number cites the file or command output it was read fr
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
   - base-model test v0 done: pass_not_copy 4.0 % against a 60 % bar, so grammar-constrained decoding comes first (D-016, D-019);
   - constrained decoding built on `wt/constrained` and reviewed; its line-end and backend-record fixes are being built;
-  - GRPO smoke 13632679 queued on an L40S.
+  - GRPO smoke 13632679 passed (`GRPO_SMOKE_OK`: 10 steps, then a resume from step 5; 280.7 SU). 67 of the 71 loops that passed its gates in launch a are near-copies of the prompt's example, so run 1 waits for the grammar, prompt v2 and an example-copy penalty.
 - **Waiting on Shresth:**
   - the rest of the Day-1 ear check: `b1103-2-groove` and `b1103-3-sax` (`b1103-1-keys` is voted);
   - `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords), due by Nov 4 morning.
+
+---
+
+## 2026-10-31 (19:05 PDT): GRPO smoke passed end to end with a resume; its reward mostly paid for copies of the prompt's example
+
+**What was done**
+- **`lofi-grpo-smoke` 13632679** (mirror `ba26f77`): one L40S on `gpu` (node b18-16), COMPLETED 0:0 in 00:14:02 (`sacct`), `GRPO_SMOKE_OK`. Report: `runs/grpo-smoke-13632679/summary/smoke.json` (`"ok": true`, no failures).
+  - **Launches:** launch a trained steps 1–10 from scratch and saved checkpoints 5 and 10. Launch b resumed from `a/checkpoint-5` and trained steps 6–10 (step source `trainer_state`).
+  - **Health:** both exit codes 0; 0 reward errors; 0 truncated completions (the longest was 467 of 512 tokens, `a/rewards.jsonl`).
+  - **Policy env** (`a/run.json`): torch 2.13.0, transformers 5.19.0, TRL 1.17.1, PEFT 0.21.2, vLLM 0.32.0. The LoRA trains 33,030,144 of 4,055,498,240 parameters.
+  - **Prompt:** v1 (template sha `7aceb2bc…`), 1,389–1,391 tokens. TRL 1.17.1 has no `max_prompt_length`, so it was dropped as an optional field.
+  - **Timing** (`smoke.json`): 32 completions per step (4 prompts × 8). Steps took 38.4–44.4 s (mean 40.8) in launch a and 37.9–42.7 s (mean 40.5) in b. Startup took 181.8 s cold and 40.7 s on the relaunch.
+  - **Reward**, the interim one: gate, theory, knobs and penalties. Taste, CE and theme are 0 until the scorer server exists (`src/lofi_rl/rl/reward.py`). In launch a, step means ran 0.030–0.109, the per-step gate rate 0.0625–0.375, and KL went from 0 to 0.0029 at step 10.
+- **What the reward paid for:** `a/rewards.jsonl`, re-scored with `lofi_rl.rl.junk.score_row`; the gates agree on 320 of 320.
+  - 71 of 320 completions passed the gates. **67 of the 71 are near-copies of the prompt's example** (character 5-gram Jaccard ≥ 0.8). Launch b: 40 of 46.
+  - The other 249 failed G1 (239) or G6 (10). The top G1 error is a per-bar edit with two grids: `@4 hat takes at most 1 grid(s)` 60 times, `@6 hat` 45, `@6 bass` 33.
+  - 271 of 320 needed at least one repair.
+  - So nearly all of the reward went to copying the example, as in D-019's base-model test (78 of 98 passes were near-copies). A run on prompt v1 with this reward would train copying.
+- **Resume:** every step used the same briefs in both launches. At the resumed first step, 16 of 32 completions were identical to launch a's. Its reward mean matched exactly only because both of that step's gate passes were among the 16 and every other completion scored 0. Generation is not bit-identical after a resume. The smoke checks the step count, the data order and the saved optimizer, scheduler and RNG state.
+- **One log line to watch:** `CUDA Error: invalid argument at /workspace/csrc/cumem_allocator.cpp:249` was printed after each launch's training ended (lines 27 and 60 of `/scratch1/shresthr/lofi-rl/logs/lofi-grpo-smoke_13632679.out`). Both launches still exited 0 with complete checkpoints. The file is vLLM's sleep-mode allocator, which the 48gb profile turns on. `src/kit/chain.py` decides on resubmission from DONE/STOP files and unit progress, not from exit codes. The GRPO chain script isn't written yet, so this gets checked there.
+- **Run-1 cost, symbolic reward only:** 100 steps × 40.8 s + 181.8 s ≈ 71 min on one L40S ≈ 1,420 SU at 20 SU/min (`sacct` billing=20). Rendering and the scorer server will add to that. The real estimate comes from a smoke with them on.
+
+**SU spent:** 280.7 (`session_report.py`: 14.0 min × 20 SU/min; registered max 500). Total 870.4.
+
+**Failed approaches:** none in the job. A gap in the interim reward: it has no penalty for copying the in-prompt example. CLAUDE.md §8 penalizes "near-copies of pool items", and the example is not in a pool yet.
+
+**Next:**
+1. Merge the constrained-decoding fixes and prompt v2 when workflow `wf_c6a65cc9-b90` lands. Re-register `jobs/junk_rate.sbatch` (≤ 500 SU), pre-register D-020, and run the base-model test on both prompt arms with the grammar on.
+2. Before run 1: treat the in-prompt example as a pool item for P_pool. Then re-run the smoke with the grammar (TRL's `vllm_structured_outputs_regex`).
+3. Build the scorer server, which supplies taste, CE, theme and the audio part of the gate.
 
 ---
 
