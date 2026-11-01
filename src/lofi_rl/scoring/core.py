@@ -39,7 +39,7 @@ from . import protocol
 from .cache import ClipRecord, FeatureCache
 from .calib import Calibration, robust_sigmoid
 from .protocol import AUDIO_TERMS, DIAG_KEYS, PROTOCOL, SIG_KEYS, Item, ProtocolError, RenderRequest, ScoreRequest
-from .render_pool import RenderJob
+from .render_pool import RenderJob, RenderPoolDrift, drift
 from .rm_api import RMState, par
 from .theme import Theme
 
@@ -178,6 +178,25 @@ class Scorer:
             raise Unprocessable(f"taste is live, but {self.rm.refs.path} has no step-0 references for brief_id "
                                 f"{missing[:5]}{' ...' if len(missing) > 5 else ''}: PAR cannot centre their utilities")
 
+    def _check_render(self, out: Mapping[str, Any], clip_id: str) -> None:
+        """Refuse a render from a worker that runs other code or another palette than feat_ver and the clip ids
+        name, or whose manifest gives another clip id: RenderPoolDrift, an HTTP 500, so the trainer crashes and
+        the chain restarts a coherent server (a per-item render-error would hide the drift). Nothing is cached
+        from such a render."""
+        w = out.get("worker")
+        if w is not None:
+            want = {"src_sha8": getattr(self.featurizer, "src_sha8", None), "palette_sha256": self.palette.sha256}
+            bad = drift(w, want, f"render worker {w.get('pid')}")
+            if bad:
+                raise RenderPoolDrift(bad)
+        man = out.get("manifest")
+        if man is not None:
+            from lofi_rl.shootout.render import clip_id as manifest_clip_id
+            got = manifest_clip_id(man)
+            if got != clip_id:
+                raise RenderPoolDrift(f"the render of {clip_id} carries the manifest of clip {got}: the render "
+                                      f"workers and the server disagree on the clip id")
+
     # -------------------------------------------------------------------------------------- stages
     def prepare(self, items: Sequence[Item]) -> list[Prepared]:
         out = []
@@ -219,6 +238,7 @@ class Scorer:
 
         def on_done(k: int, out: Mapping[str, Any]) -> None:
             p = todo[k]
+            self._check_render(out, p.clip_id)
             self._time("render", out.get("render_ms"))
             if out["ok"]:
                 t = time.perf_counter()
@@ -349,6 +369,7 @@ class Scorer:
 
             def on_done(k: int, out: Mapping[str, Any]) -> None:
                 p = todo[k]
+                self._check_render(out, p.clip_id)
                 self._time("render", out.get("render_ms"))
                 files: dict[str, str] = {}
                 if out["ok"] and out_dir is not None and out.get("mix") is not None:

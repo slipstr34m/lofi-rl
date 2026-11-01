@@ -51,10 +51,11 @@ def source_sha8(root: Path = ROOT, globs: tuple[str, ...] = SOURCE_GLOBS) -> str
     return h.hexdigest()[:8]
 
 
-def feat_version(kind: str = "real", root: Path = ROOT) -> str:
+def feat_version(kind: str = "real", root: Path = ROOT, *, src: str | None = None) -> str:
+    """The feature version (module docstring); `src` is the source_sha8 it names (computed from `root` if None)."""
     base = (f"feat1.mert-{MERT[1][:8]}.clap-{CLAP[1][:8]}.abx-{AUDIOBOX_PKG}.w{WINDOWS}" if kind == "real"
             else f"{kind}1.w{WINDOWS}")
-    return f"{base}.src-{source_sha8(root)}"
+    return f"{base}.src-{source_sha8(root) if src is None else src}"
 
 
 def mert_windows(mix: np.ndarray, n: int = WINDOWS) -> np.ndarray:
@@ -109,7 +110,8 @@ class Featurizer:
         torch.use_deterministic_algorithms(True, warn_only=True)
         torch.manual_seed(0)
         self.tmp = Path(tmp_dir or tempfile.mkdtemp(prefix="lofi-scorer-"))
-        self.feat_ver = feat_version("real")
+        self.src_sha8 = source_sha8()               # the code feat_ver names: every render worker must run it
+        self.feat_ver = feat_version("real", src=self.src_sha8)
         t0 = time.perf_counter()
         self._load()
         self.load_s = round(time.perf_counter() - t0, 2)

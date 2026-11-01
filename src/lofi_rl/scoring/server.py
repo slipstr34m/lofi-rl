@@ -270,8 +270,9 @@ def build_scorer(a: argparse.Namespace) -> Scorer:
         featurizer = FakeFeaturizer()
     if render == "real":
         renderer: Any = RenderPool(a.palette, workers=a.workers, render_workers=a.render_workers,
-                                   timeout_s=a.render_timeout_s)
-        renderer.warm()
+                                   timeout_s=a.render_timeout_s,
+                                   expect={"src_sha8": featurizer.src_sha8, "palette_sha256": palette.sha256})
+        renderer.warm()                     # RenderPoolDrift if a worker loads other code than feat_ver names
     else:
         from .fakes import FakeRenderer
         renderer = FakeRenderer(workers=a.workers)

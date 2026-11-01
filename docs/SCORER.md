@@ -126,7 +126,8 @@ rendered, cache counts, failing gates, parse/records/total ms).
 ### 3.5 Status codes
 400 a malformed request (bad JSON, schema, brief); 404 an unknown path; 405 another method; 409 another palette
 or pinned version; 413 a body over 16 MiB; 422 a brief without PAR references while taste is live, or an unusable
-`out_dir`; 500 a backend exception (a featurizer or RM failure, a non-finite feature), with `error`, `type` and the
+`out_dir`; 500 a backend exception (a featurizer or RM failure, a non-finite feature, a render worker on other
+code or another palette), with `error`, `type` and the
 end of the traceback. **The client raises `ScorerError` on anything but 200**, on a timeout (300 s), on an
 unreachable socket and on a response that fails `check_score_response`.
 
@@ -236,6 +237,14 @@ rewarded**; PC and CU are logged as signatures (`sig`, `diag`).
     killed after 120 s (`fluid.TIMEOUT_S`: a `render-error`). A worker whose server died without closing
     the pool (a SIGKILL, which no longer reaches the worker's group) ends its own group within a second.
   - The server featurizes each clip as its render finishes, so the GPU works while other clips render.
+  - **Workers on the server's code.** feat_ver and the clip ids are fixed when the server starts, but workers
+    import `src/` and read the palette whenever they are spawned (`warm()`, and every `restart()` after a timeout
+    or a crash), and `make sync` can change the mirror under a running job. So each worker hashes the code
+    (`features.source_sha8`) and the palette it loaded; `warm()` (which `restart()` runs on the new pool)
+    compares them with the featurizer's `src_sha8` and the server's palette, and every outcome from a worker
+    carries them (`worker`). A mismatch, or a manifest whose `shootout.render.clip_id` is not the item's clip
+    id, is `RenderPoolDrift`: at start the server does not bind; in a request it is a 500, nothing is cached,
+    and the trainer crashes so the chain restarts a coherent server.
 - **Features** (`features.py`, real backend):
 
 | model | input | kept |
@@ -340,10 +349,10 @@ the features, for the cluster smoke). They never render or hear audio. `python -
 | file | what it checks |
 |---|---|
 | `test_scoring_protocol.py` | clip id = the shootout formula, its parts, canonical-form sharing; request round trips; 25 malformed requests; NaN; response and health checks; pinned versions |
-| `test_scoring_server.py` | the real server on a real socket with fakes: health, score (order, fields, dedup, memory hits, stats), render, 400/404/405/413, 500 with its trace, 409, render gate and infrastructure failures, mode 0600, the path rules, close() leaving a socket that replaced its own, the client's errors, a real client refusing a fake backend, SIGTERM and SIGINT removing the socket (a subprocess), exit 2 on a foreign path |
+| `test_scoring_server.py` | the real server on a real socket with fakes: health, score (order, fields, dedup, memory hits, stats), render, 400/404/405/413, 500 with its trace, a 500 for a render from a drifted worker or of another clip id, 409, render gate and infrastructure failures, mode 0600, the path rules, close() leaving a socket that replaced its own, the client's errors, a real client refusing a fake backend, SIGTERM and SIGINT removing the socket (a subprocess), exit 2 on a foreign path |
 | `test_scoring_core.py` | G on 11 hand-built cases, PAR on hand-built utilities, the RM with and without references, the 422, the theme margin on hand-built embeddings, the prompt file, every term off without calibration and on with it, CE that fails its check, the disk cache read by a fresh scorer, an unreadable file, records of another feat_ver, clip or schema read as misses, feat_ver following the source files, LRU eviction, the fakes |
 | `test_scoring_calib_rm.py` | the calibration and RM loaders: missing, valid, every malformed case, CE thresholds, exit 2 before binding |
-| `test_scoring_render.py` | two real renders through the pool (example.ls, dev_gu): `/score`, where the mix and music stem reach the featurizer once and their hashes match the manifest and the laptop's golden hashes, and `/render` to a FLAC and manifest named by clip id with the same PCM, the clip id equal to the shootout's id of that manifest; a gate failure in a worker, a batch past its deadline, a broken pool (in flight, and found broken at submit after a worker died between batches), a worker's child process ended by the pool's kill, a worker ending itself after its server's SIGKILL, the centroid |
+| `test_scoring_render.py` | two real renders through the pool (example.ls, dev_gu): `/score`, where the mix and music stem reach the featurizer once and their hashes match the manifest and the laptop's golden hashes, and `/render` to a FLAC and manifest named by clip id with the same PCM, the clip id equal to the shootout's id of that manifest; a gate failure in a worker, a batch past its deadline, a broken pool (in flight, and found broken at submit after a worker died between batches), a worker's child process ended by the pool's kill, a worker ending itself after its server's SIGKILL, workers on other code or another palette refused at warm and after a restart, the centroid |
 | `test_scoring_reward_hook.py` | the no-scorer golden byte for byte; the env var; G, r, gate and the new fields with a stand-in client; the CE rule; failures raise; nothing sent without a pass; TRL hooks; the real client and server end to end |
 | `test_scoring_job.py` | the job's size, cost line, env, timeouts, steps and outputs; the smoke's batch; the steps rehearsed on fakes to SCORER_SMOKE_OK; the verdict failing on drift, a missing pass, a bad exit and a left socket |
 | `test_scoring_imports.py` | every scoring module imports without the ML stack; client, protocol and the reward without numpy or the audio stack |

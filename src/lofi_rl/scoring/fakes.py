@@ -22,7 +22,7 @@ from typing import Any
 import numpy as np
 
 from .cache import ClipFeatures
-from .features import WINDOWS, feat_version
+from .features import WINDOWS, feat_version, source_sha8
 from .render_pool import RenderJob, failure
 
 DIM = 512
@@ -80,7 +80,8 @@ class FakeFeaturizer:
 
     def __init__(self, *, audiobox: Mapping[str, Mapping[str, float]] | None = None,
                  raise_for: Iterable[str] = ()) -> None:
-        self.feat_ver = feat_version("fake")
+        self.src_sha8 = source_sha8()
+        self.feat_ver = feat_version("fake", src=self.src_sha8)
         self.audiobox, self.raise_for = dict(audiobox or {}), set(raise_for)
         self.calls: list[str] = []
         self.device = "fake"

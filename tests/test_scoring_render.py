@@ -19,8 +19,8 @@ import pytest
 
 from helpers_scoring import BRIEF_A, PALETTE, ROOT, fixture_text, make_scorer, pid_alive, start_sleeper, wait_gone
 from lofi_rl.palette import load_palette
-from lofi_rl.scoring import fakes, protocol
-from lofi_rl.scoring.render_pool import RenderJob, RenderPool, render_config, spectral_centroid
+from lofi_rl.scoring import fakes, features, protocol
+from lofi_rl.scoring.render_pool import RenderJob, RenderPool, RenderPoolDrift, render_config, spectral_centroid
 
 PAL = load_palette(PALETTE, verify=False)
 needs_fluidsynth = pytest.mark.skipif(shutil.which("fluidsynth") is None, reason="fluidsynth not on PATH")
@@ -190,6 +190,34 @@ def test_a_worker_whose_server_was_sigkilled_ends_itself(tmp_path):
                 os.killpg(worker, signal.SIGKILL)
             except ProcessLookupError:
                 os.kill(worker, signal.SIGKILL)
+
+
+@pytest.mark.parametrize("key", ["src_sha8", "palette_sha256"])
+def test_a_worker_that_loads_other_code_or_another_palette_is_refused_at_warm(key):
+    want = {"src_sha8": features.source_sha8(), "palette_sha256": PAL.sha256}
+    pool = RenderPool(PALETTE, workers=1, timeout_s=60, expect={**want, key: "0" * len(want[key])})
+    try:
+        with pytest.raises(RenderPoolDrift, match=key):
+            pool.warm()
+    finally:
+        pool.close()
+
+
+def test_respawned_workers_are_checked_against_the_code_the_pool_started_with(tmp_path):
+    # `make sync` under a running server: a restart() after a timeout or a crash spawns workers on the new code.
+    for p in sorted({p for g in features.SOURCE_GLOBS for p in ROOT.glob(g) if p.is_file()}):
+        dst = tmp_path / p.relative_to(ROOT)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(p, dst)
+    pool = RenderPool(PALETTE, workers=1, timeout_s=60, root=tmp_path)
+    try:
+        assert len(pool.warm()) == 1 and pool.expect["src_sha8"] == features.source_sha8(tmp_path)
+        with (tmp_path / "src" / "lofi_rl" / "render" / "mix.py").open("ab") as f:
+            f.write(b"\n")
+        with pytest.raises(RenderPoolDrift, match="src_sha8"):
+            pool.restart()
+    finally:
+        pool.close()
 
 
 def test_the_spectral_centroid_of_a_tone_and_of_silence():

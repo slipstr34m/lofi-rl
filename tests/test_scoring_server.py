@@ -147,6 +147,47 @@ def test_a_backend_exception_is_500_with_its_trace_and_the_client_raises(tmp_pat
         assert ok["items"][0]["hard"] == 1, "one failed request does not break the next"
 
 
+class Drifting(fakes.FakeRenderer):
+    """The fake renderer, with `extra(job)` merged into every outcome (a worker's hashes, a manifest)."""
+
+    def __init__(self, extra):
+        super().__init__()
+        self.extra = extra
+
+    def render_many(self, jobs, on_done):
+        super().render_many(jobs, lambda k, out: on_done(k, {**out, **self.extra(jobs[k])}))
+
+
+def _manifest(canon_sha256):
+    from lofi_rl.scoring.render_pool import render_config
+    cfg = render_config()
+    b = BRIEF_A
+    return {"schema": cfg["schema"], "chain": cfg["chain"], "loop": {"canon_sha256": canon_sha256},
+            "brief": {"bpm": b.bpm, "tonic": b.tonic, "mode": b.mode, "energy": b.energy},
+            "palette": {"id": PAL.id, "sha256": PAL.sha256}}
+
+
+@pytest.mark.parametrize("extra, match", [
+    (lambda j: {"worker": {"pid": 1, "src_sha8": "deadbeef", "palette_sha256": PAL.sha256}}, "src_sha8"),
+    (lambda j: {"worker": {"pid": 1, "src_sha8": None, "palette_sha256": "f" * 64}}, "palette_sha256"),
+    (lambda j: {"manifest": _manifest("0" * 64)}, "manifest of clip"),
+])
+def test_a_render_from_a_drifted_worker_or_of_another_clip_is_a_500_and_never_cached(tmp_path, extra, match):
+    with served(tmp_path, renderer=Drifting(extra)) as (client, scorer, _sock):
+        with pytest.raises(ScorerError) as err:
+            client.score(_items([EX]), palette_sha256=PAL.sha256)
+        assert len(scorer.cache) == 0
+    assert err.value.status == 500 and err.value.body["type"] == "RenderPoolDrift" and match in str(err.value)
+
+
+def test_a_render_whose_worker_and_manifest_agree_is_scored(tmp_path):
+    from lofi_rl.dsl import canon_sha, parse
+    want = {"pid": 1, "src_sha8": fakes.FakeFeaturizer().src_sha8, "palette_sha256": PAL.sha256}
+    sha = canon_sha(parse(EX, vocab=PAL.vocab(), mode=BRIEF_A.mode).ast)
+    with served(tmp_path, renderer=Drifting(lambda j: {"worker": want, "manifest": _manifest(sha)})) as (client, _, _s):
+        assert client.score(_items([EX]), palette_sha256=PAL.sha256)["items"][0]["hard"] == 1
+
+
 def test_another_palette_or_pinned_version_is_409(tmp_path):
     with served(tmp_path) as (client, _, _sock):
         with pytest.raises(ScorerError) as err:
