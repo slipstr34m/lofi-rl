@@ -305,15 +305,18 @@ config reaches the dry run, both launches and both checks, and the log names it.
    - the reward scored 32 completions per step in 4 groups of 8, at curriculum steps 0–9 (a) and 5–9 (b);
    - there were no reward errors;
    - with a constrained config, every `stop` completion of both launches is in the regex's language, every
-     completion has an in-language record, and each launch's run.json names the config's regex (sha256);
+     completion has an in-language record, none has the finish reason `other` (no finish reason from the token
+     ids, so the check cannot judge it; D-020's Validity: `other.n` is 0), each launch has at least one `stop`
+     completion (else nothing shows the grammar applied), and each launch's run.json names the config's regex
+     (sha256);
    - with `copy_penalty`, every completion has a `p_copy`.
 
    Warnings list a curriculum step that did not come from TRL's `trainer_state`, dropped optional fields, failed
-   logging hooks, duplicate step records, and an IS readout that is unavailable. `smoke.json` also has, for each
-   step, the reward mean and std (ours and TRL's), KL, mean completion length, gate rate, loss, step time and TRL's
-   `sampling/sampling_logp_difference/mean` (as TRL logged it, read or not), and each launch's startup and wall
-   time. A launch a in-language failure is judged at the final stage, like a reward error, so it never blocks the
-   resume test.
+   logging hooks, duplicate step records, and an IS readout that is unavailable or whose rule reads the mean of the
+   steps. `smoke.json` also has, for each step, the reward mean and std (ours and TRL's), KL, mean completion
+   length, gate rate, loss, step time and TRL's `sampling/sampling_logp_difference/mean` (as TRL logged it, read or
+   not), and each launch's startup and wall time. A launch a in-language failure is judged at the final stage, like
+   a reward error, so it never blocks the resume test.
 
 **What the D-020 settings add to `smoke.json`:**
 - **`in_language`** (constrained): the regex's sha256 and the counts by finish reason (stop, length, other: n,
@@ -341,8 +344,9 @@ config reaches the dry run, both launches and both checks, and the log names it.
     reported, overall and `by_launch`.
   - **The rule** reads the token-weighted mean when every step has its tokens, else the mean of the steps:
     `exceeds` is value > 0.05. It is D-020's reading only for the grammar + v2 config (`applies`). `caveats` name
-    steps with truncated completions, whose tokens TRL's value leaves out, and the two means falling on two sides
-    of 0.05.
+    steps with truncated completions, whose tokens TRL's value leaves out, the two means falling on two sides
+    of 0.05, and a rule that reads the mean of the steps (the steps that have no token count), which is not D-020's
+    mean over every completion token.
 
 **Timeouts.** Each launch runs under `timeout -k 30s` with the job's remaining time minus 3 minutes, so the final
 check always runs inside the walltime.

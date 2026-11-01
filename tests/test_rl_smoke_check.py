@@ -236,6 +236,42 @@ def test_a_constrained_run_whose_records_lack_the_language_or_name_another_regex
     assert any("320 of 320 completions have no in-language record" in f for f in rep2["failures"])
 
 
+def _rewrite(run: Path, **fields):
+    """Set `fields` on every completion record of both launches' rewards.jsonl."""
+    for name in ("a", "b"):
+        p = run / "summary" / name / "rewards.jsonl"
+        p.write_text("".join(json.dumps({**json.loads(l), **fields}) + "\n" for l in p.read_text().splitlines()))
+
+
+def test_completions_without_a_finish_reason_from_their_ids_fail_and_the_rule_says_it_reads_the_step_mean(tmp_path):
+    # completion_ids or the limit unknown: finish "other", no token count, no truncation flag. The in-language check
+    # judged nothing (D-020, Validity: other.n is 0), and the IS rule has no tokens to weight the steps by.
+    run = _d020_run(tmp_path)
+    _rewrite(run, finish="other", in_language=False, n_tokens=None, truncated=None)
+    rep = sc.check(run, "final", _cfg(), {"a": "0", "b": "0"})
+    assert not rep["ok"]
+    for name, n in (("a", 320), ("b", 160)):
+        assert any(f.startswith(f"launch {name}: {n} of {n} completions have no finish reason from the token ids")
+                   for f in rep["failures"]), rep["failures"]
+        assert f"launch {name}: no completion ended by stop, so nothing shows the grammar applied" in rep["failures"]
+    assert rep["in_language"]["other"]["n"] == 480 and rep["in_language"]["stop"]["n"] == 0
+    rule = rep["is_ratio"]["rule"]
+    assert rule["reads"] == "mean_of_steps" and rule["value"] == pytest.approx(0.01)
+    assert any(c.startswith("steps [('a', 1), ('a', 2)") and "mean of the per-step values" in c
+               for c in rule["caveats"]), rule["caveats"]
+    assert any("reads the mean of the per-step values" in w for w in rep["warnings"])
+
+
+def test_a_launch_whose_completions_all_hit_the_limit_shows_no_grammar_and_fails(tmp_path):
+    rep = sc.check(_d020_run(tmp_path, truncated=lambda k, i: True), "final", _cfg(), {"a": "0", "b": "0"})
+    assert not rep["ok"] and rep["in_language"]["length"]["n"] == 480
+    assert {f for f in rep["failures"] if "no completion ended by stop" in f} == {
+        f"launch {n}: no completion ended by stop, so nothing shows the grammar applied" for n in ("a", "b")}
+    rule = rep["is_ratio"]["rule"]
+    assert rule["reads"] == "mean_of_steps", "TRL's mask leaves every token out, so nothing weights the steps"
+    assert any(c.startswith("the steps with a value have no completion tokens") for c in rule["caveats"])
+
+
 def test_a_copy_penalty_config_whose_reward_logged_none_fails(tmp_path):
     rep = sc.check(_d020_run(tmp_path, copy=False), "final", _cfg(), {"a": "0", "b": "0"})
     assert any("have no p_copy" in f for f in rep["failures"])

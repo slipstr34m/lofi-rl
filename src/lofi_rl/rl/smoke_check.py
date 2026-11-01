@@ -20,7 +20,10 @@ What the D-020 settings add to the report (docs/GRPO.md §5):
 - **in_language** (a constrained config): every completion's finish reason and whether it fullmatches the regex,
   as the reward logged them, per launch and per step. The smoke fails if any "stop" completion is out of the
   language (the engine did not apply the grammar as `re` reads it; D-020, Validity), if a completion has no such
-  record, or if a launch's run.json names another regex. A launch's failures here are judged at the final stage.
+  record, if any has the finish reason "other" (none from the token ids, so the check cannot judge it; D-020's
+  Validity asks other.n to be 0), if a launch scored completions but none ended by stop (then nothing shows the
+  grammar applied), or if a launch's run.json names another regex. A launch's failures here are judged at the final
+  stage.
 - **backend**: each launch's record of the structured-outputs pin on the engine TRL built (requested, pin_accepted,
   backend, source, applied, engine). It decides nothing, as in junk.json.
 - **copy** (a config with copy_penalty): P_copy's mean, the completions it penalized and the largest J, per launch;
@@ -32,7 +35,8 @@ What the D-020 settings add to the report (docs/GRPO.md §5):
   steps 6-10 are steps the smoke ran); the mean of the per-step values, and the token-weighted mean that D-020's
   "over every completion token" reads (weights: each step's completion tokens from rewards.jsonl, without the
   truncated completions when TRL's mask drops them), are both reported, and the 0.05 rule reads the token-weighted
-  mean when every step has its tokens. The rule is D-020's reading only for a config with the grammar and prompt v2
+  mean when every step has its tokens, else the mean of the per-step values, with a caveat and a warning that say
+  so. The rule is D-020's reading only for a config with the grammar and prompt v2
   (`applies`); an unavailable readout is a warning, not a failure.
 """
 from __future__ import annotations
@@ -213,6 +217,13 @@ def _language(name: str, meta: dict[str, Any], rewards: list[dict[str, Any]], cf
     if unrecorded:
         problems.append(f"launch {name}: {unrecorded} of {len(rewards)} completions have no in-language record (a "
                         "constrained run's reward counts every one)")
+    other = counts["other"]["n"]
+    if other:
+        problems.append(f"launch {name}: {other} of {len(rewards)} completions have no finish reason from the token ids "
+                        "(completion_ids or the limit unknown), so the in-language check cannot judge them (D-020, "
+                        "Validity: other.n is 0)")
+    if rewards and counts["stop"]["n"] == 0:
+        problems.append(f"launch {name}: no completion ended by stop, so nothing shows the grammar applied")
     bad = counts["stop"]["out_of_language"]
     if bad:
         problems.append(f"launch {name}: {bad} of {counts['stop']['n']} stop completions are not in the regex's "
@@ -315,6 +326,14 @@ def _is_readout(launches: dict[str, dict[str, Any]], cfg: RunConfig, warnings: l
     value = weighted if weighted is not None else plain
     exceeds = value > IS_THRESHOLD
     caveats = []
+    if weighted is None:
+        miss = [(r["run"], r["step"]) for r in rows if r["value"] is not None and r["tokens"] is None]
+        why = (f"steps {miss} have no completion-token count" if miss
+               else "the steps with a value have no completion tokens to weight it by")
+        caveats.append(f"{why}, so the rule reads the mean of the per-step values, not D-020's mean over every "
+                       "completion token")
+        warnings.append(f"IS readout: {why}, so the 0.05 rule reads the mean of the per-step values, not D-020's "
+                        "token-weighted mean")
     cut = [(r["run"], r["step"]) for r in rows if r["truncated"]]
     if cut and excludes:
         how = ("its source drops them from completion_mask" if seen else
