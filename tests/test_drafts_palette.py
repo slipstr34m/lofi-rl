@@ -166,8 +166,10 @@ def test_tampering_is_found(dp):
                                                                           "      prog: 0", "src: fp_finger_bass_yr\n"
                                                                           "      bank: 0\n      prog: 1", 1)))
     assert any("timing" in x for x in broken(lambda t: t.replace("timing: lag", "timing: grid", 1)))
-    assert any("leaders" in x for x in broken(lambda t: t.replace("bus_gain_db: {sax: 2.55, drums: 15.26",
-                                                                  "bus_gain_db: {sax: 2.55, drums: 15.2", 1)))
+    assert any("as_written band" in x for x in broken(lambda t: t.replace("bus_gain_db: {sax: 2.55, drums: 15.26",
+                                                                          "bus_gain_db: {sax: 2.55, drums: 15.2", 1)))
+    assert any("leaders" in x for x in broken(lambda t: t.replace("as_written: {keys: rhodes, kit: studio}",
+                                                                  "as_written: {keys: piano, kit: jazz}", 1)))
     with pytest.raises(P.DraftPaletteError, match="levels block"):
         P.parse_draft("\n".join(x for x in dp.text.splitlines() if not x.startswith("#|")) + "\n", dp.path)
     with pytest.raises(P.DraftPaletteError, match="levels.keys"):

@@ -511,8 +511,31 @@ def build(levels_day1: Path, levels_day2: Path, *, plan_path: Path = PLAN, base_
 
 # --------------------------------------------------------------------------------------------- checks
 def problems(dp: DraftPalette) -> list[str]:
-    """What is wrong with a draft palette without reading any other file: its names and settings are the Day-2
-    picks', the palette as written is render_doc(LEADERS), and every render palette parses."""
+    """What is wrong with a draft palette without reading any other file. Every draft palette: the band its levels
+    block says it plays as written (`as_written`) is the band its chain-head trims and faders play, and every render
+    palette parses. palettes/draft_day2.yaml (id draft_day2) also: its names, options and settings are the Day-2 picks',
+    the chord list is the grammar's, the band as written is the leaders', and each block is what job 2 measured
+    (`picks_problems`). A test's stand-in palette under another id skips that second part."""
+    out = []
+    aw = dp.levels.get("as_written") or {}
+    try:
+        lead = render_doc(dp, aw.get("keys"), aw.get("kit"))
+        mine = dp.doc["mix"]
+        if lead["mix"]["bus_gain_db"] != mine["bus_gain_db"] or any(
+                lead["mix"]["buses"][b][0] != mine["buses"][b][0] for b in TRIM_BUSES):
+            out.append(f"the palette as written does not play its as_written band {aw} at that band's levels")
+        for keys in dp.keys:
+            for kit in dp.kits:
+                render_text(dp, keys, kit)
+    except DraftPaletteError as err:
+        out.append(str(err))
+    if dp.id == PALETTE_ID:
+        out += picks_problems(dp)
+    return out
+
+
+def picks_problems(dp: DraftPalette) -> list[str]:
+    """palettes/draft_day2.yaml against the Day-2 picks (gates/GATE_palette.md) and against what job 2 measured."""
     out = []
     pal = dp.palette
     if dict(dp.levels.get("as_written") or {}) != {"keys": LEADERS[0], "kit": LEADERS[1]}:
@@ -534,19 +557,7 @@ def problems(dp: DraftPalette) -> list[str]:
     out += [f"{k} is {settings[k]!r}, the Day-2 pick is {want[k]!r}" for k in want if settings[k] != want[k]]
     if tuple(pal.numerals) != NUMERALS or tuple(pal.qualities) != QUALITIES or tuple(pal.voicings) != VOICINGS:
         out.append("the chord list or the voicings are not the grammar's full lists (the list as it stands)")
-    out += _measured_problems(dp)
-    try:
-        lead = render_doc(dp, *LEADERS)
-        mine = dp.doc["mix"]
-        if lead["mix"]["bus_gain_db"] != mine["bus_gain_db"] or any(
-                lead["mix"]["buses"][b][0] != mine["buses"][b][0] for b in TRIM_BUSES):
-            out.append(f"the palette as written does not play the leaders' band {LEADERS} at their levels")
-        for keys in dp.keys:
-            for kit in dp.kits:
-                render_text(dp, keys, kit)
-    except DraftPaletteError as err:
-        out.append(str(err))
-    return out
+    return out + _measured_problems(dp)
 
 
 def untrimmed_lanes(lanes: Mapping, trim: float) -> dict:
