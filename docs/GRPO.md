@@ -86,6 +86,17 @@ R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix + P_copy)
   - **Opt-in, decided here:** the reward adds P_copy only when built with `copy=` (`train` does it for a config with
     `copy_penalty`). Without it the record has no `p_copy` field, not even 0.0, and today's smoke keeps its rewards
     and log byte for byte (`tests/test_scoring_reward_hook.py`'s golden, unchanged).
+  - **What it does to v2 under the grammar.** D-020 arm B's 500 completions
+    (`runs/junk-13640325/summary/completions.jsonl`) went through the real reward at step 0, one group per brief, on
+    the laptop on 2026-11-01.
+    - **The measure:** J and the nearest reference equal junk's `copy_any_jaccard` and `copy_any_source`
+      (`scored.jsonl`) on 500 of 500.
+    - **How many it charges:** 52 have J ≤ 0.6, 394 sit in the ramp and 54 have J ≥ 0.8 (junk's `near_copy_any`
+      count is also 54). So P_copy is above 0 for 448 of the 500.
+    - **Its size:** mean 0.1754 (median 0.1911), against a positive term of mean 0.6078 (median 0.6312). It is never
+      larger than the positive term. The mean reward is 0.4285 with it and 0.6038 without.
+    - **What follows:** in run 1 it is the largest penalty, and it reaches most completions, not only the near-copies
+      that pass_not_copy counts.
 - **The in-language count** (a constrained config; D-020's Validity, on the GRPO path). With `language=` (the
   config's `structured_outputs`) every completion gets `finish` and `in_language`: whether its text fullmatches the
   decoding regex under Python's `re`.
