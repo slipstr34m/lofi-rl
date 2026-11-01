@@ -79,3 +79,54 @@ class short_sock_dir:
 
     def __exit__(self, *exc) -> None:
         shutil.rmtree(self.path, ignore_errors=True)
+
+
+# ------------------------------------------------------------------------------------------ scorer fixtures
+FIX = ROOT / "tests" / "fixtures" / "loops"
+PASSING = ("example.ls", "leniency_lower_x.ls", "one_bar_base.ls", "shaker_edits.ls", "span1_dotted.ls")
+
+
+def fixture_text(name: str) -> str:
+    return (FIX / name).read_text(encoding="utf-8")
+
+
+def canon_sha_of(text: str, brief: Brief = BRIEF_A) -> str:
+    """sha256 of a text's canonical form: the key the fakes (lofi_rl.scoring.fakes) take behaviours by."""
+    from lofi_rl.dsl import canon, parse
+    from lofi_rl.palette import load_palette
+    res = parse(text, vocab=load_palette(PALETTE, verify=False).vocab(), mode=brief.mode)
+    assert res.gate.ok, res.gate
+    import hashlib
+    return hashlib.sha256(canon(res.ast).encode("utf-8")).hexdigest()
+
+
+def variant(text: str, k: int) -> str:
+    """A distinct valid loop: the k-th single-cell change of the first `kick:` grid (k < 16)."""
+    lines = text.splitlines()
+    for n, line in enumerate(lines):
+        if line.startswith("kick:"):
+            head, grids = line.split(":", 1)
+            cells = list(grids.split()[0])
+            pos = 1 + (k % 15)
+            cells[pos] = "." if cells[pos] != "." else "x"
+            lines[n] = f"{head}: {''.join(cells)} " + " ".join(grids.split()[1:])
+            return "\n".join(lines) + "\n"
+    raise ValueError("no kick line")
+
+
+def make_scorer(tmp_path: Path, *, calib_dir: Path | None = None, rm=None, rm_dir: Path | None = None,
+                renderer=None, featurizer=None, cache_root: Path | None = None, lru: int = 4096):
+    """A Scorer on the dev palette with fake backends (lofi_rl.scoring.fakes) unless given others."""
+    from lofi_rl.palette import load_palette
+    from lofi_rl.scoring import calib, fakes, rm_api, theme
+    from lofi_rl.scoring.cache import FeatureCache
+    from lofi_rl.scoring.core import Scorer
+    from lofi_rl.scoring.render_pool import render_config
+    featurizer = featurizer or fakes.FakeFeaturizer()
+    cfg = theme.load_config()
+    return Scorer(palette=load_palette(PALETTE, verify=False), renderer=renderer or fakes.FakeRenderer(),
+                  featurizer=featurizer, theme=theme.Theme(cfg, featurizer.encode_text),
+                  calib=calib.load(calib_dir, theme_sha256=cfg.sha256),
+                  rm=rm if rm is not None else rm_api.load_rm(rm_dir),
+                  cache=FeatureCache(cache_root, featurizer.feat_ver, lru), render_cfg=render_config(),
+                  backend="fake")
