@@ -229,6 +229,17 @@ assets:
     upstream: "Freesound 235827 by Metadex, uploaded 2014-05-02"
     bytes: 56448120
     notes: "WAV PCM 24-bit, 48 kHz, stereo, 9,408,000 frames (196.000 s); the page notes a suburban hum, a few birds and distant thunder, so the excerpt needs an ear check"
+  # The same recording at 44.1 kHz, converted once on the laptop (2026-11-01; docs/SHOOTOUTS.md §7.2), the file the bed
+  # reads. Two conversions gave these bytes. The excerpt picker's record, shootouts/rain_excerpts.json, names it and
+  # its three excerpts; the Day-3 palettes add it as their `rain` source (lofi_rl.shootout.palettes). Fetch-only.
+  - path: assets/big/derived/rain/235827__metadex__soft-rain-on-roof-window_44k.wav
+    sha256: e6884875cba57f32b56f96faddee580fd3d4d3064c91176c63741045a72fd6f2
+    license: "CC0 1.0 (Freesound page: Creative Commons 0)"
+    mode: fetch
+    url: null
+    upstream: "python -m lofi_rl.convert.resample from assets/big/rain/235827__metadex__soft-rain-on-roof-window.wav (sha256 60f7398e...)"
+    bytes: 69148858
+    notes: "float32 WAV, stereo, 44.1 kHz, 8,643,600 frames (196.000 s), no PEAK chunk; pcm_sha256 01e17ded919e4582482686c1b9bb8565275620cb1e3274417e0caf03f5cc73f3"
   # Deck-only outside reference: the renderer never loads it. Shresth approved it in a side session on 2026-10-31
   # ("Yes, for the deck"), which fetched it. Never for the policy, the taste RM, seeds or the rating page.
   - path: assets/big/ref/vikhyatk-lofi/
