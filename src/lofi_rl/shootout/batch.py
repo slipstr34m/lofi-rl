@@ -22,13 +22,14 @@ one FLAC per clip appearance under an opaque name (`k` + 10 hex), `manifest.json
 `manifest.hidden.json` (what each clip really is: for a clip of an instrument stage, its own fader `fader_db` and
 its bus's loudness as the level tool measured it after that fader, `bus_lufs`, and re S*, `bus_lu`; CD-52; from Day
 2 on the stage's bus there, the vamps' keys, and every other bus the clip matches as `<bus>_fader_db`, `<bus>_lufs`
-and `<bus>_lu`; CD-53), then
+and `<bus>_lu`; CD-53; for a rain clip on Day 3 the bed set under its music, `bus_lufs`, the music it is set under,
+`music_lufs`, and the bed measured in the finished render, `bed_lu`, null for no bed), then
 runs `python -m lofi_rl.ui.manifest check` on each folder and records the id map in `summary/batches.json`. Nothing
 is written unless everything is in order: a missing render, a failed gate, a clip that is not exactly one pass of
 its loop, a FLAC that changed since it was rendered, a repeat whose render is not the first showing's, a clip whose
-draw palette names a `level` but whose record carries none for that case or failed it, an opaque id or note that
-would leak a hidden value, or a batch folder that already exists, stops the build before the first file is
-written. Batches are staged in `<out>/.staging-*` and moved into place only after every folder passes the check.
+draw palette names a `level` but whose record carries none for that case or failed it, a rain round whose clips do
+not play the same music under their beds (their `pre_limiter_sha256`), an opaque id or note that would leak a hidden
+value, or a batch folder that already exists, stops the build before the first file is written. Batches are staged in `<out>/.staging-*` and moved into place only after every folder passes the check.
 
 Opaque ids are drawn per batch from the draw's seed (so one seed gives byte-identical batches), and an id that
 would contain any word or real-id stretch the leak check looks for (docs/RATING.md: "Leak check") is drawn again.
@@ -207,6 +208,8 @@ def _hidden_clip(rec: Mapping, rnd: Mapping, clip: Mapping) -> dict:
                     bus_lufs=buses["keys"]["post_lufs"], bass_lufs=buses["bass"]["post_lufs"])
     else:                                            # rain: the level is the candidate
         info.update(trim_db=None, fader_db=None, bus_lufs=rec.get("bed_lufs"))
+        if "music_lufs" in rec:                      # Day 3 (section 4.5): the music under the bed, the bed in the render
+            info.update(music_lufs=rec["music_lufs"], bed_lu=(rec.get("bed") or {}).get("bed_lu"))
     lo_hi = rec.get("sax_range")
     info["sax_range"] = f"{lo_hi[0]}-{lo_hi[1]}" if lo_hi else None
     if clip.get("kit"):
@@ -260,6 +263,12 @@ def build(doc: Mapping, renders_dir: Path | str, out_root: Path | str, *, summar
             reals = [rec_of(c)[1]["clip"] for c in r["clips"] if rec_of(c)]
             if len(set(reals)) != len(reals):
                 errors.append(f"{b['name']} round {r['slot']}: a real clip appears twice in one round")
+            got = [rec_of(c)[1] for c in r["clips"] if rec_of(c)]
+            if r["kind"] == "none" and any("pre_limiter_sha256" in x for x in got):
+                music = {x.get("pre_limiter_sha256") for x in got}
+                if len(music) != 1 or None in music:     # a rain round: only the bed differs (section 4.5)
+                    errors.append(f"{b['name']} round {r['slot']}: the clips of a rain round must play the same music "
+                                  f"under their beds, but they play {len(music)} versions of it")
     if errors:
         raise BuildError(errors)
 

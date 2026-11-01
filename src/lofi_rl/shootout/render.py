@@ -32,6 +32,16 @@ builder stops before writing any batch; an infrastructure fault gets status `err
   on (CD-53) the level holds one such entry per bus the clip matches (`buses`), and the render must play each. A
   render that does not gets status `level` (the batch builder refuses it). A palette with no index beside it (a
   test's stand-in) gets no level.
+- **The rain bed** (Day 3, section 4.5): a clip of a bed stage (W1, W2: the round's thing is the bed, not a bus) adds
+  `bed` (the render manifest's bed report: source, start_s, crossfade, delta_lu, the bed's own loudness, its gain
+  and its loudness set under the music, or null for `rain_none`, with `bed_lu`, the bed measured in the finished
+  render: the loudness of render.wav minus music.wav, relative to music.wav), `music_lufs` (the music after the
+  master chain and before the bed and the limiter, which the bed is set under) and `pre_limiter_sha256` (that music's
+  pcm_sha256: every clip of a W round plays the same music, which the batch builder checks). The bed is set under
+  the music before the limiter, so `bed_lu` sits above -delta_lu by what the limiter takes off the music's peaks and
+  not off the steady bed (+0.1 to +2.0 LU on the rain loops in the 2026-11-01 dry run, the same for every clip of a
+  round within 0.03 LU): it is recorded, and the tally flags a W1 round whose `bed_lu` spreads (section 3 step 8).
+  Records of every other stage are unchanged.
 - `summary/renders.json` collects every record, plus the wall time of each render (kept out of the records, so
   a record is as deterministic as its render).
 
@@ -52,13 +62,17 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
+
 from lofi_rl.brief import PITCH_NAMES, Brief
 from lofi_rl.compile.compiler import CompileError
 from lofi_rl.compile.timeline import loop_samples
 from lofi_rl.palette import ROOT, Palette, PaletteError, _file_sha256, load_palette, sf2_presets
 from lofi_rl.render.formats import write_flac, write_wav
+from lofi_rl.render.loudness import lufs
 from lofi_rl.render.mix import BUSES
-from lofi_rl.render.pipeline import RenderError, manifest_json, render
+from lofi_rl.render.pipeline import SR, RenderError, manifest_json, render
+from lofi_rl.render.wavio import pcm_sha256
 from lofi_rl.ui.manifest import audio_info, sha256_file
 
 RECORD_SCHEMA = "lofi-rl/shootout-render/1"
@@ -69,8 +83,9 @@ RECORD_KEYS = ("schema", "render", "status", "error", "loop", "brief", "stage", 
                "music_sha256", "flac_sha256", "flac_frames", "canon_sha256", "compiled_sha256", "gates", "buses",
                "bed_lufs", "sax_range", "expect_pcm_sha256", "level")
 AGREE_LU = 0.001        # a clip's bus before its fader against the level tool's L (both read the same signal)
-__all__ = ["AGREE_LU", "RECORD_KEYS", "RECORD_SCHEMA", "clip_id", "loop_samples", "main", "palette_levels",
-           "render_all", "verify_palettes", "with_level"]
+BED_BUS = "bed"         # the stage bus of the rain rounds (plan.yaml W1, W2)
+__all__ = ["AGREE_LU", "RECORD_KEYS", "RECORD_SCHEMA", "bed_record", "clip_id", "loop_samples", "main",
+           "palette_levels", "render_all", "verify_palettes", "with_level"]
 
 
 def clip_id(manifest: dict) -> str:
@@ -169,7 +184,19 @@ def _record(rid: str, entry: dict, pal: Palette | None, status: str, error: str 
                 "compiled_sha256": m["loop"]["compiled_sha256"], "gates": m["gates"], "buses": buses,
                 "bed_lufs": m["bed"]["lufs"] if m["bed"] else None,
                 "sax_range": [min(pitches), max(pitches)] if pitches else None})
+    if entry["bus"] == BED_BUS:                         # Day 3: the bed, and the music under it (section 4.5)
+        rec.update(bed_record(m, r.audio, r.music, r.pre_limiter))
     return rec
+
+
+def bed_record(manifest: dict, audio, music, pre_limiter) -> dict:
+    """A bed clip's `bed`, `music_lufs` and `pre_limiter_sha256` (the module docstring): the manifest's bed report
+    with `bed_lu`, the bed's loudness in the finished render (render.wav - music.wav) relative to music.wav."""
+    bed = manifest["bed"]
+    if bed is not None:
+        music64 = np.asarray(music, dtype=np.float64)
+        bed = {**bed, "bed_lu": float(lufs(np.asarray(audio, dtype=np.float64) - music64, SR) - lufs(music64, SR))}
+    return {"bed": bed, "music_lufs": manifest["music_lufs"], "pre_limiter_sha256": pcm_sha256(pre_limiter)}
 
 
 def palette_levels(files: list[Path]) -> dict[Path, dict | None]:

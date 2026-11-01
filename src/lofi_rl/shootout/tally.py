@@ -24,8 +24,9 @@ across its batches (section 8):
 - rounds flagged by section 3, from the hidden manifests' levels: a round whose candidates' bus loudness (`bus_lufs`)
   spreads over 1.0 LU, over 0.5 LU for the timing variants [CD-26], and a vamp round whose keys (`bus_lufs`) or bass
   (`bass_lufs`) loudness spreads over 1.0 LU [CD-27]; from Day 2 on every other bus a stage matches too
-  (`<bus>_lufs`, CD-53: R3a's sax, keys and bass, R3b's keys and bass), at its stage's limit; with --levels, every
-  trim or fader a job's drift check moved by more than 0.1 dB.
+  (`<bus>_lufs`, CD-53: R3a's sax, keys and bass, R3b's keys and bass), at its stage's limit; on Day 3 a W1 round
+  whose excerpts' beds, measured in the finished renders relative to their music (`bed_lu`), spread over 1.0 LU (W2's
+  level is its candidate); with --levels, every trim or fader a job's drift check moved by more than 0.1 dB.
 
 Section 8's rules are the functions `keys_to_k2`, `kits_after_r1`, `bass_pairings`, `relisten_bass` (CD-54),
 `sax_to_final` and `day2_cut` (after Day 1), `keys_survivors`, `sax_final`, `warmth`, `timing`, `swing`, `humanize`,
@@ -79,6 +80,7 @@ MATCHED_LU = 1.0              # section 3 step 8: an instrument round's candidat
 TIMING_LU = 0.5               # section 3 "Not matched": the variants that move notes in time [CD-26]
 TIMING_SLOTS = frozenset({"swing", "humanize", "timing"})
 UNMATCHED_SLOTS = frozenset({"bed", "rain"})            # rain: the level is the candidate
+BED_SLOT = "bed"              # W1: the excerpt is the candidate at one level, so its beds are compared like a bus
 MOVE_DB = 0.1                 # section 3 "Drift between jobs": a trim or fader that moves more is listed
 DAY2_PUSHES_MIN = 30.0        # section 2.7 cut list: Day 2's two pushes of 15 minutes
 DAYS12_MIN = 55.0             # section 2.7 cut list: P section 7's "about 55 min" for Nov 3-4
@@ -886,7 +888,9 @@ def flag_rules(plan: Plan, stage: str) -> list[tuple[str, float, str]]:
     st = plan.stages.get(stage.removesuffix(RERUN))
     if st is None:
         return [("bus_lufs", MATCHED_LU, "bus")]
-    if st.fills in UNMATCHED_SLOTS:
+    if st.fills == BED_SLOT:      # W1 (section 4.5): every excerpt at delta 18, the bed measured in the render
+        return [("bed_lu", MATCHED_LU, "bed")]
+    if st.fills in UNMATCHED_SLOTS:                                  # W2: the level is the candidate
         return []
     limit = TIMING_LU if st.fills in TIMING_SLOTS else MATCHED_LU    # CD-26; instruments (CD-52), S2a, the vamps
     buses = list(st.match) or (["keys", "bass"] if st.fills is None else [st.bus])   # the vamps: keys and bass (CD-27)

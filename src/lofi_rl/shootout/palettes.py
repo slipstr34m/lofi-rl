@@ -1,7 +1,8 @@
 """The shootout palette generator (docs/SHOOTOUTS.md §7.8; §3 "How the values are carried", CD-51).
 
-    python -m lofi_rl.shootout.palettes --plan shootouts/plan.yaml --stage day1|day2 --levels none|<levels.json>
-        [--draw <draw.json>] [--base <base.yaml>] [--without <option>,...] --out <run>/summary/palettes/
+    python -m lofi_rl.shootout.palettes --plan shootouts/plan.yaml --stage day1|day2|day3 --levels none|<levels.json>
+        [--draw <draw.json>] [--base <base.yaml>] [--without <option>,...] [--rain shootouts/rain_excerpts.json]
+        --out <run>/summary/palettes/
 
 Every palette is the committed base (`shootouts/palettes/base.yaml`) with one instrument per bus under the loops'
 names (CD-1: keys `ep`, kit `dusty`, the sax named by its register and set as `sax_lead`), so a round's clips differ
@@ -46,8 +47,22 @@ job's:
   bus its stage matches set to the levels file's configs[base].buses[bus].cases[case].F. A clip the levels file did
   not measure, measured on another instrument, or more than clip_tol_lu off on a bus is refused.
 
+Day 3 (job 3; section 4.5) runs as Day 2 with the job's draw, its band the Day-2 picks (the job's --leaders, the
+variant slots included: swing, humanize, sax variant and timing), and `--rain` the excerpt picker's record
+(shootouts/rain_excerpts.json, section 7.2), whose file must sit under $LOFI_ASSETS with the sha256 it pins:
+- `--levels none --draw`: the measuring runs of every instrument the draw plays; the rain palettes match nothing
+  (section 3 "Not matched"), so no `configs` unless the job has an S2 re-run (section 4.4), whose stages it then
+  measures as Day 2 does.
+- `--levels <levels.json> --draw`: one palette per rain option (`w1_excerpt_e2`, `w2_rain_d24`), each the band at
+  its t and median F with its settings, and its bed: W1's options name the excerpt (at the stage band's Δ 18), W2's
+  the level on e1 (the stage band's excerpt) or no bed (`rain_none`), the stage's own option applied last
+  (`band_settings`). A bed is `{src: rain, start_s: <the excerpt's>, xfade_s: 1.0, delta_lu: Δ}`, with the rain file
+  added as the fetch source `rain` of the palettes that play it; the index records each palette's `bed` and the
+  excerpt record's sha256. Within a rain round the palettes differ only in the bed (and the rain source), so the
+  music is the same in every clip (section 2.1).
+
 Every source file is hashed once and every SoundFont preset checked before anything is written; a generation that
-fails writes nothing. Days 1 and 2 are built; Day 3 needs the Day-2 picks and the rain file.
+fails writes nothing.
 Exit codes: 0, 2 for a bad argument (a missing file, an unbuilt day), 3 when the inputs are refused.
 """
 from __future__ import annotations
@@ -75,9 +90,14 @@ LEVELS_SCHEMA = "lofi-rl/shootout-levels/1"
 BUSES = ("sax", "keys", "bass", "drums")          # render/mix.py's summing order
 TRIM_BUSES = ("sax", "keys", "bass")              # chains that start with the trim slot
 STAGES = {"day1": 1, "day2": 2, "day3": 3}
-BUILT = ("day1", "day2")
+BUILT = ("day1", "day2", "day3")
 DAY1_FLAGS = {"voicing": "rootless", "sax_warm": False, "sax_expr": True}   # §4 "Fixed in every round"
 SETTING_SLOTS = ("swing", "humanize", "sax_variant", "timing")   # band slots whose option sets palette values
+BED_SLOTS = ("bed", "rain")                       # Day 3 (section 4.5): the excerpt and the level of the rain bed
+RAIN = ROOT / "shootouts" / "rain_excerpts.json"  # the excerpt picker's record (section 7.2), committed
+RAIN_SCHEMA = "lofi-rl/rain-excerpts/1"
+RAIN_SOURCE = "rain"                              # the source id a Day-3 palette's bed plays
+UNSET = object()                                  # no rain variant touched the bed: the base's `bed: null` stays
 MUTE_DB = -200.0                                  # §7.3: the vamp rounds' sax, silent while its stem still renders
 # §7.3: with the sax muted the master gain rose to 18.9-30.0 dB in the Day-2 dry runs (2026-10-31) and the limiter
 # took 10.0-17.2 dB off the peaks of the five vamp clips checked, so the loudness loop (a secant step clamped at 4 dB
@@ -156,7 +176,7 @@ class Inputs:
     """The plan, the base palette and every candidate of a day, resolved and checked once."""
 
     def __init__(self, plan: Plan, base_path: Path, day: int, without: Sequence[str], root: Path,
-                 draw: Mapping | None = None):
+                 draw: Mapping | None = None, rain: Path | None = None):
         self.plan, self.day, self.root = plan, day, root
         self.base_path = Path(base_path)
         data = self.base_path.read_bytes()
@@ -202,6 +222,7 @@ class Inputs:
         self.extra_sources: dict[str, dict] = {}
         self.instruments = {o: self._instrument(o) for o in plays}
         self._check_files()
+        self.rain = read_rain(rain or RAIN, self.base.assets_dir(self.root)) if day == 3 else None
 
     # ---------------------------------------------------------------------------------------------
     def _source_sha(self, sid: str) -> str:
@@ -317,14 +338,52 @@ class Inputs:
     def palette_doc(self, pid: str, band: Mapping[str, str], trims: Mapping[str, float],
                     faders: Mapping[str, float], settings: Sequence[str] = (), sax_muted: bool = False) -> dict:
         """The base with `band` (bus -> instrument id) under the loops' names, each bus's trim and fader; then each
-        plan variant of `settings` (Day 2 on: the band's swing, humanize, sax variant and timing) sets its dotted
-        palette paths, and `sax_muted` puts §7.3's -200 dB Gain right after the sax chain's trim slot (`mute_sax`,
-        the vamps)."""
+        plan variant of `settings` (Day 2 on: the band's swing, humanize, sax variant and timing; Day 3 also its rain
+        excerpt and level, `band_settings`) sets its dotted palette paths, and `sax_muted` puts §7.3's -200 dB Gain
+        right after the sax chain's trim slot (`mute_sax`, the vamps). The rain variants' `bed.excerpt` and
+        `bed.delta_lu` become the palette's bed (`bed_block`) with the rain file as its source, and `bed: null` none."""
         doc = self._doc(pid, band, trims, faders)
         for vid in settings:
             for path, value in self.plan.variants[vid].set.items():
-                _set_path(doc, path, value)
+                if path != "bed" and not path.startswith("bed."):
+                    _set_path(doc, path, value)
+        bed = self.bed_block(settings)
+        if bed is not UNSET:
+            doc["bed"] = bed
+            if bed is not None:                  # the rain file, a fetch source of the palettes that play it (7.2)
+                doc["sources"][RAIN_SOURCE] = copy.deepcopy(self.rain["palette_source"])
         return mute_sax(doc) if sax_muted else doc
+
+    def bed_block(self, settings: Sequence[str]) -> Any:
+        """The palette bed the rain variants of `settings` set, applied in order (section 4.5): `bed.excerpt` names
+        one of the picker's excerpts (shootouts/rain_excerpts.json, section 7.2), played from its start_s with the
+        picker's crossfade, `bed.delta_lu` its level under the music (RENDER.md section 3.4), `bed: null` no bed.
+        UNSET when no variant touches the bed (the base's `bed: null` stays)."""
+        bed: Any = UNSET
+        for vid in settings:
+            for path, value in self.plan.variants[vid].set.items():
+                if path == "bed":
+                    if value is not None:
+                        raise GenerateError(f"variant {vid}: `bed` takes only null; the excerpt and the level are "
+                                            "bed.excerpt and bed.delta_lu")
+                    bed = None
+                elif path.startswith("bed."):
+                    key = path.split(".", 1)[1]
+                    if key not in ("excerpt", "delta_lu"):
+                        raise GenerateError(f"variant {vid}: {path} is not bed.excerpt or bed.delta_lu")
+                    bed = {**(bed if isinstance(bed, dict) else {}), key: value}
+        if bed is UNSET or bed is None:
+            return bed
+        if self.rain is None:
+            raise GenerateError(f"the rain bed comes on day 3, not day {self.day} (variants {list(settings)})")
+        if set(bed) != {"excerpt", "delta_lu"}:
+            raise GenerateError(f"the bed of {list(settings)} names {sorted(bed)}: it needs an excerpt and a level")
+        ex = self.rain["excerpts"].get(bed["excerpt"])
+        if ex is None:
+            raise GenerateError(f"bed.excerpt {bed['excerpt']!r} is not one of the picker's "
+                                f"{sorted(self.rain['excerpts'])}")
+        return {"src": RAIN_SOURCE, "start_s": float(ex["start_s"]), "xfade_s": float(self.rain["xfade_s"]),
+                "delta_lu": float(bed["delta_lu"])}
 
     def _doc(self, pid: str, band: Mapping[str, str], trims: Mapping[str, float],
              faders: Mapping[str, float]) -> dict:
@@ -461,6 +520,48 @@ def _set_path(doc: dict, dotted: str, value: Any) -> None:
     node[keys[-1]] = copy.deepcopy(value)
 
 
+def band_settings(band: Mapping[str, Any], fills: str | None = None) -> list[str]:
+    """The plan variants a palette's band applies, in order: its swing, humanize, sax variant and timing (Day 2 on),
+    then, when it names a rain bed (Day 3, section 4.5: an excerpt, or a level other than rain_none), its bed and rain
+    variants, the stage's own slot last, so a W1 option's excerpt and a W2 option's level (or rain_none) win over the
+    stage band's. Days 1 and 2 name no bed (`bed: null`, `rain: rain_none`), so their settings are as before."""
+    out = [band[s] for s in SETTING_SLOTS if band.get(s)]
+    if band.get("bed") or band.get("rain") not in (None, "rain_none"):
+        out += [band[s] for s in sorted(BED_SLOTS, key=lambda s: s == fills) if band.get(s)]
+    return out
+
+
+def read_rain(path: Path, assets: Path) -> dict:
+    """Day 3: the excerpt picker's record (shootouts/rain_excerpts.json, section 7.2) and the palette source of the
+    file it names, which must lie under the assets folder ($LOFI_ASSETS) with the sha256 the record pins (hashed
+    once). GenerateError otherwise, before anything is written."""
+    doc = _read_json(Path(path), "rain excerpts")
+    if not isinstance(doc, dict) or doc.get("schema") != RAIN_SCHEMA:
+        raise GenerateError(f"rain excerpts {path}: expected a {RAIN_SCHEMA} record (python -m "
+                            "lofi_rl.convert.rain_excerpts, SHOOTOUTS.md section 7.2)")
+    src, excerpts = doc.get("source") or {}, doc.get("excerpts") or {}
+    if not src.get("asset_path") or not src.get("sha256") or not src.get("license") or not excerpts:
+        raise GenerateError(f"rain excerpts {path}: needs its source (asset_path, sha256, license) and its excerpts")
+    for eid, e in excerpts.items():
+        if isinstance(e.get("start_s"), bool) or not isinstance(e.get("start_s"), (int, float)):
+            raise GenerateError(f"rain excerpts {path}: excerpt {eid} has no start_s")
+    f = Path(assets) / src["asset_path"]
+    if not f.is_file():
+        raise GenerateError(f"the rain file {f} is missing: convert the recording once (python -m "
+                            "lofi_rl.convert.resample, SHOOTOUTS.md section 7.2) and push it (make push-assets)")
+    if file_sha256(f) != src["sha256"]:
+        raise GenerateError(f"the rain file {f} does not match the sha256 {src['sha256'][:12]}... its excerpts were "
+                            f"picked from ({path})")
+    conv = src.get("converted_from") or {}
+    entry = {"path": src["asset_path"], "sha256": src["sha256"], "license": src["license"], "mode": "fetch",
+             "url": src.get("url"),
+             "converted_from": (f"{conv['path']} (sha256 {str(conv.get('sha256'))[:12]}..., {conv.get('sr')} Hz) by "
+                                "lofi_rl.convert.resample" if conv.get("path") else None),
+             "attribution": src.get("attribution")}
+    return {"file": str(path), "sha256": file_sha256(Path(path)), "xfade_s": float(doc["parameters"]["xfade_s"]),
+            "excerpts": {k: dict(v) for k, v in excerpts.items()}, "palette_source": entry}
+
+
 def day_instruments(plan: Plan, draw: Mapping) -> list[str]:
     """Every instrument a day's draw plays (each palette's keys, kit, bass and sax) and the four level anchors, in
     the plan's candidate order: what Day 2 measures again (§3 "Drift between jobs")."""
@@ -475,26 +576,30 @@ def day_instruments(plan: Plan, draw: Mapping) -> list[str]:
 
 
 def day_bases(inputs: Inputs, draw: Mapping) -> dict[str, dict]:
-    """Each stage palette of a Day-2 draw: a matched clip's `base` (CD-53), or a palette the draw asks for itself.
-    {key: stage, option, instruments (bus -> id), settings (the band's plan variants that set palette values), whether
-    the sax is muted, the stage's `match` buses, `loops` and its literal substitutions (`sub`)}."""
+    """Each stage palette of a Day-2 or Day-3 draw: a matched clip's `base` (CD-53), or a palette the draw asks for
+    itself (Day 3's rain palettes, one per option). {key: stage, option, instruments (bus -> id), settings (the band's
+    plan variants that set palette values, `band_settings`), whether the sax is muted, the stage's `match` buses,
+    `loops` and its literal substitutions (`sub`)}. On Day 3 the S2 re-run's stages (plan.yaml `rerun_s2`, section
+    4.4) belong to the day too."""
     out: dict[str, dict] = {}
+    plan = inputs.plan
     for key, spec in sorted((draw.get("palettes") or {}).items()):
         level = spec.get("level") or {}
         if level and "buses" not in level:
             raise GenerateError(f"draw: palette {key} names a Day-1 level {level}; a day-{inputs.day} stage matches "
                                 f"its buses on its own palette (CD-53)")
         name = spec.get("base") if level else key
-        st = inputs.plan.stages.get(spec.get("stage"))
-        if st is None or st.day != inputs.day:
+        st = plan.stages.get(spec.get("stage"))
+        rerun = st is not None and st.id in plan.rerun_stages and inputs.day == plan.rerun_day
+        if st is None or (st.day != inputs.day and not rerun):
             raise GenerateError(f"draw: palette {key} belongs to stage {spec.get('stage')}, not one of day "
                                 f"{inputs.day}'s")
         band = spec.get("band") or {}
-        if band.get("bed") is not None or band.get("rain") not in (None, "rain_none"):
+        if inputs.day < 3 and (band.get("bed") is not None or band.get("rain") not in (None, "rain_none")):
             raise GenerateError(f"draw: palette {key} plays a bed; the rain comes on day 3")
         entry = {"stage": st.id, "option": spec.get("option"),
                  "instruments": {bus: band.get(slot) for slot, bus in SLOT_BUS.items()},
-                 "settings": [band[s] for s in SETTING_SLOTS if band.get(s)], "sax_muted": bool(spec.get("sax_muted")),
+                 "settings": band_settings(band, st.fills), "sax_muted": bool(spec.get("sax_muted")),
                  "buses": list(st.match), "loops": st.match_loops,
                  "sub": {h: v for h, v in st.sub.items() if v != "option"}}
         missing = [bus for bus, inst in entry["instruments"].items() if inst not in inputs.instruments]
@@ -566,6 +671,9 @@ def write_stage_day2(inputs: Inputs, out: Path, stage: str, plan_path: Path, lev
         entry = {"stage": b["stage"], "option": b["option"], "kit": None, "file": rel.as_posix(), "id": key,
                  "sha256": sha256_bytes(data), "instruments": dict(inst), "trim_db": trims, "fader_db": faders,
                  "settings": list(b["settings"]), "sax_muted": b["sax_muted"]}
+        bed = inputs.bed_block(b["settings"])
+        if bed is not UNSET:                      # Day 3 (section 4.5): the rain bed it plays, or null
+            entry["bed"] = bed
         palettes.append(entry)
         by_id[key] = entry
     for key, spec in sorted(draw["palettes"].items()):
@@ -592,6 +700,9 @@ def write_stage_day2(inputs: Inputs, out: Path, stage: str, plan_path: Path, lev
              "draw": {"file": label(draw_path, inputs.root), "sha256": file_sha256(draw_path)},
              "without": [], "band": dict(draw.get("band") or {}), "sources": inputs.sources_index(),
              "palettes": palettes, "slots": _slots(inputs)}
+    if inputs.rain is not None:                   # Day 3: the excerpt record its beds play (section 7.2)
+        index["rain"] = {"file": label(Path(inputs.rain["file"]), inputs.root), "sha256": inputs.rain["sha256"],
+                         "source": dict(inputs.rain["palette_source"])}
     files[Path("index.json")] = (json.dumps(index, indent=1) + "\n").encode("utf-8")
     return Generated(index, write_all(out, files))
 
@@ -607,7 +718,7 @@ def check_draw_palettes_day2(draw: Mapping, palettes: Sequence[Mapping]) -> None
         band = spec.get("band") or {}
         want = {slot: p["instruments"][bus] for slot, bus in SLOT_BUS.items()}
         off = sorted(slot for slot in want if band.get(slot) != want[slot])
-        if off or [band[s] for s in SETTING_SLOTS if band.get(s)] != p["settings"]:
+        if off or band_settings(band, spec.get("fills")) != p["settings"]:
             raise GenerateError(f"draw: palette {key} asks for band {band}, but palette {key} plays "
                                 f"{p['instruments']} with {p['settings']}")
         if bool(spec.get("sax_muted")) != p["sax_muted"]:
@@ -867,13 +978,12 @@ def write_all(out: Path, files: Mapping[Path, bytes]) -> tuple[Path, ...]:
 
 def generate(plan_path: Path | str, out: Path | str, *, stage: str = "day1", levels: Path | str | None = None,
              draw: Path | str | None = None, base: Path | str | None = None, without: Sequence[str] = (),
-             root: Path = ROOT) -> Generated:
+             root: Path = ROOT, rain: Path | str | None = None) -> Generated:
     """Write the measuring palettes (levels=None) or the stage palettes of a day (§7.8). See the module docstring."""
     if stage not in STAGES:
         raise GenerateError(f"stage {stage!r} is not one of {list(STAGES)}")
     if stage not in BUILT:
-        raise GenerateError(f"stage {stage}: only {', '.join(BUILT)} is built (jobs 1 and 2); {stage} needs the "
-                            f"Day-2 picks and the rain file")
+        raise GenerateError(f"stage {stage}: only {', '.join(BUILT)} is built")
     try:
         plan = load_plan(plan_path, root=root)
     except PlanError as err:
@@ -898,7 +1008,8 @@ def generate(plan_path: Path | str, out: Path | str, *, stage: str = "day1", lev
         plan = apply_cuts(apply_adds(plan, list(made.get("adds") or [])), list(made.get("cuts") or []))
     except PlanError as err:
         raise GenerateError(f"draw {draw}: {err}") from err
-    inputs = Inputs(plan, Path(base) if base else root / plan.base, day, tuple(without), root, draw=doc)
+    inputs = Inputs(plan, Path(base) if base else root / plan.base, day, tuple(without), root, draw=doc,
+                    rain=Path(rain) if rain else None)
     if levels is None:
         return write_measuring(inputs, Path(out), stage, Path(plan_path), doc, Path(draw))
     return write_stage_day2(inputs, Path(out), stage, Path(plan_path), Path(levels), Path(draw))
@@ -920,19 +1031,22 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--draw", type=Path, default=None, help="the job's draw.json: check it and every palette it asks for")
     p.add_argument("--base", type=Path, default=None, help="the base palette (default: the plan's)")
     p.add_argument("--without", default="", help="options to leave out, comma-separated (recorded in the index)")
+    p.add_argument("--rain", type=Path, default=RAIN, help="day 3: the rain excerpt picker's record (section 7.2)")
     p.add_argument("--out", required=True, type=Path, help="<run>/summary/palettes/")
     a = p.parse_args(argv)
     if not a.plan.is_file():
         p.error(f"--plan {a.plan} is not a file")
     if a.stage not in BUILT:
-        p.error(f"--stage {a.stage}: only {', '.join(BUILT)} is built so far (jobs 1 and 2)")
+        p.error(f"--stage {a.stage}: only {', '.join(BUILT)} is built")
     levels = None if a.levels == "none" else Path(a.levels)
-    for name, path in (("--levels", levels), ("--draw", a.draw), ("--base", a.base)):
+    for name, path in (("--levels", levels), ("--draw", a.draw), ("--base", a.base),
+                       ("--rain", a.rain if a.stage == "day3" else None)):
         if path is not None and not path.is_file():
             p.error(f"{name} {path} is not a file")
     without = tuple(w for w in a.without.split(",") if w)
     try:
-        got = generate(a.plan, a.out, stage=a.stage, levels=levels, draw=a.draw, base=a.base, without=without)
+        got = generate(a.plan, a.out, stage=a.stage, levels=levels, draw=a.draw, base=a.base, without=without,
+                       rain=a.rain)
     except GenerateError as err:
         print(f"palettes: {err}", file=sys.stderr)
         return 3

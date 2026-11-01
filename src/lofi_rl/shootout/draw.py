@@ -493,7 +493,9 @@ def _prior_clip(ctx: _Ctx, pr: Prior, c: Mapping) -> dict:
     pal = run_dir / "summary" / "palettes" / f"{entry['palette']}.yaml" if entry else None
     if entry is None or not pal.is_file():
         raise DrawError(f"render {rid} of {run_dir} was purged and cannot be made again (no draw entry or palette)")
-    new = f"prior.{run_dir.name}.{rid}"
+    # named by the job id alone: the run folder's word "shootout" is the public manifest's mode, and a hidden name
+    # holding it trips the builder's leak guard (batch.public_leaks)
+    new = f"prior.{run_dir.name.removeprefix('shootout-')}.{rid}"
     ctx.renders[new] = {**entry, "palette_path": str(pal), "expect_pcm_sha256": c["pcm_sha256"]}
     return {**clip, "render": new}
 

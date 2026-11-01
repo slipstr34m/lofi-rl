@@ -2,7 +2,7 @@
 yet: the trims and faders it writes are carried by the palette generator as CD-51 says.
 
     python -m lofi_rl.shootout.levels --plan shootouts/plan.yaml --loops shootouts/loops \\
-        --palettes <run>/summary/palettes/measure --stage day1|day2 [--draw <run>/summary/draw.json] \\
+        --palettes <run>/summary/palettes/measure --stage day1|day2|day3 [--draw <run>/summary/draw.json] \\
         [--prior <levels.json>] --out <run>/summary/levels.json [--workers 8]
 
 For every instrument variant i of the stage and every loop l of `--loops` (its briefs.yaml; the 9 reference loops):
@@ -48,6 +48,12 @@ instrument's trim: L, the clip's own fader (`clip_fader`), the loudness after it
 median fader. `configs` holds them; `rounds` holds every drawn round's spread on each matched bus at the median faders
 (`before_lu`) and at the clips' own (`after_lu`).
 
+Day 3 (section 4.5) runs as Day 2: every instrument its draw plays (the Day-2 picks in every rain palette, and the
+S2 re-run's sax when the job has one) measured again against job 1's levels.json, so the rain palettes carry each
+one's t and median F, the values the frozen palette takes. The rain rounds match nothing (section 3 "Not matched":
+the bed is set by loudness under each clip's own music, RENDER.md section 3.4), so only an S2 re-run adds `configs`;
+the repeats play their first showing's renders and are not measured.
+
 Exit codes: 0; 2 for a bad argument; 3 when the inputs are refused (a missing variant, a failed gate, drift in a
 measuring palette, a draw of another plan or with a clip on a loop `--loops` does not hold). Sound claims: none.
 """
@@ -87,7 +93,7 @@ CYCLES = 2                                  # two cycles through the chains, kee
 BUSES = ("sax", "keys", "bass", "drums")
 TRIM_BUSES = ("sax", "keys", "bass")
 STAGES = ("day1", "day2", "day3")
-BUILT = ("day1", "day2")
+BUILT = ("day1", "day2", "day3")
 MOVE_DB = 0.1                               # a trim or fader that moves more is listed (§3, drift)
 INPUT_LIFT_DB = 40.0                        # P is read this far up, then taken off: see input_lufs
 CLIP_FIX_LU = 0.005                         # a clip's fader is corrected until it measures this close (half 0.01 dB)
@@ -533,13 +539,16 @@ def config_flags(configs: Mapping[str, Mapping]) -> list[str]:
 def round_spreads(draw_doc: Mapping, configs: Mapping[str, Mapping]) -> list[dict]:
     """Each drawn round's spread on every bus its clips match (§3 step 8): the largest minus the smallest loudness
     after the fader, at the band's median faders (`before_lu`, what the clips would play without their own) and at
-    each clip's own (`after_lu`), with the clips' cases and options."""
+    each clip's own (`after_lu`), with the clips' cases and options. A Day-3 repeat shows its first showing's renders,
+    which this draw does not make, so it has no spread here (its hidden manifest carries the first showing's)."""
     palettes, out = draw_doc.get("palettes") or {}, []
     for b in draw_doc.get("batches") or []:
         for r in b["rounds"]:
             rows = []
             for c in r["clips"]:
-                entry = draw_doc["renders"][c["render"]]
+                entry = draw_doc["renders"].get(c["render"])
+                if r["kind"] == "repeat" or entry is None or entry.get("palette_path"):
+                    break
                 spec = palettes.get(entry["palette"]) or {}
                 level = spec.get("level") or {}
                 if "buses" not in level:
@@ -658,7 +667,7 @@ def run_levels(plan_path: Path | str, loops_dir: Path | str, measure_dir: Path |
     the reference loops, and with `draw` every other text a drawn clip plays. Returns the levels document (see the
     module docstring)."""
     if stage not in BUILT:
-        raise LevelsError(f"stage {stage}: only {', '.join(BUILT)} is built (jobs 1 and 2)")
+        raise LevelsError(f"stage {stage}: only {', '.join(BUILT)} is built")
     plan = load_plan(plan_path, root=root)
     measure_dir = Path(measure_dir)
     index_bytes = (measure_dir / "index.json").read_bytes()
@@ -837,7 +846,7 @@ def main(argv: list[str] | None = None, *, bench: Bench | None = None) -> int:
     p.add_argument("--cache", type=Path, default=None, help="one-shot cache (default $LOFI_CACHE or ~/.cache/lofi-rl)")
     a = p.parse_args(argv)
     if a.stage not in BUILT:
-        p.error(f"--stage {a.stage}: only {', '.join(BUILT)} is built so far (jobs 1 and 2)")
+        p.error(f"--stage {a.stage}: only {', '.join(BUILT)} is built")
     for name, path in (("--plan", a.plan), ("--loops", a.loops / "briefs.yaml"),
                        ("--palettes", a.palettes / "index.json"), ("--draw", a.draw), ("--prior", a.prior)):
         if path is not None and not path.is_file():

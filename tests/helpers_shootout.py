@@ -235,6 +235,13 @@ def fake_render(renders_dir: Path, rid: str, entry: dict, *, status: str = "ok",
         "bed_lufs": None, "sax_range": [51, 72], "expect_pcm_sha256": entry.get("expect_pcm_sha256"),
         "level": level,
     })
+    if entry["bus"] == "bed":       # a Day-3 rain clip (lofi_rl.shootout.render.bed_record): its bed and its music
+        delta = {"rain_d24": 24.0, "rain_d30": 30.0, "rain_none": None}.get(entry["option"], 18.0)
+        bed = None if delta is None else {"src": "rain", "delta_lu": delta, "start_s": 150.4, "xfade_s": 1.0,
+                                          "xfade_samples": 44100, "lufs_source": -40.0, "gain_db": 2.0 - delta,
+                                          "lufs": -20.0 - delta, "bed_lu": 0.5 - delta}
+        rec.update(bed=bed, bed_lufs=None if bed is None else bed["lufs"], music_lufs=-20.0,
+                   pre_limiter_sha256=_sha(f"music|{entry['loop']}|{entry['text']}"))
     if status == "ok":
         flac = fake_flac(d / "render.flac", n if n is not None else n_ok, salt=rid)
         rec["flac_sha256"] = hashlib.sha256(flac.read_bytes()).hexdigest()
