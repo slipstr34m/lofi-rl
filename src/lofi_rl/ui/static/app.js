@@ -168,17 +168,19 @@
     return no('That key does nothing here.');
   }
 
-  // Why the round cannot be saved yet, in plain words (null when it can).
-  function problem(mode, m) {
+  // Why the round cannot be saved yet, in plain words (null when it can). k is the round's clip count, so a
+  // 2-clip round names only its own keys (default 4).
+  function problem(mode, m, k) {
     if (mode === 'bws4' || mode === 'shootout') {
+      var bk = BEST_KEYS.slice(0, k || 4).join(' '), wk = WORST_KEYS.slice(0, k || 4).join(' ');
       if (m.tag) {
         var neg = NEG_TAGS.indexOf(m.tag) >= 0, word = '"' + TAG_WORDS[m.tag] + '"';
-        if (neg && m.worst === null) return 'The tag ' + word + ' goes with the worst pick. Pick a worst (Z X C V), or press ' + TAG_KEYS[m.tag] + ' again to drop it.';
-        if (!neg && m.best === null) return 'The tag ' + word + ' goes with the best pick. Pick a best (Q W E R), or press ' + TAG_KEYS[m.tag] + ' again to drop it.';
+        if (neg && m.worst === null) return 'The tag ' + word + ' goes with the worst pick. Pick a worst (' + wk + '), or press ' + TAG_KEYS[m.tag] + ' again to drop it.';
+        if (!neg && m.best === null) return 'The tag ' + word + ' goes with the best pick. Pick a best (' + bk + '), or press ' + TAG_KEYS[m.tag] + ' again to drop it.';
       }
       if (m.allBad) return null;
-      if (m.best === null && !m.noBest) return 'Pick a best (Q W E R), or press T for "no clear best".';
-      if (m.worst === null && !m.noWorst) return 'Pick a worst (Z X C V), or press B for "no clear worst".';
+      if (m.best === null && !m.noBest) return 'Pick a best (' + bk + '), or press T for "no clear best".';
+      if (m.worst === null && !m.noWorst) return 'Pick a worst (' + wk + '), or press B for "no clear worst".';
       return null;
     }
     if (mode === 'keep3') return m.best === null && !m.allBad ? 'Keep one (Q W E), or press G if none is acceptable.' : null;
@@ -624,7 +626,7 @@
     if (cur.committing) return;
     if (S.mode === 'playlist') return playlistCommit(cur, true);
     if (!cur.started) return setMsg('Press Space to listen first.');
-    var why = Rules.problem(S.mode, cur.marks);
+    var why = Rules.problem(S.mode, cur.marks, cur.k);
     if (why) return setMsg(why);
     if (!cur.eventId) cur.eventId = Rules.newId();
     var payload = Rules.votePayload(S.mode, cur.round, cur.marks, listenInfo(cur));

@@ -254,6 +254,17 @@ m = play('bws4', r0, [['noBest'], ['noBest']]); chk(!m.noBest, 'T toggles');
 m = play('bws4', r0, [['best', 1], ['allBad']]); chk(m.allBad && m.best === null && R.problem('bws4', m) === null, 'G alone saves');
 m = play('bws4', r0, [['best', 1], ['worst', 2], ['tag', 'nodding'], ['tag', 'nodding']]); chk(m.tag === null, 'a tag toggles');
 m = play('bws4', r0, [['best', 1], ['noWorst'], ['tag', 'boring']]); chk(R.problem('bws4', m).indexOf('worst pick') > 0, 'negative tag needs a worst');
+// a 2-clip shootout round (Day 2's sax final): its hints name only Q W and Z X, and best + worst saves
+var s2 = { id: 'r2clips0', scene: 'city at night', clips: [{ id: 'kaaaaaaaaaa', file: 'kaaaaaaaaaa.flac' },
+                                                           { id: 'kbbbbbbbbbb', file: 'kbbbbbbbbbb.flac' }] };
+m = play('shootout', s2, [['best', 0]]);
+chk(R.problem('shootout', m, 2) === 'Pick a worst (Z X), or press B for "no clear worst".', 'k=2 worst hint: ' + R.problem('shootout', m, 2));
+chk(R.problem('shootout', R.newMarks(), 2).indexOf('Pick a best (Q W),') === 0, 'k=2 best hint');
+chk(R.problem('shootout', m).indexOf('(Z X C V)') > 0, 'no k: the 4 keys, as before');
+chk(R.apply('shootout', m, ['worst', 2], 2, 0).error, 'no clip 3 in a 2-clip round');
+m = play('shootout', s2, [['best', 0], ['worst', 1]]); chk(R.problem('shootout', m, 2) === null, 'k=2 best + worst saves');
+var p2 = R.votePayload('shootout', s2, m, info(s2));
+chk(p2.best === 'kaaaaaaaaaa' && p2.worst === 'kbbbbbbbbbb' && p2.clips.length === 2, 'k=2 payload: ' + JSON.stringify(p2));
 chk(R.apply('bws4', R.newMarks(), ['tier', 'fine'], 4, 0).error, 'no tiers in bws4');
 chk(R.apply('ab', R.newMarks(), ['worst', 0], 2, 0).error, 'no worst in ab');
 chk(R.apply('ab', R.newMarks(), ['best', 2], 2, 0).error, 'ab has two clips');

@@ -21,6 +21,48 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (08:45 PST): Day 2 rendered on the cluster, checked twice, and queued for listening
+
+**What was done**
+- **`lofi-shootout` 13651610** (job 2: `--stage day2 --leaders keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor --prior 13635646 --add R2r`, mirror `e636485`): main node a01-03, COMPLETED 0:0 in 00:02:43, 32.6 SU (`session_report.py`), `SHOOTOUT_OK`. Every stage finished in 162.2 s.
+  - **Renders:** 93 of 93 ok (`summary/renders.json`), −14.099 … −13.991 LUFS, true peak at most −1.448 dBTP.
+  - **`leaders.json`** matches `gates/GATE_palette.md` exactly, with `add` [R2r] and `cut` [].
+- **Batches** (`inbox/2026-11-04/`; counts from the job log):
+  - `b1104-1-groove`: 8 rounds, 26 clips, 8.6 min. R2r.3, R2r.1 and R2r.2 come first: Virtuosity, Virtuosity, GU jazz, with all three basses in each; bass spreads 0.0020, 0.0069 and 0.0006 LU. Then R3a ×2 and R3b ×3.
+  - `b1104-2-sax`: 10 rounds, 27 clips, 9.1 min. S1f ×3 (MTG alto against MTG tenor, 2 clips each), S2a ×3, S2b ×3 and 1 anchor.
+  - `b1104-3-keys`: 2 rounds, 6 clips, 1.9 min. K2 with the three survivors.
+  - `b1104-4-vamps`: 9 rounds, 36 clips, 11.6 min.
+  - Total 31.2 min. The largest matched-bus spread in any round is 0.0093 LU (V.8 keys).
+- **My checks** (scratch `day2check.py`): `ui.manifest check` exits 0 on all four, `public_leaks` finds none, every FLAC is 44.1 kHz stereo 16-bit, and RMS runs −16.6 … −14.3 dBFS. The real rating page loads `b1104-2-sax` from a throwaway copy and vote folder: "round 1 of 10", 2 tiles, no console errors, and no audio played.
+- **Two independent checkers** (workflow `wf_bf0aeb19-da3`, read-only) found no blocker or major problem.
+  - **Plan conformance**, from a rebuild from `plan.yaml` alone:
+    - every one of the 28 planned slots appears once, plus 1 anchor, and nothing else;
+    - Latin squares balanced; one change per round, over the palette files;
+    - every trim equals Day 1's;
+    - blinding is clean.
+  - **Serving and audio** (each batch served on a throwaway port):
+    - 95 of 95 clips return 200 `audio/flac` with the right sizes;
+    - every clip's frame count equals its tempo's N;
+    - pyloudnorm agrees with `renders.json` within 0.0003 LU (the int16 scale);
+    - 2-clip shootout rounds can be voted every way, checked in JavaScriptCore on the served manifest.
+  - **Five minor findings:**
+    1. The anchor's two real clips reuse S2b.1's renders, so the files pair by size and sha. The page never shows either, and Day 1 had the same pattern.
+    2. The hidden manifests' `what` holds the stage's text on variant stages, not each variant's (`draw.py:342`). `option` is right, and the tally is unaffected.
+    3. The keys batch ends and the vamps batch opens on the same loop (L3). CD-22 is per batch; Shresth's push suggests a break between the two.
+    4. The save hint in a 2-clip round listed four keys ("Q W E R").
+    5. No test ran a 2-clip shootout round.
+- **Fixed 4 and 5:**
+  - `app.js` `problem()` takes the round's clip count and names only its keys.
+  - `tests/test_ui_js.py` adds a 2-clip shootout round: hints, a refused clip 3, save, payload. The test fails without the fix (checked with the change stashed).
+  - The ui hash changes, and every event records it.
+- **`.claude/launch.json`:** `rate-batch-check` also reads its batch from the gitignored `.claude/check-batch.txt`.
+- **Push notification** sent (the first of the day).
+- **Needs ear check:** Day 2's four batches.
+
+**SU spent:** 32.6. Total 903.0 (`session_report.py`).
+
+---
+
 ## 2026-11-01 (07:50 PST): D-020's jobs still queued after 11.5 h; the no-sync rule replaced by a frozen code path (second amendment)
 
 **What was done**
