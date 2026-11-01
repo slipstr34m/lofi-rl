@@ -257,3 +257,19 @@ no GRPO had run.
     - junk.json records `score_stamp`;
     - render samples only passing loops that are not near-copies;
     - tests/test_grammar.py pins the dev_gu regex.
+- **Second amendment, 2026-11-01, before either run.**
+  - **Why:** both jobs (13640324, 13640325) have been PENDING (Priority) since 20:06 PDT on Oct 31. At 07:32 PST on Nov 1, 28 A40 jobs ranked above them. The no-sync rule was blocking every other cluster job, so it is replaced by a code-path rule with the same purpose: both arms run the registered code.
+  - **The frozen path:** 60 files, listed with their git blob shas in `docs/prereg/D-020_junk_path.txt` (taken from `d497684`).
+    - The import closure of junk's generate, score and render steps: 51 modules.
+    - `scripts/job_env.sh`, `scripts/_kit_env.sh` and `kit.env`.
+    - `palettes/dev_gu.yaml` and `tests/fixtures/loops/example.ls`.
+    - The GeneralUser GS SoundFont.
+  - **What changed on that path since `49e2f5a`:** two files, both reviewed here. Neither changes what generate or score computes.
+    - `src/lofi_rl/smoke.py` adds the `AUDIOBOX` constant. junk reads only `QWEN`, which is unchanged.
+    - `src/lofi_rl/render/fluid.py` kills a FluidSynth stem render after 120 s. A normal stem takes 1–3 s, and the render step and G7 decide nothing here.
+  - **Syncs** are allowed while the jobs wait or run, but only if every frozen file is unchanged. `make sync` runs `scripts/check_frozen.sh` first whenever `.sync-freeze` names the list. `.sync-freeze` is deleted when both jobs have ended.
+  - **The One-mirror clause is replaced:**
+    - in each arm, `generate.host.stamp` and `score_stamp` show the same `commit=… dirty=0`;
+    - that commit's frozen files equal the list, which is checked on the laptop with git;
+    - the two arms may run from different commits.
+  - **Unchanged:** the hardware (an A40 in the `gpu` partition) and every other rule above.

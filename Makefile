@@ -17,6 +17,7 @@ help:
 
 sync: ## push the code to the cluster mirror (rsync --delete; refuses to delete protected paths)
 	@$(RSYNC) --version | head -1 | grep -q 'version 3\.' || { echo "GNU rsync 3.x required: brew install rsync"; exit 1; }
+	@scripts/check_frozen.sh
 	@scripts/stamp.sh > .sync-stamp
 	@set -o pipefail; $(SYNC) -n -i ./ $(HOST):$(REMOTE_PROJ)/ | scripts/check_deletes.sh
 	@$(SYNC) ./ $(HOST):$(REMOTE_PROJ)/

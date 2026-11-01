@@ -21,6 +21,26 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (07:50 PST): D-020's jobs still queued after 11.5 h; the no-sync rule replaced by a frozen code path (second amendment)
+
+**What was done**
+- **Queue:** `lofi-junk-rate` 13640324 and 13640325 are still PENDING (Priority) at 07:32 PST. Their priority is 4389 (age 516, fairshare 873), and 28 pending A40 jobs rank above them; it was 26 last night. Both 12-hour watchers ended at their poll limit (exit 1, still queued). Last night's 30-minute watchers had exited 0 only because a pipe hid their status.
+- **D-020's second amendment** (docs/DECISIONS.md), made before either run, with no job cancelled or changed:
+  - The no-sync rule is replaced by a frozen code path: 60 files with their blob shas in `docs/prereg/D-020_junk_path.txt`. That covers the import closure of junk's generate, score and render steps (51 modules), the job env scripts, `kit.env`, `dev_gu.yaml`, `example.ls` and the GU SoundFont.
+  - Since `49e2f5a` only two of those files changed, and neither changes what generate or score computes:
+    - `smoke.py` adds the `AUDIOBOX` constant (`QWEN` is unchanged);
+    - `render/fluid.py` adds a 120 s kill for a stalled FluidSynth render (render step only).
+- **`scripts/check_frozen.sh`:** `make sync` now runs it first whenever the gitignored `.sync-freeze` names a list, and refuses if any frozen file on disk differs from its blob. It is active now ("60 frozen files unchanged"). 2 new tests; suite 2263 passed, 2 skipped.
+- **Next:**
+  - sync;
+  - submit job 2 (Day 2, with R2r) and the scorer smoke;
+  - pull Day 2, check its batches, and notify Shresth;
+  - keep the freeze until both D-020 jobs end.
+
+**SU spent:** 0.
+
+---
+
 ## 2026-10-31 (23:05 PDT): heard rule and R2r merged; the real Day-1 tally matches Shresth's confirmation; gate file written
 
 **What was done**

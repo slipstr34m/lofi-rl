@@ -79,3 +79,43 @@ def test_submit_needs_a_matching_sync_and_clean_tree(tmp_path):
                                                      text=True).stdout)
     assert _submit(repo, "jobs/x.sbatch").returncode == 3 and "commit first" in _submit(repo, "jobs/x.sbatch").stderr
     assert _submit(repo, "jobs/x.sbatch", ALLOW_DIRTY="1").returncode == 0
+
+
+def _frozen(repo, *args):
+    return subprocess.run(["bash", str(repo / "scripts" / "check_frozen.sh"), *args], cwd=repo, capture_output=True,
+                          text=True)
+
+
+def test_check_frozen_refuses_a_sync_that_changes_a_frozen_file(tmp_path):
+    """D-020's second amendment: while its jobs wait or run, make sync must not change a file on their code path."""
+    repo = tmp_path / "repo"
+    (repo / "scripts").mkdir(parents=True)
+    shutil.copy(ROOT / "scripts" / "check_frozen.sh", repo / "scripts" / "check_frozen.sh")
+    (repo / "src").mkdir()
+    (repo / "src" / "a.py").write_text("A = 1\n")
+    (repo / "src" / "b.py").write_text("B = 2\n")
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "init")
+    tree = _git(repo, "ls-tree", "-r", "HEAD", "--", "src/a.py", "src/b.py").stdout
+    (repo / "frozen.txt").write_text("# a comment\n" + "".join(f"{l.split()[2]}  {l.split()[3]}\n"
+                                                               for l in tree.splitlines()))
+    p = _frozen(repo)
+    assert p.returncode == 0 and p.stdout == "", "no .sync-freeze: nothing is frozen"
+    (repo / ".sync-freeze").write_text("frozen.txt\n")
+    p = _frozen(repo)
+    assert p.returncode == 0 and "2 frozen files unchanged" in p.stdout, p.stderr
+    (repo / "src" / "a.py").write_text("A = 3\n")          # an uncommitted edit counts: rsync ships the tree
+    p = _frozen(repo)
+    assert p.returncode == 1 and "src/a.py changed" in p.stderr
+    (repo / "src" / "a.py").write_text("A = 1\n")
+    (repo / "src" / "b.py").unlink()
+    p = _frozen(repo)
+    assert p.returncode == 1 and "src/b.py is gone" in p.stderr
+    assert _frozen(repo, "missing.txt").returncode == 2
+
+
+def test_make_sync_runs_the_freeze_check_first():
+    text = (ROOT / "Makefile").read_text()
+    sync = text[text.index("\nsync:"):text.index("\n\n", text.index("\nsync:"))]
+    assert sync.index("scripts/check_frozen.sh") < sync.index("scripts/stamp.sh > .sync-stamp") < sync.index("$(SYNC) ./")

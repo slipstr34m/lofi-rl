@@ -20,6 +20,7 @@ assets/big/
 
 # --- sync bookkeeping ---
 .sync-stamp
+.sync-freeze
 jobs/submissions.log
 
 # --- python ---
