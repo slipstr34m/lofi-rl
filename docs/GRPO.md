@@ -153,7 +153,9 @@ R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix)
 - **`--dry-run`** validates the config, builds the 40 prompts and prints JSON:
   - the resolved settings of every profile, the prompt version, template sha, brief mix, lengths and a preview;
   - the unverified TRL names;
-  - `tests/fixtures/loops/example.ls` scored through the real reward path, when `lofi_rl.verify` exists.
+  - `tests/fixtures/loops/example.ls` scored through the real reward path, when `lofi_rl.verify` exists: the
+    symbolic reward, with the scorer off even when `$LOFI_SCORER_SOCK` is exported (the report's
+    `reward.scorer` says whether it is set; the scorer is never contacted).
 
   It never imports torch, TRL, vLLM, transformers, PEFT or datasets
   (`tests/test_rl_train.py::test_dry_run_runs_with_torch_trl_and_vllm_blocked`).

@@ -158,6 +158,25 @@ def test_dry_run_prints_the_resolved_settings_and_scores_a_fixture(monkeypatch, 
     assert out["reward_check"]["reward"] == pytest.approx(.5 * .5 + .15 * .5)
 
 
+def test_dry_run_never_contacts_a_scorer_named_by_the_environment(monkeypatch):
+    # An exported $LOFI_SCORER_SOCK turns the scorer on for a run, not for the dry run's symbolic check: with the
+    # old default the check waited up to 600 s for /health of a socket that does not exist.
+    import time
+    from lofi_rl.scoring.client import ENV_SOCK, ScorerClient
+    monkeypatch.setenv(ENV_SOCK, "/nonexistent/x.sock")
+    monkeypatch.setitem(sys.modules, "lofi_rl.prompt", fake_prompt())
+    monkeypatch.setitem(sys.modules, "lofi_rl.verify", fake_verify())
+
+    def contacted(self, *a, **k):
+        raise AssertionError(f"the dry run contacted the scorer at {self.sock}")
+    monkeypatch.setattr(ScorerClient, "wait_healthy", contacted)
+    t = time.monotonic()
+    report = train.dry_run(rc.load_config(SMOKE), out=io.StringIO())
+    assert time.monotonic() - t < 30
+    assert report["reward_check"]["reward"] == pytest.approx(.5 * .5 + .15 * .5)
+    assert report["reward"]["scorer"] == {"env": ENV_SOCK, "sock": "/nonexistent/x.sock", "contacted": False}
+
+
 def test_dry_run_runs_with_torch_trl_and_vllm_blocked():
     block = "import sys\n" + "".join(f"sys.modules[{m!r}] = None\n" for m in HEAVY)
     code = (block + CHILD_FAKES + "from lofi_rl.rl import train\n"

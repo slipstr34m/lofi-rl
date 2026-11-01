@@ -21,7 +21,9 @@ context, so nothing is silently cut.
 
 --dry-run (laptop or cluster) validates the config, builds the prompts and prints the resolved settings of
 every profile as JSON, and scores tests/fixtures/loops/example.ls through the reward when lofi_rl.verify
-exists. It never imports torch, TRL, vLLM, transformers, PEFT or datasets (tests/test_rl_train.py).
+exists: the symbolic reward, with the scorer off whatever $LOFI_SCORER_SOCK says (the report records whether it
+is set; the scorer is never contacted). It never imports torch, TRL, vLLM, transformers, PEFT or datasets
+(tests/test_rl_train.py).
 """
 from __future__ import annotations
 
@@ -50,6 +52,7 @@ from lofi_rl.palette import Palette, load_palette
 from lofi_rl.rl import curriculum
 from lofi_rl.rl.config import ConfigError, RunConfig, detect_profile, fit_fields, load_config, resolve
 from lofi_rl.rl.reward import SERVER_TERMS, make_reward
+from lofi_rl.scoring.client import ENV_SOCK
 
 T_PROCESS = time.time()
 ROOT = Path(__file__).resolve().parents[3]
@@ -111,14 +114,16 @@ def checkpoint_step(ckpt: Path | str) -> int:
 
 # ------------------------------------------------------------------------------------------ dry run
 def _reward_check(cfg: RunConfig, row: Mapping[str, Any]) -> dict[str, Any] | str:
-    """Score tests/fixtures/loops/example.ls under the first row's brief, through the real reward path."""
+    """Score tests/fixtures/loops/example.ls under the first row's brief, through the real reward path. The
+    symbolic path only: scorer=False, so an exported $LOFI_SCORER_SOCK never makes the quick check before any GPU
+    work wait for a scorer (dry_run records whether it is set)."""
     verify = _verify_module()
     if verify is None:
         return "skipped: lofi_rl.verify is not importable here (another builder's module)"
     if not EXAMPLE.is_file():
         return f"skipped: {EXAMPLE} is missing"
     with tempfile.TemporaryDirectory() as d:
-        reward = make_reward(cfg.palette_path(), Path(d) / "rewards.jsonl", verify=verify, strict=True)
+        reward = make_reward(cfg.palette_path(), Path(d) / "rewards.jsonl", verify=verify, strict=True, scorer=False)
         out = reward(prompts=[row["prompt"]], completions=[[{"role": "assistant", "content": EXAMPLE.read_text()}]],
                      brief=[row["brief"]], brief_id=[row["brief_id"]])
         rec = json.loads((Path(d) / "rewards.jsonl").read_text().splitlines()[0])
@@ -158,7 +163,8 @@ def dry_run(cfg: RunConfig, out: IO[str] | None = None, prompts: Any = None) -> 
         "unverified_trl_fields": sorted({k for p in profiles.values() for k in p["trainer"]}),
         "resume_from_step": cfg.resume_step,
         "reward": {"w0": dict(curriculum.W0), "w1": dict(curriculum.W1), "ramp_steps": curriculum.RAMP_STEPS,
-                   "zero_in_smoke": list(SERVER_TERMS)},
+                   "zero_in_smoke": list(SERVER_TERMS),
+                   "scorer": {"env": ENV_SOCK, "sock": os.environ.get(ENV_SOCK) or None, "contacted": False}},
         "reward_check": _reward_check(cfg, rows[0]),
     }
     print(json.dumps(report, indent=1, ensure_ascii=False, default=str), file=out or sys.stdout)

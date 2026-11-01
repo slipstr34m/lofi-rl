@@ -287,7 +287,8 @@ the features, for the cluster smoke). They never render or hear audio. `python -
 - **Switch:** `make_reward(..., scorer=...)`: None reads `$LOFI_SCORER_SOCK` (unset or empty: no scorer), False
   is none, a path is a socket, anything else is a client. The GRPO config has no scorer field yet, because
   `lofi_rl.rl.config` refuses unknown keys and another branch owns it; until then a run turns the scorer on with
-  the environment variable.
+  the environment variable. The trainer's `--dry-run` passes `scorer=False`: it checks the symbolic path and
+  records whether the variable is set (`reward.scorer`), without contacting the scorer.
 - **Without a scorer** the rewards, `rewards.jsonl` and the per-step stats are byte-for-byte what they were
   (`tests/golden/reward_no_scorer.json`, recorded from main 96bd121 before the hook existed).
 - **With one:** the first call waits up to 600 s for `/health`. After the symbolic records, the completions with
