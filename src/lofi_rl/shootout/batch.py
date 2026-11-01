@@ -5,7 +5,8 @@ draws, S1 leaves out the sources its rounds draw, an anchor needs its sour copy 
 
     python -m lofi_rl.shootout.batch draw --plan shootouts/plan.yaml --stage day1|day2|day3 --summary <run>/summary
         [--leaders <slot>=<id>[+<id>...]/...] [--prior <run>/summary/batches.json ...]
-        [--repeats <stage>+...] [--rerun-s2 <sax id>] [--cut <name>+...] [--add <stage>+...] [--seed <16 hex>]
+        [--repeats <stage>+... --serve-date YYYY-MM-DD] [--rerun-s2 <sax id>] [--cut <name>+...] [--add <stage>+...]
+        [--seed <16 hex>]
     python -m lofi_rl.shootout.batch build --plan shootouts/plan.yaml --stage day1|day2|day3 --renders <run>/renders
         --out <inbox root> [--draw <run>/summary/draw.json] [--summary <run>/summary]
 
@@ -15,7 +16,9 @@ rounds open the groove batch, on the kits `--leaders kit=` names (the leader fir
 
 `draw` draws from `secrets.randbits(64)` unless `--seed` is given (tests only) and writes `summary/draw.json`:
 the maps, the batches' rounds in order with their hidden controls, and the renders and palettes the job must make.
-The anchors' sour copies are written there and gate-checked (G1-G6 in the loop's mood, P_chrom >= 0.2).
+The anchors' sour copies are written there and gate-checked (G1-G6 in the loop's mood, P_chrom >= 0.2). Day 3's
+`--repeats` need `--serve-date`, the first day its batches may be served (D-013: a repeat comes at least 2 days
+after its first showing's vote), which draw.json records as `repeats.serve_date`.
 
 `build` reads the draw and the job's renders and writes every batch of the stage as `<out>/<date>/<batch>/`:
 one FLAC per clip appearance under an opaque name (`k` + 10 hex), `manifest.json` (public) and
@@ -23,7 +26,8 @@ one FLAC per clip appearance under an opaque name (`k` + 10 hex), `manifest.json
 its bus's loudness as the level tool measured it after that fader, `bus_lufs`, and re S*, `bus_lu`; CD-52; from Day
 2 on the stage's bus there, the vamps' keys, and every other bus the clip matches as `<bus>_fader_db`, `<bus>_lufs`
 and `<bus>_lu`; CD-53; for a rain clip on Day 3 the bed set under its music, `bus_lufs`, the music it is set under,
-`music_lufs`, and the bed measured in the finished render, `bed_lu`, null for no bed), then
+`music_lufs`, and the bed measured in the finished render, `bed_lu`, null for no bed; and at its top, for a Day-3
+draw with a serving date, `serve_from`, the first day `make rate` serves the batch), then
 runs `python -m lofi_rl.ui.manifest check` on each folder and records the id map in `summary/batches.json`. Nothing
 is written unless everything is in order: a missing render, a failed gate, a clip that is not exactly one pass of
 its loop, a FLAC that changed since it was rendered, a repeat whose render is not the first showing's, a clip whose
@@ -274,6 +278,7 @@ def build(doc: Mapping, renders_dir: Path | str, out_root: Path | str, *, summar
         raise BuildError(errors)
 
     used = {r["of"] for b in doc["batches"] for r in b["rounds"] if r.get("of")}
+    serve_from = (doc.get("repeats") or {}).get("serve_date")
     built = []
     for b in doc["batches"]:
         hidden_rounds: dict[str, dict] = {}
@@ -307,6 +312,9 @@ def build(doc: Mapping, renders_dir: Path | str, out_root: Path | str, *, summar
         public = {"v": SCHEMA_VERSION, "batch": b["name"], "mode": "shootout", "scene": "city at night",
                   "note": b["note"], "bars": BARS, "sr": SR, "est_min": b["est_min"], "rounds": pub_rounds}
         hidden = {"v": SCHEMA_VERSION, "batch": b["name"], "category": b["category"], "rounds": hidden_rounds}
+        if serve_from:                  # Day 3 (D-013): make rate serves no batch of this draw before that day
+            hidden = {"v": SCHEMA_VERSION, "batch": b["name"], "category": b["category"], "serve_from": serve_from,
+                      "rounds": hidden_rounds}
         leaks = public_leaks(public, hidden, _stage_options(plan, {r["stage"] for r in b["rounds"]}))
         if leaks:
             errors += [f"{b['name']}: {x}" for x in leaks]
@@ -400,6 +408,8 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--leaders", default=None)
     d.add_argument("--prior", type=Path, nargs="*", default=[], help="earlier runs' summary/batches.json")
     d.add_argument("--repeats", default="", help="stages whose rounds may come back, joined by +")
+    d.add_argument("--serve-date", default=None, metavar="YYYY-MM-DD",
+                   help="day 3: the first day its batches may be served (required with --repeats)")
     d.add_argument("--rerun-s2", default=None)
     d.add_argument("--cut", default="", help="cut-list names joined by +")
     d.add_argument("--add", default="", help="optional stages joined by + (Day 2: R2r, the bass re-listen, CD-54)")
@@ -415,10 +425,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         plan = load_plan(a.plan)
         if a.cmd == "draw":
+            repeats = [x for x in a.repeats.split("+") if x]
+            if repeats and a.serve_date is None:
+                raise DrawError("--repeats needs --serve-date YYYY-MM-DD, the first day the batches may be served "
+                                "(a repeat comes at least 2 days after its first showing's vote, D-013)")
             doc = draw(plan, a.stage, seed=_seed(a.seed), leaders=parse_leaders(a.leaders),
-                       priors=[load_prior(x) for x in a.prior], repeats=[x for x in a.repeats.split("+") if x],
+                       priors=[load_prior(x) for x in a.prior], repeats=repeats,
                        rerun_s2=a.rerun_s2, cuts=[x for x in a.cut.split("+") if x],
-                       adds=[x for x in a.add.split("+") if x])
+                       adds=[x for x in a.add.split("+") if x], serve_date=a.serve_date)
             path = write_draw(doc, a.summary / "draw.json")
             n = sum(len(x["rounds"]) for x in doc["batches"])
             print(f"draw: {path}: {len(doc['batches'])} batches, {n} rounds, {len(doc['renders'])} renders, "

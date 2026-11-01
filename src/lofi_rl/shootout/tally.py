@@ -21,7 +21,9 @@ across its batches (section 8):
 - ties [CD-39]: BW, then more bests, then fewer worsts; on a single-winner choice the default if it is among the
   tied, otherwise Shresth's word;
 - repeats scored for agreement (implied pairs, the audit's figure, pooled with a Wilson 95 % interval) and left out
-  of the counts [CD-47]; position-of-best counts pooled by clip count over the shootout batches (descriptive);
+  of the counts [CD-47], except a repeat voted fewer calendar days after its first showing's vote than D-013's
+  `controls.repeats.min_days_after` (each vote's date in its own offset), which goes to `too_soon` and is not
+  scored; position-of-best counts pooled by clip count over the shootout batches (descriptive);
 - rounds flagged by section 3, from the hidden manifests' levels: a round whose candidates' bus loudness (`bus_lufs`)
   spreads over 1.0 LU, over 0.5 LU for the timing variants [CD-26], and a vamp round whose keys (`bus_lufs`) or bass
   (`bass_lufs`) loudness spreads over 1.0 LU [CD-27]; from Day 2 on every other bus a stage matches too
@@ -44,8 +46,9 @@ and the list's cuts stay in the report as advice. After Day 2 they make job 3's 
 Day-2 picks as `--leaders`, every variant slot named, from the rules and job 2's pulled summary/leaders.json (what
 job 2 ran: its kits, the sax S2 ran on, its adds and cuts); `--prior` job 1 and job 2; `--repeats`, the stages whose
 design rounds were all voted at least two days before the serving date Claude gives with --serve-date
-(`first_votes`); `--rerun-s2` when the final picks the other finalist; and Day 3's cut (`day3_cut`, or his word with
---day3-cuts). A case the spec does not decide raises
+(`first_votes`); `--serve-date` itself, which job 3 records and writes into every Day-3 hidden manifest as
+`serve_from`, so `make rate` serves no Day-3 batch before it; `--rerun-s2` when the final picks the other finalist;
+and Day 3's cut (`day3_cut`, or his word with --day3-cuts). A case the spec does not decide raises
 `RuleGap`, which names the section; the tally records it and lists it with everything else that needs Shresth's
 word. A batch with no votes is reported as such, never as zeros. A seeded draw (CD-41, CD-18, a provisional leader) is keyed by the stage's
 standing vote ids, so it is fixed once the votes exist and the private logs reproduce it.
@@ -944,16 +947,28 @@ def levels_moved(paths: Sequence[Path]) -> list[dict]:
     return out
 
 
-def repeats_doc(rounds: Sequence[Round], logs: Mapping[str, list[dict]], heard_min: int) -> dict:
+def _vote_day(ts) -> date | None:
+    """The calendar day of a vote's timestamp, in its own offset (as `first_votes` reads it), or None."""
+    try:
+        return datetime.fromisoformat(ts).date()
+    except (TypeError, ValueError):
+        return None
+
+
+def repeats_doc(rounds: Sequence[Round], logs: Mapping[str, list[dict]], heard_min: int, min_days: int) -> dict:
     """CD-47: each shootout repeat against its first showing (looked up in every log, as the audit does), on implied
     pairs, pooled with a Wilson 95 % interval. Both sides carry their heard bars OR-ed over every attempt of their
     round, each in its own batch's log (D-013 as amended; ui.audit.aggregate merges the same way). Repeats never
-    enter the counts."""
+    enter the counts. D-013 pre-registers a repeat at least `min_days` days after its first showing
+    (controls.repeats.min_days_after): a repeat whose standing vote falls fewer calendar days after its first
+    showing's (each vote's date in its own offset) goes to `too_soon`, one without a readable date on either side to
+    `undated`, and neither is scored (`days_after` on every row whose first showing was found)."""
     originals: dict[str, dict] = {}
     for b in sorted(logs):
         merged = heard_over_attempts(logs[b])
         originals.update({k: with_merged_heard(v, merged) for k, v in active_votes(logs[b]).items()})
     rows, agree, compared, pending = [], 0, 0, 0
+    too_soon, undated = [], []
     for rd in rounds:
         if rd.kind != "repeat":
             continue
@@ -964,15 +979,26 @@ def repeats_doc(rounds: Sequence[Round], logs: Mapping[str, list[dict]], heard_m
         row = {"batch": rd.batch, "round": rd.id, "stage": rd.stage, "slot": rd.slot, "of": rd.of,
                "of_batch": first.get("batch") if first else None, "found": first is not None}
         if first is not None:
-            a, n = agreement("shootout", first, rd.vote.raw, heard_min)
-            agree, compared = agree + a, compared + n
-            row.update(agree=a, compared=n)
+            was, now = _vote_day(first.get("ts")), _vote_day(rd.vote.ts)
+            row["days_after"] = (now - was).days if was and now else None
+            if row["days_after"] is None:
+                undated.append(row)
+            elif row["days_after"] < min_days:
+                too_soon.append(row)
+            else:
+                a, n = agreement("shootout", first, rd.vote.raw, heard_min)
+                agree, compared = agree + a, compared + n
+                row.update(agree=a, compared=n)
         rows.append(row)
     lo, hi = wilson(agree, compared)
     return {"rule": "CD-47", "rounds": len(rows) + pending, "voted": len(rows), "pending": pending,
-            "found": sum(r["found"] for r in rows), "missing": sum(not r["found"] for r in rows), "agree": agree,
-            "compared": compared, "p": agree / compared if compared else None, "ci95": [lo, hi], "rows": rows,
-            "caveat": REPEAT_CAVEAT}
+            "found": sum(r["found"] for r in rows), "missing": sum(not r["found"] for r in rows),
+            "min_days_after": min_days, "scored": sum("compared" in r for r in rows),
+            "too_soon": [{k: r[k] for k in ("batch", "round", "stage", "of", "of_batch", "days_after")}
+                         for r in too_soon],
+            "undated": [{k: r[k] for k in ("batch", "round", "stage", "of", "of_batch")} for r in undated],
+            "agree": agree, "compared": compared, "p": agree / compared if compared else None, "ci95": [lo, hi],
+            "rows": rows, "caveat": REPEAT_CAVEAT}
 
 
 def position_doc(audits: Mapping[str, dict]) -> dict:
@@ -1191,7 +1217,7 @@ def tally(votes_dir: Path, inbox: Path, *, plan: Plan, batches: Sequence[str] | 
         "pooled": pooled,
         "micro_sessions": [{**g, "batches": sorted(g["batches"])} for _, g in sorted(
             weights.items(), key=lambda kv: (str(kv[0][0]), kv[0][1] or 0))],
-        "repeats": repeats_doc(rounds, logs, heard_min),
+        "repeats": repeats_doc(rounds, logs, heard_min, plan.controls["repeats"]["min_days_after"]),
         "position_of_best": position_doc(audits),
         "flags": flags,
         "largest_spread": sorted(largest.values(), key=lambda s: (s["stage"], s["bus"])),
@@ -1429,6 +1455,8 @@ def _day3(plan: Plan, stages: Mapping[str, dict], by_stage: Mapping[str, list[Ro
     - `--prior`: the jobs whose pulled summaries built the Day-1 and Day-2 batches;
     - `--repeats`: the stages every design round of which was voted at least two days before `serve_date` (section
       2.5, `first_votes`), in plan order; a group with none gets no repeat;
+    - `--serve-date`: `serve_date`, which job 3 writes into every Day-3 hidden manifest (`serve_from`), so `make
+      rate` serves no Day-3 batch before it (job 3 refuses --repeats without it);
     - `--rerun-s2`: the final's winner when it is not the sax job 2 ran S2 on (its first sax id, section 4.4);
     - `--cut`: `day3_cut`'s, or Shresth's word (`day3_cuts`).
     The status is "ready" only with a serving date and nothing blocking."""
@@ -1523,6 +1551,7 @@ def _day3(plan: Plan, stages: Mapping[str, dict], by_stage: Mapping[str, list[Ro
         needs.append({"stage": "day3", "blocking": True, "what": b})
     args = (f"--stage day3 --leaders {text} --prior {'+'.join(prior)}"
             + (f" --repeats {'+'.join(eligible)}" if eligible else "")
+            + (f" --serve-date {serve_date.isoformat()}" if serve_date else "")      # the batches' serve_from
             + (f" --rerun-s2 {rerun}" if rerun else "") + (f" --cut {'+'.join(cuts3)}" if cuts3 else ""))
     status = "ready" if not blocking else "needs_serve_date" if serve_date is None and len(blocking) == 1 else "blocked"
     return {"day3": {"status": status, "leaders": text, "prior": prior, "repeats": eligible, "no_repeat": no_repeat,
@@ -1751,9 +1780,12 @@ def report_md(doc: dict, out_dir: str | None = None) -> str:
     if r["voted"]:
         lo, hi = r["ci95"]
         L.append(f"Repeats (CD-47): {r['agree']} of {r['compared']} implied pairs agree "
-                 f"(p {r['p']:.3f}, Wilson 95 % {lo:.3f}-{hi:.3f}) over {r['found']} repeat(s); {r['missing']} first "
+                 f"(p {r['p']:.3f}, Wilson 95 % {lo:.3f}-{hi:.3f}) over {r['scored']} repeat(s); {r['missing']} first "
                  f"showing(s) not found. {r['caveat']}" if r["compared"] else
                  f"Repeats (CD-47): {r['voted']} voted, no implied pair to compare. {r['caveat']}")
+        if r["too_soon"] or r["undated"]:         # D-013: at least min_days_after days after the first showing
+            L.append(f"Left out of the pairs: {len(r['too_soon'])} repeat(s) voted under {r['min_days_after']} days "
+                     f"after their first showing (D-013) and {len(r['undated'])} without a vote date on both sides.")
     else:                         # nothing here says which rounds come back or when (RATING.md: never told)
         L.append("Repeats (CD-47): none voted yet.")
     pb = doc["position_of_best"]["rows"]

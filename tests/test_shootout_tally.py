@@ -222,6 +222,7 @@ def test_a_retracted_vote_stops_counting_and_its_new_answer_counts(inbox, tmp_pa
 def test_repeats_are_scored_for_agreement_and_left_out_of_the_counts(inbox, tmp_path):
     votes = tmp_path / "votes"
     clock = vote_days(inbox, votes, DAY1 + DAY2)
+    clock.t += timedelta(days=2)                         # D-013: the repeats at least 2 days after their first showing
     flipped = []
 
     def choose(r, hr):                                   # the same taste, except one repeat answered the other way
@@ -238,7 +239,8 @@ def test_repeats_are_scored_for_agreement_and_left_out_of_the_counts(inbox, tmp_
     for sid in ALL_STAGES:                               # the repeats change no stage's counts
         assert doc["stages"][sid]["options"] == before["stages"][sid]["options"], sid
     rep = doc["repeats"]
-    assert rep["voted"] == rep["found"] == 5 and rep["missing"] == 0 and rep["pending"] == 0
+    assert rep["voted"] == rep["found"] == rep["scored"] == 5 and rep["missing"] == 0 and rep["pending"] == 0
+    assert rep["too_soon"] == rep["undated"] == [] and {r["days_after"] for r in rep["rows"]} == {2}
     logs = read_all(votes)
     originals = {k: with_merged_heard(v, heard_over_attempts(evs)) for evs in logs.values()
                  for k, v in active_votes(evs).items()}
@@ -694,6 +696,40 @@ def test_a_mark_on_a_clip_heard_only_in_an_undone_or_abandoned_attempt_counts(in
     assert sum(c["heard_bars"] == "00000000" for v in own.values() for c in v["clips"]) == 4 + 4 + 1
 
 
+def test_a_repeat_voted_under_two_days_after_its_first_showing_is_not_scored(inbox, tmp_path):
+    # 2026-11-01 review (spec-F1): D-013 pre-registers repeats at least 2 days later, and before this the tally pooled
+    # every voted repeat whatever its date. Day 1 voted on Nov 3, Day 2 on Nov 4 and Day 3 on Nov 5 (as if Shresth
+    # rated Day 3 the day after Day 2): the repeats of Day-1 rounds come 2 days later and are scored, those of Day-2
+    # rounds 1 day later and go to `too_soon`; on Nov 4 every repeat would be too soon.
+    reps = {}
+    for n in DAY3:
+        m, h = load_batch(inbox["folders"][n], check_files=False)
+        reps |= {r.id: h.rounds[r.id].of for r in m.rounds if h.rounds[r.id].kind == "repeat"}
+    day1 = {r.id for n in DAY1 for r in load_batch(inbox["folders"][n], check_files=False)[0].rounds}
+    early = {rid for rid, of in reps.items() if of in day1}
+    assert len(reps) == 5 and 0 < len(early) < 5, "the fixture's repeats show Day-1 and Day-2 rounds"
+    for gap, scored in ((timedelta(days=1), early), (timedelta(0), set())):
+        votes = tmp_path / f"votes{gap.days}"
+        votes.mkdir()
+        clock = Clock()
+        for names in (DAY1, DAY2, DAY3):
+            for n in names:
+                vote(inbox["folders"][n], votes, clock, prefer())
+            clock.t += gap
+        rep = tally(inbox, votes)[0]["repeats"]
+        assert rep["voted"] == rep["found"] == 5 and rep["min_days_after"] == 2
+        assert {r["round"] for r in rep["rows"] if "compared" in r} == scored and rep["scored"] == len(scored)
+        assert {r["round"] for r in rep["too_soon"]} == set(reps) - scored and rep["undated"] == []
+        assert all(r["days_after"] < 2 for r in rep["too_soon"])
+        logs = read_all(votes)
+        merged = {k: with_merged_heard(v, heard_over_attempts(logs[b])) for b in logs
+                  for k, v in active_votes(logs[b]).items()}
+        want = [agreement("shootout", merged[reps[rid]], merged[rid], 1) for rid in sorted(scored)]
+        assert (rep["agree"], rep["compared"]) == (sum(a for a, _ in want), sum(n for _, n in want))
+        md = T.report_md(tally(inbox, votes)[0])
+        assert f"Left out of the pairs: {5 - len(scored)} repeat(s) voted under 2 days after their first showing" in md
+
+
 def test_repeat_agreement_reads_the_bars_of_every_attempt_of_both_showings(inbox, tmp_path):
     """CD-47 with D-013 as amended: a repeat compares the implied pairs of the clips heard in any attempt of each
     showing, as ui.audit does, so a first showing redone after an undo still gives its pairs."""
@@ -708,7 +744,10 @@ def test_repeat_agreement_reads_the_bars_of_every_attempt_of_both_showings(inbox
     clock = Clock()
     for n in DAY1:
         vote(inbox["folders"][n], votes, clock, prefer(), redo={of: "undo"} if n == day1[of] else None)
-    for n in DAY2 + DAY3:
+    for n in DAY2:
+        vote(inbox["folders"][n], votes, clock, prefer())
+    clock.t += timedelta(days=3)                         # D-013: at least 2 days later
+    for n in DAY3:
         vote(inbox["folders"][n], votes, clock, prefer())
     doc, _ = tally(inbox, votes)
     row = next(r for r in doc["repeats"]["rows"] if r["round"] == rid)
@@ -1145,7 +1184,7 @@ def test_job_3s_args_carry_the_day2_picks_both_priors_and_the_repeats_the_servin
     assert p["pairings"] == {"kit_virtuosity": "bass_vsco2_pizz", "kit_gu_jazz": "bass_fp_finger_yr"}
     s1, s2 = f["jobs"]
     every = "K1+R1+R2+S1+R2r+R3a+R3b+S1f+S2a+S2b+K2+V"              # plan order: Day 1's, then Day 2's
-    assert p["args"] == f"--stage day3 --leaders {p['leaders']} --prior {s1}+{s2} --repeats {every}"
+    assert p["args"] == f"--stage day3 --leaders {p['leaders']} --prior {s1}+{s2} --repeats {every} --serve-date 2026-11-03"
     assert p["rerun_s2"] is None and p["cut"] == [] and p["no_repeat"] == []
     fv = doc["first_votes"]
     assert fv["K1"]["last_vote"] == "2026-10-31" and fv["K1"]["days_before"] == 3 and fv["K1"]["eligible"]
@@ -1158,7 +1197,7 @@ def test_job_3s_args_carry_the_day2_picks_both_priors_and_the_repeats_the_servin
     assert job.main(["--run", str(run), "--runs", str(f["runs"]), "--inbox", str(tmp_path / "inbox3"),
                      *shlex.split(p["args"]), "--dry-run"]) == 0
     sent = json.loads((run / "summary" / "leaders.json").read_text())
-    assert sent["repeats"] == every.split("+") and sent["prior"] == [s1, s2]
+    assert sent["repeats"] == every.split("+") and sent["prior"] == [s1, s2] and sent["serve_date"] == "2026-11-03"
     priors = [load_prior(f["runs"] / f"shootout-{j}" / "summary" / "batches.json") for j in (s1, s2)]
     d3 = draw(PLAN, "day3", seed=5, leaders=leaders, priors=priors, repeats=sent["repeats"])
     reps = [r for b in d3["batches"] for r in b["rounds"] if r["kind"] == "repeat"]
@@ -1178,14 +1217,21 @@ def test_a_stage_voted_under_two_days_before_the_serving_date_brings_no_repeat(t
     f = facts_days(tmp_path)
     doc, _ = T.tally(f["votes"], f["root"], plan=PLAN, runs=f["runs"], serve_date=date(2026, 11, 2))
     p = doc["proposal"]["day3"]
-    assert p["repeats"] == ["K1", "R1", "R2", "S1"] and p["args"].endswith("--repeats K1+R1+R2+S1")
+    assert p["repeats"] == ["K1", "R1", "R2", "S1"] and p["args"].endswith("--repeats K1+R1+R2+S1 --serve-date 2026-11-02")
     assert sorted(p["no_repeat"]) == ["sax_variants", "vamps"]          # keys, drums + bass, sax sources from Day 1
     assert doc["first_votes"]["V"]["days_before"] == 1 and not doc["first_votes"]["V"]["eligible"]
     assert any("repeat group vamps" in n["what"] for n in doc["needs_word"])
     none, _ = T.tally(f["votes"], f["root"], plan=PLAN, runs=f["runs"], serve_date=date(2026, 11, 1))
     assert "--repeats" not in none["proposal"]["day3"]["args"] and len(none["proposal"]["day3"]["no_repeat"]) == 5
+    assert none["proposal"]["day3"]["args"].endswith(" --serve-date 2026-11-01")     # the batches carry it anyway
     late = T.tally(f["votes"], f["root"], plan=PLAN, runs=f["runs"])[0]["proposal"]["day3"]
     assert late["status"] == "needs_serve_date" and late["blocking"] and "--serve-date" in late["blocking"][0]
+    assert "--serve-date" not in late["args"]
+    for proposal in (p, none["proposal"]["day3"]):       # the job takes each line, its serving date with it
+        run = tmp_path / "runs" / f"shootout-1364011{len(proposal['repeats'])}"
+        assert job.main(["--run", str(run), "--runs", str(f["runs"]), "--inbox", str(tmp_path / "inbox3"),
+                         *shlex.split(proposal["args"]), "--dry-run"]) == 0
+        assert json.loads((run / "summary" / "leaders.json").read_text())["serve_date"] == proposal["serve_date"]
 
 
 def test_the_final_picking_the_other_finalist_re_runs_s2_on_day_3(tmp_path):

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -335,7 +336,9 @@ def _days(tmp: Path) -> list:
 
 def test_day3_batches_record_each_rain_clips_bed_and_music_and_hold_the_five_repeats(tmp_path):
     priors = _days(tmp_path)
-    doc = draw(PLAN, "day3", seed=23, leaders=parse_leaders(LEADERS3), priors=priors, repeats=STAGES)
+    doc = draw(PLAN, "day3", seed=23, leaders=parse_leaders(LEADERS3), priors=priors, repeats=STAGES,
+               serve_date="2026-11-03")
+    assert doc["repeats"]["serve_date"] == "2026-11-03"
     run = tmp_path / "runs" / "shootout-203"
     fake_renders(doc, run / "renders")
     folders = build(doc, run / "renders", tmp_path / "inbox", summary_dir=run / "summary", plan=PLAN)
@@ -345,6 +348,9 @@ def test_day3_batches_record_each_rain_clips_bed_and_music_and_hold_the_five_rep
         m, h = load_batch(d)
         pub = json.loads((d / "manifest.json").read_text())
         hid = json.loads((d / "manifest.hidden.json").read_text())
+        # spec-F1: every Day-3 batch says when it may first be served, at the top of its hidden manifest only
+        assert hid["serve_from"] == "2026-11-03" and h.serve_from == date(2026, 11, 3) and "serve_from" not in pub
+        assert list(hid) == ["v", "batch", "category", "serve_from", "rounds"]
         assert public_leaks(pub, hid, _stage_options(PLAN, {i["stage"] for r in hid["rounds"].values()
                                                              for i in r["clips"].values()})) == []
         for r in m.rounds:
@@ -360,6 +366,26 @@ def test_day3_batches_record_each_rain_clips_bed_and_music_and_hold_the_five_rep
                 assert (x["bed_lu"] is None) == (x["option"] == "rain_none") == (x["bus_lufs"] is None)
     assert sorted(kinds) == ["anchor"] + ["none"] * 7 + ["repeat"] * 5
     assert sorted(groups) == sorted(PLAN.repeat_groups), "one repeat per group (section 2.5)"
+
+
+def test_the_draw_cli_takes_the_repeats_only_with_their_serving_date(tmp_path, capsys):
+    # spec-F1 (2026-11-01 review): only the tally knew the serving date, so job 3's batches went into the inbox with
+    # nothing to stop `make rate` serving them a day after their first showings' votes. The draw takes --repeats
+    # only with --serve-date and records it (repeats.serve_date), which the builder writes into each hidden manifest
+    from lofi_rl.shootout.batch import main as batch_main
+    priors = _days(tmp_path)
+    base = ["draw", "--plan", str(PLAN_PATH), "--stage", "day3", "--leaders", LEADERS3, "--prior",
+            *(str(p.run_dir / "summary" / "batches.json") for p in priors), "--repeats", "K1+V", "--seed",
+            "00000000000000d3"]
+    assert batch_main([*base, "--summary", str(tmp_path / "a")]) == 2
+    assert "--repeats needs --serve-date" in capsys.readouterr().err and not (tmp_path / "a").exists()
+    assert batch_main([*base, "--summary", str(tmp_path / "b"), "--serve-date", "2026-11-03"]) == 0
+    doc = json.loads((tmp_path / "b" / "draw.json").read_text())
+    assert doc["repeats"]["serve_date"] == "2026-11-03" and doc["repeats"]["stages"] == ["K1", "V"]
+    assert batch_main([*base, "--summary", str(tmp_path / "c"), "--serve-date", "3 Nov"]) == 2
+    assert "is not a date" in capsys.readouterr().err
+    none = draw(PLAN, "day3", seed=0xD3, leaders=parse_leaders(LEADERS3))
+    assert "serve_date" not in none["repeats"], "a draw without one keeps its form"
 
 
 def test_a_rain_round_whose_clips_play_different_music_is_refused(tmp_path):

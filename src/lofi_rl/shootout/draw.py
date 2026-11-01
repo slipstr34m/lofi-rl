@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Any
 
 from lofi_rl.prng import GOLDEN, MASK, below, splitmix64
+from lofi_rl.ui.manifest import serve_from_date
 
 from .plan import (BAND_SLOTS, SLOT_BUS, SLOT_LIST, Batch, Plan, PlanError, Stage, apply_adds, apply_cuts, day_name,
                    day_number, substitute)
@@ -616,10 +617,12 @@ def _split_all(b: Batch, name: str, pool: list[dict], seed: int) -> list[dict]:
 
 def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ...]] | None = None,
          priors: Sequence[Prior] = (), repeats: Sequence[str] = (), rerun_s2: str | None = None,
-         cuts: Sequence[str] = (), adds: Sequence[str] = ()) -> dict:
+         cuts: Sequence[str] = (), adds: Sequence[str] = (), serve_date: str | None = None) -> dict:
     """The day's draw as draw.json holds it. Raises DrawError (or PlanError) before anything is written. `adds`
     names the optional stages the job adds (`--add R2r`, CD-54); draw.json's `plan` records them as `adds` (only
-    when there are some, so a draw without them keeps its old form)."""
+    when there are some, so a draw without them keeps its old form). `serve_date` (YYYY-MM-DD, the repeats' day
+    only: the job's --serve-date) is the first day the batches may be served, recorded as `repeats.serve_date` (only
+    when given) for the batch builder, which writes it into every hidden manifest as `serve_from` (D-013's gap)."""
     leaders = dict(leaders or {})
     n = day_number(day)
     day = day_name(n)
@@ -640,6 +643,13 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
         raise DrawError("repeats need the --prior batches they repeat")
     if rerun_s2 and n != plan.rerun_day:
         raise DrawError("the S2 re-run comes only on " + (day_name(plan.rerun_day) if plan.rerun_day else "no day"))
+    if serve_date is not None:
+        if n != plan.repeat_day:
+            raise DrawError(f"a serving date goes with the repeats, which come only on {day_name(plan.repeat_day)}")
+        try:
+            serve_from_date(serve_date)
+        except ValueError:
+            raise DrawError(f"--serve-date {serve_date!r} is not a date (YYYY-MM-DD)") from None
     stages = list(plan.stages_of(n))
     band = _day_band(plan, day, leaders, stages)
     if rerun_s2 and rerun_s2 not in plan.band_options["sax"]:
@@ -689,7 +699,8 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
         "schema": SCHEMA, "v": 1, "stage": day, "seed": f"{seed & MASK:016x}",
         "plan": plan_doc,
         "leaders": {k: list(v) for k, v in sorted(leaders.items())}, "band": band,
-        "repeats": {"stages": list(repeats), "prior": [str(p.run_dir) for p in priors]},
+        "repeats": {"stages": list(repeats), "prior": [str(p.run_dir) for p in priors],
+                    **({"serve_date": serve_date} if serve_date is not None else {})},
         "rerun_s2": rerun_s2,
         "maps": {sid: maps[sid] for sid in maps},
         "batches": batches,

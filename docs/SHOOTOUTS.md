@@ -163,6 +163,11 @@ follow it as written. Whether to keep these checks in the shootouts at all is pu
   earlier (Day 1 voted 2026-10-31, Day 2 2026-11-01), so the date that counts is the day Day 3 is served, which
   Claude gives the tally (`--serve-date`, §7.9): a stage is named when every one of its design rounds has a
   standing vote at least 2 days before that date, read from the logs' own timestamps (the latest one counts).
+  *Enforced (2026-11-01 review):* the date goes with the repeats to job 3 (`--serve-date`, required with
+  `--repeats`, §7.7), whose draw records it and whose builder writes it into every Day-3 hidden manifest as
+  `serve_from`; `make rate` passes over a batch before its `serve_from` and refuses it by name (RATING.md), since
+  the next `make pull` brings job 3's batches into the inbox as soon as it ends. The tally then scores a repeat
+  only when its vote falls at least 2 calendar days after its first showing's (`too_soon` otherwise, §7.9).
 - **Anchors: 3**, one per day [CD-23]. An anchor is an extra round of its batch's stage (loop, candidates and tiles
   drawn) in which one clip is a **sour copy**: the same loop with every sax note's accidental raised by one (a
   natural becomes `#`, a `b` becomes natural), rendered with that clip's candidate. The 9 loops' sour copies pass
@@ -1105,9 +1110,12 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   `ARGS='--stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>/swing=<id>/humanize=<id>/sax_variant=<id>/timing=<id> --prior <job1>+<job2> --repeats <stage>+...'`:
   `--prior` the jobs that built the Day-1 and Day-2 batches (their renders are the repeats' first showings, and job
   1's levels.json the drift reference), `--repeats` the stages voted at least 2 days before the serving date (the
-  tally's `--serve-date`, §2.5, §7.9), and, if the final picked the other finalist, `--rerun-s2 <sax id>`. For the
-  Day-2 results Shresth confirmed (gates/GATE_palette.md, 2026-11-01), served on 2026-11-03 or later:
-  `ARGS='--stage day3 --leaders keys=gu_tine_ep/kit=kit_virtuosity/bass=bass_vsco2_pizz/sax=sax_mtg_alto/swing=swing_55/humanize=humanize_off/sax_variant=sax_plain/timing=timing_lag --prior 13635646+13651610 --repeats K1+R1+R2+S1+R2r+R3a+R3b+S1f+S2a+S2b+K2+V'`.
+  tally's `--serve-date`, §2.5, §7.9), `--serve-date YYYY-MM-DD` that date (day 3 only, and required with
+  `--repeats`: leaders.json and draw.json record it, and every Day-3 hidden manifest carries it as `serve_from`,
+  so `make rate` serves no Day-3 batch before it), and, if the final picked the other finalist, `--rerun-s2 <sax
+  id>`. For the Day-2 results Shresth confirmed (gates/GATE_palette.md, 2026-11-01), served on 2026-11-03:
+  `ARGS='--stage day3 --leaders keys=gu_tine_ep/kit=kit_virtuosity/bass=bass_vsco2_pizz/sax=sax_mtg_alto/swing=swing_55/humanize=humanize_off/sax_variant=sax_plain/timing=timing_lag --prior 13635646+13651610 --repeats K1+R1+R2+S1+R2r+R3a+R3b+S1f+S2a+S2b+K2+V --serve-date 2026-11-03'`
+  (a later serving date keeps every repeat; the job refuses the line without `--serve-date`).
   `ARGS` reach the script as arguments, so they need no comma-safe `--export`; they hold no spaces. A cut adds
   `--cut vamps-high+latin3+final` on Day 2 (the cut list's, or Shresth's word given to the tally as `--day2-cuts`,
   §7.9) or `--cut w1-two+w2-two` on Day 3 (`--day3-cuts`). **The bass re-listen** (CD-54)
@@ -1550,7 +1558,13 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     winner is not the sax job 2 ran S2 on, and `--cut` by Day 3's rule. It is checked through `draw.parse_leaders` and
     `draw.day_band`, and the report gives the `make submit` line without any vote date. Without `--serve-date` the
     status is `needs_serve_date`; a missing job summary or leaders.json blocks it. The JSON adds each kit's bass (the
-    frozen palette's pairings) and the keys survivors.
+    frozen palette's pairings) and the keys survivors. *2026-11-01 review:* the line carries `--serve-date <date>`
+    too, which job 3 writes into its batches (`serve_from`, §2.5), so the date reaches more than the tally.
+  - **Repeats scored only 2 days on** (2026-11-01 review): `repeats_doc` compares the calendar date of each
+    repeat's standing vote with its first showing's (each in its own offset); a pair fewer than
+    `controls.repeats.min_days_after` (2) days apart goes to `too_soon` (one with no readable date to `undated`),
+    keeps its row with `days_after`, and enters neither `agree` nor `compared`; the report counts them. Test: Day 3
+    voted the day after Day 2 scores the repeats of Day-1 rounds and leaves those of Day-2 rounds out.
   - **Day 3's cut** (`day3_cut`, §2.7): r = Days 1-2's audit minutes over their plans (Day 1's batches, 23.0, and Day
     2's as job 2 drew it, `draw.day_minutes` with its counts, adds and cuts: a choice the spec left open, since §2.7
     reads r after Day 1); Day 3's plan = the drawn plan's rain rounds and anchor, the repeats' expected minutes

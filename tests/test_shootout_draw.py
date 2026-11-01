@@ -289,6 +289,9 @@ def test_cuts_shrink_day2_and_leave_the_other_stages_draws_alone():
     ("day1", {"repeats": ["K1"]}, "repeats come only on day3"),
     ("day3", {"leaders": DAY3, "repeats": ["K1"]}, "need the --prior"),
     ("day3", {"leaders": DAY3, "rerun_s2": "sax_tuba"}, "not one of the saxes"),
+    ("day2", {"leaders": DAY2, "serve_date": "2026-11-03"}, "come only on day3"),
+    ("day3", {"leaders": DAY3, "serve_date": "2026-11-31"}, "is not a date"),
+    ("day3", {"leaders": DAY3, "serve_date": "2026-W45-2"}, "is not a date"),
 ])
 def test_bad_job_arguments_are_refused_before_anything_is_written(day, kw, match):
     with pytest.raises(DrawError, match=match):
