@@ -22,11 +22,14 @@ gives the same draw on every machine and Python version, and adding a stage leav
 
 The draw also lists what the job must make: `renders` (render id -> loop text, brief, palette key, stage,
 option) and `palettes` (palette key -> the band that palette plays: the generator's input, section 7.8). A clip of a
-stage whose option is an instrument (it fills the keys, kit, bass or sax slot) plays its own palette (CD-52):
+Day-1 stage whose option is an instrument (it fills the keys, kit, bass or sax slot) plays its own palette (CD-52):
 `<base>_<loop id>`, or `<base>_<loop id>_<variant>` for a changed text such as an anchor's sour copy, where `base` is
 the stage palette `<stage>[_<kit>]_<option>`; its `level` names the bus, the option and the case (the loop, or
-`<loop>.<variant>`) on which the level tool measures that clip's own fader for the bus the round varies. Every
-other stage plays one palette per option.
+`<loop>.<variant>`) on which the level tool measures that clip's own fader for the bus the round varies. From Day 2
+on, every clip of a stage that names `match` (plan.yaml) plays its own palette too (CD-53), named the same way, and
+its `level` names those buses and its case, which the level tool measures on the clip's own stage palette and text;
+a vamp's text is named by the vamp (`<loop>.<vamp>`, palette `v_<loop id>_<vamp>`). Every other stage (Day 3's
+rain) plays one palette per option.
 
 Sound claims: none.
 """
@@ -243,7 +246,8 @@ def _text(ctx: _Ctx, stage: Stage, loop_id: str, option: str, sour: bool) -> tup
     if stage.sub:                               # K2's `keys: ep spread`, or the vamp's own line (section 5)
         text = substitute(text, **{head: ctx.plan.vamps[option].line if value == "option" else value
                                    for head, value in stage.sub.items()})
-        variant = "vamp" if "vamp" in stage.sub else stage.sub["keys"].split()[-1]
+        # a vamp's text is named by the vamp, so the four texts of a vamp round are four cases (CD-53)
+        variant = option if "vamp" in stage.sub else stage.sub["keys"].split()[-1]
     if sour:
         text, variant = raise_accidentals(text), "sour"
     return text, variant
@@ -263,9 +267,11 @@ def _clip(ctx: _Ctx, stage: Stage, loop_id: str, option: str, band: Mapping[str,
     spec = {"stage": stage.id, "day": ctx.day, "fills": stage.fills, "option": option if stage.fills else None,
             "band": pal_band, "sax_muted": stage.sax_muted}
     text, variant = _text(ctx, stage, loop_id, option, sour)
-    if stage.fills in MATCHED:              # the clip's own palette: its own fader on the bus its round varies
+    if stage.match or stage.fills in MATCHED:   # the clip's own palette: its own fader on the bus(es) its round varies
         case = lp.name if variant == "base" else f"{lp.name}.{variant}"
-        spec = {**spec, "base": key, "level": {"bus": stage.bus, "variant": option, "case": case}}
+        level = ({"buses": list(stage.match), "case": case} if stage.match       # CD-53: measured on its own palette
+                 else {"bus": stage.bus, "variant": option, "case": case})       # CD-52: its candidate's 9-loop runs
+        spec = {**spec, "base": key, "level": level}
         key = "_".join([key, loop_id.lower()] + ([] if variant == "base" else [variant]))
     if ctx.palettes.setdefault(key, spec) != spec:
         raise DrawError(f"palette {key} is asked for with two different bands")

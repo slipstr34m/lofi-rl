@@ -6,6 +6,7 @@ clip takes its own fader on the bus its round varies (CD-52), so the tool also m
 clip plays, the anchor's sour copy included when it is given the job's draw."""
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -426,6 +427,161 @@ def test_the_cli_writes_levels_json_and_exits_2_on_bad_arguments(rig, tmp_path, 
     doc = json.loads(out.read_text())
     assert "l9_hopeful_high.sour" in doc["variants"]["sax_gu_alto"]["clips"] and doc["draw"]["file"] == str(draw)
     assert "clips" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------------------------ Day 2 (CD-53)
+LEADERS2 = "keys=jrhodes3d+gu_tine_ep+fp_fm_ep1/kit=kit_swirly/bass=bass_fp_finger_yr/sax=sax_mtg_tenor+sax_gu_alto"
+NINE = tuple(sorted(yaml.safe_load((ROOT / "shootouts" / "loops" / "briefs.yaml").read_text())["loops"]))
+
+
+class HashBench(TableBench):
+    """Made-up loudness for any (palette, instrument, case): a reference run's bus depends only on its instrument and
+    the case (as a real bus does), a stage palette's (`config:<key>`) also on the palette, whose option may move it."""
+
+    def __init__(self, gate=0.02):
+        super().__init__({}, {}, gate=gate)
+
+    @staticmethod
+    def _u(*keys) -> float:
+        return int(hashlib.sha256("|".join(keys).encode()).hexdigest()[:8], 16) / 2 ** 32
+
+    def _where(self, run):
+        return run.id if run.id.startswith("config:") else ""
+
+    def input_lufs(self, run, case, bus):
+        return -45.0 + 6.0 * self._u("P", self._where(run), run.instruments[bus], case.name)
+
+    def chain_lufs(self, run, case, bus, trim, keep=False):
+        out = -40.0 + 8.0 * self._u("L", self._where(run), run.instruments[bus], case.name) + trim
+        if keep:
+            self.kept[(run.id, case.name, bus)] = out
+        return out
+
+
+@pytest.fixture(scope="module")
+def rig2(rig, tmp_path_factory):
+    """A Day-2 draw from LEADERS2 and its measuring palettes (every instrument it plays, each matched palette)."""
+    from lofi_rl.shootout.draw import draw, parse_leaders, write_draw
+    tmp = tmp_path_factory.mktemp("levels2")
+    doc = draw(PLAN, "day2", seed=0xD2, leaders=parse_leaders(LEADERS2))
+    path = write_draw(doc, tmp / "draw.json")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("LOFI_ASSETS", str(rig["assets"]))
+        generate(PLAN_PATH, tmp / "palettes", stage="day2", levels=None, base=rig["base"], draw=path)
+    return {"tmp": tmp, "draw": doc, "draw_path": path, "measure": tmp / "palettes" / "measure"}
+
+
+def levels2(rig2, bench, **kw):
+    return run_levels(PLAN_PATH, ROOT / "shootouts" / "loops", kw.pop("measure", rig2["measure"]), "day2",
+                      draw=kw.pop("draw", rig2["draw_path"]), bench=bench, stamp="a1b2c3d 0 0", **kw)
+
+
+def test_day2_measures_its_instruments_again_and_every_clip_on_its_own_palette_and_text(rig2):
+    # CD-53: every instrument the day plays is measured as on Day 1 (its trim and median fader, the frozen palette's,
+    # section 3 "Drift between jobs"); then every stage palette a matched clip plays is measured on each case its
+    # clips play, on each bus its stage matches, with that bus's instrument's trim: the clip's own fader, corrected by
+    # the loudness measured after it, and the loudness at the band's median fader.
+    bench = HashBench(gate=0.02)
+    doc = levels2(rig2, bench)
+    draw_doc = rig2["draw"]
+    index = json.loads((rig2["measure"] / "index.json").read_text())
+    assert set(doc["variants"]) == set(index["variants"]) and set(doc["configs"]) == set(index["configs"])
+    assert [p[0] for p in bench.prepared][:len(index["runs"])] == [r["run"] for r in index["runs"]]
+    v, s_star = doc["variants"], doc["S_star"]
+    for key, cfg in doc["configs"].items():
+        st = PLAN.stages[cfg["stage"]]
+        assert list(cfg["buses"]) == list(st.match), key
+        for bus, e in cfg["buses"].items():
+            inst = index["configs"][key]["instruments"][bus]
+            assert (e["instrument"], e["t"], e["median_F"]) == (inst, v[inst]["t"], v[inst]["F"]), (key, bus)
+            target = s_star + {"sax": 0.0, "drums": -1.5, "bass": -3.0, "keys": -6.0}[bus]
+            for case, c in e["cases"].items():
+                assert c["target_lufs"] == target and abs(c["off_lu"]) <= CLIP_FIX_LU + 1e-9, (key, bus, case)
+                assert c["lufs"] == pytest.approx(c["L"] + c["F"] + 0.02)
+                assert c["median_lufs"] == pytest.approx(c["L"] + v[inst]["F"] + 0.02)
+            assert e["checks"]["clips"]["ok"]
+            assert ("loops" in e) == st.match_loops
+            if st.match_loops:
+                L9 = e["loops"]["L"]
+                assert len(L9) == 9 and e["loops"]["F"] == round(target - statistics.median(L9.values()), 2)
+                assert e["loops"]["checks"]["post_fader"]["ok"] and e["loops"]["checks"]["linear"]["ok"]
+    # every drawn clip's case is measured on its own palette, and nothing else is but a `loops` config's 9 loops
+    want = {}
+    for rid, ren in draw_doc["renders"].items():
+        spec = draw_doc["palettes"][ren["palette"]]
+        want.setdefault(spec["base"], set()).add(spec["level"]["case"])
+    for key, cfg in doc["configs"].items():
+        got = set(cfg["cases"])
+        extra = got - want[key]
+        assert want[key] <= got, key
+        assert extra == (set() if not cfg["loops"] else
+                         {f"{x}.spread" if cfg["stage"] == "K2" else x for x in NINE} - want[key]), key
+    assert {c for c in doc["configs"]["v"]["cases"]} == {f"{lp}.{vamp}" for lp in NINE
+                                                         for vamp in PLAN.vamps if PLAN.vamps[vamp].mood ==
+                                                         PLAN.loop_named(lp).brief.mood}
+    # the per-round spreads: one row per drawn round, each bus its stage matches, before and after the own faders
+    rounds = [r for b in draw_doc["batches"] for r in b["rounds"]]
+    assert len(doc["rounds"]) == len(rounds) == 26
+    for row in doc["rounds"]:
+        assert list(row["buses"]) == list(PLAN.stages[row["stage"]].match)
+        assert row["after_lu"] <= 2 * CLIP_FIX_LU + 1e-9 and row["before_lu"] >= 0
+    assert doc["flags"] == []
+
+
+def test_config_cases_name_each_text_once_and_refuse_a_clip_off_the_measuring_index(rig2):
+    from lofi_rl.shootout.levels import config_cases, read_cases
+    cases = read_cases(ROOT / "shootouts" / "loops")
+    index = json.loads((rig2["measure"] / "index.json").read_text())
+    got = config_cases(rig2["draw"], index["configs"], cases)
+    k2 = next(k for k in got if k.startswith("k2_"))
+    assert [c.name for c in got[k2]] == sorted(f"{x}.spread" for x in NINE)
+    assert all(c.text == PLAN.loop_named(c.loop).text.replace("keys: ep rootless", "keys: ep spread") for c in got[k2])
+    for c in got["v"]:
+        assert c.text.splitlines()[0] == f"vamp: {PLAN.vamps[c.variant].line}" and c.name == f"{c.loop}.{c.variant}"
+    with pytest.raises(LevelsError, match="does not measure"):
+        config_cases(rig2["draw"], {k: c for k, c in index["configs"].items() if k != "v"}, cases)
+    bad = copy.deepcopy(rig2["draw"])
+    rid = next(r for r, e in bad["renders"].items() if e["stage"] == "S2b")
+    bad["renders"][rid]["text"] += "\n"
+    twin = dict(bad["renders"][rid], text=PLAN.loop_named(bad["renders"][rid]["loop"]).text)
+    bad["renders"][rid + ".twin"] = twin
+    with pytest.raises(LevelsError, match="two different texts"):
+        config_cases(bad, index["configs"], cases)
+
+
+def test_day2_needs_the_draw_its_measuring_palettes_were_made_from(rig2, tmp_path):
+    bench = HashBench()
+    with pytest.raises(LevelsError, match="needs the job's draw"):
+        levels2(rig2, bench, draw=None)
+    other = json.loads(rig2["draw_path"].read_text())
+    other["seed"] = "0" * 16
+    (tmp_path / "other.json").write_text(json.dumps(other))
+    with pytest.raises(LevelsError, match="another draw"):
+        levels2(rig2, bench, draw=tmp_path / "other.json")
+    assert bench.prepared == []
+
+
+def test_day2_records_each_instruments_move_from_job_1_and_never_reuses_another_days_values(rig, rig2, tmp_path):
+    # Section 3 "Drift between jobs": job 2 measures every instrument it plays again and lists any trim or fader
+    # that moved more than 0.1 dB from job 1's. A Day-1 levels file is never reused for Day 2, even with equal keys.
+    first = tmp_path / "day1.json"
+    day1 = levels(rig, TableBench(rig["P"], rig["L0"]))
+    for vid in day1["variants"]:
+        day1["variants"][vid]["t"] += 0.5 if vid == "kit_swirly" else 0.0
+    first.write_text(json.dumps(day1))
+    doc = levels2(rig2, HashBench(), prior=first)
+    assert doc["reused"] is False and "configs" in doc
+    for vid, rec in doc["variants"].items():
+        old = day1["variants"][vid]
+        assert rec["prior"] == {"t": old["t"], "F": old["F"]}, vid
+        assert rec["moved_db"] == {"t": round(rec["t"] - old["t"], 2), "F": round(rec["F"] - old["F"], 2)}, vid
+    assert doc["moved"] == sorted(vid for vid, r in doc["variants"].items()
+                                  if max(abs(x) for x in r["moved_db"].values()) > 0.1)
+    assert "kit_swirly" in doc["moved"]
+    same = tmp_path / "same.json"                        # equal drift keys, but another day's file
+    same.write_text(json.dumps(dict(levels2(rig2, HashBench()), stage="day1")))
+    again = levels2(rig2, HashBench(), prior=same)
+    assert again["prior"]["changed"] == [] and again["reused"] is False and "configs" in again
 
 
 # ------------------------------------------------------------------------ the real banks (§7.1 test 6)

@@ -43,6 +43,35 @@ def test_a_render_that_does_not_play_its_clips_level_gets_status_level(rec, leve
     assert {k: out["level"][k] for k in level} == level
 
 
+DAY2 = {"case": "l7_hopeful_low.drift", "buses": {   # CD-53: a vamp clip matches its keys and its bass
+    "keys": {"instrument": "gu_tine_ep", "L": -31.25, "F": 3.71, "lufs": -27.541, "lu": -6.001, "target_lufs": -27.54,
+             "off_lu": -0.001, "tol_lu": 0.1},
+    "bass": {"instrument": "bass_gu_acoustic", "L": -40.0, "F": 15.46, "lufs": -24.54, "lu": -3.0,
+             "target_lufs": -24.54, "off_lu": 0.0, "tol_lu": 0.1}}}
+
+
+def record2(keys=(-31.25, 3.71), bass=(-40.0, 15.46)) -> dict:
+    rec = record(*keys)
+    rec["buses"]["bass"] = {"lufs": bass[0], "fader_db": bass[1], "trim_db": 0.0,
+                            "post_lufs": None if bass[0] is None else bass[0] + bass[1]}
+    return rec
+
+
+def test_a_day2_clip_must_play_every_bus_it_matches_at_its_own_fader():
+    # CD-53: from Day 2 on a clip's level holds one entry per bus its round's varied thing moves; the render must
+    # play each of them as the level tool measured it, or the record gets status `level`.
+    out = with_level(record2(), DAY2)
+    assert out["status"] == "ok" and out["level"]["ok"] is True and out["level"]["case"] == DAY2["case"]
+    assert {b: (v["render_lufs"], v["agree_lu"]) for b, v in out["level"]["buses"].items()} == \
+        {"keys": (-31.25, 0.0), "bass": (-40.0, 0.0)}
+    for rec, said in ((record2(bass=(-40.0 + 2 * AGREE_LU, 15.46)), "bass bus reads"),
+                      (record2(bass=(-40.0, 15.45)), "bass fader"), (record2(keys=(None, 3.71)), "keys bus is silent")):
+        bad = with_level(rec, DAY2)
+        assert bad["status"] == "level" and said in bad["error"] and bad["level"]["ok"] is False
+    off = with_level(record2(), {**DAY2, "buses": {**DAY2["buses"], "bass": {**DAY2["buses"]["bass"], "off_lu": 0.2}}})
+    assert off["status"] == "level" and "bass bus +0.200 LU from S* + T" in off["error"]
+
+
 def test_each_palette_takes_its_level_from_the_generators_index_beside_it(tmp_path):
     d, stand = tmp_path / "palettes", tmp_path / "stand-ins"
     d.mkdir()

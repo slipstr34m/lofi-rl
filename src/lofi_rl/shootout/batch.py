@@ -19,7 +19,9 @@ The anchors' sour copies are written there and gate-checked (G1-G6 in the loop's
 `build` reads the draw and the job's renders and writes every batch of the stage as `<out>/<date>/<batch>/`:
 one FLAC per clip appearance under an opaque name (`k` + 10 hex), `manifest.json` (public) and
 `manifest.hidden.json` (what each clip really is: for a clip of an instrument stage, its own fader `fader_db` and
-its bus's loudness as the level tool measured it after that fader, `bus_lufs`, and re S*, `bus_lu`; CD-52), then
+its bus's loudness as the level tool measured it after that fader, `bus_lufs`, and re S*, `bus_lu`; CD-52; from Day
+2 on the stage's bus there, the vamps' keys, and every other bus the clip matches as `<bus>_fader_db`, `<bus>_lufs`
+and `<bus>_lu`; CD-53), then
 runs `python -m lofi_rl.ui.manifest check` on each folder and records the id map in `summary/batches.json`. Nothing
 is written unless everything is in order: a missing render, a failed gate, a clip that is not exactly one pass of
 its loop, a FLAC that changed since it was rendered, a repeat whose render is not the first showing's, a clip whose
@@ -50,7 +52,7 @@ from lofi_rl.ui.manifest import (BATCH_RE, HIDDEN_NAME, LEAK_WINDOW, PUBLIC_NAME
                                  audio_info, sha256_file)
 
 from .draw import BARS, DrawError, Rng, draw, load_prior, parse_leaders, write_draw
-from .plan import PLAN, Plan, PlanError, load_plan
+from .plan import MIX_ORDER, PLAN, Plan, PlanError, load_plan
 
 BATCHES_SCHEMA = "lofi-rl/shootout-batches/1"
 SR = 44100
@@ -166,7 +168,13 @@ def _check_clip(folder: Path, rid: str, rnd: Mapping, clip: Mapping, entry: Mapp
         errs.append(f"{rid}: made again, but its pcm_sha256 differs from the first showing's")
     level = (spec or {}).get("level")
     got = rec.get("level") or {}
-    if level and ({k: got.get(k) for k in level} != dict(level) or got.get("ok") is not True):
+    if level and "buses" in level:          # Day 2 on (CD-53): one measured fader per bus the round's thing moves
+        if (got.get("case") != level["case"] or sorted(got.get("buses") or {}) != sorted(level["buses"])
+                or got.get("ok") is not True):
+            errs.append(f"{rid}: a matched clip plays its own fader on {list(level['buses'])} (CD-53), but its record "
+                        f"carries {'no level' if not got else 'the level for ' + str(list(got.get('buses') or {}))} "
+                        f"on case {got.get('case')} (ok {got.get('ok')}) for {dict(level)}")
+    elif level and ({k: got.get(k) for k in level} != dict(level) or got.get("ok") is not True):
         errs.append(f"{rid}: a clip of an instrument stage plays its own fader (CD-52), but its record carries "
                     f"{'no level' if not got else 'the level ' + str({k: got.get(k) for k in (*level, 'ok')})} for "
                     f"{dict(level)}")
@@ -178,7 +186,16 @@ def _hidden_clip(rec: Mapping, rnd: Mapping, clip: Mapping) -> dict:
     info = {"clip": rec["clip"], "option": clip["option"], "what": clip.get("what"), "stage": rnd["stage"],
             "slot": rnd["slot"], "loop": rnd["loop"], "palette": rec["palette"]["label"]}
     level = rec.get("level")
-    if bus in buses and level:                       # its own fader, and the loudness measured after it (CD-52)
+    if level and "buses" in level:                   # Day 2 on (CD-53): every matched bus's own fader and loudness
+        lb = level["buses"]
+        first = next(b for b in [*bus.split("+"), *MIX_ORDER] if b in lb)   # the stage's bus; the vamps': the keys
+        b = buses[first]
+        info.update(trim_db=b["trim_db"], fader_db=b["fader_db"], bus_lufs=lb[first]["lufs"], bus_lu=lb[first]["lu"])
+        for other in MIX_ORDER:
+            if other in lb and other != first:
+                info.update({f"{other}_fader_db": buses[other]["fader_db"], f"{other}_lufs": lb[other]["lufs"],
+                             f"{other}_lu": lb[other]["lu"]})
+    elif bus in buses and level:                     # its own fader, and the loudness measured after it (CD-52)
         b = buses[bus]
         info.update(trim_db=b["trim_db"], fader_db=b["fader_db"], bus_lufs=level["lufs"], bus_lu=level["lu"])
     elif bus in buses:

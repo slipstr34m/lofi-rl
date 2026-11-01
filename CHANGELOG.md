@@ -19,6 +19,38 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-10-31 (18:58 PDT): job 2 (Day 2) built and dry-run on the laptop; every Day-2 clip matched on every bus its round varies (CD-53)
+
+**What was done** (branch `wt/day2`, not merged)
+- **What Day 2 lacked:** the palette generator and the levels tool exited 2 for `--stage day2`; the vamp palettes (§7.3) did not exist; and CD-52 matched only stages whose option fills an instrument slot, so S2a, S2b, R3a, R3b and the vamps would have played at the band's median faders, and K2's spread texts would have been extra cases of the rootless runs.
+- **Built:**
+  - `plan.yaml` `match` per Day-2 stage (R3a sax, keys, bass, drums; R3b keys, bass, drums; S1f, S2a, S2b sax; K2 keys; vamps keys and bass), `loops: true` for K2 and S2a;
+  - the generator's Day 2: measuring runs of every instrument the draw plays, one measuring palette per stage palette a matched clip plays, stage palettes with the option as an instrument or as its plan variant's palette paths, clip palettes with their own fader on every matched bus;
+  - the levels tool's Day 2: every instrument measured again (each with its move from job 1), then every matched clip on its own palette and text at its instruments' Day-1 trims, the 9-loop values of K2's spread and S2a's variants, and each round's spread before and after;
+  - the vamp palettes: −200 dB after the sax trim slot, and 16 loudness iterations;
+  - multi-bus levels in the render check and the hidden manifests (`<bus>_fader_db`, `<bus>_lufs`, `<bus>_lu`); the job passes the draw to the measure stage from day 2 on.
+- **Spreads before the fix** (each round's clips at the band's median faders, the levels tool's `rounds.before_lu`; a scratch meter on job 1's t and F gave the same values to the 0.001 LU it printed): S2a 1.56–2.43 LU, R3b 0.53–1.04, vamps 1.52–9.85 (bass), S1f 0.12–1.27, K2 0.34–0.40, S2b 0.026–0.055, R3a 0.0006–0.026.
+- **After** (hidden manifests, every matched bus): every Day-2 round 0.0002–0.0088 LU; worst clip 0.0050 LU off its target.
+- **Day-2 dry runs** (laptop, simulated leaders `keys=vcsl_upright_knight+jrhodes3d+fp_fsbs_jazz_guitar/kit=kit_swirly/bass=bass_vsco2_pizz/sax=sax_mtg_tenor+sax_mtg_alto`, the largest |t| per slot in job 1's levels.json, never votes; `--prior 13635646`; SHOOTOUTS.md §7.7):
+  - batches `b1104-1-groove` 5 rounds, 17 clips, 5.6 min; `b1104-2-sax` 10 (with the anchor), 26, 8.8; `b1104-3-keys` 2, 6, 1.9; `b1104-4-vamps` 9, 36, 11.6; each passes `ui.manifest check`, and `public_leaks` finds nothing;
+  - 84 of 84 renders at −14.097 … −13.939 LUFS, true peak at most −1.420 dBTP; each reads the tool's L at every matched fader exactly (162 pairs);
+  - the 11 instruments' trims and median faders equal job 1's (moves 0.00 dB);
+  - stages 136.3 / 131.3 / 134.2 / 124.7 s (levels 65.8–71.7, render 57.3–62.9); peak memory 3.30 GB;
+  - four runs gave the same bytes in 724 of 731 files; the rest differ only in paths, the sha256s of files that hold them, and wall times.
+- **Day 1 unchanged:** Day-1 dry runs of this code and of main's on one seed give the same bytes in 580 of 587 files and the same values in the rest.
+- **SU estimate for job 2** (§7.7, Day 1's arithmetic): 4.7–14.3 min, 56–171 SU, inside the 20-min walltime and the 240-SU cap; job 1's own ratio gives 2.7–3.4 min, 32–41 SU. `jobs/shootout.sbatch` is unchanged.
+- **Suite:** 1737 passed, 1 skipped (20 new tests).
+
+**Failed approaches and why:** the first Day-2 dry run stopped at the render stage: 3 of 36 vamp clips ended 0.15–0.26 LU short of −14 LUFS (G7) at dev_gu's 4 loudness iterations. With no sax the master gain reached 18.9–30.0 dB, and the limiter took 10.0–17.2 dB off the peaks of the five vamp clips checked; the vamp palettes now take 16 iterations (the parser's largest), which every vamp clip met in 3–8.
+
+**Needs ear check (when job 2 runs):** the vamp batch plays with that much limiting; the numbers are measurements only.
+
+**SU spent:** 0 (laptop only).
+
+**Next:** merge `wt/day2`; once Shresth finishes Day 1, tally and propose the leaders, `make sync`, then `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders <proposal> --prior 13635646'`.
+
+---
+
 ## 2026-10-31 (17:22 PDT): registry rule amended: Claude re-registers changed job types of 500 SU or less
 
 **What was done**
