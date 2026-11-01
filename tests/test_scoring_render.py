@@ -48,7 +48,9 @@ def _req(texts):
 
 @needs_fluidsynth
 def test_one_real_render_through_the_pool_reaches_the_featurizer_once(tmp_path):
-    """The suite's two real scorer renders: one /score (this clip) and one /render of the same clip to FLAC."""
+    """The suite's three real scorer renders: one /score (this clip), one /render of the same clip to FLAC, and
+    the server's canary (the prompt's example loop), which must render in spec on the pool, with the workers'
+    hashes and the manifest's clip id accepted (else the server would never bind)."""
     import soundfile as sf
     from lofi_rl.render.machine import golden_key
     feat = RecordingFeaturizer()
@@ -61,8 +63,10 @@ def test_one_real_render_through_the_pool_reaches_the_featurizer_once(tmp_path):
         rendered = scorer.render(protocol.parse_render_request(protocol.render_request(
             [protocol.item_dict(0, fixture_text("example.ls"), BRIEF_A)], palette_sha256=PAL.sha256,
             out_dir=str(files), flac=True)))["items"][0]
+        canary = scorer.check_renderer("test")
     finally:
         pool.close()
+    assert canary["ok"] and canary["gate"] is None and len(canary["audio_sha256"]) == 64
     man = json.loads(Path(rendered["files"]["manifest"]).read_text())
     pcm, sr = sf.read(rendered["files"]["flac"], dtype="int16")
     assert rendered["ok"] and man["audio_sha256"] == rendered["render"]["audio_sha256"] == \

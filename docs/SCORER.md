@@ -35,7 +35,8 @@ out = c.score([{"i": 0, "text": loop, "brief": {...}, "brief_id": "596:0"}], pal
   when it answers, and one log line per request on stderr.
 - **Exit codes:** 0 after SIGTERM or SIGINT (the socket removed); 2 for a bad argument, calibration, RM
   directory, theme config or socket path (an unreadable file, a YAML syntax error and an RM factory module
-  that fails to import included), before the models load where possible; 1 for anything else (a
+  that fails to import included), before the models load where possible, and for a renderer that cannot
+  render its canary (§4) or whose workers run other code than feat_ver names (§7); 1 for anything else (a
   traceback). SIGUSR1 prints every thread's stack.
 
 ## 2. Division of labour (decided): a deliberate narrowing of §5's item schema
@@ -127,7 +128,7 @@ rendered, cache counts, failing gates, parse/records/total ms).
 400 a malformed request (bad JSON, schema, brief); 404 an unknown path; 405 another method; 409 another palette
 or pinned version; 413 a body over 16 MiB; 422 a brief without PAR references while taste is live, or an unusable
 `out_dir`; 500 a backend exception (a featurizer or RM failure, a non-finite feature, a render worker on other
-code or another palette), with `error`, `type` and the
+code or another palette, a renderer whose canary fails after an infrastructure fault), with `error`, `type` and the
 end of the traceback. **The client raises `ScorerError` on anything but 200**, on a timeout (300 s), on an
 unreachable socket and on a response that fails `check_score_response`.
 
@@ -142,8 +143,17 @@ unreachable socket and on a response that fails `check_score_response`.
     symlink): refused, exit 2, and never deleted.
 - **Startup order:** arguments, palette (`verify=True` when it renders), theme config, calibrations and RM
   directory (cheap, exit 2 on a bad one), then the models (the featurizer), the render pool (warmed: every worker
-  spawned and its palette loaded), the theme's text embeddings, and only then the socket. So the socket exists
-  only when `/health` can answer ok.
+  spawned and its palette loaded), the theme's text embeddings, the canary, and only then the socket. So the
+  socket exists only when `/health` can answer ok.
+- **The canary** (`core.Scorer.check_renderer`): the prompt's example loop (`prompt.example_text`, in the
+  palette's names) under mid / wistful / 82 BPM / D, rendered through the renderer and never cached. It must
+  render in spec, or the server exits 2 before it binds: FluidSynth missing or not 2.6.1, or an
+  `/etc/fluidsynth.conf` with commands, would otherwise come back as HTTP 200 with every item at `render-error`,
+  G = 0 and reward = −penalty for the whole batch. In a request, any clip that comes back `render-error` or
+  `render-timeout` re-renders the canary once, inside the lock: a healthy canary leaves the fault that item's
+  (a lone fault, §8.9); a failing one is a 500 (`RendererError: the renderer cannot render …`), so the trainer
+  crashes instead. `/health` (`renderer.canary`) and the `ready` line report the last canary: ok, gate, error,
+  clip id, the pcm_sha256 of its mix and music stem, render ms.
 - **Requests** run on threads (`ThreadingMixIn`), so `/health` and `/stats` answer while a batch is scored;
   `/score` and `/render` take one lock, since the models and the pool are shared.
 - **GPU memory:** `torch.cuda.set_per_process_memory_fraction(gpu_mem_gb / total)` before any model loads
@@ -292,7 +302,9 @@ rewarded**; PC and CU are logged as signatures (`sig`, `diag`).
 8. **Theme embedding:** the normalized mean of the window embeddings (cosines need a unit vector); the brief's
    scene is the 9th positive and is embedded with the config's prompts in one batch at start.
 9. **Server-side gate codes** add `render-error`, `render-timeout` and `parse-error` to the gates, so
-   infrastructure faults are visible but zero only their own item (the task's rule), and are never cached.
+   infrastructure faults are visible but zero only their own item (the task's rule), and are never cached. That
+   rule is for a lone fault: when the canary fails too, the renderer cannot render at all, and the request is a
+   500 (§4).
 10. **One lock** for `/score` and `/render`; threads for the rest.
 11. **Fakes ship in the package** (`fakes.py`, `--backend fake`), so the trainer can rehearse against a real
     server on the laptop; `/health` says `"backend": "fake"`, and a client refuses one unless `allow_fake=True`.
@@ -365,10 +377,10 @@ feat_ver names another renderer than the one it runs (the real featurizer names 
 | file | what it checks |
 |---|---|
 | `test_scoring_protocol.py` | clip id = the shootout formula, its parts, canonical-form sharing; request round trips; 25 malformed requests; NaN; response and health checks; pinned versions |
-| `test_scoring_server.py` | the real server on a real socket with fakes: health, score (order, fields, dedup, memory hits, stats), render, 400/404/405/413, 500 with its trace, a 500 for a render from a drifted worker or of another clip id, 409, render gate and infrastructure failures, mode 0600, the path rules, close() leaving a socket that replaced its own, the client's errors, a real client refusing a fake backend, SIGTERM and SIGINT removing the socket (a subprocess), exit 2 on a foreign path |
+| `test_scoring_server.py` | the real server on a real socket with fakes: health, score (order, fields, dedup, memory hits, stats), render, 400/404/405/413, 500 with its trace, a 500 for a render from a drifted worker or of another clip id, 409, render gate and infrastructure failures (a lone fault with a healthy canary), exit 2 before binding when the canary fails at start, a 500 when it fails after a fault, mode 0600, the path rules, close() leaving a socket that replaced its own, the client's errors, a real client refusing a fake backend, SIGTERM and SIGINT removing the socket (a subprocess), exit 2 on a foreign path |
 | `test_scoring_core.py` | G on 11 hand-built cases, PAR on hand-built utilities, the RM with and without references, the 422, the theme margin on hand-built embeddings, the prompt file, every term off without calibration and on with it, CE that fails its check, the disk cache read by a fresh scorer, an unreadable file, records of another feat_ver, clip or schema read as misses, feat_ver following the source files, the library stack and the Audiobox pin, the server's cache keyed by machine and GPU, fake features of another renderer in another cache, LRU eviction, the fakes |
 | `test_scoring_calib_rm.py` | the calibration and RM loaders: missing, valid, every malformed case, CE thresholds, exit 2 before binding |
-| `test_scoring_render.py` | two real renders through the pool (example.ls, dev_gu): `/score`, where the mix and music stem reach the featurizer once and their hashes match the manifest and the laptop's golden hashes, and `/render` to a FLAC and manifest named by clip id with the same PCM, the clip id equal to the shootout's id of that manifest; a gate failure in a worker, a batch past its deadline, a broken pool (in flight, and found broken at submit after a worker died between batches), a worker's child process ended by the pool's kill, a worker ending itself after its server's SIGKILL, workers on other code or another palette refused at warm and after a restart, the centroid |
+| `test_scoring_render.py` | three real renders through the pool (dev_gu): `/score` of example.ls, where the mix and music stem reach the featurizer once and their hashes match the manifest and the laptop's golden hashes, `/render` to a FLAC and manifest named by clip id with the same PCM (the clip id equal to the shootout's id of that manifest), and the canary in spec; a gate failure in a worker, a batch past its deadline, a broken pool (in flight, and found broken at submit after a worker died between batches), a worker's child process ended by the pool's kill, a worker ending itself after its server's SIGKILL, workers on other code or another palette refused at warm and after a restart, the centroid |
 | `test_scoring_reward_hook.py` | the no-scorer golden byte for byte; the env var; G, r, gate and the new fields with a stand-in client; the CE rule; failures raise; nothing sent without a pass; TRL hooks; the real client and server end to end |
 | `test_scoring_job.py` | the job's size, cost line, env, timeouts, steps and outputs; the smoke's batch; the steps rehearsed on fakes to SCORER_SMOKE_OK; the verdict failing on drift, a missing pass, a bad exit and a left socket |
 | `test_scoring_imports.py` | every scoring module imports without the ML stack; client, protocol and the reward without numpy or the audio stack |

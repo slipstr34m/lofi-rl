@@ -16,8 +16,9 @@ import pytest
 
 from helpers_scoring import BRIEF_A, BRIEF_B, PALETTE, ROOT, canon_sha_of, fixture_text, make_scorer, short_sock_dir
 from lofi_rl.palette import load_palette
-from lofi_rl.scoring import fakes, protocol
+from lofi_rl.scoring import fakes, protocol, server
 from lofi_rl.scoring.client import ScorerClient, ScorerError, ScorerUnavailable, UnixHTTPConnection
+from lofi_rl.scoring.render_pool import failure
 from lofi_rl.scoring.server import ScorerServer, SocketPathError, check_sock_path
 
 PAL = load_palette(PALETTE, verify=False)
@@ -223,15 +224,55 @@ def test_render_failures_zero_one_item_and_infrastructure_faults_are_not_cached(
     renderer = fakes.FakeRenderer(fail={canon_sha_of(EX): ("G7", "final -15.2 LUFS is not within 0.5 LU")},
                                   infra={canon_sha_of(shaker)})
     span = fixture_text("span1_dotted.ls")
-    with served(tmp_path, renderer=renderer) as (client, _, _sock):
+    with served(tmp_path, renderer=renderer) as (client, scorer, _sock):
         out = client.score(_items([EX, shaker, span]), palette_sha256=PAL.sha256)
         again = client.score(_items([EX, shaker, span]), palette_sha256=PAL.sha256)
+        canary = scorer.canary_job().canon
     g7, infra, ok = out["items"]
     assert (g7["hard"], g7["G"], g7["gate"]) == (0, 0.0, "G7") and "LUFS" in g7["diag"]["error"]
     assert (infra["hard"], infra["gate"]) == (0, "render-error") and "FluidSynthError" in infra["diag"]["error"]
     assert ok["hard"] == 1 and ok["G"] == 1.0
     assert [it["diag"]["cache"] for it in again["items"]] == ["mem", "miss", "mem"], "the fault is retried"
     assert renderer.calls.count(renderer.calls[1]) == 2
+    assert renderer.calls.count(canary) == 2 and scorer.canary["ok"], "a lone fault, a healthy canary each time"
+
+
+class Faulty(fakes.FakeRenderer):
+    """The fake renderer, every render of which is an infrastructure fault while `broken` (FluidSynth gone)."""
+
+    def __init__(self, broken=False, **kw):
+        super().__init__(**kw)
+        self.broken = broken
+
+    def render_many(self, jobs, on_done):
+        if not self.broken:
+            return super().render_many(jobs, on_done)
+        for k, j in enumerate(jobs):
+            self.calls.append(j.canon)
+            on_done(k, failure("render-error", "FileNotFoundError: fluidsynth is not on PATH", transient=True))
+
+
+def test_a_renderer_that_cannot_render_stops_the_server_before_it_binds(monkeypatch, capsys):
+    monkeypatch.setattr(fakes, "FakeRenderer", lambda **kw: Faulty(broken=True, **kw))
+    with short_sock_dir() as d:
+        rc = server.main(["--sock", str(d / "s.sock"), "--backend", "fake", "--workers", "1"])
+        assert rc == 2 and not (d / "s.sock").exists()
+    err = capsys.readouterr().err
+    assert "the renderer cannot render (at start" in err and "fluidsynth is not on PATH" in err
+
+
+def test_a_renderer_that_breaks_after_start_makes_score_a_500_not_a_batch_of_zeros(tmp_path):
+    r = Faulty()
+    with served(tmp_path, renderer=r) as (client, scorer, _sock):
+        assert scorer.check_renderer("at start")["ok"]
+        assert client.health()["renderer"]["canary"]["audio_sha256"], "/health reports the canary's pcm hash"
+        r.broken = True
+        with pytest.raises(ScorerError) as err:
+            client.score(_items([EX, fixture_text("shaker_edits.ls")]), palette_sha256=PAL.sha256)
+        h = client.health()
+        assert len(scorer.cache) == 0
+    assert err.value.status == 500 and err.value.body["type"] == "RendererError" and "cannot render" in str(err.value)
+    assert (h["renderer"]["canary"]["ok"], h["renderer"]["canary"]["gate"]) == (False, "render-error")
 
 
 # ------------------------------------------------------------------------------------------ the socket
@@ -342,6 +383,7 @@ def test_a_signal_stops_the_server_process_and_removes_its_socket(sig):
         assert not sock.exists(), "the socket is removed on shutdown"
         ready = json.loads(stdout.splitlines()[0])
         assert ready["event"] == "ready" and ready["backend"] == "fake" and ready["sock"] == str(sock)
+        assert ready["canary"]["ok"] is True, "the canary rendered before the socket appeared"
         assert "shutting down" in stderr
 
 

@@ -16,6 +16,14 @@ For each request:
    A missing calibration disables its term or factor (tau_PQ: factor 1; theme: 0; CE: 0; RM: r_taste 0 and
    P_acc factor 1; references: r_taste 0), and every item's diag.disabled names what is off.
 
+**The canary.** A render that fails on an infrastructure fault (render-error, render-timeout) zeroes only its own
+item, which is right for a lone fault and wrong for a renderer that cannot render at all (FluidSynth missing or
+not 2.6.1, an /etc/fluidsynth.conf with commands): every item would come back G = 0 with HTTP 200, and GRPO would
+train on -penalty. So the server renders a canary (the prompt's example loop in the palette's names, under
+CANARY_BRIEF; never cached) before it binds, and again inside the request whenever a clip of it came back with an
+infrastructure fault: a canary that fails is a RendererError (no socket at start; HTTP 500 in a request), and
+/health reports the last canary's outcome and pcm_sha256.
+
 The backends are injected (render pool, featurizer, theme, RM, calibration, cache), so the laptop tests run this
 class and the HTTP server with fakes (lofi_rl.scoring.fakes). Requests run one at a time (`lock`): the models are
 not thread-safe and the pool is shared.
@@ -32,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from lofi_rl.brief import Brief
 from lofi_rl.dsl import canon, canon_sha, parse
 from lofi_rl.palette import Palette
 
@@ -39,11 +48,18 @@ from . import protocol
 from .cache import ClipRecord, FeatureCache
 from .calib import Calibration, robust_sigmoid
 from .protocol import AUDIO_TERMS, DIAG_KEYS, PROTOCOL, SIG_KEYS, Item, ProtocolError, RenderRequest, ScoreRequest
-from .render_pool import RenderJob, RenderPoolDrift, drift
+from .render_pool import RenderJob, RenderPoolDrift, drift, failure
 from .rm_api import RMState, par
 from .theme import Theme
 
 P_ACC_HALF, P_ACC_FLOOR = 0.5, 0.25           # clip(P_acc / 0.5, 0.25, 1)
+CANARY_BRIEF = Brief(energy="mid", mood="wistful", bpm=82, tonic=2)   # the example's brief (prompt.EXAMPLE_BRIEF), D
+INFRA_GATES = ("render-error", "render-timeout")
+
+
+class RendererError(RuntimeError):
+    """The renderer cannot render at all: its canary failed too (module docstring). At start the server never
+    binds (exit 2); in a request it is an HTTP 500, so the trainer crashes instead of training on G = 0."""
 
 
 class RequestError(Exception):
@@ -119,6 +135,7 @@ class Scorer:
         if made_for is not None and made_for != renderer.name:
             raise ValueError(f"the featurizer's feat_ver names the {made_for!r} renderer, but this scorer renders "
                              f"with {renderer.name!r}: its records would be cached as the other renderer's")
+        self.canary: dict[str, Any] | None = None       # the last canary's outcome (render_canary)
         self.lock = threading.Lock()
         self._stats_lock = threading.Lock()
         self.t0 = time.time()
@@ -143,7 +160,7 @@ class Scorer:
                 "calibration": {**self.calib.flags(), "rm": self.rm.flags(),
                                 "theme_config": {"path": cfg.path, "sha256": cfg.sha256, "version": cfg.version}},
                 "renderer": {"name": self.renderer.name, "workers": getattr(self.renderer, "workers", None),
-                             "timeout_s": getattr(self.renderer, "timeout_s", None)},
+                             "timeout_s": getattr(self.renderer, "timeout_s", None), "canary": self.canary},
                 "featurizer": self.featurizer.info(), "gpu": self.featurizer.gpu(), "cache": self.cache.counters(),
                 "pid": os.getpid(), "uptime_s": round(time.time() - self.t0, 1)}
 
@@ -203,6 +220,49 @@ class Scorer:
             if got != clip_id:
                 raise RenderPoolDrift(f"the render of {clip_id} carries the manifest of clip {got}: the render "
                                       f"workers and the server disagree on the clip id")
+
+    # -------------------------------------------------------------------------------------- the canary
+    def canary_job(self) -> RenderJob:
+        """The canary (module docstring): lofi_rl.prompt.example_text in this palette's names, under CANARY_BRIEF."""
+        from lofi_rl.prompt import PromptError, example_text
+        try:
+            text = example_text(self.palette)
+        except PromptError as err:
+            raise RendererError(f"no canary loop for palette {self.palette.id}: {err}") from err
+        res = parse(text, vocab=self.vocab, mode=CANARY_BRIEF.mode)
+        if not (res.gate.ok and res.ast is not None):
+            raise RendererError(f"the canary loop fails gate {res.gate.code} under palette {self.palette.id}")
+        cid = protocol.clip_id(canon_sha(res.ast), CANARY_BRIEF, self.palette.id, self.palette.sha256, self.render_cfg)
+        return RenderJob(cid, canon(res.ast), protocol.brief_dict(CANARY_BRIEF))
+
+    def render_canary(self) -> dict[str, Any]:
+        """Render the canary now (never cached) and keep its outcome for /health."""
+        job, got = self.canary_job(), {}
+        self.renderer.render_many([job], lambda k, out: got.__setitem__(k, out))
+        out = got.get(0) or failure("render-error", "the renderer returned nothing for the canary", transient=True)
+        self._check_render(out, job.clip_id)
+        info = out.get("info") or {}
+        self.canary = {"ok": bool(out["ok"]), "gate": out["gate"], "error": out["error"], "clip_id": job.clip_id,
+                       "audio_sha256": info.get("audio_sha256"), "music_sha256": info.get("music_sha256"),
+                       "render_ms": out.get("render_ms"), "t": round(time.time(), 1)}
+        self._count(canary=1, **({} if out["ok"] else {"canary_failed": 1}))
+        return self.canary
+
+    def check_renderer(self, why: str) -> dict[str, Any]:
+        """The canary, which must render in spec: RendererError otherwise (module docstring)."""
+        c = self.render_canary()
+        if not c["ok"]:
+            raise RendererError(f"the renderer cannot render ({why}): its canary {c['clip_id']} came back "
+                                f"{c['gate']}: {(c['error'] or '')[:1000]}")
+        return c
+
+    def _after_faults(self, gates: Sequence[str | None], n: int) -> None:
+        """A request whose renders hit infrastructure faults: re-render the canary once, inside the lock. A healthy
+        canary leaves each fault its own item's render-error; a failing one raises RendererError (HTTP 500)."""
+        faults = [g for g in gates if g in INFRA_GATES]
+        if faults:
+            self._count(canary_checks=1)
+            self.check_renderer(f"{len(faults)} of {n} renders of this request came back {sorted(set(faults))}")
 
     # -------------------------------------------------------------------------------------- stages
     def prepare(self, items: Sequence[Item]) -> list[Prepared]:
@@ -267,6 +327,7 @@ class Scorer:
         missing = [p.clip_id for p in todo if p.clip_id not in got]
         if missing:
             raise RuntimeError(f"the renderer returned nothing for {missing}")
+        self._after_faults([rec.gate for rec, kind in got.values() if kind == "miss"], len(todo))
         return got
 
     def score_item(self, p: Prepared, rec: ClipRecord, kind: str, dup_of: int | None) -> dict[str, Any]:
@@ -393,6 +454,7 @@ class Scorer:
 
             self.renderer.render_many([RenderJob(p.clip_id, p.canon, protocol.brief_dict(p.item.brief))
                                        for p in todo], on_done)
+            self._after_faults([d["gate"] for d in done.values()], len(todo))
         items = []
         for p in prepared:
             d = done.get(p.clip_id) or {"ok": False, "gate": p.gate, "error": p.detail, "render": None, "files": {}}

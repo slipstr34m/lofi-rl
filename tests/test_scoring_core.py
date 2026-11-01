@@ -229,6 +229,7 @@ def test_features_are_cached_on_disk_by_feat_ver_and_clip_id_and_read_back_by_a_
     b = make_scorer(tmp_path, cache_root=root, renderer=r2)
     second = b.score(_req([EX, SHAKER, SPAN]))["items"]
     assert r2.calls == [] and [it["diag"]["cache"] for it in second] == ["disk"] * 3
+    assert a.canary is None, "a gate failure (G7) is the loop's, not the renderer's: no canary"
     for x, y in zip(first, second):
         assert (x["clip_id"], x["hard"], x["G"], x["gate"], x["r"], x["sig"]) == \
             (y["clip_id"], y["hard"], y["G"], y["gate"], y["r"], y["sig"])

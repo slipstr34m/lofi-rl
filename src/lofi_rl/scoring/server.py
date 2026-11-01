@@ -20,7 +20,9 @@ message and the end of its traceback). The client raises on anything but 200.
 
 SIGTERM or SIGINT stops the server, removes its socket (if it is still the one it created) and ends the render
 workers; exit 0. SIGUSR1 prints every thread's stack (faulthandler). Exit 2 for a bad argument, calibration, RM
-directory, theme config or socket path, before anything heavy loads where possible.
+directory, theme config or socket path, before anything heavy loads where possible, and for a renderer that
+cannot render: before it binds, the server renders a canary (core.Scorer.check_renderer), so FluidSynth missing
+or not 2.6.1, or an /etc/fluidsynth.conf with commands, stops it instead of answering every item with G = 0.
 """
 from __future__ import annotations
 
@@ -46,8 +48,9 @@ from lofi_rl.palette import ROOT, PaletteError, load_palette
 from . import calib as calib_mod
 from . import protocol, rm_api, theme
 from .cache import LRU_SIZE, FeatureCache
-from .core import Scorer, request_error
+from .core import RendererError, Scorer, request_error
 from .protocol import MAX_BODY_BYTES, ProtocolError, encode_json
+from .render_pool import RenderPoolDrift
 
 MAX_SUN_PATH = 103 if sys.platform == "darwin" else 107     # sockaddr_un.sun_path, less its NUL
 DEFAULT_PALETTE = ROOT / "palettes" / "dev_gu.yaml"          # until palettes/lofi_rain_v1.yaml is frozen (D-017)
@@ -242,7 +245,8 @@ class ScorerServer:
         previous = {s: signal.signal(s, on_signal) for s in (signal.SIGTERM, signal.SIGINT)}
         h = self.scorer.health()
         print(json.dumps({"event": "ready", "sock": str(self.sock), "pid": os.getpid(), "versions": h["versions"],
-                          "terms": h["terms"], "backend": h["backend"]}), flush=True)
+                          "terms": h["terms"], "backend": h["backend"], "canary": h["renderer"]["canary"]}),
+              flush=True)
         try:
             self.serve_forever()
         finally:
@@ -255,7 +259,8 @@ class ScorerServer:
 
 # ------------------------------------------------------------------------------------------ building
 def build_scorer(a: argparse.Namespace) -> Scorer:
-    """The Scorer the arguments describe. Cheap checks first (configs, calibration, RM), then the models."""
+    """The Scorer the arguments describe. Cheap checks first (configs, calibration, RM), then the models, the
+    render pool and the canary (RendererError when it does not render in spec)."""
     from .render_pool import RenderPool, render_config
     render = a.render if a.render != "auto" else ("real" if a.backend == "real" else "fake")
     palette = load_palette(a.palette, verify=render == "real")
@@ -272,15 +277,20 @@ def build_scorer(a: argparse.Namespace) -> Scorer:
         renderer: Any = RenderPool(a.palette, workers=a.workers, render_workers=a.render_workers,
                                    timeout_s=a.render_timeout_s,
                                    expect={"src_sha8": featurizer.src_sha8, "palette_sha256": palette.sha256})
-        renderer.warm()                     # RenderPoolDrift if a worker loads other code than feat_ver names
     else:
         from .fakes import FakeRenderer
         renderer = FakeRenderer(workers=a.workers)
-    return Scorer(palette=palette, renderer=renderer, featurizer=featurizer,
-                  theme=theme.Theme(theme_cfg, featurizer.encode_text), calib=cal, rm=rm,
-                  cache=FeatureCache(a.cache, featurizer.feat_ver, a.lru, hw=featurizer.hw),
-                  render_cfg=render_config(),
-                  backend=a.backend)
+    try:
+        renderer.warm()                     # RenderPoolDrift if a worker loads other code than feat_ver names
+        scorer = Scorer(palette=palette, renderer=renderer, featurizer=featurizer,
+                        theme=theme.Theme(theme_cfg, featurizer.encode_text), calib=cal, rm=rm,
+                        cache=FeatureCache(a.cache, featurizer.feat_ver, a.lru, hw=featurizer.hw),
+                        render_cfg=render_config(), backend=a.backend)
+        scorer.check_renderer("at start, before the socket")
+    except BaseException:
+        renderer.close()                    # no render workers left behind by a server that never binds
+        raise
+    return scorer
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -322,7 +332,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         check_sock_path(a.sock)                          # fail before the models load (checked again at bind)
         scorer = build_scorer(a)
-    except (SocketPathError, PaletteError, calib_mod.CalibError, rm_api.RMError, theme.ThemeError) as err:
+    except (SocketPathError, PaletteError, calib_mod.CalibError, rm_api.RMError, theme.ThemeError, RendererError,
+            RenderPoolDrift) as err:
         print(f"scorer: {err}", file=sys.stderr)
         return 2
     try:
