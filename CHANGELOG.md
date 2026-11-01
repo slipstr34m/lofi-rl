@@ -26,6 +26,34 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (14:20 PST): keep3 batch and Day 3 rendered on the cluster; the v2 no-grammar measurement and GRPO prep under way
+
+**What was done**
+- **Sync** of `de88fc4`. Its 1 deletion was not protected. The scorer smoke 13651611, still PENDING, has an unchanged code path since its submission (`e636485`; empty `git diff --stat` over scoring, render, compile, dsl, palette, kit, the job and its env).
+- **`lofi-drafts` 13656049** (`--drafts drafts/v1`): main node a01-19, COMPLETED 0:0 in 0.6 min, 7.0 SU, `DRAFTS_OK`.
+  - Validator 30 of 30.
+  - Renders 30 of 30 at −14.093 … −13.982 LUFS, true peak at most −1.456 dBTP.
+  - **`b1101-keep3`** (`inbox/2026-11-01/`): 10 rounds, 30 clips, 10.4 min. Persona × tile: chords 3/4/3, groove 4/3/3, horn 3/3/4.
+- **`lofi-shootout` 13656048** (job 3: the tally's own proposal, from the real logs with `--serve-date 2026-11-03`; it equals the form the Day-3 workflow verified): main node a01-04, COMPLETED 0:0 in 1.0 min, 12.2 SU, `SHOOTOUT_OK`. 26 renders ok.
+  - `b1106-1-mix`: 7 rounds (5 design, 2 repeats), 24 clips, 8.1 min.
+  - `b1106-2-mix`: 6 rounds (2 design, 3 repeats, 1 anchor), 22 clips, 7.2 min.
+  - Both hidden manifests carry `serve_from` 2026-11-03.
+- **Checks:** `ui.manifest check` exits 0 on all three batches, and `public_leaks` finds none.
+  - **Serving:** `resolve_batch` serves `b1101-keep3` on 2026-11-01 and refuses `b1106-1-mix` by name on 2026-11-02.
+  - **The real page,** from a throwaway copy and vote folder, shows "Keep one, round 1 of 10", three tiles (Q W E) and G. No console errors; no audio played.
+- **`lofi-junk-rate` 13656050** (`500 2026 0 v2`, `-p gpu`): D-020's grammar-lever measurement, v2 without the grammar. Queued.
+  - `.sync-freeze` is active again on the D-020 list until it ends, so the measurement runs the registered code.
+- **Workflow `wf_8654abe9-1dd`:** D-020's before-GRPO-run-1 list on the GRPO path, in a worktree, touching no frozen file:
+  - the prompt-version key;
+  - the copy penalty against all 9 v2 examples;
+  - the backend pin and in-language count;
+  - the IS-ratio readout, with a run-time check of TRL's source;
+  - a smoke job that takes a config.
+
+**SU spent:** 19.2. Total 1114.2 (`session_report.py`).
+
+---
+
 ## 2026-11-01 (13:40 PST): the 30 keep3 drafts, the draft palette and the lofi-drafts job merged
 
 **What was done**
