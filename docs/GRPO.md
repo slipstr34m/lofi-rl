@@ -333,6 +333,10 @@ config reaches the dry run, both launches and both checks, and the log names it.
     `mean(|old_per_token_logps − sampling_per_token_logps|[completion mask])`. The checks are in
     `lofi_rl.rl.trl_probe`: a plain mean of an absolute difference, masked by `completion_mask`, one operand
     vLLM's sampling log-probs, the other computed on `self.model`, aggregated only by gather/mean/item.
+  - **What that check leaves open:** it is TRL's half of D-020's definition. Whether vLLM's reported log-probs
+    (`sampling_per_token_logps`) are the masked sampler's, D-020's π_vLLM under the grammar, is UNVERIFIED (§7).
+    `vllm_logprobs_checked` records each launch's run.json `vllm_logprobs.checked`, which is false in every run
+    today. With the grammar, a rule whose launches are not all true carries that caveat.
   - **Otherwise** `value_source` is `unavailable`, with the verdicts and the reason, and a warning. No value or rule
     is given, though TRL's numbers stay in `steps`. Computing it from what the trainer exposes would mean hooking
     TRL internals no laptop test can check, so this build does not.
@@ -344,8 +348,9 @@ config reaches the dry run, both launches and both checks, and the log names it.
     reported, overall and `by_launch`.
   - **The rule** reads the token-weighted mean when every step has its tokens, else the mean of the steps:
     `exceeds` is value > 0.05. `caveats` name steps with truncated completions, whose tokens TRL's value leaves
-    out, the two means falling on two sides of 0.05, and a rule that reads the mean of the steps (the steps that
-    have no token count), which is not D-020's mean over every completion token.
+    out, the two means falling on two sides of 0.05, a rule that reads the mean of the steps (the steps that
+    have no token count), which is not D-020's mean over every completion token, and vLLM's log-probs not checked
+    to be the masked sampler's.
   - **When it is D-020's reading** (`applies`): only for the grammar + v2 config (`configured`), and only when both
     launches showed the grammar applied (`grammar_shown`). A launch shows it (its `in_language` `shows_grammar`)
     when it scored completions, its run.json names the config's regex, and none of the in-language failures above
@@ -499,5 +504,7 @@ fails closed where it can.
     from the masked logits.
   - `vllm_logprobs` records the lines that say so, and TRL's `logprobs_mode` lines are in `trl_logp_metric`, for a
     reader. Neither decides anything.
+  - So a `match` verdict establishes TRL's half of D-020's quantity, not all of it. The constrained smoke's IS rule
+    carries the caveat (`smoke.json` `is_ratio.rule.caveats`) unless every launch's `vllm_logprobs.checked` is true.
 - **The dataset column:** TRL passes the dataset's `example_id` column to the reward as it passes `brief_id`; a v2
   record without it is visible in rewards.jsonl.

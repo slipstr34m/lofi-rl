@@ -200,7 +200,9 @@ def test_a_d020_smoke_reports_the_language_the_backend_the_copies_and_the_is_rea
     assert isr["by_launch"]["a"]["mean_of_steps"] == pytest.approx(0.0055)
     assert rep["in_language"]["launches"]["a"]["shows_grammar"] is True is rep["in_language"]["launches"]["b"]["shows_grammar"]
     assert isr["configured"] is True and isr["grammar_shown"] is True and isr["applies"] is True
-    assert isr["rule"]["applies"] is True and isr["rule"]["exceeds"] is False and isr["rule"]["caveats"] == []
+    assert isr["rule"]["applies"] is True and isr["rule"]["exceeds"] is False
+    assert [c for c in isr["rule"]["caveats"] if c != sc.VLLM_CAVEAT] == [] and sc.VLLM_CAVEAT in isr["rule"]["caveats"]
+    assert isr["vllm_logprobs_checked"] == {"a": None, "b": None}, "these run.json files have no vllm_logprobs"
     assert "IS readout (trl:sampling/sampling_logp_difference/mean)" in out and "in the regex's language" in out
 
 
@@ -325,6 +327,31 @@ def test_one_launch_without_a_checked_source_makes_the_readout_unavailable(tmp_p
     meta.write_text(json.dumps({**m, "trl_logp_metric": {**MATCH, "verdict": "error"}}))
     isr = sc.check(run, "final", _cfg(), {"a": "0", "b": "0"})["is_ratio"]
     assert isr["value_source"] == "unavailable" and isr["verdicts"] == {"a": "match", "b": "error"}
+
+
+def _set_vllm_logprobs(run: Path, **checked):
+    for name, value in checked.items():
+        meta = run / "summary" / name / "run.json"
+        m = json.loads(meta.read_text())
+        meta.write_text(json.dumps({**m, "vllm_logprobs": {"package": "vllm", "version": "0.32.0", "checked": value,
+                                                            "files": {}}}))
+
+
+def test_the_rule_says_vllms_log_probs_were_not_checked_to_be_the_masked_samplers(tmp_path):
+    # trl_logp_metric checks TRL's half (|old - sampling| over completion_mask); which log-probs vLLM reports under
+    # the grammar is recorded by run.json's vllm_logprobs, whose checked is false in every run today
+    run = _d020_run(tmp_path)
+    _set_vllm_logprobs(run, a=False, b=False)
+    isr = sc.check(run, "final", _cfg(), {"a": "0", "b": "0"})["is_ratio"]
+    assert isr["vllm_logprobs_checked"] == {"a": False, "b": False}
+    assert isr["rule"]["caveats"] == [sc.VLLM_CAVEAT] and isr["rule"]["applies"] is True
+    assert sc.VLLM_CAVEAT.startswith("vLLM's reported log-probs were not checked to be the masked sampler's pi_vLLM")
+    _set_vllm_logprobs(run, b=True)
+    assert sc.VLLM_CAVEAT in sc.check(run, "final", _cfg(), {"a": "0", "b": "0"})["is_ratio"]["rule"]["caveats"], \
+        "one launch unchecked keeps the caveat"
+    _set_vllm_logprobs(run, a=True)
+    isr = sc.check(run, "final", _cfg(), {"a": "0", "b": "0"})["is_ratio"]
+    assert isr["vllm_logprobs_checked"] == {"a": True, "b": True} and isr["rule"]["caveats"] == []
 
 
 def test_a_mean_over_0_05_turns_the_grammar_off_by_d020s_rule(tmp_path):

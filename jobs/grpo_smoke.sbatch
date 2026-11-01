@@ -22,7 +22,9 @@
 #   with xgrammar pinned on TRL's vLLM engine and read back), the copy penalty. Its smoke.json adds the completions
 #   in the regex's language by finish reason (a stop completion out of it fails the smoke), the backend record, the
 #   copy readout and D-020's IS readout (TRL's sampling/sampling_logp_difference/mean per step, read only when
-#   run.json says the installed TRL's source computes exactly D-020's mean |log pi_vLLM - log pi_trainer|).
+#   run.json says the installed TRL's source was checked to compute mean |old_per_token_logps -
+#   sampling_per_token_logps| over completion_mask: TRL's half of D-020's definition; whether vLLM's reported
+#   log-probs include the grammar mask is unchecked (UNVERIFIED), run.json vllm_logprobs).
 # The reward is the interim symbolic one (lofi_rl.rl.reward: gates, verifiers, knobs, penalties; no render, no
 # scorer server), so the §6 step estimate drops its 9 s reward. The trainer checks every GRPOConfig name against
 # the installed TRL before it loads the model, so a wrong name costs about 2 minutes, not the walltime.

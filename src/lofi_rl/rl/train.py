@@ -21,8 +21,10 @@ A training run (policy env, one GPU) builds TRL 1.17.1's GRPOTrainer with:
   (lofi_rl.rl.trl_probe.BackendPin: xgrammar, as junk.py pins its own) and reads it back from the engine it finds
   on the trainer; run.json records requested, pin_accepted, backend, source, applied under structured_outputs;
 - run.json's trl_logp_metric: where the installed TRL computes sampling/sampling_logp_difference/mean and whether
-  that is D-020's |log pi_vLLM - log pi_trainer| over completion tokens (lofi_rl.rl.trl_probe), so smoke_check
-  reads TRL's per-step value as the IS readout only when the source was checked to match;
+  it was checked to compute mean |old_per_token_logps - sampling_per_token_logps| over completion_mask
+  (lofi_rl.rl.trl_probe), so smoke_check reads TRL's per-step value as the IS readout only when the source was
+  checked to match. That is TRL's half of D-020's definition: whether vLLM's reported log-probs include the grammar
+  mask is UNVERIFIED (run.json's vllm_logprobs records the vLLM lines that say, checked false);
 - checkpoints every save_steps in --run-dir; --resume-from continues from one (its global step restarts the
   curriculum at the right weights even if TRL passes no trainer_state);
 - with a scorer ($LOFI_SCORER_SOCK), the run's scorer pin (scorer_pin_path): the versions and live terms its first

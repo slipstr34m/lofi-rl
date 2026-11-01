@@ -288,6 +288,8 @@ def test_the_v2_grammar_smoke_pins_the_backend_counts_the_language_and_reads_the
     assert rule["applies"] is True and rule["reads"] == "token_weighted_mean" and rule["exceeds"] is False
     assert rule["value"] == isr["token_weighted_mean"] and "keeps the grammar on" in rule["says"]
     assert any("truncated completions" in c for c in rule["caveats"]), "each step had one cut completion"
+    assert isr["grammar_shown"] is True and isr["vllm_logprobs_checked"] == {"a": False, "b": False}
+    assert smoke_check.VLLM_CAVEAT in rule["caveats"], "train() records vllm_logprobs unchecked, and the rule says so"
     assert set(isr["by_launch"]) == {"a", "b"}
 
 

@@ -30,14 +30,17 @@ What the D-020 settings add to the report (docs/GRPO.md §5):
 - **copy** (a config with copy_penalty): P_copy's mean, the completions it penalized and the largest J, per launch;
   the smoke fails if the reward logged no P_copy.
 - **is_ratio**: D-020's IS readout, the mean over completion tokens of |log pi_vLLM - log pi_trainer|, per step.
-  TRL's logged sampling/sampling_logp_difference/mean is read as that value only when every launch's run.json says
-  the installed TRL's source was checked to compute exactly it (trl_logp_metric.verdict "match"); otherwise the
-  readout is unavailable, with the reason, and nothing is claimed. Every step of both launches counts (the resumed
-  steps 6-10 are steps the smoke ran); the mean of the per-step values, and the token-weighted mean that D-020's
-  "over every completion token" reads (weights: each step's completion tokens from rewards.jsonl, without the
-  truncated completions when TRL's mask drops them), are both reported, and the 0.05 rule reads the token-weighted
-  mean when every step has its tokens, else the mean of the per-step values, with a caveat and a warning that say
-  so. The rule is D-020's reading (`applies`) only for a config with the grammar and prompt v2 (`configured`) whose
+  TRL's logged sampling/sampling_logp_difference/mean stands in for it only when every launch's run.json says the
+  installed TRL's source was checked to compute mean |old_per_token_logps - sampling_per_token_logps| over
+  completion_mask (trl_logp_metric.verdict "match"); otherwise the readout is unavailable, with the reason, and
+  nothing is claimed. That check is TRL's half of D-020's definition: whether vLLM's reported log-probs include the
+  grammar mask is unchecked (run.json vllm_logprobs), so with the grammar the rule carries that caveat unless every
+  launch's vllm_logprobs.checked is true (is_ratio's vllm_logprobs_checked records them). Every step of both
+  launches counts (the resumed steps 6-10 are steps the smoke ran); the mean of the per-step values, and the
+  token-weighted mean that D-020's "over every completion token" reads (weights: each step's completion tokens from
+  rewards.jsonl, without the truncated completions when TRL's mask drops them), are both reported, and the 0.05
+  rule reads the token-weighted mean when every step has its tokens, else the mean of the per-step values, with a
+  caveat and a warning that say so. The rule is D-020's reading (`applies`) only for a config with the grammar and prompt v2 (`configured`) whose
   two launches both showed the grammar applied (`grammar_shown`: each launch's in_language shows_grammar), since by
   D-020's Validity a constrained run that fails the in-language check decides nothing. An unavailable readout is a
   warning, not a failure.
@@ -64,6 +67,9 @@ IS_METRIC = "sampling/sampling_logp_difference/mean"        # TRL's metric (lofi
 IS_THRESHOLD = 0.05                                         # D-020: the grammar goes off if the mean exceeds it
 IS_DEFINITION = ("the mean, over every completion token of every step, of |log pi_vLLM(token) - "
                  "log pi_trainer(token)| (docs/DECISIONS.md D-020, Outcome)")
+VLLM_CAVEAT = ("vLLM's reported log-probs were not checked to be the masked sampler's pi_vLLM (run.json "
+               "vllm_logprobs.checked is not true): if vLLM takes them before the grammar bitmask, TRL's value leaves "
+               "out the mask's mismatch with the trainer and can understate D-020's mean")
 
 
 def _jsonl(path: Path, problems: list[str]) -> list[dict[str, Any]]:
@@ -307,6 +313,10 @@ def _is_readout(launches: dict[str, dict[str, Any]], cfg: RunConfig, warnings: l
             rows.append({"run": n, "step": s, "value": _number((r.get("trl") or {}).get(IS_METRIC)), "tokens": t,
                          "truncated": trunc})
     out["steps"] = rows
+    # trl_logp_metric checks TRL's half of the definition; whether vLLM's sampling log-probs are the masked sampler's
+    # (D-020's pi_vLLM under the grammar) is recorded by run.json's vllm_logprobs, never checked today
+    vllm_checked = {n: ((d.get("meta") or {}).get("vllm_logprobs") or {}).get("checked") for n, d in launches.items()}
+    out["vllm_logprobs_checked"] = vllm_checked
     usable = bool(launches) and all(v == "match" for v in verdicts.values())
     reason = None
     if not usable:
@@ -355,6 +365,8 @@ def _is_readout(launches: dict[str, dict[str, Any]], cfg: RunConfig, warnings: l
     if plain is not None and weighted is not None and (plain > IS_THRESHOLD) != (weighted > IS_THRESHOLD):
         caveats.append(f"the mean of the per-step values ({plain:.6f}) and the token-weighted mean ({weighted:.6f}) "
                        "fall on two sides of 0.05")
+    if cfg.structured_outputs is not None and not all(c is True for c in vllm_checked.values()):
+        caveats.append(VLLM_CAVEAT)
     if not configured:
         says = "not D-020's reading: it is read in a GRPO smoke with the grammar and prompt v2"
     elif not grammar_shown:

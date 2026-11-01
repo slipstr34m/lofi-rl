@@ -333,7 +333,10 @@ completion cannot run on inside it.
 
   D-020's outcome fixes both readings for v2. The IS one is the v2 grammar smoke's `smoke.json` `is_ratio`
   (docs/GRPO.md §5). It is TRL's `sampling/sampling_logp_difference/mean`, read only when the installed TRL's
-  source is checked at run time to compute D-020's mean |log π_vLLM − log π_trainer|; otherwise it is unavailable.
+  source is checked at run time to compute mean |old_per_token_logps − sampling_per_token_logps| over
+  `completion_mask`; otherwise it is unavailable. That check is TRL's half of D-020's definition. Whether vLLM's
+  reported log-probs include the grammar mask is unchecked (UNVERIFIED; run.json `vllm_logprobs`), and the rule says
+  so in its caveats.
 - **Near-copies.** The in-prompt example is in the regex's language, so constrained decoding does nothing about
   copying it. That is D-019's second cause. Prompt v2 (`lofi_rl.prompt_v2`) is the lever for it: each brief is shown
   the example of its energy and the next mood, and junk-rate's near-copy check compares each completion with the
