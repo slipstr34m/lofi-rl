@@ -354,6 +354,23 @@ def test_the_pool_lists_ls_files_and_directories_of_them(tmp_path):
     assert files[-1] == ROOT / "shootouts" / "loops" / "l5_wistful_mid.ls" and all(f.suffix == ".ls" for f in files)
 
 
+def test_the_trainer_hands_the_configs_pool_to_the_copy_penalty(tmp_path):
+    # train() and the dry run build P_copy with one function (train.copy_penalty): the config's pool files, keyed by
+    # their repo path (root=ROOT), after every example prompt v2 shows (D-020: scored against the seed pool too)
+    doc = yaml.safe_load(V2_GRAMMAR.read_text())
+    doc["copy_penalty"] = {"pool": ["drafts/v1"]}
+    p = tmp_path / "pool.yaml"
+    p.write_text(yaml.safe_dump(doc, sort_keys=False))
+    cfg = rc.load_config(p)
+    n = len(list((ROOT / "drafts" / "v1").glob("*.ls")))
+    cp = train.dry_run(cfg, out=io.StringIO())["reward"]["copy_penalty"]
+    assert cp["pool"]["files"] == n == 30 and cp["references"] == 9 + n
+    assert len(cp["pool"]["ids"]) == 20 and all(i.startswith("drafts/v1/") for i in cp["pool"]["ids"])
+    pal = load_palette(ROOT / cfg.palette, verify=False)
+    copy = train.copy_penalty(cfg, pal, train.prompt_module("v2"))
+    assert copy.pool == tuple(str(f.relative_to(ROOT)) for f in cfg.pool_files())
+
+
 def test_v2_rows_record_their_shown_example_and_v1_rows_are_unchanged():
     from lofi_rl import prompt, prompt_v2
     v1, v2 = rc.load_config(SMOKE), rc.load_config(V2_GRAMMAR)

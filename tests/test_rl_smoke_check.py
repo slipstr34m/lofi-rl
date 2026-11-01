@@ -129,7 +129,8 @@ def test_a_launch_that_exited_non_zero_fails_the_smoke_even_when_its_files_look_
 
 
 # ------------------------------------------------------------------------------------------ D-020's readouts
-V2 = Path(__file__).resolve().parents[1] / "configs" / "grpo_smoke_v2_grammar.yaml"
+ROOT = Path(__file__).resolve().parents[1]
+V2 = ROOT / "configs" / "grpo_smoke_v2_grammar.yaml"
 MATCH = {"verdict": "match", "package": "trl", "version": "1.17.1", "file": "trainer/grpo_trainer.py",
          "sha256": "a" * 64, "sites": [], "missing": [], "excludes_truncated": True, "lines": {"1": "x"}}
 
@@ -142,7 +143,8 @@ def _cfg(path=V2):
 def _d020(out: Path, steps, *, start_step=0, resume_from=None, cfg=None, out_of_language=(), source=MATCH,
           value=lambda s: 0.01, tokens=lambda k, i: 100, truncated=lambda k, i: False, copy=True, sha=None):
     """A launch's summary with the D-020 fields the reward and the trainer write: finish, in_language, p_copy and
-    copy_j per completion; TRL's IS metric per step; the regex sha, the backend record and trl_logp_metric."""
+    copy_j per completion; TRL's IS metric per step; the regex sha, the backend record, the copy penalty's pool (as
+    train.py records it from the config) and trl_logp_metric."""
     cfg = cfg or _cfg()
     out.mkdir(parents=True)
     lines = [{"kind": "step", "step": s, "t": 1000.0 + s, "step_s": 30.0,
@@ -167,9 +169,13 @@ def _d020(out: Path, steps, *, start_step=0, resume_from=None, cfg=None, out_of_
         "sha256": sha or cfg.structured_outputs["sha256"],
         "backend": {"requested": "xgrammar", "pin_accepted": True, "backend": "xgrammar", "applied": True,
                     "engine": "trainer.llm"}}
+    pool = [str(p.relative_to(ROOT)) for p in cfg.pool_files()]
+    cp = None if cfg.copy_penalty is None else {"pool": {"files": len(pool), "ids": pool[:20]},
+                                                "references": 9 + len(pool)}
     (out / "run.json").write_text(json.dumps({"status": "ok", "resume_from": resume_from, "start_step": start_step,
                                               "final_global_step": steps[-1], "startup_s": 60.0,
-                                              "structured_outputs": so, "trl_logp_metric": source}))
+                                              "structured_outputs": so, "copy_penalty": cp,
+                                              "trl_logp_metric": source}))
 
 
 def _d020_run(tmp_path: Path, **kw) -> Path:
@@ -189,8 +195,8 @@ def test_a_d020_smoke_reports_the_language_the_backend_the_copies_and_the_is_rea
     assert rep["in_language"]["stop"] == {"n": 480, "in_language": 480, "out_of_language": 0}
     assert rep["in_language"]["launches"]["a"]["by_step"]["0"] == {"stop": 32, "stop_out_of_language": 0}
     assert rep["backend"]["a"]["applied"] is True and "backend a: requested xgrammar" in out
-    assert rep["copy"]["a"] == {"n": 320, "p_copy_mean": 0.3 / 32, "penalized": 10, "at_least_0.8": 10, "j_max": 1.0,
-                                "nearest": {"example": 10}, "nearest_is_shown": 10}
+    assert rep["copy"]["a"] == {"pool_files": 0, "n": 320, "p_copy_mean": 0.3 / 32, "penalized": 10, "at_least_0.8": 10,
+                                "j_max": 1.0, "nearest": {"example": 10}, "nearest_is_shown": 10}
     isr = rep["is_ratio"]
     steps = list(range(1, 11)) + list(range(6, 11))
     values, tokens = [0.001 * s for s in steps], [32 * (200 + 10 * (s - 1)) for s in steps]
@@ -307,6 +313,31 @@ def test_a_launch_whose_completions_all_hit_the_limit_shows_no_grammar_and_fails
 def test_a_copy_penalty_config_whose_reward_logged_none_fails(tmp_path):
     rep = sc.check(_d020_run(tmp_path, copy=False), "final", _cfg(), {"a": "0", "b": "0"})
     assert any("have no p_copy" in f for f in rep["failures"])
+
+
+def test_a_launch_whose_copy_penalty_lacks_the_configs_pool_fails(tmp_path):
+    # D-020 scores P_copy against the pool too; run.json's copy_penalty records how many pool files the trainer's
+    # CopyPenalty holds, and the config says how many it should
+    import yaml
+    doc = yaml.safe_load(V2.read_text())
+    doc["copy_penalty"] = {"pool": ["drafts/v1"]}
+    p = tmp_path / "pool.yaml"
+    p.write_text(yaml.safe_dump(doc, sort_keys=False))
+    cfg = _cfg(p)
+    run = _d020_run(tmp_path / "run", cfg=cfg)
+    rep = sc.check(run, "final", cfg, {"a": "0", "b": "0"})
+    assert rep["ok"], rep["failures"]
+    assert rep["copy"]["a"]["pool_files"] == rep["copy"]["b"]["pool_files"] == len(cfg.pool_files()) == 30
+    meta = run / "summary" / "b" / "run.json"
+    m = json.loads(meta.read_text())
+    meta.write_text(json.dumps({**m, "copy_penalty": {**m["copy_penalty"], "pool": {"files": 0, "ids": []}}}))
+    rep = sc.check(run, "final", cfg, {"a": "0", "b": "0"})
+    assert any(f.startswith("launch b: run.json's copy penalty holds 0 pool files, not the config's 30")
+               for f in rep["failures"]), rep["failures"]
+    m.pop("copy_penalty")
+    meta.write_text(json.dumps(m))
+    rep = sc.check(run, "final", cfg, {"a": "0", "b": "0"})
+    assert any(f.startswith("launch b: run.json's copy penalty holds None pool files") for f in rep["failures"])
 
 
 @pytest.mark.parametrize("source", [None, {**MATCH, "verdict": "not_matched", "missing": ["no abs"]},

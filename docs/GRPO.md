@@ -309,7 +309,8 @@ config reaches the dry run, both launches and both checks, and the log names it.
      ids, so the check cannot judge it; D-020's Validity: `other.n` is 0), each launch has at least one `stop`
      completion (else nothing shows the grammar applied), and each launch's run.json names the config's regex
      (sha256);
-   - with `copy_penalty`, every completion has a `p_copy`.
+   - with `copy_penalty`, every completion has a `p_copy`, and each launch's run.json `copy_penalty.pool.files` is
+     the number of `.ls` files the config's pool holds (the trainer handed the pool to the copy penalty).
 
    Warnings list a curriculum step that did not come from TRL's `trainer_state`, dropped optional fields, failed
    logging hooks, duplicate step records, and an IS readout that is unavailable or whose rule reads the mean of the
@@ -324,8 +325,9 @@ config reaches the dry run, both launches and both checks, and the log names it.
   stop completions.
 - **`backend`** (constrained): each launch's run.json record of the pin: requested, pin_accepted, backend, source,
   applied, engine. It decides nothing, as in junk.json.
-- **`copy`** (copy_penalty): per launch, P_copy's mean, the completions it penalized, J ≥ 0.8, the largest J, the
-  nearest references, and how many of the penalized were nearest to the example their own prompt showed.
+- **`copy`** (copy_penalty): per launch, the pool files run.json records, P_copy's mean, the completions it
+  penalized, J ≥ 0.8, the largest J, the nearest references, and how many of the penalized were nearest to the
+  example their own prompt showed.
 - **`is_ratio`**: D-020's IS readout for the grammar lever. D-020 defines it as the mean, over every completion
   token of every step, of |log π_vLLM(token) − log π_trainer(token)|.
   - **When TRL's metric is read:** only when every launch's run.json `trl_logp_metric.verdict` is `match`. That is,

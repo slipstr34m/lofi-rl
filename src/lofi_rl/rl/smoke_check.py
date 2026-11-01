@@ -27,8 +27,9 @@ What the D-020 settings add to the report (docs/GRPO.md §5):
   of these failures.
 - **backend**: each launch's record of the structured-outputs pin on the engine TRL built (requested, pin_accepted,
   backend, source, applied, engine). It decides nothing, as in junk.json.
-- **copy** (a config with copy_penalty): P_copy's mean, the completions it penalized and the largest J, per launch;
-  the smoke fails if the reward logged no P_copy.
+- **copy** (a config with copy_penalty): the pool files run.json records, P_copy's mean, the completions it penalized
+  and the largest J, per launch; the smoke fails if the reward logged no P_copy, or if a launch's run.json records
+  another number of pool files than the config's pool holds (the trainer must hand the pool to the copy penalty).
 - **is_ratio**: D-020's IS readout, the mean over completion tokens of |log pi_vLLM - log pi_trainer|, per step.
   TRL's logged sampling/sampling_logp_difference/mean stands in for it only when every launch's run.json says the
   installed TRL's source was checked to compute mean |old_per_token_logps - sampling_per_token_logps| over
@@ -169,7 +170,7 @@ def _launch(run: Path, name: str, cfg: RunConfig, steps_want: list[int], start_s
         info["in_language"] = _language(name, meta, rewards, cfg, problems)
         info["backend"] = (meta.get("structured_outputs") or {}).get("backend")
     if cfg.copy_penalty is not None:
-        info["copy"] = _copy(name, rewards, problems)
+        info["copy"] = _copy(name, meta, rewards, cfg, problems)
     rows = []
     for r in step_recs:
         trl, lofi = r.get("trl") or {}, r.get("lofi") or {}
@@ -247,15 +248,23 @@ def _language(name: str, meta: dict[str, Any], rewards: list[dict[str, Any]], cf
             "by_step": {str(k): v for k, v in sorted(by_step.items(), key=lambda kv: (kv[0] is None, kv[0]))}}
 
 
-def _copy(name: str, rewards: list[dict[str, Any]], problems: list[str]) -> dict[str, Any]:
-    """A launch's P_copy: its mean, the completions it penalized, the largest J and the nearest references."""
+def _copy(name: str, meta: dict[str, Any], rewards: list[dict[str, Any]], cfg: RunConfig,
+          problems: list[str]) -> dict[str, Any]:
+    """A launch's P_copy: the pool files its run.json records (the config's, or a failure), its mean, the
+    completions it penalized, the largest J and the nearest references."""
     recs = [r for r in rewards if "p_copy" in r]
     if rewards and len(recs) != len(rewards):
         problems.append(f"launch {name}: the config sets copy_penalty but {len(rewards) - len(recs)} of "
                         f"{len(rewards)} completions have no p_copy")
+    want = len(cfg.pool_files())
+    got = ((meta.get("copy_penalty") or {}).get("pool") or {}).get("files")
+    if meta and got != want:
+        problems.append(f"launch {name}: run.json's copy penalty holds {got} pool files, not the config's {want} "
+                        "(D-020: P_copy is scored against the pool)")
     js = [r["copy_j"] for r in recs if isinstance(r.get("copy_j"), (int, float))]
     pen = [r for r in recs if r["p_copy"] > 0]
-    return {"n": len(recs), "p_copy_mean": statistics.fmean(r["p_copy"] for r in recs) if recs else None,
+    return {"pool_files": got, "n": len(recs),
+            "p_copy_mean": statistics.fmean(r["p_copy"] for r in recs) if recs else None,
             "penalized": len(pen), "at_least_0.8": sum(1 for j in js if j >= 0.8), "j_max": max(js, default=None),
             "nearest": dict(sorted(Counter(r.get("copy_nearest") for r in pen).items())),
             "nearest_is_shown": sum(1 for r in pen if r.get("example_id") is not None
@@ -495,8 +504,8 @@ def main(argv: list[str] | None = None) -> int:
               f"backend {b.get('backend')} applied {b.get('applied')} engine {b.get('engine')}")
     for name, c in (rep.get("copy") or {}).items():
         c = c or {}
-        print(f"[smoke] copy {name}: p_copy mean {c.get('p_copy_mean')} penalized {c.get('penalized')}/{c.get('n')} "
-              f"J>=0.8 {c.get('at_least_0.8')} max J {c.get('j_max')}")
+        print(f"[smoke] copy {name}: pool files {c.get('pool_files')} p_copy mean {c.get('p_copy_mean')} penalized "
+              f"{c.get('penalized')}/{c.get('n')} J>=0.8 {c.get('at_least_0.8')} max J {c.get('j_max')}")
     ratio = rep.get("is_ratio")
     if ratio:
         rule = ratio.get("rule") or {}
