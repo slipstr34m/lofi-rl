@@ -9,13 +9,15 @@ import json
 import os
 import shutil
 import signal
+import subprocess
+import sys
 import time
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from helpers_scoring import BRIEF_A, PALETTE, ROOT, fixture_text, make_scorer
+from helpers_scoring import BRIEF_A, PALETTE, ROOT, fixture_text, make_scorer, pid_alive, start_sleeper, wait_gone
 from lofi_rl.palette import load_palette
 from lofi_rl.scoring import fakes, protocol
 from lofi_rl.scoring.render_pool import RenderJob, RenderPool, render_config, spectral_centroid
@@ -141,6 +143,53 @@ def test_a_pool_found_broken_at_submit_is_restarted_before_the_batch():
     finally:
         pool.close()
     assert (got[0]["gate"], got[0]["transient"]) == ("G3", False), "rendered (and gated) on the fresh pool"
+
+
+def test_killing_the_pool_ends_a_workers_child_processes_too(tmp_path):
+    # A FluidSynth that a stuck render started must not outlive the batch deadline's kill: workers lead their own
+    # process group, and _kill signals the group. The child here is `sleep 60`, started by a task in a worker.
+    pool = RenderPool(PALETTE, workers=1, timeout_s=120)
+    pid_file = tmp_path / "child.pid"
+    child = None
+    try:
+        pool._ex.submit(start_sleeper, str(pid_file))
+        deadline = time.monotonic() + 60
+        while not (pid_file.is_file() and pid_file.read_text()) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        child = int(pid_file.read_text())
+        assert pid_alive(child)
+        pool._kill()
+        assert wait_gone(child, 10), "the worker's child survived the kill"
+    finally:
+        pool.close()
+        if child is not None and pid_alive(child):
+            os.kill(child, signal.SIGKILL)
+
+
+def test_a_worker_whose_server_was_sigkilled_ends_itself(tmp_path):
+    # With its own process group a worker no longer gets the group kill of `timeout -k`; when the server dies
+    # without close(), the worker sees its parent change and ends its group within about a second.
+    code = (f"import time\nfrom lofi_rl.scoring.render_pool import RenderPool\n"
+            f"pool = RenderPool({str(PALETTE)!r}, workers=1, timeout_s=60)\n"
+            f"print(pool.warm()[0], flush=True)\ntime.sleep(120)\n")
+    parent = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True, cwd=ROOT,
+                              env={**os.environ, "PYTHONPATH": str(ROOT / "src")})
+    worker = None
+    try:
+        worker = int(parent.stdout.readline())
+        assert pid_alive(worker) and os.getpgid(worker) == worker, "the worker leads its own process group"
+        parent.kill()
+        parent.wait(10)
+        assert wait_gone(worker, 10), "the orphaned worker kept running"
+    finally:
+        if parent.poll() is None:
+            parent.kill()
+            parent.wait()
+        if worker is not None and pid_alive(worker):     # never leave an orphan behind, even when this fails
+            try:
+                os.killpg(worker, signal.SIGKILL)
+            except ProcessLookupError:
+                os.kill(worker, signal.SIGKILL)
 
 
 def test_the_spectral_centroid_of_a_tone_and_of_silence():

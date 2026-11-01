@@ -94,6 +94,22 @@ def test_a_fluidsynth_error_or_substituted_preset_is_an_infrastructure_fault(mon
         fluid.render_midi(Path("/sf/gu.sf2"), Path("/m/keys.mid"), Path("/o/keys.wav"))
 
 
+def test_a_fluidsynth_that_does_not_finish_in_time_is_killed_and_an_infrastructure_fault(monkeypatch):
+    from lofi_rl.scoring.render_pool import RENDER_TIMEOUT_S
+    _fake_fluidsynth(monkeypatch)
+    seen = {}
+
+    def stalled(cmd, **kwargs):
+        if "--version" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout="FluidSynth runtime version 2.6.1\n", stderr="")
+        seen.update(kwargs)
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+    monkeypatch.setattr(fluid.subprocess, "run", stalled)
+    with pytest.raises(fluid.FluidSynthError, match="did not finish keys.mid within 120 s"):
+        fluid.render_midi(Path("/sf/gu.sf2"), Path("/m/keys.mid"), Path("/o/keys.wav"))
+    assert seen["timeout"] == fluid.TIMEOUT_S < RENDER_TIMEOUT_S, "a stem gives up before the scorer's batch does"
+
+
 def _one_note(path: Path, *, channel: int = 0, bank: int | None = 0, program: int = 4, note: int = 60) -> Path:
     mid = mido.MidiFile(type=0, ticks_per_beat=22050)
     track = mido.MidiTrack()

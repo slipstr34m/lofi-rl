@@ -5,7 +5,10 @@
   process per stem (cpu-cores=1, docs/RENDER.md §3.1), the sampler, the bus chains, the bed, loudness and G7.
   It returns the finished mix, the music-only stem (the same gain and limiter, no bed), the manifest, and the mix's
   spectral centroid (a hack-watch signature, taste_pipeline.md §7).
-- Workers are spawned (no fork of a process that may hold CUDA) and load the palette once each. A render uses
+- Workers are spawned (no fork of a process that may hold CUDA) and load the palette once each. Each worker
+  leads its own process group, so killing a worker (the batch deadline, restart(), close()) signals the group and
+  ends its FluidSynth children with it; and a worker whose server is gone (SIGKILLed: no close()) ends its own
+  group within a second, since a group kill from outside (`timeout -k`) no longer reaches it. A render uses
   `render_workers` (default 1) FluidSynth processes and pedalboard threads at a time, so 8 workers keep about 8
   cores busy; the output never depends on either number (docs/RENDER.md §5).
 - A render that fails a gate (G1-G6 from the parser, G7 out of spec, a compile error) or an infrastructure fault
@@ -18,6 +21,8 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import signal
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -64,7 +69,17 @@ def spectral_centroid(x: np.ndarray, sr: int = pipeline.SR) -> float:
     return float((np.fft.rfftfreq(mono.size, 1.0 / sr) * mag).sum() / total)
 
 
+def _exit_with_parent(parent: int, poll_s: float = 1.0) -> None:
+    """In a worker: end its whole process group (itself and any FluidSynth) once the process that spawned it is
+    gone. The worker leads its own group (_init_worker), so a SIGKILLed server leaves no orphans rendering."""
+    while os.getppid() == parent:
+        time.sleep(poll_s)
+    os.killpg(os.getpgrp(), signal.SIGKILL)
+
+
 def _init_worker(palette_path: str, root: str, render_workers: int) -> None:
+    os.setpgrp()            # the worker's FluidSynth children join its group: RenderPool._kill signals the group
+    threading.Thread(target=_exit_with_parent, args=(os.getppid(),), name="lofi-render-parent", daemon=True).start()
     _STATE.update(palette=load_palette(palette_path, verify=False, root=Path(root)), root=Path(root),
                   workers=int(render_workers))
 
@@ -103,6 +118,18 @@ def render_job(canon: str, brief: Mapping[str, Any]) -> dict[str, Any]:
             "mix": r.audio, "music": r.music, "render_ms": info["render_ms"]}
 
 
+def _signal_group(p: Any, sig: int) -> None:
+    """Signal worker p's process group (it leads one: _init_worker), so its FluidSynth children end with it. A
+    worker without a group of its own (it is still starting) gets the signal alone; a group that is gone, nothing.
+    A group outlives a dead leader while a member lives, so a worker that died mid-render still has its FluidSynth
+    signalled."""
+    try:
+        os.killpg(p.pid, sig)
+    except ProcessLookupError:
+        if p.is_alive():
+            p.terminate() if sig == signal.SIGTERM else p.kill()
+
+
 class RenderPool:
     """The pool (module docstring). render_many(jobs, on_done) calls on_done(k, outcome) for every job, in the
     order the renders finish, so the caller can featurize one clip while the others render."""
@@ -129,17 +156,17 @@ class RenderPool:
         return sorted({f.result(timeout=timeout_s) for f in futures})
 
     def _kill(self) -> None:
-        """Shut the executor down and end its workers, a stuck render included (CPython 3.12 has no public way
-        to stop a running worker, so this reads the executor's process table)."""
+        """Shut the executor down and end its workers and their FluidSynth children, a stuck render included:
+        SIGTERM to each worker's process group, SIGKILL to the groups still alive 5 s later (CPython 3.12 has no
+        public way to stop a running worker, so this reads the executor's process table)."""
         procs = list((getattr(self._ex, "_processes", None) or {}).values())
         self._ex.shutdown(wait=False, cancel_futures=True)
         for p in procs:
-            if p.is_alive():
-                p.terminate()
+            _signal_group(p, signal.SIGTERM)
         for p in procs:
             p.join(5)
             if p.is_alive():
-                p.kill()
+                _signal_group(p, signal.SIGKILL)
                 p.join(5)
 
     def restart(self) -> None:

@@ -100,7 +100,9 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
   - "Instrument not found on channel …, substituted …": a (bank, program) the SoundFont lacks, which FluidSynth
     replaces with another preset (a drum kit with kit 0, a melodic bank with bank 0). `load_palette(verify=True)`
     refuses such a palette first, from the SoundFont's preset headers (`palette.sf2_presets`);
-  - a missing preset with no stand-in leaves its channel silent, which the checks below catch.
+  - a missing preset with no stand-in leaves its channel silent, which the checks below catch;
+  - a render that has not finished after 120 s (`fluid.TIMEOUT_S`, under the scorer's 150 s batch deadline):
+    `subprocess.run` kills it.
 - **One process per stem.** A stem with no notes (a comp or bass grid of rests) is silence and runs no process.
 - **MIDI.** `compile.midi.write_stem_midi(compiled, name, path, cycles=1 + C)`, with ticks from `midi.fluid_tick`
   (docs/COMPILER.md §4.3). The output must hold at least (1 + C)·N samples at 44.1 kHz; it is cut to that, and
@@ -420,7 +422,7 @@ Each is pinned by a test and can be changed.
 | `test_render` | `tests/test_render.py` | length N, −14 ± 0.1 LUFS, true peak ≤ −1 dBTP on the repeating loop, the manifest against the audio, the bed at −Δ ± 0.5 LU, gates G1–G6 and G7. On synthetic loops (no FluidSynth): a loop that needs 2–4 loudness iterations (and fails G7 with `iters: 1`), the bed at Δ = 18, 24 and 30 with the reported level, the G7 music floor at −55 and −45 LUFS, the G7 true-peak limit at −0.69 and −0.94 dBTP, an overshoot at the seam. With the audio stages stubbed: parser plus compiler repairs and P_fix in the manifest, and a bare numeral parsed in the brief's mode |
 | `test_seam` | `tests/test_seam.py` | 3-cycle render, cycle 2 vs cycle 3 < 1e-5 for the whole chain (§4, Linux); the render keeps exactly cycle 2; the pre-roll case; the 3× limiter tile; `-m cluster`: 5 fixtures × 4 tempos |
 | `test_determinism` | `tests/test_determinism.py` | the same process in A-B-A order; a fresh CLI process with 1 worker against the in-process render with 4 (WAV, FLAC and manifest), run alongside the A-B-A renders to save wall time; golden hashes; the kit's one-shots built into an empty cache against their golden hashes and the warm cache's |
-| `test_fluid_cli` | `tests/test_fluid_cli.py` | version 2.6.1, the exact flags, the version check and its memo, the rejected limiter flag, one process per non-empty stem with the pre-roll; an empty home for every render, a user config that cannot reach the PCM, the two config files FluidSynth tries, a system config that stops the render, substituted presets, errors in the log, short, silent and wrong-rate output as `FluidSynthError` |
+| `test_fluid_cli` | `tests/test_fluid_cli.py` | version 2.6.1, the exact flags, the version check and its memo, the rejected limiter flag, one process per non-empty stem with the pre-roll; an empty home for every render, a user config that cannot reach the PCM, the two config files FluidSynth tries, a system config that stops the render, substituted presets, errors in the log, a render past its 120 s, short, silent and wrong-rate output as `FluidSynthError` |
 | (CLI) | `tests/test_render.py` | exit 2 on an out-of-range `--bpm` or `--tonic`, a missing loop or palette file, or a palette that does not load, before anything renders |
 | (outputs) | `tests/test_formats.py` | SplitMix64 vectorized = `prng.stream`, the TPDF distribution, dither keyed by the hash, FLAC decode and bytes, no PEAK chunk |
 | (mix, bed) | `tests/test_mix.py`, `tests/test_bed.py` | block-size invariance, sax_warm, faders and sum order, calibration; the crossfade formula, the wrap, equal power, the excerpt, the level |

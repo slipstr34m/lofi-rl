@@ -6,13 +6,18 @@
   stats are byte-for-byte unchanged.
 - `short_sock_dir`: a temp dir short enough for an AF_UNIX path (macOS allows 104 bytes; pytest's tmp_path on
   this laptop is longer than that).
+- `pid_alive`, `wait_gone`: whether a process this test did not start still runs (a zombie does not), and a
+  bounded wait for it to end; `start_sleeper`: a render-pool task that starts a child process and waits on it.
 """
 from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import shutil
+import subprocess
 import tempfile
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -79,6 +84,34 @@ class short_sock_dir:
 
     def __exit__(self, *exc) -> None:
         shutil.rmtree(self.path, ignore_errors=True)
+
+
+def pid_alive(pid: int) -> bool:
+    """Whether process `pid` still runs: False once it has exited, a zombie included (`ps` says Z)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    out = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    return bool(out) and not out.startswith("Z")
+
+
+def wait_gone(pid: int, timeout_s: float = 10.0) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while pid_alive(pid):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.05)
+    return True
+
+
+def start_sleeper(pid_file: str) -> int:
+    """A render-pool task: start `sleep 60` as this worker's child, write its pid to pid_file, wait on it."""
+    child = subprocess.Popen(["sleep", "60"])
+    Path(pid_file).write_text(str(child.pid))
+    return child.wait()
 
 
 # ------------------------------------------------------------------------------------------ scorer fixtures
