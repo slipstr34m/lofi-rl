@@ -29,8 +29,9 @@ default). Change it if you switch; it is saved with every answer.
 - The page plays each loop for 8 bars in turn, 1 → 2 → 3 → 4. You don't have to wait: you can pick at any
   time. If you mark the loop that is playing, the page moves on to the next one you haven't heard yet.
 - The small squares on a tile fill in as you hear its bars. A bar counts once you've heard most of it (75 %).
-  A loop counts as heard after 4 bars; a tick appears on the tile. Picks involving a loop you didn't hear
-  are set aside later, so there is no need to force yourself through every bar.
+  A loop counts as heard once 1 bar has played (a tick appears on the tile), and bars heard before an undo or a
+  reload still count. Only picks involving a loop you never played are set aside, so skipping a bad loop after a
+  bar or two still counts (D-013 as amended, 2026-10-31).
 - Press **Enter** to save. The next round starts by itself.
 
 ### The keys
@@ -274,7 +275,7 @@ and the hidden labels, so a vote stays meaningful if the inbox is purged:
 
 ### Settings (`configs/rating.yaml`)
 
-`port` 8596 · `heard.bar_fraction` 0.75 · `heard.min_bars` 4 · `heard.toss_min_bars` 2 ·
+`port` 8596 · `heard.bar_fraction` 0.75 · `heard.min_bars` 1 · `heard.toss_min_bars` 1 ·
 `autoplay.bars_per_clip` 8 · `autoplay.wrap_bars` 2 (single-clip rounds) · `autoplay.start_next_round` ·
 `switch_ramp_ms` 5 · `nudge_minutes` 25 · `micro_gap_minutes` 10 · `playlist_plays` [2, 4] ·
 `daily_budget_minutes` 60 · `devices`, `default_device`.

@@ -7,7 +7,8 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from lofi_rl.ui.audit import aggregate, agreement, chi2_sf, chi2_uniform, implied_pairs, wilson
+from lofi_rl.ui.audit import (aggregate, agreement, chi2_sf, chi2_uniform, heard_over_attempts, implied_pairs,
+                              wilson, with_merged_heard)
 from lofi_rl.ui.manifest import build_demo, load_batch, parse_hidden, parse_public
 from lofi_rl.ui.votes import Ledger, read_events
 
@@ -74,7 +75,7 @@ def test_aggregates_of_a_finished_batch(finished):
     m, h, events = finished
     a = aggregate(m, h, events, today=date(2026, 11, 10))
     assert (a["rounds"], a["voted"], a["retracted"], a["abandoned"]) == (4, 4, 0, 0)
-    assert a["heard"] == {"clips": 16, "heard": 16, "rate": 1.0, "min_bars": 4}
+    assert a["heard"] == {"clips": 16, "heard": 16, "rate": 1.0, "min_bars": 1}
     assert a["anchors"]["rounds"] == 1 and a["anchors"]["caught"] == 1
     assert a["repeats"]["found"] == 1 and a["repeats"]["compared"] == 5 and a["repeats"]["p"] == 1.0
     assert a["position_of_best"][0]["clips"] == 4 and sum(a["position_of_best"][0]["counts"]) == 4
@@ -206,6 +207,48 @@ def test_shootout_tally_counts_each_block_once(tmp_path):
     assert tally == {"rhodes": (2, 0, 2, 2), "piano": (1, 1, 0, 2), "organ": (0, 2, -2, 2)}
     assert [o["option"] for o in out["shootout"]["options"]] == ["rhodes", "piano", "organ"]
     assert out["repeats"]["found"] == 1 and out["repeats"]["p"] == 1.0     # the repeat still counts here
+
+
+def test_heard_over_attempts_ors_every_attempt_of_a_round():
+    events = [{"type": "shootout", "round": "r1", "clips": [{"clip": "a", "heard_bars": "11000000"}]},
+              {"type": "abandon", "round": "r1", "clips": [{"clip": "a", "heard_bars": "00110000"},
+                                                          {"clip": "b", "heard_bars": "1"}]},
+              {"type": "session", "round": "r1", "clips": [{"clip": "a", "heard_bars": "11111111"}]},
+              {"type": "shootout", "round": "r2", "clips": [{"clip": "a", "heard_bars": "00000001"}]}]
+    assert heard_over_attempts(events) == {("r1", "a"): "11110000", ("r1", "b"): "1", ("r2", "a"): "00000001"}
+    v = with_merged_heard({"round": "r1", "clips": [{"clip": "a", "heard_bars": "", "pos": 1}]},
+                          heard_over_attempts(events))
+    assert v["clips"] == [{"clip": "a", "heard_bars": "11110000", "pos": 1}]
+
+
+def test_bars_heard_before_an_undo_or_a_reload_still_count(tmp_path):
+    """D-013 as amended (Shresth, 2026-10-31): a clip counts as heard once 1 bar has played, over every attempt
+    of its round, so an undone vote or an abandoned attempt keeps what he heard before the redo."""
+    m, h = _paper_batch(tmp_path, "paper-redo", "shootout",
+                        [("none", None, [(_real(1), "rhodes", False), (_real(2), "piano", False),
+                                         (_real(3), "organ", False)]),
+                         ("none", None, [(_real(4), "rhodes", False), (_real(5), "piano", False),
+                                         (_real(6), "organ", False)])], category="keys")
+    votes = tmp_path / "votes"
+    votes.mkdir()
+    led = Ledger(votes, m, h)
+    r1, r2 = m.rounds
+    played = lambda r, *bars: [dict(c, heard_bars=b) for c, b in zip(_listened(r), bars)]     # noqa: E731
+    try:
+        first = led.submit({"type": "shootout", "round": r1.id, "best": r1.ids[0], "worst": r1.ids[2],
+                            "clips": played(r1, "11111111", "00000000", "11000000")})
+        led.submit({"type": "retract", "target": first["event_id"], "why": "undo"})
+        led.submit({"type": "shootout", "round": r1.id, "best": r1.ids[0], "worst": r1.ids[2],
+                    "clips": played(r1, "00000000", "00000000", "00000000")})
+        led.submit({"type": "abandon", "round": r2.id, "why": "pagehide",
+                    "clips": played(r2, "10000000", "00000000", "00000000")})
+        led.submit({"type": "shootout", "round": r2.id, "best": r2.ids[0], "worst": r2.ids[1],
+                    "clips": played(r2, "00000000", "01000000", "00000000")})
+        events = led.snapshot()
+    finally:
+        led.close()
+    assert aggregate(m, h, events)["heard"] == {"clips": 6, "heard": 4, "rate": 4 / 6, "min_bars": 1}
+    assert aggregate(m, h, events, heard_min_bars=4, toss_min_bars=2)["heard"]["heard"] == 1   # r1's first clip
 
 
 def test_a_triage_toss_needs_only_toss_min_bars(tmp_path):

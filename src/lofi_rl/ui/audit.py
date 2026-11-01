@@ -83,6 +83,29 @@ def heard_bars(c: dict) -> int:
     return str(c.get("heard_bars", "")).count("1")
 
 
+def heard_over_attempts(events: list[dict]) -> dict[tuple, str]:
+    """(round, clip) -> its heard bars OR-ed over every attempt of that round in `events`: kept and undone votes
+    and abandoned rounds. An undo or a reload starts the round's bar count again on the page, but what he heard
+    before still counts (Shresth, 2026-10-31; D-013 as amended)."""
+    out: dict[tuple, str] = {}
+    for e in events:
+        if e.get("type") not in VOTE_TYPES and e.get("type") != "abandon":
+            continue
+        for c in e.get("clips") or []:
+            key, bars = (e.get("round"), c.get("clip")), str(c.get("heard_bars", ""))
+            prev = out.get(key, "")
+            n = max(len(prev), len(bars))
+            out[key] = "".join("1" if "1" in (prev[i:i + 1], bars[i:i + 1]) else "0" for i in range(n))
+    return out
+
+
+def with_merged_heard(v: dict, heard: dict[tuple, str]) -> dict:
+    """A copy of vote `v` whose clips carry the heard bars of every attempt of its round (heard_over_attempts)."""
+    clips = [dict(c, heard_bars=heard.get((v.get("round"), c.get("clip")), c.get("heard_bars", "")))
+             for c in v.get("clips") or []]
+    return dict(v, clips=clips)
+
+
 def implied_pairs(mode: str, v: dict, heard_min: int) -> dict[frozenset, str]:
     """Strict pairs a vote implies, over clips heard for at least `heard_min` bars: {frozenset(a, b): winner}."""
     clips = v.get("clips") or []
@@ -162,15 +185,16 @@ def _rate(k: int, n: int) -> float | None:
 
 
 def aggregate(m: Manifest, h: Hidden, events: list[dict], *, all_events: dict | None = None,
-              heard_min_bars: int = 4, toss_min_bars: int = 2, daily_budget_min: float = 60.0,
+              heard_min_bars: int = 1, toss_min_bars: int = 1, daily_budget_min: float = 60.0,
               today: date | None = None) -> dict:
-    """Everything the audit page shows for one batch."""
+    """Everything the audit page shows for one batch. Heard bars are merged over every attempt of a round."""
     mode = m.mode
     today = today or datetime.now().astimezone().date()
     all_events = dict(all_events or {})
     all_events.setdefault(m.batch, events)
     act = active_votes(events)
-    votes = [act[r.id] for r in m.rounds if r.id in act]
+    heard = heard_over_attempts(events)
+    votes = [with_merged_heard(act[r.id], heard) for r in m.rounds if r.id in act]
     out: dict = {"batch": m.batch, "mode": mode, "rounds": len(m.rounds), "voted": len(votes),
                  "retracted": sum(e.get("type") == "retract" for e in events),
                  "abandoned": sum(e.get("type") == "abandon" for e in events)}
@@ -202,7 +226,8 @@ def aggregate(m: Manifest, h: Hidden, events: list[dict], *, all_events: dict | 
 
     originals: dict[str, dict] = {}
     for _batch, evs in sorted(all_events.items()):
-        originals.update(active_votes(evs))
+        merged = heard_over_attempts(evs)
+        originals.update({k: with_merged_heard(v, merged) for k, v in active_votes(evs).items()})
     found = missing = agree = compared = 0
     for v in votes:
         hid = v.get("hidden") or {}

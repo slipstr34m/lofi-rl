@@ -104,7 +104,7 @@ def test_page_and_api_endpoints(server):
         assert hdrs["X-Content-Type-Options"] == "nosniff" and hdrs["Cache-Control"] == "no-store"
         assert "frame-ancestors 'none'" in hdrs["Content-Security-Policy"]
     st, cfg = server.get_json("/api/config")
-    assert cfg["heard"] == {"bar_fraction": 0.75, "min_bars": 4, "toss_min_bars": 2}
+    assert cfg["heard"] == {"bar_fraction": 0.75, "min_bars": 1, "toss_min_bars": 1}
     assert cfg["autoplay"]["bars_per_clip"] == 8 and cfg["nudge_minutes"] == 25 and cfg["ui"] == server.app.ui
     st, man = server.get_json("/manifest.json")
     assert [r["id"] for r in man["rounds"]] == [r.id for r in server.m.rounds]
@@ -417,7 +417,7 @@ def test_the_server_imports_no_model():
 
 def test_config_file_and_errors(tmp_path):
     cfg = load_config()
-    assert cfg["port"] == 8596 and cfg["heard"]["bar_fraction"] == 0.75 and cfg["heard"]["min_bars"] == 4
+    assert cfg["port"] == 8596 and cfg["heard"]["bar_fraction"] == 0.75 and cfg["heard"]["min_bars"] == 1
     assert cfg["autoplay"]["bars_per_clip"] == 8 and cfg["nudge_minutes"] == 25 and cfg["micro_gap_minutes"] == 10
     for text, msg in [("colour: blue\n", "unknown key 'colour'"), ("heard: {min_bars: 0}\n", "heard.min_bars"),
                       ("port: 80\n", "port"), ("heard: {fraction: 0.5}\n", "unknown key heard.fraction"),

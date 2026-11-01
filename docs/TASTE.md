@@ -51,7 +51,7 @@ Rules for using this file:
 | | |
 |---|---|
 | Unnameables | A shootout prunes each to 2–3 options; votes decide among them. |
-| Vote unit | **Best and worst of 4** clips from one brief. Clips auto-play in sequence and he can pick early at any time; pairs with unheard clips are dropped. Escape hatches: "no clear best/worst" and "all four bad". One optional tag: fake, no groove, sour, boring / nodding, sax line, chords. The page shows only the scene. RM predictions are never shown while voting. |
+| Vote unit | **Best and worst of 4** clips from one brief. Clips auto-play in sequence and he can pick early at any time. A clip counts as heard once 1 bar has played, over every attempt of its round (bars heard before an undo or a reload still count); only pairs with clips that never played are dropped. Shresth, 2026-10-31: "Imagine it sounded so bad that I did not even let it play more than 4 bars." and "Yes, use these". Escape hatches: "no clear best/worst" and "all four bad". One optional tag: fake, no groove, sour, boring / nodding, sax line, chords. The page shows only the scene. RM predictions are never shown while voting. |
 | Listening | 1 h a day in micro-sessions while working, on the laptop with AirPods. Ear checks come back the same day, and push notifications announce them. |
 | Tiers | Toss = a dealbreaker fired · Fine = not embarrassing · Good = I'd play it while working · Great = can't stop nodding. |
 | Labeling | Triage covers a random 300 seeds. Claude drafts 30 loops and he keeps 10; the rejects become labeled negatives. A vamp shootout of about 12 vamps takes about 15 min. |
@@ -110,7 +110,7 @@ Rules for using this file:
 - **Listening:**
   - ear checks play two passes, so the seam is audible;
   - votes are a single pass;
-  - "heard" means 4 bars or more.
+  - "heard" was 4 bars or more; Shresth replaced it on 2026-10-31 with 1 bar over every attempt of a round (Vote unit row).
 - **If the RM gate still fails on Nov 17:** run with the taste weight capped at 0.3, labeled exploratory, and keep voting.
 - **CLAP contrast scenes:** sunny morning, beach, forest, café afternoon, snowy cabin.
 - **Alternate base model:** Granite 4.1 8B, tested only at the gate.

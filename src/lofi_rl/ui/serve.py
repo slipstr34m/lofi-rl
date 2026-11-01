@@ -64,7 +64,7 @@ SECURITY_HEADERS = (
 
 DEFAULT_CONFIG = {
     "port": 8596,
-    "heard": {"bar_fraction": 0.75, "min_bars": 4, "toss_min_bars": 2},
+    "heard": {"bar_fraction": 0.75, "min_bars": 1, "toss_min_bars": 1},
     "autoplay": {"bars_per_clip": 8, "wrap_bars": 2, "start_next_round": True},
     "switch_ramp_ms": 5,
     "nudge_minutes": 25,
