@@ -21,6 +21,22 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (09:45 PST): Shresth confirmed the Day-2 results; gate file updated
+
+**What was done**
+- **Shresth: "Yes, use these"**, to the Day-2 results:
+  - sax `sax_mtg_alto`, played plain, with expression on and lag timing;
+  - keys `gu_tine_ep`, `gs_wurli_ep200` and `vcsl_upright_knight`;
+  - `kit_virtuosity` with `bass_vsco2_pizz`, and `kit_gu_jazz` with `bass_fp_finger_yr`;
+  - swing 0.55 and humanize off;
+  - the vamp ranks, with the chord list unchanged.
+- **`gates/GATE_palette.md`** now records Day 2: his words, the results, the tables, the escape hatches, the half-weight note, flags (none) and the private audit paths.
+- **Next:** Day 3 (rain W1/W2, 5 repeats and an anchor) and the 30 drafted loops for keep3. The repeats come back at least 2 days after their originals (D-013).
+
+**SU spent:** 0.
+
+---
+
 ## 2026-11-01 (09:35 PST): Day 2 fully voted, backed up and tallied; results wait for Shresth's word
 
 **What was done**

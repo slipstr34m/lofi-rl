@@ -89,6 +89,80 @@ S1 (sax):
 
 **Audit files** (private, never committed): `data/votes/audit/{b1103-1-keys,b1103-2-groove,b1103-3-sax,shootouts}.json` and `day1-report.md`. They come from `python -m lofi_rl.shootout.tally` at main `e0ebc8f`, and an independent recount over the raw logs gives the same figures for every option.
 
+### Day 2: voted 2026-11-01 (batches b1104-1-groove, b1104-2-sax, b1104-3-keys, b1104-4-vamps; job 13651610)
+
+**Shresth's confirmation, 2026-11-01:** "Yes, use these". This answered the proposal of the results below, which kept swing at 0.55 because he named no other.
+
+**Results**
+- **Sax:** `sax_mtg_alto` wins the final, with more bests (CD-18). S2 ran on it, so nothing re-runs on Day 3.
+  - Warmth: `sax_plain`. It ties `sax_warm_on` on BW, so the default stays (CD-39).
+  - Expression stays on: `sax_expr_off` came last in S2a.
+  - Timing: `timing_lag`, the S2b BW leader.
+- **Keys:** `gu_tine_ep` (leads), `gs_wurli_ep200` and `vcsl_upright_knight` (CD-40, BW over K1 + K2). K2 had no marks: T and B in both rounds.
+- **Kits and their basses** (CD-43 over R2r, CD-54):
+  - `kit_virtuosity` with `bass_vsco2_pizz`, from its two R2r rounds;
+  - `kit_gu_jazz` with `bass_fp_finger_yr`, from its one R2r round.
+- **Swing:** `swing_55`. R3a had no marks; this is advisory (CD-13), and Shresth named no other.
+- **Humanize:** `humanize_off`. R3b had no marks, so the default stays.
+- **Vamps** (seed data, CD-45): hopeful `aruarian`, then `royal_half`, with `lift` and `two_of_us` tied third. Melancholy `plagal` (tied with `rise` on BW, ahead on bests), then `rise`, `backdoor`, `drift`. Wistful `float`, then `i_iv` and `pulse` tied, then `step`.
+- **Borrowed chords:** the condition is not met, since `float` is first in wistful. `chords.numerals` stays as it is (SHOOTOUTS.md §11 question 2 does not arise).
+- **Weight:** the sax batch's anchor was marked "no clear best" and "no clear worst", so micro-session `s1101a`/1 counts at half weight (D-013). That session holds every Day-2 vote, so no outcome changes.
+
+**Tables** (the same columns as Day 1; weighted marks):
+
+R2r (basses, pooled over its three rounds):
+
+| place | option | shown | heard | best | worst | BW | net |
+|---|---|---|---|---|---|---|---|
+| 1= | `bass_fp_finger_yr` | 3 | 1.5 | 0.5 | 0.5 | 0.000 | 0 |
+| 1= | `bass_vsco2_pizz` | 3 | 1.5 | 0.5 | 0.5 | 0.000 | 0 |
+| 3 | `bass_gu_acoustic` | 3 | 1.5 | 0 | 0.5 | −0.333 | −1 |
+
+R2r per kit:
+- `kit_virtuosity` (2 rounds): `bass_vsco2_pizz` +0.500, `bass_gu_acoustic` −0.500, `bass_fp_finger_yr` −0.500.
+- `kit_gu_jazz` (1 round): `bass_fp_finger_yr` +1.000, `bass_gu_acoustic` 0.000, `bass_vsco2_pizz` −1.000.
+
+S1f (sax final), and S1 + S1f pooled:
+
+| stage | option | shown | heard | best | worst | BW |
+|---|---|---|---|---|---|---|
+| S1f | `sax_mtg_alto` | 3 | 1.5 | 1 | 0.5 | +0.333 |
+| S1f | `sax_mtg_tenor` | 3 | 1.5 | 0.5 | 0.5 | 0.000 |
+| S1 + S1f | `sax_mtg_alto` | 7 | 5.5 | 4 | 0.5 | +0.636 |
+| S1 + S1f | `sax_mtg_tenor` | 7 | 4.5 | 1.5 | 0.5 | +0.222 |
+
+S2a (warmth) and S2b (timing):
+
+| stage | option | shown | heard | best | worst | BW |
+|---|---|---|---|---|---|---|
+| S2a | `sax_plain` | 3 | 1.5 | 0.5 | 0 | +0.333 |
+| S2a | `sax_warm_on` | 3 | 1.5 | 0.5 | 0 | +0.333 |
+| S2a | `sax_expr_off` | 3 | 1.5 | 0 | 0.5 | −0.333 |
+| S2b | `timing_lag` | 3 | 1.5 | 0.5 | 0 | +0.333 |
+| S2b | `timing_swung` | 3 | 1 | 0 | 0 | 0.000 |
+| S2b | `timing_grid` | 3 | 1.5 | 0 | 0.5 | −0.333 |
+
+**Rounds without marks:** K2 (3 keys, 2 rounds), R3a (4 swings, 2 rounds) and R3b (3 humanize settings, 3 rounds) had no best or worst marks. Every option there sits at BW 0.000.
+
+**K1 + K2 pooled:** `gs_wurli_ep200`, `gu_tine_ep` and `vcsl_upright_knight` each have 5 shown, 4 heard, 1 best, 0 worst and BW +0.250.
+
+**Escape hatches:**
+- R2r: T 1.
+- R3a: T 2, B 2.
+- R3b: T 3, B 3.
+- S1f: B 1.
+- S2a: T 1, B 2.
+- S2b: T 2, B 2.
+- K2: T 2, B 2.
+- V: T 1, B 5.
+- None used G.
+
+**Flags (§3):** none. Every Day-2 stage's largest spread is under 0.01 LU; the limit is 1.0, or 0.5 for the timing variants.
+
+**Hidden checks:** Day 2's one anchor was missed (above). There are no repeats yet; they come on Day 3.
+
+**Audit files** (private): `data/votes/audit/{b1104-1-groove,b1104-2-sax,b1104-3-keys,b1104-4-vamps,shootouts}.json` and `day2-report.md`, from the tally at main `7a0dfd0`. An independent recount over the raw logs gives the same figures for every stage, for R2r per kit and for V per mood.
+
 ## How to approve
 Add one line of your own, exactly in this form:
 
