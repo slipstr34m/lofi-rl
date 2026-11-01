@@ -14,8 +14,23 @@ Newest entry first. Every number cites the file or command output it was read fr
   - constrained decoding built on `wt/constrained` and reviewed; its line-end and backend-record fixes are being built;
   - GRPO smoke 13632679 queued on an L40S.
 - **Waiting on Shresth:**
-  - the Day-1 ear check (`inbox/2026-11-03/`, about 23 min);
+  - the rest of the Day-1 ear check: `b1103-2-groove` and `b1103-3-sax` (`b1103-1-keys` is voted);
   - `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords), due by Nov 4 morning.
+
+---
+
+## 2026-10-31 (17:50 PDT): first Day-1 batch voted; votes backed up; Day-2 tooling started
+
+**What was done**
+- **`b1103-1-keys` voted:** 6 of 6 rounds, 17:22–17:40 PDT. The log has 32 events and parses cleanly (`ui.audit.aggregate`). Standings come with the day's tally, once all three Day-1 batches are voted (SHOOTOUTS.md §1).
+- **Votes backed up** (`make backup-votes`): the private repo `slipstr34m/lofi-rl-votes` (checked private with `gh`) at `54285a6`, and the cluster copy in `$REMOTE_KEEP/votes/`. Files are mode 600, under a folder only Shresth's account can enter.
+- **Day-2 tooling started** (workflow `wf_9a720a66-135`), with two builders in worktrees, then an integrator and an independent verifier:
+  - the §7.9 tally tool with §8's rules and the Day-2 `--leaders` proposal;
+  - job 2 made complete, with per-clip level matching extended to Day 2's variant rounds.
+
+  It uses synthetic votes only, and reads nothing under `data/votes/`.
+
+**SU spent:** 0.
 
 ---
 
