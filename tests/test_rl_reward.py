@@ -242,3 +242,53 @@ def test_trl_metric_hooks_are_used_when_passed_and_never_crash_the_reward(tmp_pa
         raise TypeError("signature changed")
     out = _call(reward, [FULL], log_metric=broken, log_extra=broken)
     assert len(out) == 1 and "TypeError" in reward.stats[1]["hook_errors"][0]
+
+
+# ------------------------------------------------------------------------------------------ the regex's language (D-020)
+def _language():
+    from lofi_rl import grammar
+    from lofi_rl.palette import load_palette
+    regex = grammar.loopscript_regex(load_palette(PALETTE, verify=False))
+    return {"regex": regex, "sha256": grammar.regex_sha256(load_palette(PALETTE, verify=False))}
+
+
+def test_each_completion_is_checked_against_the_regex_by_the_finish_reason_its_ids_show(tmp_path):
+    from lofi_rl import prompt_v2
+    from lofi_rl.palette import load_palette
+    loop = prompt_v2.reference_texts(load_palette(PALETTE, verify=False))["l9_hopeful_high"]   # in the language
+    lang = _language()
+    reward, _ = _reward(tmp_path, max_completion_length=8, eos_token_ids=[EOS], language=lang)
+    texts = [loop, loop + "  ", "theory=0.8 | not a loop", loop, loop]
+    ids = [[1, EOS], [1] * 3, [1, EOS], [1] * 8, [1] * 7 + [EOS]]     # stop, stop, stop, cut at the limit, EOS at it
+    _call(reward, texts, completion_ids=ids)
+    recs = _lines(tmp_path)
+    assert [r["finish"] for r in recs] == ["stop", "stop", "stop", "length", "stop"]
+    assert [r["in_language"] for r in recs] == [True, False, False, True, True]
+    st = reward.stats[0]["in_language"]
+    assert st == {"regex_sha256": lang["sha256"], "stop": {"n": 4, "in_language": 2, "out_of_language": 2},
+                  "length": {"n": 1, "in_language": 1, "out_of_language": 0},
+                  "other": {"n": 0, "in_language": 0, "out_of_language": 0}}
+    unknown, _ = _reward(tmp_path / "u", language=lang)               # no ids, no limit: the finish is unknown
+    _call(unknown, [loop])
+    assert _lines(tmp_path / "u")[0]["finish"] == "other" and unknown.stats[0]["in_language"]["other"]["n"] == 1
+
+
+def test_trls_hook_gets_the_out_of_language_stop_count(tmp_path):
+    reward, _ = _reward(tmp_path, max_completion_length=8, eos_token_ids=[EOS], language=_language())
+    seen = []
+    _call(reward, ["not a loop"], completion_ids=[[1, EOS]], log_metric=lambda n, v: seen.append((n, v)))
+    assert ("lofi/stop_out_of_language", 1) in seen
+
+
+def test_a_regex_whose_sha_is_not_the_recorded_one_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="sha256"):
+        _reward(tmp_path, language={"regex": "vamp: x", "sha256": "0" * 64})
+
+
+def test_a_v2_row_logs_the_example_its_prompt_showed(tmp_path):
+    reward, _ = _reward(tmp_path)
+    _call(reward, [FULL, FULL], example_id=["l8_hopeful_mid", "example"], brief_id=["596:1", "596:2"])
+    assert [r["example_id"] for r in _lines(tmp_path)] == ["l8_hopeful_mid", "example"]
+    plain, _ = _reward(tmp_path / "p")
+    _call(plain, [FULL])
+    assert "example_id" not in _lines(tmp_path / "p")[0], "a v1 row has no such column, and the log no such field"
