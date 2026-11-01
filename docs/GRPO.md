@@ -493,7 +493,8 @@ fails closed where it can.
   - the text TRL decodes for a reward is the text vLLM's grammar constrained;
   - a completion shorter than the limit ended on an EOS (so `stop` is vLLM's stop).
 
-  A `stop` completion out of the language fails the smoke.
+  A `stop` completion out of the language fails the smoke, as do an `other` completion and a launch with no
+  `stop` completion. Any of them also keeps the IS rule from being D-020's reading (§5).
 - **Read from the installed TRL, and possibly not read at all:** whether TRL 1.17.1's
   `sampling/sampling_logp_difference/mean` is D-020's definition.
   - The check reads its source at run time (`trl_logp_metric`) and fails closed: a definition it does not
