@@ -6,7 +6,7 @@ jobs/env_policy.sbatch: {sha: 2bafd8e52ab13bc0, max_su: 960, by: Shresth, date: 
 jobs/env_scorer.sbatch: {sha: 948d77571a5bb968, max_su: 960, by: Shresth, date: 2026-10-30}
 jobs/fetch.sbatch: {sha: 68298be22c7a752b, max_su: 720, by: Shresth, date: 2026-10-30}
 jobs/grpo_smoke.sbatch: {sha: 07203168742f7411, max_su: 500, by: Claude, date: 2026-10-31}
-jobs/junk_rate.sbatch: {sha: 24005999fe07a14d, max_su: 450, by: Claude, date: 2026-10-31}
+jobs/junk_rate.sbatch: {sha: 4a9d8685231fd573, max_su: 450, by: Claude, date: 2026-10-31}
 jobs/render_check.sbatch: {sha: 6f3e8d4d00d3f64c, max_su: 360, by: Claude, date: 2026-10-31}
 jobs/seam_diag.sbatch: {sha: b2034ede829361ba, max_su: 120, by: Claude, date: 2026-10-31}
 jobs/shootout.sbatch: {sha: 12f706e7f61efe72, max_su: 240, by: Claude, date: 2026-10-31}

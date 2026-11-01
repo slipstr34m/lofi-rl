@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 from helpers_rl import CHILD_FAKES, fake_prompt, fake_verify
+from lofi_rl import grammar
 from lofi_rl.brief import Brief, sample_briefs
 from lofi_rl.palette import load_palette
 from lofi_rl.rl import config as rc
@@ -21,6 +22,8 @@ from lofi_rl.rl import train
 
 ROOT = Path(__file__).resolve().parents[1]
 SMOKE = ROOT / "configs" / "grpo_smoke.yaml"
+CONSTRAINED = ROOT / "configs" / "grpo_smoke_constrained.yaml"
+REGEX_FIELD = "vllm_structured_outputs_regex"
 HEAVY = ("torch", "trl", "vllm", "transformers", "peft", "datasets", "accelerate")
 
 
@@ -79,10 +82,61 @@ def test_every_profile_trains_on_4_prompts_x_8_completions_per_step(profile):
     (lambda d: d["model"].update(revision="main"), "40-hex"),
     (lambda d: d["trainer"].update(scale_rewards="grouped"), "scale_rewards"),
     (lambda d: d["optional_fields"].append("beta"), "optional"),
+    (lambda d: d.update(structured_outputs="json_schema"), "structured_outputs"),
+    (lambda d: d.update(structured_outputs=True), "structured_outputs"),
+    (lambda d: d["trainer"].update(vllm_structured_outputs_regex="vamp: .*"), "structured_outputs: loopscript_regex"),
+    (lambda d: d["profiles"]["48gb"].update(vllm_structured_outputs_regex="x"), "structured_outputs: loopscript_regex"),
+    (lambda d: d["optional_fields"].append(REGEX_FIELD) or d.update(structured_outputs="loopscript_regex"),
+     "optional"),
 ])
 def test_a_bad_config_is_refused_with_its_reason(tmp_path, edit, match):
     with pytest.raises(rc.ConfigError, match=match):
         rc.load_config(_write(tmp_path, edit))
+
+
+# ------------------------------------------------------------------------------------------ constrained decoding
+def test_the_constrained_smoke_is_the_smoke_plus_the_loopscript_regex_built_at_load_time():
+    plain, constrained = yaml.safe_load(SMOKE.read_text()), yaml.safe_load(CONSTRAINED.read_text())
+    assert constrained.pop("structured_outputs") == "loopscript_regex"
+    assert constrained == plain, "identical to configs/grpo_smoke.yaml but for the one key"
+    pal = load_palette(ROOT / plain["palette"], verify=False)
+    regex = grammar.loopscript_regex(pal)
+    assert regex not in CONSTRAINED.read_text() and f"{REGEX_FIELD}:" not in CONSTRAINED.read_text(), \
+        "the regex comes from lofi_rl.grammar when the config loads; it is never pasted into the YAML"
+    cfg, smoke = rc.load_config(CONSTRAINED), rc.load_config(SMOKE)
+    assert cfg.structured_outputs["builder"] == "loopscript_regex" and cfg.structured_outputs["field"] == REGEX_FIELD
+    assert cfg.structured_outputs["sha256"] == grammar.regex_sha256(pal)
+    assert cfg.structured_outputs["chars"] == len(regex) and smoke.structured_outputs is None
+    for profile in cfg.profiles:
+        kw, base = rc.resolve(cfg, profile), rc.resolve(smoke, profile)
+        assert kw.pop(REGEX_FIELD) == regex and kw == base, profile
+        assert REGEX_FIELD not in base
+
+
+def test_a_trl_without_the_regex_field_stops_the_constrained_run_before_the_model_loads():
+    cfg = rc.load_config(CONSTRAINED)
+    kw = rc.resolve(cfg, "48gb")
+    known = [k for k in kw if k != REGEX_FIELD]
+    without = dataclasses.make_dataclass("GRPOConfig", [(k, object, None) for k in known])
+    with pytest.raises(rc.ConfigError, match=REGEX_FIELD):
+        rc.fit_fields(kw, without, cfg.optional_fields)       # what train() runs first, before the model loads
+    with_it = dataclasses.make_dataclass("GRPOConfig", [(k, object, None) for k in known + [REGEX_FIELD]])
+    kept, dropped = rc.fit_fields(kw, with_it, cfg.optional_fields)
+    assert kept[REGEX_FIELD] == grammar.loopscript_regex(load_palette(cfg.palette_path(), verify=False))
+    assert dropped == []
+
+
+def test_the_dry_run_of_the_constrained_smoke_names_its_regex(monkeypatch):
+    monkeypatch.setitem(sys.modules, "lofi_rl.prompt", fake_prompt())
+    monkeypatch.setattr(train, "_verify_module", lambda: None)
+    buf = io.StringIO()
+    report = train.dry_run(rc.load_config(CONSTRAINED), out=buf)
+    pal = load_palette(ROOT / "palettes" / "dev_gu.yaml", verify=False)
+    want = {"builder": "loopscript_regex", "field": REGEX_FIELD, "sha256": grammar.regex_sha256(pal),
+            "chars": len(grammar.loopscript_regex(pal))}
+    assert report["structured_outputs"] == want and json.loads(buf.getvalue())["structured_outputs"] == want
+    assert REGEX_FIELD in report["unverified_trl_fields"], "the cluster's GRPOConfig check covers the name"
+    assert train.dry_run(rc.load_config(SMOKE), out=io.StringIO())["structured_outputs"] is None
 
 
 def test_settings_fit_trl_fields_dropping_only_the_optional_unknowns():
@@ -107,11 +161,12 @@ def test_a_card_under_40_gib_has_no_profile():
         rc.detect_profile(rc.load_config(SMOKE), 23.6)
 
 
-def test_trl_knows_every_setting_of_the_smoke():
+@pytest.mark.parametrize("path", [SMOKE, CONSTRAINED], ids=["smoke", "constrained"])
+def test_trl_knows_every_setting_of_the_smoke(path):
     # Skipped on the laptop (no TRL). In the policy env it checks the names this file could not verify.
     trl = pytest.importorskip("trl")
     names = {f.name for f in dataclasses.fields(trl.GRPOConfig)}
-    cfg = rc.load_config(SMOKE)
+    cfg = rc.load_config(path)
     for profile in cfg.profiles:
         unknown = sorted(k for k in rc.resolve(cfg, profile) if k not in names and k not in cfg.optional_fields)
         assert not unknown, f"{profile}: GRPOConfig of TRL {trl.__version__} lacks {unknown}"

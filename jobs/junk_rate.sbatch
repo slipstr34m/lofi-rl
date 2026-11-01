@@ -10,33 +10,58 @@
 #SBATCH --output=/scratch1/%u/lofi-rl/logs/%x_%j.out
 # The base model's junk rate (CLAUDE.md §6: the Phase 1-2 progress oracle; §9: the Phase 1 gate's data). The logic
 # lives in src/lofi_rl/rl/junk.py, so this script (and its registry sha) stays stable. Steps, each under a timeout:
-#   1. generate (policy env, vLLM): N completions of prompt v1 (src/lofi_rl/prompt.py), one per brief of
-#      brief.sample_briefs(SEED, N), at T 1.0, top_p 1, top_k 0, max_tokens 512 (taste_pipeline §6), from
-#      Qwen3-4B-Instruct-2507 @cdbee75f in the HF cache; chunks of 128, and none starts that would end after 12 min
+#   1. generate (policy env, vLLM): N completions of prompt PROMPT (v1: src/lofi_rl/prompt.py; v2:
+#      src/lofi_rl/prompt_v2.py), one per brief of brief.sample_briefs(SEED, N), at T 1.0, top_p 1, top_k 0,
+#      max_tokens 512 (taste_pipeline §6), from Qwen3-4B-Instruct-2507 @cdbee75f in the HF cache; chunks of 128, and
+#      none starts that would end after 12 min
 #   2. score (policy env): gates G1-G6 and compile -> summary/junk.json: pass rate and CI, the count per gate,
-#      repairs and P_fix, token lengths and truncations, near-copies of the in-prompt example, prompt version and sha
+#      repairs and P_fix, token lengths and truncations, near-copies of the example each row's prompt showed and the
+#      copy readouts, the prompt version (read from generate.json) and its sha
 #   3. render (scorer env): a seeded sample of 50 gate-passing loops with dev_gu to one-pass FLACs under clips/, for
 #      a later ear check (nothing goes to the inbox); their G7 count is merged into junk.json
-# Args: [N=500] [SEED=2026]. Results: $REMOTE_SCR/runs/junk-<job>/summary/ (make pull); the clips stay on scratch.
+# Args: [N=500] [SEED=2026] [CONSTRAINED=0] [PROMPT=v1]. Results: $REMOTE_SCR/runs/junk-<job>/summary/ (make pull);
+# the clips stay on scratch. CONSTRAINED=1 passes --constrained to generate: grammar-constrained decoding under
+# lofi_rl.grammar's LoopScript regex (D-016, docs/GRAMMAR.md), its sha256 recorded in generate.json and junk.json.
+# PROMPT passes --prompt to generate: v1 (the default) or v2 (each brief shown the example of its energy and the next
+# mood), recorded in generate.json and junk.json with its template sha. A CONSTRAINED other than 0 or 1, or a PROMPT
+# other than v1 or v2, stops the job before any work.
 # Sizing, from smoke 13628361 on an A40 (CHANGELOG 2026-10-31: vLLM load 37.0 s, 42.9 tok/s single-stream, eager):
 #   generate: imports and load about 1 min; at most 500 x 512 = 256,000 tokens, which at 16 single streams' worth
 #   (686 tok/s; batched decode is not measured yet) is 6.2 min; the shared system prompt is prefilled once (prefix
-#   cache). 12 min deadline, 14 min timeout. score: about 10 ms a loop, 1.5 min timeout. render: about 3 s a loop
-#   (render-check 13632135: 3.05-3.66 s per CLI render), so 50 loops in about 2.5 min; 6 min deadline, 7 min timeout.
-#   Expected: about 9 min, 160 SU.
+#   cache). 12 min deadline, 14 min timeout. score: about 10 ms a loop, plus about 27 ms a passing loop for the knob
+#   readout (laptop: 500 passing loops in 19.0 s), 1.5 min timeout. render: about 3 s a loop (render-check 13632135:
+#   3.05-3.66 s per CLI render), so 50 loops in about 2.5 min; 6 min deadline, 7 min timeout.
+#   Expected: about 9 min, 160 SU. v0 (13632676) took 4.8 min, 86.4 SU. CONSTRAINED=1 adds the regex compile and a
+#   token mask per decode step inside the same 12 min generate deadline, so the walltime and the cost stay.
+#   PROMPT=v2 changes only the prompt text: 1,322-1,408 Qwen3 tokens against v1's 1,389-1,391, in 9 system messages
+#   (one per energy x mood cell) where v1 has 1, so the walltime and the cost stay.
 # Cost: 4 CPU + 6 (24 GB) + 8 (1 GPU) = 18 SU/min x 25 min -> at most 450 SU.
 #   make submit JOB=jobs/junk_rate.sbatch                       (debug A40)
+#   make submit JOB=jobs/junk_rate.sbatch ARGS='500 2026 1'     (debug A40, constrained)
+#   make submit JOB=jobs/junk_rate.sbatch ARGS='500 2026 1 v2'  (debug A40, constrained, prompt v2)
 #   make submit JOB=jobs/junk_rate.sbatch OVR='-p gpu --gres=gpu:a100:1 --constraint=a100-80gb' ARGS='500 2026'
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/..}"
 N=${1:-500}
 SEED=${2:-2026}
+CONSTRAINED=${3:-0}
+PROMPT=${4:-v1}
+case "$CONSTRAINED" in
+  0) CONSTRAIN_FLAG="" ;;
+  1) CONSTRAIN_FLAG="--constrained" ;;
+  *) echo "junk-rate: CONSTRAINED must be 0 or 1, not '$CONSTRAINED'" >&2; exit 2 ;;
+esac
+case "$PROMPT" in
+  v1|v2) ;;
+  *) echo "junk-rate: PROMPT must be v1 or v2, not '$PROMPT'" >&2; exit 2 ;;
+esac
 MODE=policy source scripts/job_env.sh
 RUN="$REMOTE_SCR/runs/junk-${SLURM_JOB_ID:-local}"
 mkdir -p "$RUN/summary"
-echo "junk-rate: N=$N SEED=$SEED Qwen3-4B-Instruct-2507 refs/main=$(model_rev Qwen/Qwen3-4B-Instruct-2507) -> $RUN"
+echo "junk-rate: N=$N SEED=$SEED CONSTRAINED=$CONSTRAINED PROMPT=$PROMPT Qwen3-4B-Instruct-2507 refs/main=$(model_rev Qwen/Qwen3-4B-Instruct-2507) -> $RUN"
 FAIL=0
-timeout -k 15 840 "$PY" -m lofi_rl.rl.junk generate --run "$RUN" --n "$N" --seed "$SEED" --deadline-s 720 || FAIL=1
+# $CONSTRAIN_FLAG is unquoted on purpose: empty, it adds no argument
+timeout -k 15 840 "$PY" -m lofi_rl.rl.junk generate --run "$RUN" --n "$N" --seed "$SEED" --deadline-s 720 --prompt "$PROMPT" $CONSTRAIN_FLAG || FAIL=1
 timeout -k 10 90 "$PY" -m lofi_rl.rl.junk score --run "$RUN" || FAIL=1
 MODE=scorer source scripts/job_env.sh
 timeout -k 10 420 "$PY" -m lofi_rl.rl.junk render --run "$RUN" --k 50 --workers "${SLURM_CPUS_PER_TASK:-4}" --deadline-s 360 || FAIL=1
