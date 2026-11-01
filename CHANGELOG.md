@@ -21,6 +21,23 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-10-31 (20:20 PDT): Day-2 tooling merged; heard-rule port and bass re-listen being built
+
+**What was done**
+- **Merged `wt/day2-int` into main** (`4b9cd64`, a no-ff merge; CHANGELOG.md auto-merged, and its two entries were moved into time order). Workflow `wf_9a720a66-135` had 4 agents.
+  - Its verifier passed all six checks. That covers 10 synthetic vote sets against an independent recount (0 mismatches over 57 options each), 3,030 rule checks, and byte-identical Day-1 output against main. Day-2 dry runs spread at most 0.0093 LU per round, with no leaks in any batch, and `jobs/shootout.sbatch` still has sha `12f706e7f61efe72`.
+  - **One low finding:** the cut rule uses the plan's fixed 28.3 min, although a 4-key K2 or a 3-sax final lengthens Day 2. Moot for this Day 2, since Shresth chose no cuts.
+  - Suite on the merged tree: 2039 passed, 2 skipped.
+- **Started workflow `wf_5d8416c0-2da`** (a builder in a worktree from `4b9cd64`, three reviewers, a judge, a fixer and a verifier). It covers:
+  - the tally's heard rule: bars OR-ed over every attempt of a round, with a 1-bar minimum, as D-013 now says;
+  - the Day-2 bass re-listen, R2r: 3 rounds of the 3 basses on the surviving kits (leader, other, leader), level-matched on the bass bus and served first in the groove batch, with its trigger rule and an after-Day-2 bass rule in SHOOTOUTS.md §8;
+  - `--leaders` carrying both surviving kits.
+- **D-020's jobs** 13640324 and 13640325 are still PENDING (Priority); no sync since `49e2f5a`.
+
+**SU spent:** 0.
+
+---
+
 ## 2026-10-31 (20:05 PDT): D-020 checked, amended before either run, and the fixes it called for
 
 **What was done**
