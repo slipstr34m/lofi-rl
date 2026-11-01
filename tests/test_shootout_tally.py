@@ -890,3 +890,64 @@ def test_day2s_minutes_are_the_drawn_plans():
     assert day_minutes(PLAN, 2, adds=["R2r"])["batches"]["b1104-1-groove"]["minutes"] == 8.6
     assert T.day2_cut(PLAN, 23.0, adds=["R2r"])["cuts"] == ["vamps-high"]     # at the plan's pace R2r passes 30
     assert T.day2_cut(PLAN, 19.0, adds=["R2r"])["cuts"] == []
+
+
+# ---------------------------------------------------------------------------- section 2.7: Shresth's word on the cuts
+def test_shresths_word_on_day_2s_cuts_overrides_the_cut_list_and_keeps_the_final(inbox, tmp_path, capsys):
+    """Section 2.7 with Shresth's word on Day 2's cuts (2026-10-31, "Yes, use these" to no Day-2 cuts). On slow Day-1
+    votes the list cuts all three items, the final among them, so the S1 rule names one sax; dropping `--cut` from
+    that line by hand leaves one sax id, which the job refuses. Given his word (`day2_cuts`, the CLI's --day2-cuts),
+    the S1 rule keeps the final: the line has two saxes and no --cut, the band check and the job take it, and the
+    list's reading stays in the report as advice."""
+    votes = tmp_path / "votes"
+    vote_days(inbox, votes, choose=r2_choice({"kit_virtuosity": "T", "kit_gu_jazz": "TB", "kit_swirly": "G"}),
+              commit_ms=92000)                                    # 29.1 min of Day 1: r 1.265
+    listed, _ = tally(inbox, votes)
+    p0 = listed["proposal"]["day2"]
+    assert p0["cut"] == ["vamps-high", "latin3", "final"] and p0["args"].endswith(
+        f"--prior {JOB1} --add R2r --cut vamps-high+latin3+final")
+    assert parse_leaders(p0["leaders"])["sax"] == ("sax_mtg_alto",) and listed["rules"]["S1"]["final"] is False
+    assert listed["rules"]["cut"]["decided"] is None and any(n["stage"] == "cut" for n in listed["needs_word"])
+    hand = shlex.split(p0["args"].split(" --cut ")[0])            # --cut dropped by hand: one sax, the final kept
+    assert job.main(["--run", str(tmp_path / "runs" / "shootout-13640007"), "--inbox", str(tmp_path / "inbox3"),
+                     *hand, "--dry-run"]) == 2
+    assert "--leaders sax: 1 ids given, day2 takes [2, 3]" in capsys.readouterr().err
+
+    words = 'Shresth, 2026-10-31, "Yes, use these"'
+    doc, _ = tally(inbox, votes, day2_cuts=[], day2_cuts_by=words)
+    p, c = doc["proposal"]["day2"], doc["rules"]["cut"]
+    assert p["args"] == f"--stage day2 --leaders {p['leaders']} --prior {JOB1} --add R2r" and p["cut"] == []
+    assert parse_leaders(p["leaders"])["sax"] == ("sax_mtg_alto", "sax_mtg_tenor")
+    assert doc["rules"]["S1"]["final"] is True and p["check"]["day_band"]["sax"] == "sax_mtg_alto"
+    assert {k: c[k] for k in ("cuts", "fits", "day2_minutes", "days12_minutes")} == {
+        k: listed["rules"]["cut"][k] for k in ("cuts", "fits", "day2_minutes", "days12_minutes")}   # the advice
+    assert c["decided"] == {"cuts": [], "by": words, "saves_min": 0.0, "day2_minutes": 39.5, "days12_minutes": 68.6,
+                            "fits": False}                        # r x 31.2 and r x (23.0 + 31.2)
+    assert not any(n["stage"] == "cut" for n in doc["needs_word"]) and not p["blocking"]
+    run = tmp_path / "runs" / "shootout-13640006"
+    assert job.main(["--run", str(run), "--inbox", str(tmp_path / "inbox2"), *shlex.split(p["args"]),
+                     "--dry-run"]) == 0
+    assert json.loads((run / "summary" / "leaders.json").read_text())["cut"] == []
+    md = T.report_md(doc)
+    assert f"Cuts: none, by {words} (Day 2 at r 39.5 min, Days 1-2 68.6). The list read vamps-high, latin3, final" in md
+    assert "- Sax final (CD-18): `sax_mtg_alto`, `sax_mtg_tenor`" in md and "the final is cut" not in md
+    # his word may cut too: in the list's order, the S1 rule following it
+    some, _ = tally(inbox, votes, day2_cuts=["final", "vamps-high"])
+    ps = some["proposal"]["day2"]
+    assert ps["cut"] == ["vamps-high", "final"] and ps["args"].endswith("--add R2r --cut vamps-high+final")
+    assert parse_leaders(ps["leaders"])["sax"] == ("sax_mtg_alto",) and some["rules"]["cut"]["decided"]["by"] == T.WORD
+    assert "`--cut vamps-high+final` (Shresth's word)" in T.report_md(some)
+    # the CLI
+    cli = ["--votes", str(votes), "--inbox", str(inbox["root"]), "--runs", str(inbox["root"].parent / "runs"),
+           "--out", str(tmp_path / "audit")]
+    assert T.main(cli + ["--day2-cuts", "none", "--day2-cuts-by", words]) == 0
+    out = capsys.readouterr().out
+    assert f"day 2 proposal: ready: {p['args']}\n" in out
+    assert f"day 2 cuts: none, by {words} (the cut list read vamps-high+latin3+final)" in out
+    for bad, said in (("w1-two", "not Day-2 cuts of the plan"), ("latin4", "not Day-2 cuts of the plan"),
+                      ("", "not Day-2 cuts of the plan"), ("final+final", "names a cut twice")):
+        assert T.main(cli + ["--day2-cuts", bad]) == 2, bad
+        assert said in capsys.readouterr().err, bad
+    assert T.main(cli + ["--day2-cuts-by", words]) == 2 and "goes with --day2-cuts" in capsys.readouterr().err
+    with pytest.raises(T.TallyError, match="not Day-2 cuts"):
+        T.tally(votes, inbox["root"], plan=PLAN, day2_cuts=["w2-two"])

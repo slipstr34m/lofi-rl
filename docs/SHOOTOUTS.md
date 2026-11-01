@@ -227,7 +227,10 @@ Per round at each loop's tempo, from the round slots of §4 (scratch planner, 20
   other round does. At the plan's own pace (r = 1) Day 2 with R2r reads 31.2 and the list cuts the high vamp
   rounds. For the Day 2 after the real Day-1 votes Shresth decided no cuts (2026-10-31, "Yes, use these", to a
   proposal with no Day-2 cuts: the audit's Day-1 minutes included a silent attempt from an audio-output problem),
-  so that proposal's `--cut` is dropped by his word. The list:
+  so the tally runs with his word, `--day2-cuts none` (§7.9): job 2's line then carries no `--cut`, and the S1 rule
+  keeps the final (`sax=sax_mtg_alto+sax_mtg_tenor`). Dropping `--cut` from the list's line by hand does not do it:
+  with the final cut, S1 alone names one sax, and with the final back the Day-2 band refuses one sax id ("--leaders
+  sax: 1 ids given, day2 takes [2, 3]", which `scripts/submit.sh` would not catch before job 2 starts). The list:
 
   | # | Cut | Saves (plan / full) | What is lost |
   |---|---|---|---|
@@ -1031,7 +1034,8 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   `sax_variant` and `timing` when a Day-2 pick is not the plan's default (`swing_55`, `humanize_off`, `sax_plain`,
   `timing_grid`). `ARGS` reach the script as arguments, so they need no comma-safe `--export`; they hold no spaces.
   Day 3 adds `--prior <job>+<job>`, `--repeats <stage>+...` (the stages first heard at least 2 days before Nov 6),
-  and, if needed, `--rerun-s2 <sax id>`. A cut adds `--cut vamps-high+latin3+final`. **The bass re-listen** (CD-54)
+  and, if needed, `--rerun-s2 <sax id>`. A cut adds `--cut vamps-high+latin3+final` (the cut list's, or Shresth's
+  word given to the tally as `--day2-cuts`, §7.9). **The bass re-listen** (CD-54)
   is the switch `--add R2r` (optional stages joined by `+`; R2r is the plan's only one): the kit slot then carries
   the two surviving kits, the R1 leader first, and the bass slot the default meanwhile,
   `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>+<id>/bass=bass_gu_acoustic/sax=<id>+<id> --prior <job1> --add R2r'`.
@@ -1336,9 +1340,14 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     goes to Shresth). S2a and S2b rounds in a Day-3 batch are tallied apart, as the S2 re-run.
   - **Job 2's proposal:** `keys=<K2, the K1 leader first>/kit=<the R1 leader>/bass=<its R2 pairing>/sax=<the
     finalists, the S1 leader first>` (one sax id with the `final` cut), `--prior <job 1>` and `--cut` from the cut
-    list; when CD-54 applies, `kit=<the R1 leader>+<the other survivor>/bass=<the default>` and `--add R2r`. The
-    tool stops unless `draw.parse_leaders` reads the string back and `draw.day_band` builds the Day-2 band from it
-    after the adds and the cuts; the report gives the `make submit` line. **The cut list** (2026-10-31) reads Day 2's
+    list; when CD-54 applies, `kit=<the R1 leader>+<the other survivor>/bass=<the default>` and `--add R2r`.
+    **Shresth's word on the cuts** (2026-10-31): `--day2-cuts none|<cut>+<cut>` (Day-2 cut ids of the plan, each
+    once; anything else exits 2), with `--day2-cuts-by "<his words, date>"` recorded beside it, overrides the list.
+    The line then carries his cuts, in the list's order; the S1 rule keeps the final unless he cuts it; the band
+    check reads his cuts; the list's "does not fit" item is not raised; and the report gives his cuts with their
+    minutes, then the list's cuts and minutes as advice (`rules.cut.decided` in the JSON, beside `rules.cut.cuts`).
+    The tool stops unless `draw.parse_leaders` reads the string back and `draw.day_band` builds the Day-2 band from
+    it after the adds and the cuts; the report gives the `make submit` line. **The cut list** (2026-10-31) reads Day 2's
     minutes from the plan that line will draw (`draw.day_minutes` with the line's key and sax counts and its adds,
     §2.7), not the fixed 28.3, and each cut's saving from the same estimate.
   - **R2r (2026-10-31, CD-54).** `relisten_bass` reads R2 after `bass_pairings`: no R2 round with a counted best
