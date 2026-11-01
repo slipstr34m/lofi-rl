@@ -1,0 +1,22 @@
+# The keep3 draft briefs (docs/DRAFTS.md §1): written by python -m lofi_rl.drafts.briefs from the rule and
+# seed below; do not edit. The writers see only the scene and the two knobs (energy, mood), as the policy
+# does; bpm and tonic are the compiler's, and `key` is for logs only (lofi_rl.brief.Brief.key_name).
+schema: lofi-rl/draft-briefs/1
+seed: 1105
+count: 10
+scene: city at night
+rule: 'd01-d09: the 9 energy x mood cells in ENERGIES x MOOD_NAMES order; d10: CELLS[below(h(1,0), 9)]. Tempo: a stratified
+  draw of 10 from lofi_rl.brief.TEMPO_WEIGHTS (stratum k of the 84 weight units is [floor(84k/10), floor(84(k+1)/10)), its
+  unit lo + below(h(2,k), hi - lo)), dealt to d01-d10 in the order of h(3,k). Tonic: the pitch classes sorted by (h(4,pc),
+  pc), the first 10 dealt to d01-d10. h(field, i) = splitmix64(splitmix64(splitmix64(seed) ^ field) ^ i).'
+briefs:
+  d01: {energy: low, mood: melancholy, bpm: 81, tonic: 3, key: Eb aeolian}
+  d02: {energy: low, mood: wistful, bpm: 85, tonic: 10, key: Bb dorian}
+  d03: {energy: low, mood: hopeful, bpm: 71, tonic: 1, key: Db ionian}
+  d04: {energy: mid, mood: melancholy, bpm: 89, tonic: 11, key: B aeolian}
+  d05: {energy: mid, mood: wistful, bpm: 82, tonic: 9, key: A dorian}
+  d06: {energy: mid, mood: hopeful, bpm: 90, tonic: 4, key: E ionian}
+  d07: {energy: high, mood: melancholy, bpm: 86, tonic: 8, key: Ab aeolian}
+  d08: {energy: high, mood: wistful, bpm: 77, tonic: 2, key: D dorian}
+  d09: {energy: high, mood: hopeful, bpm: 76, tonic: 6, key: Gb ionian}
+  d10: {energy: low, mood: wistful, bpm: 66, tonic: 0, key: C dorian}
