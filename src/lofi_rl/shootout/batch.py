@@ -26,8 +26,10 @@ one FLAC per clip appearance under an opaque name (`k` + 10 hex), `manifest.json
 its bus's loudness as the level tool measured it after that fader, `bus_lufs`, and re S*, `bus_lu`; CD-52; from Day
 2 on the stage's bus there, the vamps' keys, and every other bus the clip matches as `<bus>_fader_db`, `<bus>_lufs`
 and `<bus>_lu`; CD-53; for a rain clip on Day 3 the bed set under its music, `bus_lufs`, the music it is set under,
-`music_lufs`, and the bed measured in the finished render, `bed_lu`, null for no bed; and at its top, for a Day-3
-draw with a serving date, `serve_from`, the first day `make rate` serves the batch), then
+`music_lufs`, the bed measured in the finished render, `bed_lu`, null for no bed, and the sax as rendered, its fader
+`sax_fader_db` and its loudness before the fader plus that fader, `sax_lufs`, which an anchor's sour copy matches
+to its round-mates'; and at its top, for a Day-3 draw with a serving date, `serve_from`, the first day `make rate`
+serves the batch), then
 runs `python -m lofi_rl.ui.manifest check` on each folder and records the id map in `summary/batches.json`. Nothing
 is written unless everything is in order: a missing render, a failed gate, a clip that is not exactly one pass of
 its loop, a FLAC that changed since it was rendered, a repeat whose render is not the first showing's, a clip whose
@@ -64,6 +66,7 @@ from .plan import MIX_ORDER, PLAN, Plan, PlanError, load_plan
 BATCHES_SCHEMA = "lofi-rl/shootout-batches/1"
 SR = 44100
 DURATION_TOL = 0.02             # RATING.md: one pass is bars x 240 / bpm seconds within 2 %
+BED_BUS = "bed"                 # the stage bus of Day 3's rain rounds (plan.yaml W1, W2)
 SRC = Path(__file__).resolve().parents[2]
 
 
@@ -193,7 +196,13 @@ def _hidden_clip(rec: Mapping, rnd: Mapping, clip: Mapping) -> dict:
     info = {"clip": rec["clip"], "option": clip["option"], "what": clip.get("what"), "stage": rnd["stage"],
             "slot": rnd["slot"], "loop": rnd["loop"], "palette": rec["palette"]["label"]}
     level = rec.get("level")
-    if level and "buses" in level:                   # Day 2 on (CD-53): every matched bus's own fader and loudness
+    if bus == BED_BUS:                               # rain (Day 3): the level is the candidate
+        info.update(trim_db=None, fader_db=None, bus_lufs=rec.get("bed_lufs"))
+        if "music_lufs" in rec:                      # section 4.5: the music under the bed, the bed in the render
+            info.update(music_lufs=rec["music_lufs"], bed_lu=(rec.get("bed") or {}).get("bed_lu"))
+        sax = buses.get("sax") or {}                 # the sax as rendered (its loudness before the fader + the fader):
+        info.update(sax_fader_db=sax.get("fader_db"), sax_lufs=sax.get("post_lufs"))   # an anchor's sour copy's own
+    elif level and "buses" in level:                 # Day 2 on (CD-53): every matched bus's own fader and loudness
         lb = level["buses"]
         first = next(b for b in [*bus.split("+"), *MIX_ORDER] if b in lb)   # the stage's bus; the vamps': the keys
         b = buses[first]
@@ -211,10 +220,8 @@ def _hidden_clip(rec: Mapping, rnd: Mapping, clip: Mapping) -> dict:
     elif bus == "keys+bass":                         # vamps: the harmony moves the keys and the bass (CD-27)
         info.update(trim_db=buses["keys"]["trim_db"], fader_db=buses["keys"]["fader_db"],
                     bus_lufs=buses["keys"]["post_lufs"], bass_lufs=buses["bass"]["post_lufs"])
-    else:                                            # rain: the level is the candidate
+    else:                                            # a bus the record does not hold: the level is the candidate
         info.update(trim_db=None, fader_db=None, bus_lufs=rec.get("bed_lufs"))
-        if "music_lufs" in rec:                      # Day 3 (section 4.5): the music under the bed, the bed in the render
-            info.update(music_lufs=rec["music_lufs"], bed_lu=(rec.get("bed") or {}).get("bed_lu"))
     lo_hi = rec.get("sax_range")
     info["sax_range"] = f"{lo_hi[0]}-{lo_hi[1]}" if lo_hi else None
     if clip.get("kit"):

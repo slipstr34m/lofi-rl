@@ -168,8 +168,11 @@ def test_the_anchor_imitates_a_sax_round_with_one_sour_clip(draws):
         if "level" in np_:          # CD-52: the sour copy is its own clip, matched on its own text
             assert sp["band"] == np_["band"] and sp["base"] == np_["base"] and ren["palette"] == normal["palette"] + "_sour"
             assert sp["level"] == {**np_["level"], "case": np_["level"]["case"] + ".sour"}
-        else:                       # a stage whose option is not an instrument keeps the clip's palette
-            assert ren["palette"] == normal["palette"]
+        else:                       # Day 3's rain (2026-11-01 review): its own palette, its sax matched to its round
+            lid = PLAN.loop_named(a["loop"]).id.lower()
+            assert day == "day3" and ren["palette"] == f"{normal['palette']}_{lid}_sour"
+            assert sp["band"] == np_["band"] and sp["base"] == normal["palette"]
+            assert sp["level"] == {"buses": ["sax"], "case": f"{a['loop']}.sour", "target": "round"}
         others = [c["render"] for c in a["clips"] if c is not sour[0]]
         assert set(others) <= {c["render"] for c in src[0]["clips"]}       # the other clips reuse their renders
 
@@ -194,7 +197,8 @@ def test_every_clip_of_an_instrument_stage_plays_its_own_palette_named_for_its_l
     # whose bus fader `level` names (the bus, the option, and the case it is measured on: the loop, or
     # loop.<variant> for a changed text such as an anchor's sour copy). CD-53 (Day 2 on): every clip of a stage that
     # names `match` plays its own palette too, its level naming those buses and its case (the vamps' texts by their
-    # vamp). Other stages (Day 3's rain) keep one palette per option.
+    # vamp). Other stages (Day 3's rain) keep one palette per option, but for the anchor's sour copy, whose sax is
+    # matched to its round (2026-11-01 review).
     for (day, s), doc in draws.items():
         seen = []
         for rid, ren in doc["renders"].items():
@@ -215,10 +219,16 @@ def test_every_clip_of_an_instrument_stage_plays_its_own_palette_named_for_its_l
                 assert ren["palette"] == "_".join([spec["base"], *tail]), (day, rid)
                 assert spec["band"][st.fills] == ren["option"]
                 seen.append(ren["palette"])
+            elif ren["variant"] == "sour":
+                assert day == "day3" and spec["level"] == {"buses": ["sax"], "case": case, "target": "round"}
+                assert ren["palette"] == "_".join([spec["base"], *tail]), (day, rid)
+                seen.append(ren["palette"])
             else:
                 assert "level" not in spec and "base" not in spec, (day, rid)
         assert len(seen) == len(set(seen)), (day, s, "one palette per clip")
-        assert (len(seen) == len(doc["renders"])) == (day != "day3") and bool(seen) == (day != "day3")
+        assert (len(seen) == len(doc["renders"])) == (day != "day3") and len(seen) >= 1
+        assert day != "day3" or seen == [ren["palette"] for r, ren in doc["renders"].items() if r.endswith(".sour")] \
+            == [k for k, x in doc["palettes"].items() if "level" in x], "Day 3: the sour copy's palette only"
 
 
 def test_palettes_carry_the_day_band_and_stage_texts_their_substitution(draws):

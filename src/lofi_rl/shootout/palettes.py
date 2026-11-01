@@ -50,16 +50,19 @@ job's:
 Day 3 (job 3; section 4.5) runs as Day 2 with the job's draw, its band the Day-2 picks (the job's --leaders, the
 variant slots included: swing, humanize, sax variant and timing), and `--rain` the excerpt picker's record
 (shootouts/rain_excerpts.json, section 7.2), whose file must sit under $LOFI_ASSETS with the sha256 it pins:
-- `--levels none --draw`: the measuring runs of every instrument the draw plays; the rain palettes match nothing
-  (section 3 "Not matched"), so no `configs` unless the job has an S2 re-run (section 4.4), whose stages it then
-  measures as Day 2 does.
+- `--levels none --draw`: the measuring runs of every instrument the draw plays; the rain design rounds match
+  nothing (section 3 "Not matched"), so the `configs` are the anchor's rain palette, on which its sour copy's sax is
+  matched to its round-mates' (`target: round`, 2026-11-01 review), and an S2 re-run's stages (section 4.4), measured
+  as Day 2 does.
 - `--levels <levels.json> --draw`: one palette per rain option (`w1_excerpt_e2`, `w2_rain_d24`), each the band at
   its t and median F with its settings, and its bed: W1's options name the excerpt (at the stage band's Δ 18), W2's
   the level on e1 (the stage band's excerpt) or no bed (`rain_none`), the stage's own option applied last
   (`band_settings`). A bed is `{src: rain, start_s: <the excerpt's>, xfade_s: 1.0, delta_lu: Δ}`, with the rain file
   added as the fetch source `rain` of the palettes that play it; the index records each palette's `bed` and the
   excerpt record's sha256. Within a rain round the palettes differ only in the bed (and the rain source), so the
-  music is the same in every clip (section 2.1).
+  music is the same in every clip (section 2.1). The anchor's sour copy plays its own, `<base>_<loop id>_sour`: its
+  rain palette with the sax fader the levels file gives its case (`configs[base].buses.sax.cases[<loop>.sour].F`,
+  matched to its round-mates' L(loop) + F), refused when the levels file did not match it to its round.
 
 Every source file is hashed once and every SoundFont preset checked before anything is written; a generation that
 fails writes nothing.
@@ -488,7 +491,7 @@ def write_measuring(inputs: Inputs, out: Path, stage: str, plan_path: Path, draw
                             "sha256": sha256_bytes(data), "stage": b["stage"], "option": b["option"],
                             "instruments": b["instruments"], "settings": list(b["settings"]),
                             "sax_muted": b["sax_muted"], "buses": list(b["buses"]), "loops": b["loops"],
-                            "sub": b["sub"]}
+                            "sub": b["sub"], **({"target": b["target"]} if "target" in b else {})}
         index.update(draw={"file": label(draw_path, inputs.root), "sha256": file_sha256(draw_path)},
                      configs=configs)
     files[Path("measure") / "index.json"] = (json.dumps(index, indent=1, sort_keys=False) + "\n").encode("utf-8")
@@ -580,8 +583,11 @@ def day_bases(inputs: Inputs, draw: Mapping) -> dict[str, dict]:
     itself (Day 3's rain palettes, one per option). {key: stage, option, instruments (bus -> id), settings (the band's
     plan variants that set palette values, `band_settings`), whether the sax is muted, the stage's `match` buses,
     `loops` and its literal substitutions (`sub`)}. On Day 3 the S2 re-run's stages (plan.yaml `rerun_s2`, section
-    4.4) belong to the day too."""
+    4.4) belong to the day too, and a rain palette whose anchor's sour copy matches its round (a level with `target:
+    round`, lofi_rl.shootout.draw) is measured on that bus though its stage matches none: its entry takes the
+    level's buses (the sax) and `target: round` (2026-11-01 review)."""
     out: dict[str, dict] = {}
+    round_of: dict[str, list[str]] = {}
     plan = inputs.plan
     for key, spec in sorted((draw.get("palettes") or {}).items()):
         level = spec.get("level") or {}
@@ -607,9 +613,16 @@ def day_bases(inputs: Inputs, draw: Mapping) -> dict[str, dict]:
             raise GenerateError(f"draw: palette {key} plays no known instrument on {missing}")
         if out.setdefault(name, entry) != entry:
             raise GenerateError(f"draw: the clips of stage palette {name} name two different bands")
-        if level and list(level["buses"]) != entry["buses"]:
+        if level.get("target") == "round":      # Day 3: an anchor's sour copy on a stage that matches no bus
+            if entry["buses"] or list(level["buses"]) != ["sax"] or spec.get("sax_muted"):
+                raise GenerateError(f"draw: palette {key} matches {level['buses']} to its round, which only an "
+                                    f"anchor's sour copy does, on the sax of a stage that matches no bus")
+            round_of[name] = list(level["buses"])
+        elif level and list(level["buses"]) != entry["buses"]:
             raise GenerateError(f"draw: palette {key} matches {level['buses']}, but stage {st.id} matches "
                                 f"{entry['buses']}")
+    for name, buses in round_of.items():
+        out[name] = {**out[name], "buses": buses, "target": "round"}
     return out
 
 
@@ -634,8 +647,13 @@ def clip_palette_day2(inputs: Inputs, levels: Mapping, base: Mapping, key: str, 
         if rec.get("instrument") != base["instruments"][bus]:
             raise GenerateError(f"{base['id']} on {level['case']}: the levels file measured {rec.get('instrument')} on "
                                 f"{bus}, but the palette plays {base['instruments'][bus]}")
+        if (rec.get("target") == "round") != (level.get("target") == "round"):
+            raise GenerateError(f"{base['id']} on {level['case']}: the levels file matched its {bus} to "
+                                f"{'its round' if rec.get('target') == 'round' else 'S* + T'}, the draw asks for "
+                                f"{'its round' if level.get('target') == 'round' else 'S* + T'}")
         if abs(rec["off_lu"]) > tol:
-            raise GenerateError(f"{base['id']} on {level['case']} sits {rec['off_lu']:+.3f} LU from S* + T on {bus} "
+            to = "its round-mates" if level.get("target") == "round" else "S* + T"
+            raise GenerateError(f"{base['id']} on {level['case']} sits {rec['off_lu']:+.3f} LU from {to} on {bus} "
                                 f"after matching, more than its clip_tol_lu of {tol} LU (§3 step 6c)")
         faders[bus] = float(rec["F"])
         buses[bus] = {"instrument": rec["instrument"], "L": rec["L"], "F": faders[bus], "lufs": rec["lufs"],
@@ -648,7 +666,10 @@ def clip_palette_day2(inputs: Inputs, levels: Mapping, base: Mapping, key: str, 
     entry = {"stage": base["stage"], "option": base["option"], "kit": None, "file": rel.as_posix(), "id": key,
              "sha256": sha256_bytes(data), "instruments": dict(base["instruments"]), "trim_db": trims,
              "fader_db": faders, "settings": list(base["settings"]), "sax_muted": base["sax_muted"],
-             "base": base["id"], "level": {"case": level["case"], "buses": buses}}
+             "base": base["id"], "level": {"case": level["case"], "buses": buses,
+                                           **({"target": level["target"]} if "target" in level else {})}}
+    if "bed" in base:                             # Day 3: a rain palette's clip (an anchor's sour copy) plays its bed
+        entry["bed"] = base["bed"]
     return rel, data, entry
 
 

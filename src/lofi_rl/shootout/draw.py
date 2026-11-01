@@ -37,7 +37,10 @@ the stage palette `<stage>[_<kit>]_<option>`; its `level` names the bus, the opt
 on, every clip of a stage that names `match` (plan.yaml) plays its own palette too (CD-53), named the same way, and
 its `level` names those buses and its case, which the level tool measures on the clip's own stage palette and text;
 a vamp's text is named by the vamp (`<loop>.<vamp>`, palette `v_<loop id>_<vamp>`). Every other stage (Day 3's
-rain) plays one palette per option.
+rain) plays one palette per option, but an anchor's sour copy there plays its own (2026-11-01 review): `<base>_<loop
+id>_sour`, whose `level` is `{buses: [sax], case: <loop>.sour, target: round}`, so the level tool gives it the sax
+fader that puts its sax where its round-mates' sits (the band sax at its median fader on the round's own rain
+palette), not at S* + T: the sour text changes only the sax notes, and so its sax loudness.
 
 Sound claims: none.
 """
@@ -338,6 +341,10 @@ def _clip(ctx: _Ctx, stage: Stage, loop_id: str, option: str, band: Mapping[str,
                  else {"bus": stage.bus, "variant": option, "case": case})       # CD-52: its candidate's 9-loop runs
         spec = {**spec, "base": key, "level": level}
         key = "_".join([key, loop_id.lower()] + ([] if variant == "base" else [variant]))
+    elif sour:                                  # Day 3's rain: the sour copy's own sax fader, matched to its round
+        level = {"buses": ["sax"], "case": f"{lp.name}.{variant}", "target": "round"}
+        spec = {**spec, "base": key, "level": level}
+        key = "_".join([key, loop_id.lower(), variant])
     if ctx.palettes.setdefault(key, spec) != spec:
         raise DrawError(f"palette {key} is asked for with two different bands")
     register = plan.candidates[pal_band["sax"]].register if pal_band.get("sax") else None

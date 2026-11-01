@@ -29,7 +29,9 @@ across its batches (section 8):
   (`bass_lufs`) loudness spreads over 1.0 LU [CD-27]; from Day 2 on every other bus a stage matches too
   (`<bus>_lufs`, CD-53: R3a's sax, keys and bass, R3b's keys and bass), at its stage's limit; on Day 3 a W1 round
   whose excerpts' beds, measured in the finished renders relative to their music (`bed_lu`), spread over 1.0 LU (W2's
-  level is its candidate); with --levels, every trim or fader a job's drift check moved by more than 0.1 dB.
+  level is its candidate), and a W1 or W2 anchor round whose sax as rendered (`sax_lufs`: its sour copy plays its own
+  fader, matched to its round-mates') spreads over 1.0 LU; with --levels, every trim or fader a job's drift check
+  moved by more than 0.1 dB.
 
 Section 8's rules are the functions `keys_to_k2`, `kits_after_r1`, `bass_pairings`, `relisten_bass` (CD-54),
 `sax_to_final` and `day2_cut` (after Day 1), `keys_survivors`, `sax_final`, `warmth`, `timing`, `swing`, `humanize`,
@@ -911,9 +913,15 @@ def flag_rules(plan: Plan, stage: str) -> list[tuple[str, float, str]]:
 
 
 def round_levels(plan: Plan, rd: Round) -> tuple[list[dict], list[dict]]:
-    """(flags, spreads) of one round from its hidden manifest's level fields."""
+    """(flags, spreads) of one round from its hidden manifest's level fields. A Day-3 rain anchor round adds its sax
+    (`sax_lufs`, at MATCHED_LU): its sour copy plays its own sax fader, matched to its round-mates' (2026-11-01
+    review), where the music of a rain design round is one by construction."""
     flags, spreads = [], []
-    for name, limit, bus in flag_rules(plan, rd.stage):
+    rules = flag_rules(plan, rd.stage)
+    st = plan.stages.get(rd.stage.removesuffix(RERUN))
+    if rd.kind == "anchor" and st is not None and st.fills in UNMATCHED_SLOTS:
+        rules = rules + [("sax_lufs", MATCHED_LU, "sax")]
+    for name, limit, bus in rules:
         vals = [i.get(name) for i in rd.infos]
         where = {"batch": rd.batch, "round": rd.id, "number": rd.number, "kind": rd.kind, "stage": rd.stage,
                  "slot": rd.slot, "loop": rd.loop, "bus": bus, "field": name, "limit_lu": limit}

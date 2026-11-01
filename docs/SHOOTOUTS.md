@@ -401,16 +401,28 @@ matched on its own loop and its own music by construction, and nothing about it 
 clip. What the rain rounds need is the music held fixed:
 - **The music is the same in every clip of a rain round.** The rain palettes are the Day-2 picks at each
   instrument's t and median F, measured again against job 1's (§3 "Drift between jobs"), the values the frozen
-  palette takes, so no clip has a fader of its own; within a round the palettes differ only in the bed (a test diffs
-  them, §7.8). Each rain clip's record carries the music's pre-limiter loudness (`music_lufs`) and its pcm_sha256,
-  and the batch builder refuses a rain design round whose clips do not share it (an anchor's sour copy has music of
-  its own).
+  palette takes, so no design clip has a fader of its own; within a round the palettes differ only in the bed (a test
+  diffs them, §7.8). Each rain clip's record carries the music's pre-limiter loudness (`music_lufs`) and its
+  pcm_sha256, and the batch builder refuses a rain design round whose clips do not share it (an anchor's sour copy
+  has music of its own).
+- **The anchor's sour copy is matched to its round-mates** (2026-11-01 review). Its text changes only the sax
+  notes, so at the band's median sax fader its sax sat 0.18–1.65 LU from its round-mates' (the review re-rendered
+  every W loop's sour copy, L4 the most), where Days 1 and 2 matched their anchors to about 0.01 LU [CD-52]. It now
+  plays its own palette, `<rain palette>_<loop id>_sour`: the level tool measures its rain palette (a config with
+  `target: round`, at the band sax's trim, since the band's sax variant and timing play there) on the loop's own
+  text, L(loop), the round-mates' sax at the median F, and on the sour text, and gives the sour copy F + L(loop) −
+  L(loop.sour), corrected until its sax measures within 0.005 LU of L(loop) + F (not S\* + T). Its render must play
+  that fader (render status `level` otherwise); every rain clip's hidden record gives its sax as rendered
+  (`sax_fader_db`, and `sax_lufs`, its loudness before the fader plus the fader), and the tally flags a W1 or W2
+  anchor round whose `sax_lufs` spreads over 1.0 LU. In the dry run after the review (§7.7) the anchor, W2.2 on L4,
+  went from 1.6523 LU at the median fader to 0.0023 LU (sax fader +4.20 dB against the band's +2.55).
 - **The bed as heard is recorded:** `bed_lu`, the loudness of render.wav − music.wav relative to music.wav. Set before
   the limiter, the bed comes out closer to the music than Δ by what the limiter takes off the music's peaks and not
   off the steady bed: in the Day-3 dry run (§7.7) by 0.00–2.02 LU depending on the loop (L6 the most), the same for
   every clip of a round within 0.03 LU. A W1 round (every excerpt at Δ 18) whose `bed_lu` spreads over 1.0 LU is
   flagged like an instrument round (§3 step 8); W2's level is its candidate and is not flagged. The hidden manifest
-  gives each rain clip `bus_lufs` (its bed's set loudness, null for no bed), `music_lufs` and `bed_lu`.
+  gives each rain clip `bus_lufs` (its bed's set loudness, null for no bed), `music_lufs`, `bed_lu`, `sax_fader_db`
+  and `sax_lufs`.
 
 **How the values are carried** [CD-51]. Each shootout palette holds one instrument per bus, so no palette code is
 needed before the freeze: a kit's trim is added to every lane's `db`, a FluidSynth instrument's trim is a `Gain`
@@ -1130,7 +1142,8 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   (exit 3; `ALLOW_DIRTY=1` would ship other workflows' edits), so each job waits for a clean, synced tree.
 - **Stages** (`python -m lofi_rl.shootout.job`): the draw (§7.6) → generator `--levels none` (§7.8; from day 2 on
   with the draw, CD-53) → levels
-  (§7.1) with the draw, so every clip's own fader is measured, the anchor's sour copy included [CD-52] → generator
+  (§7.1) with the draw, so every clip's own fader is measured, the anchor's sour copy included [CD-52; on Day 3
+  matched to its round-mates' sax on its own rain palette, §3 "Day 3: the rain"] → generator
   with the levels and the draw (a palette per clip) → clip renders, 8 at a time with 1 worker each → FLACs →
   batches (§7.6) → `SHOOTOUT_OK`. Every palette source is hashed once per stage process, not once per palette. Any
   gate or compile failure fails the job before any batch is written, and so does a clip off its target after
@@ -1319,6 +1332,20 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   4. **Spreads:** in every rain design round one pre-limiter music (spread 0.0000 LU); `bed_lu` + Δ per round
      0.0002–0.0274 LU apart (W1 0.0074, 0.0101 and 0.0274 LU, the largest on L5), each round's offset from Δ
      0.00–2.02 LU (L6 the most); the repeats' first-showing fields 0.0002–0.0093 LU.
+- **Dry run, Day 3, after the review** (2026-11-01, the laptop, the review-fix branch; the dry run above's seed,
+  priors, scratch `LOFI_ASSETS` and ARGS, with `--serve-date 2026-11-03`; a new run folder and inbox). Every stage
+  exit 0 in 38.6 s (levels 15.4, render 21.8); a second run at the same paths gave the same bytes in 173 of 175 run
+  files and all 48 inbox files (renders.json and stages.json differ only in wall times), 44.3 s, peak memory 2.63 GB.
+  The draw gave the same batches, rounds and renders, and 8 palettes: the 7 rain palettes and the anchor's
+  `w2_rain_d30_l4_sour`. The levels tool measured `w2_rain_d30` as the one config: the alto's sax on L4 at t +6.63,
+  L −32.4094 LUFS at the median F +2.55 (−29.8594 after it), and on the sour text L −34.0617, so the sour copy's
+  fader came to +4.20 dB in one measurement, −29.8617 after it, 0.0023 LU from its round-mates (1.6523 LU at the
+  median fader). The sour render read the tool's L exactly (difference 0.00000 LU) at that fader. All 26 renders
+  at −14.064 … −14.000 LUFS, true peak at most −1.486 dBTP; batches as before (`b1106-1-mix` 6 rounds and 21 clips,
+  `b1106-2-mix` 7 and 23, the anchor W2.2), each hidden manifest with `serve_from: 2026-11-03`; in the hidden
+  manifests the anchor round's `sax_lufs` spread 0.0023 LU and every rain design round's 0.0. With 4020a9d's code
+  and this branch's, Day-1 and Day-2 draws on 20 seeds each (Day 2 with R2r, without, and with two cuts) are the
+  same documents, and the batches built from 12 of them with fake renders the same manifest bytes.
 - **Day 1 and Day 2 unchanged** (2026-11-01): main 316f710 and this branch, each run from one scratch code folder
   at the same paths with the same seeds (Day 1 `--stage day1`; Day 2 job 2's ARGS with `--prior 13635646 --add
   R2r`), gave the same bytes in 509 of 511 Day-1 run files, 710 of 712 Day-2 run files and all 179 inbox files;
@@ -1425,12 +1452,18 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   written as on Day 2: the draw plays them on the Day-3 band with the other finalist and with the two slots S2
   varies at their Day-2 values (`sax_plain`, `timing_grid`: plan.yaml `days.2.fixed`), so S2a compares the warmth
   options at grid timing and S2b the timings at warm off (§4.4, CD-19) whatever the band picked for those slots
-  (2026-11-01 review: the re-run had taken the band's S2a and S2b picks). Tests: `tests/test_shootout_day3.py` (the
-  measuring runs with no config, each rain palette's band, faders, settings and bed, the rain source only where a bed
-  plays, every palette loading with `verify=True`, within each rain round only the bed differing, a missing or
-  changed rain file and an unknown excerpt refused, a bed before Day 3 refused, the S2 re-run and its Day-2 variant
-  slots; the level tool on Day 3; the bed record; the Day-3 batches' hidden fields and five repeats, a rain round
-  with two musics refused, a purged first showing made again and built).
+  (2026-11-01 review: the re-run had taken the band's S2a and S2b picks). The anchor's sour copy (2026-11-01
+  review) plays its own palette, its rain palette with the sax fader of the levels file's round-target case
+  (`clip_palette_day2`, refused when the levels file did not match it to its round), and the measuring run writes
+  that rain palette as the day's one config (`target: round`, the sax); §3 "Day 3: the rain". Tests:
+  `tests/test_shootout_day3.py` (the measuring runs and the anchor's config, each rain palette's band, faders,
+  settings and bed and the sour copy's palette differing from its base in its sax fader only, the rain source only
+  where a bed plays, every palette loading with `verify=True`, within each rain round only the bed differing, a
+  missing or changed rain file and an unknown excerpt refused, a bed before Day 3 refused, the S2 re-run and its
+  Day-2 variant slots; the level tool on Day 3, the anchor matched on its rain palette; the bed record; the Day-3
+  batches' hidden fields, `serve_from` and five repeats, a rain round with two musics refused, a purged first showing
+  made again and built; the anchor round's sax spread through the level tool, the generator, the records, the
+  builder and the tally at most 0.2 LU; every one of 1,200 seeds splitting).
 
 ### 7.9 Tally tool (laptop)
 - **Interface:** `python -m lofi_rl.shootout.tally --votes data/votes --inbox inbox [--batch <name> ...]` reads the
@@ -1571,7 +1604,9 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     (`repeat_minutes`: per group, the mean round over the rounds a repeat may show) and an S2 re-run's rounds; while
     r x that passes 30 minutes it cuts `w1-two`, then `w2-two`, each saving the drop it makes. `--day3-cuts
     none|<cut>+<cut>` with `--day3-cuts-by` is Shresth's word, as for Day 2.
-  - **Flags on Day 3:** a W1 round whose `bed_lu` spreads over 1.0 LU (§3 "Day 3: the rain"); none for W2.
+  - **Flags on Day 3:** a W1 round whose `bed_lu` spreads over 1.0 LU (§3 "Day 3: the rain"); none for W2's
+    levels; and (2026-11-01 review) a W1 or W2 anchor round whose `sax_lufs` spreads over 1.0 LU, its sour copy
+    being matched to its round-mates' sax.
   - **Tests** (2026-11-01, `tests/test_shootout_tally.py`, synthetic votes in the shape of the real days: Day 1
     voted 2026-10-31 with no R2 best, Day 2 with R2r voted 2026-11-01, job 2's leaders.json written by the job's own
     `--dry-run`): the line for a 2026-11-03 serving date (every stage eligible, the job's `--dry-run` takes it, the draw

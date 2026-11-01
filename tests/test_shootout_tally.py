@@ -1285,4 +1285,35 @@ def test_a_w1_round_whose_beds_spread_over_1_lu_is_flagged_and_w2s_levels_never_
     assert {f["stage"] for f in flagged} == {"W1"} and len(flagged) == 3
     assert all(f["field"] == "bed_lu" and f["spread_lu"] == pytest.approx(1.25) and f["limit_lu"] == 1.0
                for f in flagged)
-    assert "W1" in {s["stage"] for s in doc["largest_spread"]} and "W2" not in {s["stage"] for s in doc["largest_spread"]}
+    assert "W1" in {s["stage"] for s in doc["largest_spread"]}
+    assert "W2" not in {s["stage"] for s in doc["largest_spread"] if s["bus"] != "sax"}   # the anchor's sax only
+
+
+def test_a_rain_anchor_round_whose_sax_spreads_over_1_lu_is_flagged(inbox, tmp_path):
+    # 2026-11-01 review: the anchor's sour copy in a rain round plays its own sax fader, matched to its round-mates'
+    # (lofi_rl.shootout.levels), and every rain clip's hidden record gives its sax as rendered (`sax_lufs`); the tally
+    # checks the anchor round's spread at 1.0 LU, the design rounds' music being one by construction
+    import shutil
+    root = tmp_path / "inbox"
+    for n in DAY3:
+        src = inbox["folders"][n]
+        shutil.copytree(src, root / src.parent.name / n)
+    votes = tmp_path / "votes"
+    votes.mkdir()
+    clean, _ = T.tally(votes, root, plan=PLAN)
+    (anchor,) = [s for s in clean["largest_spread"] if s["bus"] == "sax" and s["stage"] in ("W1", "W2")]
+    assert anchor["kind"] == "anchor" and anchor["field"] == "sax_lufs" and anchor["spread_lu"] == 0.0
+    assert not [f for f in clean["flags"] if f["field"] == "sax_lufs"]
+    for n in DAY3:
+        path = next(root.glob(f"*/{n}")) / HIDDEN_NAME
+        hid = json.loads(path.read_text())
+        for hr in hid["rounds"].values():
+            if hr["kind"] == "anchor":
+                info = hr["clips"][hr["anchor_clip"]]
+                assert {"sax_lufs", "sax_fader_db", "bed_lu", "music_lufs"} <= set(info) and info["fader_db"] is None
+                info["sax_lufs"] = round(info["sax_lufs"] + 1.25, 4)
+        path.write_text(json.dumps(hid, indent=2))
+    doc, _ = T.tally(votes, root, plan=PLAN)
+    (f,) = [f for f in doc["flags"] if f["field"] == "sax_lufs"]
+    assert (f["kind"], f["bus"], f["limit_lu"], f["what"]) == ("anchor", "sax", 1.0, "spread")
+    assert f["spread_lu"] == pytest.approx(1.25) and f["stage"] in ("W1", "W2")
