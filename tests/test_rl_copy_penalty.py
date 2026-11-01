@@ -108,6 +108,20 @@ def test_a_cut_completion_is_compared_by_its_plain_text_as_junk_compares_a_lengt
     assert copy_form(text, brief.mode, pal, False) == text, "a passing loop: its canonical text without sax"
 
 
+def test_a_bare_numeral_loop_is_compared_in_the_briefs_mode(pal):
+    # a bare numeral needs the brief's mode (G4 without one): under a hopeful brief the loop passes junk's gates and
+    # is compared by its canonical text (I spelled Imaj7), not by the plain text a mode-less parse would leave
+    ref = prompt_v2.reference_texts(pal)["l7_hopeful_low"]
+    t = ref.replace("vamp: Imaj9 IVmaj9", "vamp: I IV", 1)
+    assert t != ref
+    brief = Brief(energy="low", mood="hopeful", bpm=80, tonic=0)
+    s = junk.score_row(_row(0, t, brief), pal, junk.CopyCheck("v2", pal))
+    assert s["gate"] is None, "it passes in the brief's mode"
+    assert copy_form(t, brief.mode, pal) != junk.plain_text(t) == copy_form(t, None, pal)
+    got = CopyPenalty.for_prompt("v2", pal)(t, brief, truncated=False)
+    assert round(got.j, 4) == s["copy_any_jaccard"] and got.nearest == s["copy_any_source"]
+
+
 def test_a_parser_crash_is_a_failed_gate_compared_by_its_plain_text(pal, monkeypatch):
     from lofi_rl.rl import copy_penalty as cp
 
