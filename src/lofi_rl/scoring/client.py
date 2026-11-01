@@ -22,7 +22,7 @@ import json
 import os
 import socket
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -129,10 +129,13 @@ class ScorerClient:
                               status=200, body=doc)
         return doc
 
-    def wait_healthy(self, timeout: float = 600.0, poll: float = 0.5) -> dict[str, Any]:
+    def wait_healthy(self, timeout: float = 600.0, poll: float = 0.5,
+                     alive: Callable[[], bool] | None = None) -> dict[str, Any]:
         """Poll /health until it answers ok, then pin its versions and live terms (later answers must carry the
         same ones; a client seeded from a pin file must find them here already). ScorerUnavailable after
-        `timeout` seconds; a server that answers but is wrong raises at once."""
+        `timeout` seconds; a server that answers but is wrong raises at once. `alive`, when given, is asked on
+        every poll whether the server's process still runs: once it says no, ScorerUnavailable at once, since a
+        server that exited during startup (exit 1 or 2) looks like a slow start until the deadline."""
         deadline = time.monotonic() + float(timeout)
         last: Exception | None = None
         while True:
@@ -146,6 +149,8 @@ class ScorerClient:
                     last = err          # starting up or briefly failing: keep polling until the deadline
                 else:
                     raise
+            if alive is not None and not alive():
+                raise ScorerUnavailable(f"the scorer at {self.sock} exited before /health answered ok: {last}")
             if time.monotonic() >= deadline:
                 raise ScorerUnavailable(f"the scorer at {self.sock} was not healthy within {timeout:g} s: {last}")
             time.sleep(poll)

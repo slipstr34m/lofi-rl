@@ -15,7 +15,6 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import json
-import os
 import shutil
 import subprocess
 import tempfile
@@ -107,15 +106,9 @@ def serving(scorer, sock):
 
 
 def pid_alive(pid: int) -> bool:
-    """Whether process `pid` still runs: False once it has exited, a zombie included (`ps` says Z)."""
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    out = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
-    return bool(out) and not out.startswith("Z")
+    """Whether process `pid` still runs: False once it has exited, a zombie included (lofi_rl.scoring.smoke)."""
+    from lofi_rl.scoring.smoke import pid_alive as alive
+    return alive(pid)
 
 
 def wait_gone(pid: int, timeout_s: float = 10.0) -> bool:

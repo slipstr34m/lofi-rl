@@ -19,8 +19,11 @@
 #      memory, cache hits, the max abs difference of every audio term between the passes, and ok; the log ends
 #      with SCORER_SMOKE_OK or SCORER_SMOKE_FAILED
 # Each server is stopped with SIGTERM and must exit 0 and remove its socket. Every step runs under timeout
-# (docs/kit/LESSONS.md 4), sized from the job's remaining time so the verdict always runs. Features stay on
-# scratch (cache_a, cache_b); only summary/ is pulled.
+# (docs/kit/LESSONS.md 4), sized from the job's remaining time so the verdict always runs. Each pass gets its
+# server's pid and stops waiting once that process exits (a server that dies during startup would otherwise look
+# like a slow start for the whole --wait-s); if pass a fails, servers b and c are skipped and the verdict runs at
+# once, so a server that cannot start ends the job instead of holding the GPU through three waits (about
+# 390 + 330 + 210 s by left()'s sizing). Features stay on scratch (cache_a, cache_b); only summary/ is pulled.
 # Cost: 8 CPU + 8 (32 GB) + 8 (1 L40S) = 24 SU/min -> at most 480 SU (20 min); expected about 6-8 min,
 # 150-190 SU (UNVERIFIED: three model loads and 40 renders on the cluster have not been timed).
 #   make submit JOB=jobs/scorer_smoke.sbatch
@@ -59,20 +62,25 @@ FAIL=0
 timeout 2m "$PY" -m lofi_rl.scoring.smoke setup --run "$RUN" || FAIL=1
 
 T=$(left 480 420); start a "$RUN/cache_a" "$((T + 60))"
-timeout -k 10s "${T}s" "$PY" -m lofi_rl.scoring.smoke pass --sock "$SOCKS/a.sock" --run "$RUN" \
-  --out "$OUT/pass_a.json" --repeat 2 --wait-s "$((T - 30))" || FAIL=1
+A_OK=1
+timeout -k 10s "${T}s" "$PY" -m lofi_rl.scoring.smoke pass --sock "$SOCKS/a.sock" --run "$RUN" --pid "$PID" \
+  --out "$OUT/pass_a.json" --repeat 2 --wait-s "$((T - 30))" || { FAIL=1; A_OK=0; }
 timeout 30s nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader > "$OUT/nvidia_smi_a.txt" 2>&1 || true
 stop a
 
-T=$(left 240 360); start b "$RUN/cache_b" "$((T + 60))"
-timeout -k 10s "${T}s" "$PY" -m lofi_rl.scoring.smoke pass --sock "$SOCKS/b.sock" --run "$RUN" \
-  --out "$OUT/pass_b.json" --wait-s "$((T - 30))" || FAIL=1
-stop b
+if [ "$A_OK" = 1 ]; then
+  T=$(left 240 360); start b "$RUN/cache_b" "$((T + 60))"
+  timeout -k 10s "${T}s" "$PY" -m lofi_rl.scoring.smoke pass --sock "$SOCKS/b.sock" --run "$RUN" --pid "$PID" \
+    --out "$OUT/pass_b.json" --wait-s "$((T - 30))" || FAIL=1
+  stop b
 
-T=$(left 120 240); start c "$RUN/cache_a" "$((T + 60))"
-timeout -k 10s "${T}s" "$PY" -m lofi_rl.scoring.smoke pass --sock "$SOCKS/c.sock" --run "$RUN" \
-  --out "$OUT/pass_c.json" --wait-s "$((T - 30))" || FAIL=1
-stop c
+  T=$(left 120 240); start c "$RUN/cache_a" "$((T + 60))"
+  timeout -k 10s "${T}s" "$PY" -m lofi_rl.scoring.smoke pass --sock "$SOCKS/c.sock" --run "$RUN" --pid "$PID" \
+    --out "$OUT/pass_c.json" --wait-s "$((T - 30))" || FAIL=1
+  stop c
+else
+  echo "scorer smoke: pass a failed, so servers b and c are skipped (see $OUT/pass_a.json and server_a.log)"
+fi
 
 timeout 60s du -sh "$RUN/cache_a" "$RUN/cache_b" 2>/dev/null || true
 T=$(left 10 180)

@@ -2,7 +2,8 @@
 GPU, repeatably, and how long does each stage take?
 
     python -m lofi_rl.scoring.smoke setup   --run RUN
-    python -m lofi_rl.scoring.smoke pass    --sock SOCK --run RUN --out PASS.json [--repeat 2] [--allow-fake]
+    python -m lofi_rl.scoring.smoke pass    --sock SOCK --run RUN --out PASS.json [--repeat 2] [--pid PID]
+                                            [--allow-fake]
     python -m lofi_rl.scoring.smoke verdict --run RUN --out scorer_smoke.json --pass a=A.json --pass b=B.json
                                             [--pass c=C.json] [--cache a=DIR --cache b=DIR] [--rc a=0 ...]
                                             [--sock a=PATH ...] [--gpu-log FILE]
@@ -14,7 +15,8 @@ GPU, repeatably, and how long does each stage take?
   "validation") and the fake RM (lofi_rl.scoring.fakes:load_fake_rm, not a taste model) with zero references, so
   every term and factor runs live on real features. None of these numbers is a calibration of anything.
 - **pass** waits for /health, scores the batch `repeat` times on one server, reads /stats, and writes the
-  health, every response, the wall times and the stats.
+  health, every response, the wall times and the stats. With --pid (the job's server process) it stops waiting
+  as soon as that process has exited (pid_alive): a server that dies during startup costs seconds, not --wait-s.
 - **verdict** checks the passes and writes scorer_smoke.json: every pass has 32 items with the expected gates
   and no render error; the same server's second pass is all memory hits and identical; a fresh server with a cold
   cache (b) agrees with the first (a) within TOL on every audio term (the max abs difference of each is recorded),
@@ -31,6 +33,7 @@ import argparse
 import json
 import math
 import os
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -100,14 +103,39 @@ def cmd_setup(a: argparse.Namespace) -> int:
 
 
 # ------------------------------------------------------------------------------------------ pass
+def pid_alive(pid: int) -> bool:
+    """Whether process `pid` still runs: False once it has exited, including as a zombie (exited, not yet reaped
+    by its parent, the job's shell), which kill(pid, 0) alone would count as alive."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True                                     # it exists, as another user's
+    if Path("/proc/self/stat").is_file():               # Linux: the state is the field after "(command)"
+        try:
+            return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] not in ("Z", "X")
+        except FileNotFoundError:
+            return False
+        except (OSError, IndexError):
+            return True
+    try:                                                # elsewhere (macOS, the laptop's rehearsals): ps
+        out = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True,
+                             timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return bool(out) and not out.startswith("Z")
+
+
 def cmd_pass(a: argparse.Namespace) -> int:
     doc = _read(Path(a.run) / "batch.json")
     items = [{k: it[k] for k in ("i", "text", "brief", "brief_id")} for it in doc["items"]]
     client = ScorerClient(a.sock, allow_fake=a.allow_fake, timeout=a.timeout_s)
     t0 = time.perf_counter()
-    out: dict[str, Any] = {"sock": str(a.sock), "runs": []}
+    out: dict[str, Any] = {"sock": str(a.sock), "pid": a.pid, "runs": []}
+    alive = None if a.pid is None else (lambda: pid_alive(a.pid))
     try:
-        out["health"] = client.wait_healthy(a.wait_s)
+        out["health"] = client.wait_healthy(a.wait_s, alive=alive)
         out["wait_s"] = round(time.perf_counter() - t0, 2)
         for _ in range(a.repeat):
             t = time.perf_counter()
@@ -327,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repeat", type=int, default=1)
     p.add_argument("--wait-s", type=float, default=600.0)
     p.add_argument("--timeout-s", type=float, default=300.0)
+    p.add_argument("--pid", type=int, help="the server's process (or its wrapper's): stop waiting once it exits")
     p.add_argument("--allow-fake", action="store_true", help="accept a --backend fake server (laptop rehearsal)")
     v = sub.add_parser("verdict", help="compare the passes and write scorer_smoke.json")
     v.add_argument("--run", type=Path, required=True)

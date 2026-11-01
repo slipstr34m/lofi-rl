@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import re
 import subprocess
+import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -59,7 +62,9 @@ def test_the_steps_three_servers_and_the_outputs():
     assert steps == ["setup", "pass", "pass", "pass", "verdict"]
     assert re.findall(r"(?:^|; )start (\w) \"\$RUN/(cache_\w)\"", code, re.M) == [
         ("a", "cache_a"), ("b", "cache_b"), ("c", "cache_a")]
-    assert re.findall(r"^stop (\w)$", code, re.M) == ["a", "b", "c"]
+    assert re.findall(r"^\s*stop (\w)$", code, re.M) == ["a", "b", "c"]
+    assert code.count('--pid "$PID"') == 3, "every pass stops waiting once its server has exited"
+    assert '|| { FAIL=1; A_OK=0; }' in code and 'if [ "$A_OK" = 1 ]; then' in code, "b and c only after a passed"
     assert 'SOCKS="${TMPDIR:-/tmp}/lofi-scorer-${SLURM_JOB_ID:-local}"' in code and '--sock "$SOCKS/$1.sock"' in code
     assert 'RUN="$REMOTE_SCR/runs/scorer-smoke-${SLURM_JOB_ID:-local}"' in code and 'OUT="$RUN/summary"' in code
     assert '--out "$OUT/scorer_smoke.json"' in code and "--repeat 2" in code
@@ -129,6 +134,30 @@ def test_the_smoke_steps_pass_on_the_fake_backends(tmp_path, capsys):
     assert v["socket_removed"] == {"a": True, "b": True, "c": True}
     assert v["passes"]["a"]["terms"] == {k: True for k in v["passes"]["a"]["terms"]}, "every term live"
     assert set(v["passes"]["a"]["t_ms"]) >= {"render", "featurize", "score", "request"}
+
+
+def test_a_pass_returns_at_once_when_its_server_exits_during_startup(tmp_path):
+    # The job's servers run in the background; one that exits 1 or 2 while starting used to look like a slow start
+    # until --wait-s ran out (about 390 + 330 + 210 s of a 20-minute GPU job). Here the server exits 2 at once (its
+    # --sock is a plain file) and is never reaped while the pass runs: a zombie, as under the job's shell.
+    run = tmp_path / "run"
+    assert smoke.main(["setup", "--run", str(run)]) == 0
+    with short_sock_dir() as d:
+        plain = d / "a.sock"
+        plain.write_text("not a socket")
+        p = subprocess.Popen([sys.executable, "-m", "lofi_rl.scoring.server", "--sock", str(plain), "--backend", "fake",
+                              "--workers", "1"], cwd=ROOT, env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            t = time.monotonic()
+            rc = smoke.main(["pass", "--sock", str(plain), "--run", str(run), "--out", str(tmp_path / "pass_a.json"),
+                             "--pid", str(p.pid), "--wait-s", "120", "--allow-fake"])
+            took = time.monotonic() - t
+        finally:
+            p.wait(60)
+    doc = json.loads((tmp_path / "pass_a.json").read_text())
+    assert rc == 1 and p.returncode == 2 and took < 30, took
+    assert doc["ok"] is False and "exited before /health answered ok" in doc["error"] and doc["pid"] == p.pid
 
 
 def test_the_verdict_fails_on_one_clip_rendered_to_other_pcm_whatever_tol_says(tmp_path, capsys):
