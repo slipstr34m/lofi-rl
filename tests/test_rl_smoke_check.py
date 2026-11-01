@@ -411,10 +411,36 @@ def test_steps_without_the_metric_are_warned_and_the_mean_reads_the_others(tmp_p
     assert any("1 of 15 steps have no" in w for w in rep["warnings"])
 
 
+NOT_CONFIGURED = "not D-020's reading: it is read in a GRPO smoke with the grammar and prompt v2"
+
+
 def test_on_todays_smoke_the_is_rule_is_not_d020s_reading(tmp_path):
-    from lofi_rl.rl.config import ROOT
     smoke = _cfg(ROOT / "configs" / "grpo_smoke.yaml")
     rep = sc.check(_d020_run(tmp_path, cfg=smoke, copy=False), "final", smoke, {"a": "0", "b": "0"})
     assert rep["ok"], rep["failures"]
     assert "in_language" not in rep and "backend" not in rep and "copy" not in rep
     assert rep["is_ratio"]["rule"]["applies"] is False and "not D-020's reading" in rep["is_ratio"]["rule"]["says"]
+
+
+def test_the_grammar_on_prompt_v1_is_not_d020s_reading(tmp_path):
+    # configs/grpo_smoke_constrained.yaml, which the job takes: the grammar is shown, but the prompt is v1
+    cfg = _cfg(ROOT / "configs" / "grpo_smoke_constrained.yaml")
+    rep = sc.check(_d020_run(tmp_path, cfg=cfg, copy=False), "final", cfg, {"a": "0", "b": "0"})
+    assert rep["ok"], rep["failures"]
+    isr = rep["is_ratio"]
+    assert cfg.prompt == "v1" and isr["grammar_shown"] is True
+    assert isr["configured"] is False and isr["rule"]["applies"] is False and isr["rule"]["says"] == NOT_CONFIGURED
+
+
+def test_prompt_v2_without_the_grammar_is_not_d020s_reading(tmp_path):
+    import yaml
+    doc = yaml.safe_load(V2.read_text())
+    del doc["structured_outputs"]                       # D-020's fallback: prompt v2, the grammar off
+    p = tmp_path / "v2_no_grammar.yaml"
+    p.write_text(yaml.safe_dump(doc, sort_keys=False))
+    cfg = _cfg(p)
+    rep = sc.check(_d020_run(tmp_path / "run", cfg=cfg), "final", cfg, {"a": "0", "b": "0"})
+    assert rep["ok"], rep["failures"]
+    isr = rep["is_ratio"]
+    assert cfg.prompt == "v2" and cfg.structured_outputs is None and "in_language" not in rep
+    assert isr["configured"] is False and isr["rule"]["applies"] is False and isr["rule"]["says"] == NOT_CONFIGURED
