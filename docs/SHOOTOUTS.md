@@ -18,6 +18,11 @@ which freezes on Nov 6 and never changes after (docs/DECISIONS.md D-017).
   `--prior`), and Day-2 dry runs of three proposals, every Day-2 round within 0.0093 LU. Laptop clips are not
   canonical (LESSONS 38); none is queued for listening. The 9 reference loops in `shootouts/loops/` exist and pass
   the gates (§5).
+- **Since Shresth's confirmation of the Day-1 survivors** (2026-10-31, "Yes, use these"): the tally counts a clip as
+  heard once 1 bar has played, over every attempt of its round (D-013 as amended; CD-38, §7.9), and Day 2 can add
+  R2r, a 3-round bass re-listen, when R2 leaves the bass undecided (CD-54, §4.2): the Day-1 votes had no best in any
+  R2 round. The whole path ran on the laptop with R2r (§7.7 "End to end, R2r"). His "no Day-2 cuts" goes to the
+  tally as `--day2-cuts none` (§2.7, §7.9), which keeps the sax final.
 - **Sound claims:** none. Every candidate, variant and level here is a starting point for Shresth's ear. Claude
   records counts and picks, never descriptions of sound (TASTE.md: "Shootout prunes, votes decide").
 - **Blind by construction.** This file gives every round in symbols (`P1a`, `k2`, `v3`, ...). Which option sits
@@ -119,7 +124,7 @@ hidden control (R: "You are never told which rounds those are") [CD-21].
   |---|---|---|
   | K1 | 6 rounds of 4; each candidate on 3 different tiles | 6–9 each (the minimum spread for 8 candidates); each family's two members add to 15 [CD-8] |
   | K2 | 2 rounds of 3 (4 on a tie) | 3, 4, 5 (5 each on a tie) |
-  | R1, R2, R3b, S2a, S2b, W1, W2 | Latin squares: each option on every tile once [CD-14] | equal |
+  | R1, R2, R2r, R3b, S2a, S2b, W1, W2 | Latin squares: each option on every tile once [CD-14] | equal |
   | R3a | 2 rounds of 4, the second reversed | 5 each |
   | S1 | 6 rounds of 4; each source on every tile once [CD-17] | 10 each |
   | S1 final | 3 rounds of 2 | 4 and 5 |
@@ -136,8 +141,8 @@ hidden control (R: "You are never told which rounds those are") [CD-21].
 D-013 (decided by Shresth, pre-registered): about 10 % of rounds are repeats, **at least 2 days later**, with tiles
 reversed; about 5 % are broken anchors; a session that misses its anchors counts at half weight. The shootouts
 follow it as written. Whether to keep these checks in the shootouts at all is put to him (§11, question 1).
-- **Repeats: 5**, one per group: keys (K1, K2); drums + bass (R1, R2, R3a, R3b); vamps; sax sources (S1 and its
-  final); sax variants (S2a, S2b). Each shows one design round of its group again, drawn from every round except the
+- **Repeats: 5**, one per group: keys (K1, K2); drums + bass (R1, R2, R3a, R3b, and R2r when Day 2 adds it,
+  CD-54); vamps; sax sources (S1 and its final); sax variants (S2a, S2b). Each shows one design round of its group again, drawn from every round except the
   first one served of each stage [CD-24], tiles reversed, in a Nov-6 batch: Day-1 rounds come back 3 days later and
   Day-2 rounds 2 days later. Before job 3 Claude reads the vote dates and names the stages whose rounds were first
   heard at least 2 days before Nov 6; repeats are drawn only from those, and a group with none gets no repeat. No
@@ -164,21 +169,22 @@ night before:
 | Day (date) | Batches, in the order `make rate` serves them [CD-49] | Needs |
 |---|---|---|
 | 1 (Nov 3) | keys K1 → groove R1, R2 → sax S1 (+ anchor) | the tooling of §7 and the SFZ → SF2 converter; job 1 on Nov 2 evening |
-| 2 (Nov 4) | groove R3a, R3b → sax final, S2a, S2b (+ anchor) → keys K2 → vamps | Day-1 tallies; job 2 on Nov 3 evening |
+| 2 (Nov 4) | groove (R2r first when the job adds it, CD-54) R3a, R3b → sax final, S2a, S2b (+ anchor) → keys K2 → vamps | Day-1 tallies; job 2 on Nov 3 evening |
 | 3 (Nov 6) | two mixed batches: rain W1, W2 (+ anchor) and the 5 repeats (+ the S2 re-run, §4.4) | the rain file by Nov 5 noon (§11); job 3 on Nov 5 evening; before the sign-off |
 
 Days are relative: if the tooling slips, every day moves back by the same amount and the freeze with it, and the
 repeats keep their 2-day gap.
 
 **Time per round** from RATING.md's numbers: one pass is 8 bars × 240 / bpm = 1920 / bpm seconds (25.3 s at
-76 BPM, 21.3 s at 90); auto-play plays each clip's 8 bars in turn; a clip counts as heard at 4 bars. The planning
-figure (taste_pipeline.md §8) is 0.75 of auto-play plus 8 s to mark and save:
+76 BPM, 21.3 s at 90); auto-play plays each clip's 8 bars in turn; a clip counts as heard once 1 bar has played, over
+every attempt of its round (D-013 as amended, 2026-10-31; it was 4 bars). The planning figure (taste_pipeline.md §8)
+is 0.75 of auto-play plus 8 s to mark and save:
 
-| Clips | Full auto-play | Heard minimum (4 bars each) | Plan estimate |
+| Clips | Full auto-play | Heard minimum (1 bar each) | Plan estimate |
 |---|---|---|---|
-| 2 | 42.7–50.5 s | 21.3–25.3 s | 40.0–45.9 s |
-| 3 | 64.0–75.8 s | 32.0–37.9 s | 56.0–64.8 s |
-| 4 | 85.3–101.1 s | 42.7–50.5 s | 72.0–83.8 s |
+| 2 | 42.7–50.5 s | 5.3–6.3 s | 40.0–45.9 s |
+| 3 | 64.0–75.8 s | 8.0–9.5 s | 56.0–64.8 s |
+| 4 | 85.3–101.1 s | 10.7–12.6 s | 72.0–83.8 s |
 
 (90 BPM to 76 BPM.)
 
@@ -195,18 +201,37 @@ Per round at each loop's tempo, from the round slots of §4 (scratch planner, 20
 | Anchors (D-013) | 3 | 3.8 min | 4.5 min |
 | Repeats (D-013), drawn | 5 | 4.7–6.6 min (5.7 expected) | 5.4–8.0 min (6.7) |
 | **Total** | **58** | **66.7 min** (65.7–67.6) | **78.6 min** (77.3–79.8) |
+| R2r, the bass re-listen (only with `--add R2r`, CD-54): 3 rounds of 3 on L1, L5, L9 | 3 | 3.0 min | 3.5 min |
 
 - **By day:** Day 1 23.0 min (19 rounds); Day 2 28.3 min (26); Day 3 15.3 min expected (13 rounds; 14.4–16.3).
   Nov 3–4 is 51.3 min, inside P§7's "about 55 min"; the total is inside P§4's 1.1 h for Phase-1 shootouts. If the
-  sax final changes the winner, the S2 re-run adds 6.1 min (6 rounds) on Day 3.
+  sax final changes the winner, the S2 re-run adds 6.1 min (6 rounds) on Day 3. **With R2r** (CD-54) Day 2 is
+  31.3 min (29 rounds) and Nov 3–4 54.3; the shootouts come to 61 rounds, 69.7 min (82.1 at full auto-play).
 - **Pushes** (P§9 and TASTE's defaults: at most 2 a day, each worth 15 min of listening or less, by the plan
   estimate): Nov 3: keys + groove 13.8 min, then sax 9.2. Nov 4: groove + sax 14.7, then keys + vamps 13.6.
   Nov 6: the two mixed batches, about 7.7 each and never above 8.6 (11.6 with the S2 re-run). Each day stays
-  under T·Listening's hour.
-- **At full auto-play** Day 1 is 27.3 min, Day 2 33.1 and Day 3 18.1; the larger pushes then run 16–17 min.
+  under T·Listening's hour. With R2r the Nov-4 groove batch is 8.6 min, so groove + sax is 17.8: Day 2's 31.3 min
+  cannot fit two pushes of 15 min or less without a cut.
+- **At full auto-play** Day 1 is 27.3 min, Day 2 33.1 (36.6 with R2r) and Day 3 18.1; the larger pushes then run
+  16–17 min.
 - **Cut list** [CD-50]. After Day 1, Claude divides the audit's minutes for Day 1 (`time.minutes`, summed over its
-  batches) by the plan's 23.0, giving r. If r × 28.3 would pass 30 (Day 2's two pushes) or r × 51.3 would pass 55
-  (P§7), cut in this order until both fit:
+  batches) by the plan's 23.0, giving r. If r × Day 2's plan would pass 30 (Day 2's two pushes) or r × (23.0 + Day
+  2's plan) would pass 55 (P§7), cut in this order until both fit. **Day 2's plan is the plan the Day-2 draw will
+  play** (the tally's `draw.day_minutes`, 2026-10-31): every design round with the proposal's leaders and adds,
+  exactly as the draw builds it, and each anchor at the mean of the rounds it may imitate. It is 28.2 min with K2's
+  3 keys and a 2-sax final, 28.8 with 4 keys, 29.2 with a 3-sax final, 29.7 with both, and 3.0 more with R2r (31.2;
+  32.7 with all three). The fixed 28.3 it replaces (§6's batch figures, which take a longer sax-batch anchor than
+  the mean) was the same for every proposal, so a 4-key K2 or a 3-sax final made Day 2 longer than the cut list read
+  (found by the verifier of the Day-2 tooling). Each cut saves the drop it makes in that estimate: with the
+  default counts 3.6, 3.0 and 2.0 min (1.96 after the other two, its anchor changing with them), and 2.9 for the
+  final of a 3-sax tie; the table below keeps §6's figures. R2r is not on the list: it decides the bass, which no
+  other round does. At the plan's own pace (r = 1) Day 2 with R2r reads 31.2 and the list cuts the high vamp
+  rounds. For the Day 2 after the real Day-1 votes Shresth decided no cuts (2026-10-31, "Yes, use these", to a
+  proposal with no Day-2 cuts: the audit's Day-1 minutes included a silent attempt from an audio-output problem),
+  so the tally runs with his word, `--day2-cuts none` (§7.9): job 2's line then carries no `--cut`, and the S1 rule
+  keeps the final (`sax=sax_mtg_alto+sax_mtg_tenor`). Dropping `--cut` from the list's line by hand does not do it:
+  with the final cut, S1 alone names one sax, and with the final back the Day-2 band refuses one sax id ("--leaders
+  sax: 1 ids given, day2 takes [2, 3]", which `scripts/submit.sh` would not catch before job 2 starts). The list:
 
   | # | Cut | Saves (plan / full) | What is lost |
   |---|---|---|---|
@@ -388,6 +413,7 @@ faders per §3.
 - **Day 1** (K1, R1, R2, S1): the dev palette's instrument in every slot not under test: keys GU Tine EP 4, kit GU
   Jazz 32, bass GU Acoustic Bass 32, sax GU Tenor 66.
 - **Day 2:** the Day-1 leaders (§8): keys the K1 leader, the R1 leader kit with its R2 bass, sax the S1 leader.
+  When the bass is undecided and Day 2 adds R2r (CD-54), the bass is the default, `bass_gu_acoustic`, meanwhile.
 - **Day 3:** the Day-2 picks: keys the leader over K1 + K2, the R3 picks, the sax after the final with its S2 picks.
 
 Option ids below are the `option` values of the hidden manifests. Tiles read left to right as 1–4. Symbols are
@@ -462,7 +488,32 @@ pairing (I6 "each kit carries its paired bass"). Basses as b1–b3, Latin square
 | R2.2 | k2 | L7 hopeful low 79 | b2 | b3 | b1 |
 | R2.3 | k3 | L2 melancholy mid 81 | b3 | b1 | b2 |
 
-**R3, swing and humanize** (Day 2) on the R1 leader with its R2 bass, in separate rounds [CD-10]: swing rounds
+**R2r, the bass re-listen** (Day 2, only when the job's ARGS carry `--add R2r`; CD-54). After Day 1 no R2 round had
+a best (T in two rounds, G in one, and `bass_gu_acoustic` took the only worst), so R2 paired no kit with a bass.
+Shresth said "Yes, use these" (2026-10-31) to a 3-round re-listen in Day 2, with the default bass meanwhile. R2r
+plays the three basses as b1–b3, a Latin square as R2's, on the kits that survived R1: the R1 leader in two rounds
+and the other survivor in one, named by rank in the kit slot of the job's leaders, the leader first (plan.yaml
+`kit_rank`; §7.7).
+Swing 0.55 and humanize off, as in R2; keys and sax as the Day-2 band has them (the K1 leader, the S1 leader);
+each clip its own bass fader, measured on its own palette and loop (CD-53, `match: [bass]`). Its three rounds open
+the groove batch, before R3a and R3b, in a drawn order:
+
+| Slot | Kit | Loop | 1 | 2 | 3 |
+|---|---|---|---|---|---|
+| R2r.1 | the leader | L1 melancholy low 76 | b1 | b2 | b3 |
+| R2r.2 | the other kit | L5 wistful mid 83 | b2 | b3 | b1 |
+| R2r.3 | the leader | L9 hopeful high 90 | b3 | b1 | b2 |
+
+*Why these loops:* one per mood (each mood picks the mode the bass's roots come from) and one per energy, so each
+bass is heard under a sparse, a middle and a busy bass rhythm (T·Energy: a busier bass rhythm with energy; 3, 6
+and 7 bass hits over the two base bars); none of R2's loops (L6, L7, L2), so no bass is heard again on a loop it
+was already judged on; and no loop where R1 or R2 compared the kits (L3, L4, L8; L6, L7, L2), so the leader kit
+meets the basses on loops it has not been heard on. The only other set with one loop per mood and per energy and
+none of R2's, L3, L4 and L8, is R1's. The leader takes the low and the high loop, the other kit the middle one.
+3.0 min at the plan estimate (3.5 at full auto-play). Each kit's bass is then read from its own R2r rounds (§8).
+
+**R3, swing and humanize** (Day 2) on the R1 leader with its R2 bass (the default bass when R2r runs, CD-54), in
+separate rounds [CD-10]: swing rounds
 with humanize off, humanize rounds at swing 0.55. Swing options `swing_50`, `swing_55`, `swing_58`, `swing_split`
 (hat and ohat at 0.60, every other lane at 0.54: I6 "hats 60 with the rest at 54") [CD-11]. Every swing variant
 moves every timing lane, the sax included [CD-12]: the sax's `grid` timing is its lane's swing (COMPILER.md §3.7),
@@ -706,14 +757,14 @@ Contents, not order: the order inside each batch is drawn (§2.3).
 | 2026-11-03 | `b1103-1-keys` | K1 ×6 | keys | Which keys do you like best? | 7.8 / 9.3 |
 | 2026-11-03 | `b1103-2-groove` | R1 ×3, R2 ×3 | kits, bass (per round) | Which drums and bass do you like best? | 6.0 / 6.9 |
 | 2026-11-03 | `b1103-3-sax` | S1 ×6, anchor ×1 | sax | Which sax do you like best? | 9.2 / 11.1 |
-| 2026-11-04 | `b1104-1-groove` | R3a ×2, R3b ×3 | swing, humanize | Which groove do you like best? | 5.6 / 6.5 |
+| 2026-11-04 | `b1104-1-groove` | R3a ×2, R3b ×3; with `--add R2r` R2r ×3 first (CD-54) | swing, humanize (bass, swing, humanize with R2r) | Which groove do you like best? | 5.6 / 6.5 (8.6 / 10.0 with R2r) |
 | 2026-11-04 | `b1104-2-sax` | final ×3, S2a ×3, S2b ×3, anchor ×1 | sax, sax_warmth, sax_timing | Which sax do you like best? | 9.2 / 10.5 |
 | 2026-11-04 | `b1104-3-keys` | K2 ×2 | keys | Which keys do you like best? | 1.9 / 2.2 |
 | 2026-11-04 | `b1104-4-vamps` | V ×9 | vamps | Which chords do you like best? There is no sax in this batch. | 11.6 / 13.9 |
 | 2026-11-06 | `b1106-1-mix`, `b1106-2-mix` | W1 ×3, W2 ×4, anchor ×1 and the 5 repeats, split into two batches of about equal length (+ the S2 re-run) | per round | Pick the best and the worst in each round. | about 7.7 / 9.1 each |
 
-- **Pushes:** Nov 3: `b1103-1` + `b1103-2` (13.8 min), then `b1103-3` (9.2). Nov 4: `b1104-1` + `b1104-2` (14.7),
-  then `b1104-3` + `b1104-4` (13.6). Nov 6: one push per batch.
+- **Pushes:** Nov 3: `b1103-1` + `b1103-2` (13.8 min), then `b1103-3` (9.2). Nov 4: `b1104-1` + `b1104-2` (14.7;
+  17.8 with R2r, §2.7), then `b1104-3` + `b1104-4` (13.6). Nov 6: one push per batch.
 - **In the inbox:** `manifest.json` (public, RATING.md v1: `mode: shootout`, `scene: "city at night"` and `bpm`
   per round, `bars: 8`, `sr: 44100`, `note`, `est_min`, opaque round and clip ids, each FLAC's sha256),
   `manifest.hidden.json` (§2.2 fields: per clip its own fader, `fader_db`, and its bus's measured loudness,
@@ -966,6 +1017,8 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   asks for 84 palettes, one per render, on 19 bases. The builder checks the record's level case, its buses and its
   `ok`, and writes the stage's bus as `fader_db`, `bus_lufs`, `bus_lu` and every other matched bus as
   `<bus>_fader_db`, `<bus>_lufs`, `<bus>_lu` (§2.2). Test: `tests/test_shootout_batch.py` (the Day-2 fields).
+  With R2r (CD-54) Day 2 asks for 93 palettes on 25 bases (`r2r_<kit>_<bass>`, 6 of them), and its 3 rounds open the
+  groove batch.
 
 ### 7.7 Cluster job type `lofi-shootout`
 - **Script:** `jobs/shootout.sbatch`, job name `lofi-shootout`, partition `main`, 8 CPU, 16 GB, 20 min (was 30;
@@ -982,9 +1035,16 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   `sax_variant` and `timing` when a Day-2 pick is not the plan's default (`swing_55`, `humanize_off`, `sax_plain`,
   `timing_grid`). `ARGS` reach the script as arguments, so they need no comma-safe `--export`; they hold no spaces.
   Day 3 adds `--prior <job>+<job>`, `--repeats <stage>+...` (the stages first heard at least 2 days before Nov 6),
-  and, if needed, `--rerun-s2 <sax id>`. A cut adds `--cut vamps-high+latin3+final`. Before any stage the job checks
-  the leaders as the draw does (slots, ids and counts, after the cuts), so a wrong form exits 2, under `--dry-run`
-  too; then it writes all of it into `summary/leaders.json`. `scripts/submit.sh` refuses a dirty or unsynced tree
+  and, if needed, `--rerun-s2 <sax id>`. A cut adds `--cut vamps-high+latin3+final` (the cut list's, or Shresth's
+  word given to the tally as `--day2-cuts`, §7.9). **The bass re-listen** (CD-54)
+  is the switch `--add R2r` (optional stages joined by `+`; R2r is the plan's only one): the kit slot then carries
+  the two surviving kits, the R1 leader first, and the bass slot the default meanwhile,
+  `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>+<id>/bass=bass_gu_acoustic/sax=<id>+<id> --prior <job1> --add R2r'`.
+  Without the switch the kit takes one id and the job runs exactly as before; two kits without it, one kit with it,
+  or `--add` on another day exit 2 ("2 kits go with --add R2r"). The tally writes the switch with the rest of the
+  line when its CD-54 rule applies (§7.9). Before any stage the job checks the leaders and the adds as the draw does
+  (slots, ids and counts, after the adds and the cuts), so a wrong form exits 2, under `--dry-run` too; then it
+  writes all of it into `summary/leaders.json` (`add` beside `cut`). `scripts/submit.sh` refuses a dirty or unsynced tree
   (exit 3; `ALLOW_DIRTY=1` would ship other workflows' edits), so each job waits for a clean, synced tree.
 - **Stages** (`python -m lofi_rl.shootout.job`): the draw (§7.6) → generator `--levels none` (§7.8; from day 2 on
   with the draw, CD-53) → levels
@@ -1115,6 +1175,38 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   later rule ran on the Day-2 manifests (K2's four keys, the three-source final), and no round was flagged on any
   matched bus. One case is the spec's to decide: with `latin3`, R3b has 2 rounds, so a single G puts every humanize
   option all-bad in half its rounds (CD-44), and the tally raises a `RuleGap` for Shresth.
+- **End to end, R2r** (2026-10-31, the laptop, branch `worktree-wf_5d8416c0-2da-1`; scratch runs, inbox, votes and
+  `LOFI_ASSETS` of symlinks to the real banks and kits; votes synthetic, `data/votes` never read):
+  1. **Day 1:** `--stage day1 --jobs 8`, a scratch seed (run `shootout-900201`): every stage exit 0 in 84.7 s
+     (levels 41.4, render 41.9); 67 of 67 renders at −14.099 … −13.996 LUFS, true peak at most −1.479 dBTP; the 3
+     batches (6 rounds and 24 clips, 6 and 18, 7 with the anchor and 28) pass `ui.manifest check` with no leak;
+     per-round spread 0.0012–0.0091 LU.
+  2. **Votes** in the shape of Shresth's Day-1 decisions (2026-10-31), written by the page's own `Ledger` on a fake
+     clock (session and round starts; 19 standing votes): K1 a full three-way tie of `gs_wurli_ep200`,
+     `gu_tine_ep` and `vcsl_upright_knight` (2 bests, 0 worsts each); R1 `kit_virtuosity` 2 bests and 1 worst,
+     `kit_gu_jazz` 1 best, `kit_swirly` 2 worsts; R2 T with the worst on `bass_gu_acoustic`, T + B, and G; S1
+     `sax_mtg_alto` then `sax_mtg_tenor`, the anchor caught. Two redos whose bars must carry over: the K1 round
+     whose best is `gu_tine_ep` was answered, taken back (undo) and answered again with that tile at 0 bars, and
+     R1.1 was left with Esc after 2 bars of each tile and answered again with every tile at 0 bars.
+  3. **Tally** (exit 0; Day 1 20.7 min, r 0.900; Day 2's drawn plan 31.2 min with R2r, 28.1 at r, no cut):
+     `--stage day2 --leaders keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor --prior 900201 --add R2r`.
+     K1 BW +0.667 for the three (the default leads, CD-39), R1 +0.333, +0.333 (virtuosity on bests) and −0.667
+     (swirly dropped), R2 0, 0 and −0.333 (no best: CD-54, both of its cases), S1 +1.0 and +0.5; no mark left
+     out, the batch files keeping the redone tiles' own 0-bar records. The same logs through main's tally
+     (4b9cd64, no merge) leave 1 K1 mark and 2 R1 marks out and propose
+     `keys=vcsl_upright_knight+gs_wurli_ep200+gu_tine_ep/kit=kit_gu_jazz/bass=bass_fp_finger_yr`, with two
+     provisional seeded leaders and no R2r.
+  4. **Day 2** with that line and a scratch seed (run `shootout-900202`): every stage exit 0 in 130.3 s (levels
+     66.4, render 62.3); 93 of 93 renders (R2r 9) at −14.099 … −13.991 LUFS, true peak at most −1.448 dBTP, each
+     reading the tool's L before every matched fader exactly (171 bus-clip pairs). The 11 instruments measured
+     again moved 0.00 dB from the Day-1 run and S\* did not move; 210 own faders on 25 palettes (R2r's 6), 196 in
+     one measurement and 14 corrected, the worst 0.0050 LU off target. Batches: `b1104-1-groove` 8 rounds and 26
+     clips (R2r's three first, then R3b, R3a, R3b, R3a, R3b; category "bass, swing, humanize"; est 8.6 min),
+     `b1104-2-sax` 10 and 27 (9.3 min), `b1104-3-keys` 2 and 6 (1.9), `b1104-4-vamps` 9 and 36 (11.6).
+  5. **Spreads after matching** (levels.json `rounds`; the hidden manifests give the same): R2r's bass 0.0069
+     (R2r.1 on L1), 0.0006 (R2r.2 on L5) and 0.0020 LU (R2r.3 on L9), against 1.55, 2.19 and 1.01 LU at the
+     band's median faders; every Day-2 round 0.0002–0.0093 LU (29 rounds). `python -m lofi_rl.ui.manifest
+     check` passes on all 4 Day-2 batches and `batch.public_leaks` finds nothing in any public manifest.
 
 ### 7.8 Shootout plan and palette generator
 - **Plan:** `shootouts/plan.yaml` transcribes §4 and §6 in symbols: candidates (source, preset, register, family,
@@ -1185,6 +1277,22 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   "drums + bass"); the batch categories are §6's words ("kits, bass", "swing, humanize", "sax, sax_warmth,
   sax_timing", and `per_round` for the Nov-6 pair); K2's substitution is the line `keys: ep spread` (§5); R2's kits
   are k1–k3 (§4.2). The day-3 cuts, which this doc does not name, are `w1-two` and `w2-two`.
+- **Optional stages (2026-10-31, CD-54; R2r).** A stage with `optional: true` is in the plan's stages but in no
+  day's `stages` and no batch's `rounds`: its batch names it under `adds` (`b1104-1-groove`: `adds: {R2r: 3}`), and
+  `plan.apply_adds` puts it into its day, first, and at the head of that batch (`Batch.lead`: the draw serves its
+  rounds first, each part of the batch in a drawn order under CD-22), the batch's category naming it first ("bass,
+  swing, humanize"). A slot's `kit_rank` names the n-th id of the job's kit leaders on a day with no kit stage (the
+  draw's `day_band` then takes as many kit ids as the stage's highest rank, 2 for R2r, and one otherwise). The
+  draw, `day_band`, the job's check and the generator (from the draw's `plan.adds`) apply the adds before the
+  cuts; draw.json records `plan.adds` only when there are some. Without an add the plan's days, batches, stages,
+  cuts and draws are those of the plan with R2r taken out (two tests compare them, every Day-1 and Day-2 draw byte
+  for byte on four seeds). R2r is in the repeat group `drums_bass`, so a Day-3 repeat may show one of its rounds.
+  Tests: `tests/test_shootout_plan.py` (the stage, `apply_adds`, ten refusals), `tests/test_shootout_draw.py`
+  (the lead order, the kits by rank, the other stages' draws unchanged, the refused adds and kit counts),
+  `tests/test_shootout_palettes.py` (R2r's measuring and clip palettes, each round differing only in its bass;
+  R2r's slots in the stage index, and an R2r map that is not one to one refused), `tests/test_shootout_batch.py`
+  (the groove batch opening with R2r, its hidden fields, the leak guard; the draw CLI run as job 2 writes it, with
+  `--add R2r` and refused without it).
 
 ### 7.9 Tally tool (laptop)
 - **Interface:** `python -m lofi_rl.shootout.tally --votes data/votes --inbox inbox [--batch <name> ...]` reads the
@@ -1194,8 +1302,20 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   repeat agreement with a Wilson 95 % interval, position-of-best counts pooled by clip count across all shootout
   batches (descriptive), and the flagged rounds of §3.
 - **Acceptance tests:** on a synthetic batch its counts equal the audit's, anchor rounds excepted; a best or worst
-  mark on a clip heard under 4 bars is left out; repeats are scored for agreement and left out of the counts; a
-  missed anchor halves its micro-session's weight.
+  mark on a clip that never played in any attempt of its round is left out, and one on a clip heard only in an
+  undone or abandoned attempt of that round counts (D-013 as amended, 2026-10-31: the spec's test read "heard under
+  4 bars"); repeats are scored for agreement, on the bars of every attempt of both showings, and left out of the
+  counts; a missed anchor halves its micro-session's weight.
+- **The heard rule (2026-10-31, D-013 as amended; CD-38).** Shresth: "Imagine it sounded so bad that I did not even
+  let it play more than 4 bars.", then "Yes, use these" to the proposal: a clip counts as heard once 1 bar has
+  played, its heard bars OR-ed over every attempt of its round. The tally takes them from ui.audit
+  (`heard_over_attempts` over the batch's log, `with_merged_heard` on each standing vote), so every vote it scores,
+  the repeats' first showings included, carries its round's bars over its kept and undone votes and abandoned
+  attempts; `tally()` defaults to `heard_min` 1 and `toss_min` 1, as configs/rating.yaml (the CLI still reads the
+  config). Each batch file keeps a clip's own bars as `own_bars` where the merge changed them. Tests: a best heard
+  only before an undo or an Esc counts and the rows equal a log with no redo; a best that never played is left out;
+  a repeat whose first showing was redone still gives its pairs (none on the redo's own bars); the mechanism at an
+  explicit 4-bar minimum leaves a 3-bar mark out. Each test fails with the merge taken out.
 - **Built (2026-10-31, branch `wt/tally`):** `src/lofi_rl/shootout/tally.py` and `tests/test_shootout_tally.py`. As
   built: `python -m lofi_rl.shootout.tally --votes <dir> --inbox <dir> [--batch <name> ...] [--out <dir>] [--report
   <file.md>] [--plan shootouts/plan.yaml] [--config configs/rating.yaml] [--levels <levels.json> ...] [--runs
@@ -1215,16 +1335,41 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     dates stay in the JSON and §2.5's caveat appears only once repeats have votes. A batch with no votes is
     reported as such, never as zeros.
   - **Rules as functions**, each applied once every round of its stage's batches has a vote: after Day 1
-    `keys_to_k2` (CD-41), `kits_after_r1` (CD-42), `bass_pairings` (CD-43), `sax_to_final` (CD-18, with D-012's
-    no-free-sax check) and `day2_cut` (CD-50); after Day 2 `keys_survivors` (CD-40), `sax_final` (with the S2
-    re-run note), `warmth` (with the `sax_expr_off` question), `timing`, `swing` (advisory, always put to
-    Shresth), `humanize` and `vamp_ranks` (CD-45's borrowed-chord condition); after Day 3 `rain_excerpt` and
-    `rain_level` (a `rain_none` lead goes to Shresth). S2a and S2b rounds in a Day-3 batch are tallied apart, as
-    the S2 re-run.
+    `keys_to_k2` (CD-41), `kits_after_r1` (CD-42), `bass_pairings` (CD-43), `relisten_bass` (CD-54),
+    `sax_to_final` (CD-18, with D-012's no-free-sax check) and `day2_cut` (CD-50); after Day 2 `keys_survivors`
+    (CD-40), `sax_final` (with the S2 re-run note), `warmth` (with the `sax_expr_off` question), `timing`, `swing`
+    (advisory, always put to Shresth), `humanize`, `vamp_ranks` (CD-45's borrowed-chord condition) and
+    `bass_after_relisten` (CD-43 on R2r, CD-54); after Day 3 `rain_excerpt` and `rain_level` (a `rain_none` lead
+    goes to Shresth). S2a and S2b rounds in a Day-3 batch are tallied apart, as the S2 re-run.
   - **Job 2's proposal:** `keys=<K2, the K1 leader first>/kit=<the R1 leader>/bass=<its R2 pairing>/sax=<the
     finalists, the S1 leader first>` (one sax id with the `final` cut), `--prior <job 1>` and `--cut` from the cut
-    list. The tool stops unless `draw.parse_leaders` reads the string back and `draw.day_band` builds the Day-2 band
-    from it after the cuts; the report gives the `make submit` line. **`--prior` (integration, 2026-10-31):** job 1
+    list; when CD-54 applies, `kit=<the R1 leader>+<the other survivor>/bass=<the default>` and `--add R2r`.
+    **Shresth's word on the cuts** (2026-10-31): `--day2-cuts none|<cut>+<cut>` (Day-2 cut ids of the plan, each
+    once; anything else exits 2), with `--day2-cuts-by "<his words, date>"` recorded beside it, overrides the list.
+    The line then carries his cuts, in the list's order; the S1 rule keeps the final unless he cuts it; the band
+    check reads his cuts; the list's "does not fit" item is not raised; and the report gives his cuts with their
+    minutes, then the list's cuts and minutes as advice (`rules.cut.decided` in the JSON, beside `rules.cut.cuts`).
+    The tool stops unless `draw.parse_leaders` reads the string back and `draw.day_band` builds the Day-2 band from
+    it after the adds and the cuts; the report gives the `make submit` line. **The cut list** (2026-10-31) reads Day 2's
+    minutes from the plan that line will draw (`draw.day_minutes` with the line's key and sax counts and its adds,
+    §2.7), not the fixed 28.3, and each cut's saving from the same estimate.
+  - **R2r (2026-10-31, CD-54).** `relisten_bass` reads R2 after `bass_pairings`: no R2 round with a counted best
+    (a best on a clip that played), or a surviving kit taking a pooled R2 leader that is fully tied without the
+    default, adds R2r; the kits are the R1 leader and the next survivor in R1's order (a third survivor plays no R2r
+    round, and a non-blocking item says so). The note that names the pooled leader's seeded draw gives way to one
+    that names R2r and the default bass. After Day 2, `bass_after_relisten` gives each kit the CD-39 leader of its
+    own R2r rounds among the basses that can survive over every R2r round (so a G in one of the leader's two rounds
+    does not leave it with none), or the pooled R2r leader when its rounds have no counted best; ties go to the
+    default or to Shresth's word, the default staying meanwhile. Tests (`tests/test_shootout_tally.py`): the Day-1
+    votes in decisions 2 and 3's shape (T, T + B and G in R2) give `--add R2r` on `kit_virtuosity+kit_gu_jazz` with
+    `bass_gu_acoustic`, which the draw and the job's `--dry-run` take; a pooled tie a surviving kit takes adds R2r,
+    the same tie with a best in every surviving kit's round adds nothing; the after-Day-2 rule on a built groove
+    batch, its pooled fallback and a tie; and the estimate against the draw's own rounds on three seeds. The review
+    (2026-10-31) added the cases above that no test held: a G in one of the leader's two R2r rounds still leaves it
+    its best bass; R2's votes stay out after Day 2; an R2 best on a clip that never played is no best (R2r is
+    added), one heard 1 bar only before an undo counts, and an R2r best that never played leaves its kit the pooled
+    R2r leader; with three R1 survivors R2r plays the leader and the next, and the third takes the pooled R2r leader
+    after Day 2; R2r plays the R1 leader first wherever it sits in R1's order. **`--prior` (integration, 2026-10-31):** job 1
     is the job whose pulled summary built the Day-1 batches: `--runs` (default `runs/`, where `make pull` puts
     `runs/shootout-<job>/summary/`) holds a `batches.json` whose `run` is `shootout-<job id>` and which lists each
     Day-1 batch with exactly its manifest's round ids (random per batch, so a dry run's batches of the same names
@@ -1235,8 +1380,8 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     no option left on a single-winner choice; a kit without exactly one R2 round; keys survivors fully tied across
     the line of the top 2 (unless all of them fit as the third with BW above 0) or for the third place, or fewer
     than 2 of them; every finalist all-bad. The spec gives no rule for these.
-  - **Choices the spec left open:** BW = (best − worst) / heard, its three terms over heard appearances and
-    weighted, in exact fractions; `shown` counts every appearance in a design round; an option never heard has no
+  - **Choices the spec left open:** BW = (best − worst) / heard, its three terms over heard appearances (a clip
+    heard once 1 bar has played, over every attempt of its round) and weighted, in exact fractions; `shown` counts every appearance in a design round; an option never heard has no
     BW and ranks last. A micro-session missed its anchor when it caught fewer than half of its anchors (with one
     anchor, when it did not catch it), read with `ui.audit.anchor_caught` over every log in `--votes`; all its votes
     count half, in every term. G marks every clip of its round, heard or not, and a worst given with G still counts;
@@ -1271,7 +1416,14 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     (heard filter, half weight, repeats, anchors, the tie at third, CD-44, G) each fail the test meant for it.
     Integration added 2 (19 in all): job 2's `--prior` found from the pulled summaries (and not from a dry run's
     batches of the same names, or a run that is not `shootout-<job id>`), and the Day-2 flags on every matched bus
-    (R3a's `sax_lufs`, R3b's `bass_lufs`, a missing `keys_lufs`); dropping either change fails its test.
+    (R3a's `sax_lufs`, R3b's `bass_lufs`, a missing `keys_lufs`); dropping either change fails its test. The heard
+    rule and R2r (2026-10-31) added 6 (25 in all): two for the bars of every attempt (above), and R2r's three and the
+    drawn plan's minutes; the 4-bar test now runs at an explicit `heard_min=4`. Its review added 8 (33 in all):
+    Shresth's word on the cuts (`--day2-cuts none` keeps the final, and the job's `--dry-run` takes the line, which
+    it refuses with `--cut` dropped by hand) and the seven R2 and R2r cases above. Each of the review's 11 mutants of
+    those rules (`_judged`; R2 pooled into R2r; the counted best's four checks; R2r's kit order, reversed or as
+    R1's; the third survivor's note, its place in the after-Day-2 kits, its pooled leader) passes every older tally
+    test and fails at least one new one.
   - **Checked on the real Day-1 batches** (laptop, 2026-10-31; the inbox read-only, synthetic votes in a scratch
     folder, options ranked alphabetically so nothing depends on the draw): 3 batches and 19 rounds read, the S1
     anchor found, no round flagged (per-round spread 0.0012–0.0091 LU, read independently from the hidden
@@ -1303,9 +1455,13 @@ also gives the no-best, no-worst and all-bad counts, the position-of-best chi-sq
 Wilson 95 % interval.
 
 **Claude's recount** [CD-38], per stage across its batches:
-- A best or worst mark counts only if that clip was heard for 4 bars or more (T·Vote unit: pairs with unheard clips
-  are dropped). **BW = (best − worst) / shown**, over heard appearances. Both the audit's net and BW are reported;
-  decisions use BW.
+- A best or worst mark counts only if that clip was heard: once 1 bar of it has played, its heard bars OR-ed over
+  every attempt of its round, kept and undone votes and abandoned attempts included, so only a mark on a clip that
+  never played is left out (D-013 as amended; T·Vote unit). Shresth, 2026-10-31: "Imagine it sounded so bad that I
+  did not even let it play more than 4 bars.", then "Yes, use these" to the 1-bar rule. It holds for all voting and
+  was first used for the Day-1 tally; until then this rule read 4 bars or more, counted on the kept attempt only.
+  **BW = (best − worst) / shown**, over heard appearances. Both the audit's net and BW are reported; decisions use
+  BW.
 - Anchor rounds are dropped; a micro-session that missed its anchor counts at half weight (D-013).
 - `T` (no clear best) or `B` (no clear worst) adds no mark. `G` (all bad) marks every clip in the round; an option
   marked all-bad in half of its rounds or more cannot survive [CD-44].
@@ -1319,7 +1475,7 @@ Wilson 95 % interval.
 |---|---|
 | Keys | K1's BW ranks all 8; the top 3 go to K2 (ties at third: up to 4; beyond 4, a seeded draw among the fully tied) [CD-41]. Survivors come only from the K2 participants: the top 2 by BW over K1 + K2, and the third if its BW is above 0 [CD-40]. |
 | Kits | All 3 survive unless the last by R1 BW has BW below 0, which leaves 2; a tie for last keeps all 3 [CD-42] (TASTE keeps 2–3). |
-| Basses | Each surviving kit takes the best bass of its own R2 round (I6: each kit carries its paired bass); a round with no best (T or G) takes the pooled R2 leader [CD-43]. `gates/GATE_palette.md` states that each pairing rests on one round. |
+| Basses | Each surviving kit takes the best bass of its own R2 round (I6: each kit carries its paired bass); a round with no best (T or G) takes the pooled R2 leader [CD-43]. `gates/GATE_palette.md` states that each pairing rests on one round. **When R2 leaves the bass undecided, Day 2 adds R2r** [CD-54]: after Day 1, if no R2 round has a best, or if a surviving kit takes the pooled R2 leader and the pooled leaders tie without the default, the Day-1 proposal adds R2r (`--add R2r`, its kit slot the surviving kits, the R1 leader first), and the Day-2 band keeps the default bass, `bass_gu_acoustic`, meanwhile (CD-39, "the default stays meanwhile"). Shresth, 2026-10-31: "Yes, use these", to a 3-round bass re-listen in Day 2 with the default meanwhile, after no Day-1 R2 round had a best. After Day 2 the bass comes from R2r alone (CD-43 as CD-54 reads it): each surviving kit takes the best bass of its own R2r rounds (the CD-39 leader over them, CD-44 judged over every R2r round); a kit whose R2r rounds have no best, or that plays none, takes the pooled R2r leader; ties go to the default if it is among the tied, else to Shresth's word, the default staying meanwhile. A pooled R2 tie that no surviving kit takes decides nothing, so it adds no R2r. |
 | Swing | Advisory [CD-13]: swing stays 0.55 (T·Tempo/feel "about 55 % MPC") unless Shresth names another option after seeing the R3a tally, which is reported with the note that two rounds cannot separate four options reliably. |
 | Humanize | The R3b BW leader (T·Humanize "decided by the shootout"); ties as above, the default being off. |
 | Vamps | Per mood, the 4 vamps ranked by BW: seed data. **Borrowed chords** (P§3: they go "only if all of them rank last"): if `float` ranks 4th in wistful **and** `plagal` 1st in melancholy, Claude reports it and asks Shresth (§11 question 2); nothing leaves `chords.numerals` without his words [CD-45]. A tie on either condition counts as not met (TASTE's default keeps the chords). The keep3 drafts follow his answer; if it comes after they are written, a kept draft with a removed chord is redrafted and heard again before the freeze. |
@@ -1346,7 +1502,8 @@ few to flag a single shootout. Position-of-best counts are pooled by clip count 
   keys on 5, the vamps on 9, the rain on 7. Clip appearances, anchors and repeats aside: keys 30 (I6: 11),
   drums + bass 35 (27), vamps 36 (12), sax 48 (11), rain 25 (4).
 - **R2 on all three kits** (I6: the top 2) [CD-9]; **swing and humanize in separate rounds** (I6: the 12-clip grid)
-  [CD-10]; **swing advisory** around Shresth's 55 % [CD-13].
+  [CD-10]; **swing advisory** around Shresth's 55 % [CD-13]; **R2r**, a Day-2 bass re-listen when R2 leaves the
+  bass undecided (Shresth's word, 2026-10-31) [CD-54].
 - **Levels.** Per-instrument trims and faders matched on the reference loops replace instrument.md §4's
   `bus_gain_db` calibration on the hand loops [CD-25, CD-29], each shootout clip takes its own fader on its round's
   loop [CD-52], from Day 2 on every bus its round varies [CD-53], and the chains are not tuned on the hand loops
@@ -1407,7 +1564,7 @@ Each is overridable by Shresth; the reason is one line.
 | CD-35 | Trim at −30 dB re peak (−20 for shakers), 1 ms kept | every one-shot starts at the same offset; a shake builds up over tens of ms |
 | CD-36 | `resample_poly` 147/160, one time, hashes pinned | exact rational ratio; one run on one machine avoids cross-CPU drift |
 | CD-37 | FM Piano #1 preset (0, 0) | its other presets are named for single velocities (v60, v80, v100) |
-| CD-38 | Heard-filtered BW; anchor rounds dropped from the recount | candidates are shown unequal numbers of times, and an anchor round is not a design round |
+| CD-38 | Heard-filtered BW (heard: 1 bar over every attempt of a round, D-013 as amended 2026-10-31; was 4 bars); anchor rounds dropped from the recount | candidates are shown unequal numbers of times, and an anchor round is not a design round; Shresth: "Imagine it sounded so bad that I did not even let it play more than 4 bars." |
 | CD-39 | Remaining single-winner ties go to the default; a tie without it goes to Shresth | a tie shows no preference over what the palette already does |
 | CD-40 | Keys survivors only from the K2 participants; the third if its BW is above 0 | only they were heard with the spread voicing; above 0 means more bests than worsts |
 | CD-41 | K2 takes a tie at third place up to 4 clips, then a seeded draw | 4 clips is the page's limit |
@@ -1423,6 +1580,7 @@ Each is overridable by Shresth; the reason is one line.
 | CD-51 | Shootout palettes carry trims as a chain-head `Gain` or lane `db` and faders in `bus_gain_db` | no palette code is needed before the freeze, while other workflows edit `palette.py` and `pipeline.py` |
 | CD-52 | Each shootout clip's fader on the bus its round varies comes from its candidate's measured loudness on the round's own loop (0.1 LU per clip); the frozen palette keeps the median fader (amends §3, 2026-10-31) | matching the median over the 9 loops left 10 of the 18 Day-1 design rounds and the anchor over 1.0 LU apart on their own loop (up to 4.20 LU, R1.3 on L8), and a candidate must never win by being louder |
 | CD-53 | From Day 2 on each clip takes its own fader on every bus its round's varied thing moves (plan.yaml `match`), measured on its own palette and text at its instruments' Day-1 trims; job 2 measures every instrument it plays again; the vamp palettes take 16 loudness iterations (amends §3, CD-26, CD-27 and §7.3, 2026-10-31) | at the median faders the Day-2 rounds spread up to 2.43 LU (S2a), 1.04 (R3b) and 9.85 (the vamps' bass) in the dry run, and the spreads follow the leaders; one trim per instrument is what the frozen palette holds; with no sax, dev_gu's 4 iterations left 3 of 36 vamp clips short of G7 |
+| CD-54 | When R2 leaves the bass undecided (no R2 round with a best, or a pooled R2 tie without the default that a surviving kit takes), Day 2 adds R2r, 3 rounds of the 3 basses on L1, L5, L9 (the R1 leader twice, the other survivor once), served first in the groove batch; the band keeps the default bass meanwhile, and R2r alone decides each kit's bass (Shresth, 2026-10-31: "Yes, use these") | the Day-1 votes had no best in any R2 round, so CD-43 paired no kit; a seeded provisional leader would put an untested bass under every Day-2 round, and the default is the one the palette already plays |
 
 ## 11. Waiting on Shresth
 

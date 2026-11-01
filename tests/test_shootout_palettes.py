@@ -583,6 +583,68 @@ def test_day2_needs_its_draw_and_a_measured_fader_for_every_clip_on_its_instrume
     assert not any(k.startswith("s1f_") for k in got.index["configs"]), "the cut plan has no final"
 
 
+# ------------------------------------------------------------------------- Day 2 with R2r, the bass re-listen (CD-54)
+LEADERS2R = ("keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/"
+             "bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor")
+
+
+def test_day2_with_r2r_measures_each_bass_on_its_rounds_kit_and_each_round_differs_only_in_its_bass(env, tmp_path):
+    """CD-54 with CD-53: R2r's clips play the stage palette of their (kit, bass), measured on the bass bus at trims
+    and faders 0; each stage palette carries the band's t and median F, the kit of its round and the bass under
+    test, and each clip its own bass fader. Within an R2r round the palettes differ only in the bass block, its trim
+    and the bass fader; the R3a, R3b and the rest are the draw's without R2r."""
+    doc = draw(PLAN, "day2", seed=0xD2, leaders=parse_leaders(LEADERS2R), adds=["R2r"])
+    path = write_draw(doc, tmp_path / "draw.json")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("LOFI_ASSETS", str(env["assets"]))
+        measure = generate(PLAN_PATH, tmp_path / "palettes", stage="day2", levels=None, base=env["base"], draw=path)
+        levels = synthetic_levels_day2(tmp_path / "palettes" / "measure" / "index.json", env["base"], doc,
+                                       tmp_path / "levels.json")
+        stage = generate(PLAN_PATH, tmp_path / "palettes", stage="day2", levels=levels, base=env["base"], draw=path)
+        # the generator applies the draw's adds (draw.json plan.adds) before its cuts, so R2r is checked and indexed
+        assert [s["id"] for s in stage.index["slots"] if s["stage"] == "R2r"] == ["R2r.1", "R2r.2", "R2r.3"]
+
+        def two_on_one(d):                # an R2r map that is not one to one
+            m = d["maps"]["R2r"][0]
+            a, b = sorted(m)[:2]
+            m[a] = m[b]
+
+        with pytest.raises(GenerateError, match="draw R2r: must map onto the options"):
+            generate(PLAN_PATH, tmp_path / "bad", stage="day2", levels=levels, base=env["base"],
+                     draw=_rewrite(path, two_on_one))
+        assert not (tmp_path / "bad").exists(), "a refused generation writes nothing"
+    cfg = {k: c for k, c in measure.index["configs"].items() if c["stage"] == "R2r"}
+    assert sorted(cfg) == sorted(f"r2r_{k}_{b}" for k in ("kit_virtuosity", "kit_gu_jazz")
+                                 for b in PLAN.stages["R2r"].options)
+    assert all(c["buses"] == ["bass"] and not c["loops"] and c["instruments"]["drums"] in k for k, c in cfg.items())
+    assert {"bass_vsco2_pizz", "bass_fp_finger_yr", "kit_virtuosity"} <= set(measure.index["variants"])
+    by_id = {e["id"]: e for e in stage.index["palettes"]}
+    lv = json.loads(levels.read_text())
+    r2r = [r for b in doc["batches"] for r in b["rounds"] if r["stage"] == "R2r"]
+    assert len(r2r) == 3 and len(doc["renders"]) == 84 + 9
+    for r in r2r:
+        clips = [doc["renders"][c["render"]] for c in r["clips"]]
+        for c in clips:
+            e = by_id[c["palette"]]
+            base = by_id[doc["palettes"][c["palette"]]["base"]]
+            assert e["instruments"]["bass"] == c["option"] and e["instruments"]["drums"] == r["clips"][0]["kit"]
+            assert e["instruments"]["keys"] == "gu_tine_ep" and e["instruments"]["sax"] == "sax_mtg_alto"
+            want = lv["configs"][base["id"]]["buses"]["bass"]["cases"][c["loop"]]["F"]
+            assert e["fader_db"] == {**base["fader_db"], "bass": want} and list(e["level"]["buses"]) == ["bass"]
+            assert base["trim_db"]["bass"] == lv["variants"][c["option"]]["t"]
+        docs = [flat(yaml_load((tmp_path / "palettes" / f"{c['palette']}.yaml").read_text())) for c in clips]
+        for i, a in enumerate(docs):
+            for b in docs[i + 1:]:
+                diff = {k for k in a.keys() | b.keys() if a.get(k, "<absent>") != b.get(k, "<absent>")}
+                bad = sorted(k for k in diff if not k.startswith(("id", "kits.dusty.bass.", "mix.buses.bass.0.",
+                                                                   "mix.bus_gain_db.bass")))
+                assert not bad, (r["slot"], bad[:5])
+    plain = draw(PLAN, "day2", seed=0xD2, leaders={**parse_leaders(LEADERS2R), "kit": ("kit_virtuosity",)})
+    assert {k: v for k, v in doc["palettes"].items() if not k.startswith("r2r_")} == plain["palettes"]
+    assert {k: v for k, v in doc["renders"].items() if not k.startswith("R2r.")} == plain["renders"]
+    assert doc["maps"] == {**plain["maps"], "R2r": doc["maps"]["R2r"]}
+
+
 # ---------------------------------------------------------------------------------------- the CLI
 def test_the_cli_writes_the_palettes_and_exits_2_or_3_on_bad_inputs(env, tmp_path, capsys):
     out = tmp_path / "cli"

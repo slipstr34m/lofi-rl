@@ -313,3 +313,86 @@ def test_order_rounds_and_the_listening_estimate():
     assert [x["loop"] for x in ok] == ["a", "b", "a"] and ok[0]["kind"] == "none"
     assert round(round_seconds(4, 76), 1) == 83.8 and round(round_seconds(2, 90), 1) == 40.0
     assert est_minutes(ok) == round(3 * round_seconds(2, 90) / 60, 1)
+
+
+# ------------------------------------------------------------------------- CD-54: the bass re-listen, R2r
+R2R = parse_leaders("keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/"
+                    "bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor")
+
+
+def test_without_the_add_the_draw_is_the_one_the_plan_without_r2r_gives():
+    """An optional stage changes nothing until it is added: on every seed, the draw of the plan as committed equals
+    the draw of the same plan with R2r taken out of its document, byte for byte apart from the plan's own sha256."""
+    import copy
+
+    import yaml
+
+    from lofi_rl.shootout.plan import PLAN as PLAN_FILE
+    from lofi_rl.shootout.plan import parse_plan
+    raw = yaml.safe_load(PLAN_FILE.read_text())
+    bare_doc = copy.deepcopy(raw)
+    del bare_doc["stages"]["R2r"]
+    bare_doc["batches"][3].pop("adds")
+    bare_doc["controls"]["repeats"]["groups"]["drums_bass"].remove("R2r")
+    full, bare = parse_plan(raw, PLAN_FILE, "a" * 64), parse_plan(bare_doc, PLAN_FILE, "b" * 64)
+    lead1 = {**R2R, "kit": ("kit_virtuosity",)}
+    for day, kw in (("day1", {}), ("day2", {"leaders": lead1}), ("day2", {"leaders": lead1, "cuts": ["latin3"]})):
+        for seed in (1, 2, 3, SEED_A):
+            a, b = draw(full, day, seed=seed, **kw), draw(bare, day, seed=seed, **kw)
+            assert a["plan"].pop("sha256") == "a" * 64 and b["plan"].pop("sha256") == "b" * 64
+            assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True), (day, seed)
+            assert "adds" not in a["plan"]
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_r2r_opens_the_groove_batch_on_the_kit_leaders_by_rank(seed):
+    """CD-54: with --add R2r its three rounds open the groove batch, in a drawn order, then R3a and R3b in a drawn
+    order, with no two consecutive rounds on one loop; R2r.1 and R2r.3 play the kit leader, R2r.2 the other kit,
+    each bass once on every tile; every R2r clip plays its own palette, matched on the bass bus (CD-53). Every
+    other stage draws as it does without R2r."""
+    d = draw(PLAN, "day2", seed=seed, leaders=R2R, adds=["R2r"])
+    plain = draw(PLAN, "day2", seed=seed, leaders={**R2R, "kit": ("kit_virtuosity",)})
+    groove = d["batches"][0]
+    rounds = groove["rounds"]
+    assert groove["name"] == "b1104-1-groove" and groove["category"] == "bass, swing, humanize"
+    assert [r["stage"] for r in rounds[:3]] == ["R2r"] * 3 and len(rounds) == 8
+    assert all(a["loop"] != b["loop"] for a, b in zip(rounds, rounds[1:]))
+    assert {r["slot"]: {c["kit"] for c in r["clips"]} for r in rounds[:3]} == {
+        "R2r.1": {"kit_virtuosity"}, "R2r.2": {"kit_gu_jazz"}, "R2r.3": {"kit_virtuosity"}}
+    pos = _positions(rounds[:3])
+    assert set(pos) == set(PLAN.stages["R2r"].options) and all(sorted(p) == [1, 2, 3] for p in pos.values())
+    for r in rounds[:3]:
+        for c in r["clips"]:
+            spec = d["palettes"][d["renders"][c["render"]]["palette"]]
+            assert spec["level"] == {"buses": ["bass"], "case": r["loop"]}
+            assert spec["band"]["kit"] == c["kit"] and spec["band"]["bass"] == c["option"]
+            assert spec["band"]["keys"] == "gu_tine_ep" and spec["band"]["sax"] == "sax_mtg_alto"
+            assert (spec["band"]["swing"], spec["band"]["humanize"]) == ("swing_55", "humanize_off")
+    assert sorted(map(json.dumps, rounds[3:])) == sorted(map(json.dumps, plain["batches"][0]["rounds"]))
+    assert d["batches"][1:] == plain["batches"][1:] and d["band"] == plain["band"]
+    assert d["plan"]["adds"] == ["R2r"] and d["band"]["kit"] == "kit_virtuosity"
+    assert groove["est_min"] == round(plain["batches"][0]["est_min"] + 3.0, 1)
+
+
+def test_the_lead_rounds_open_the_order_and_an_impossible_join_is_refused():
+    def rd(loop, kind="none"):
+        return {"loop": loop, "kind": kind, "slot": loop + kind}
+    lead, rest = [rd("L1"), rd("L2")], [rd("L2", "x"), rd("L3")]
+    for seed in range(20):
+        got = order_rounds(rest, Rng(seed), lead)
+        assert {r["slot"] for r in got[:2]} == {"L1none", "L2none"} and len(got) == 4
+        assert all(a["loop"] != b["loop"] for a, b in zip(got, got[1:]))
+    with pytest.raises(DrawError, match="added rounds first"):
+        order_rounds([rd("L1", "x")], Rng(1), [rd("L1")])
+    with pytest.raises(DrawError, match="added rounds first"):
+        order_rounds([rd("L2")], Rng(1), [rd("L1", "anchor")])          # a design round first, still
+
+
+def test_an_add_is_checked_like_the_leaders():
+    for kw, match in (({"adds": ["R3a"]}, "not an optional stage"), ({"adds": ["R2r", "R2r"]}, "twice"),
+                      ({"adds": ["R2r"], "leaders": {**R2R, "kit": ("kit_virtuosity",)}}, "kit: 1 ids given"),
+                      ({"leaders": R2R}, "2 kits go with --add R2r")):
+        with pytest.raises(DrawError, match=match):
+            draw(PLAN, "day2", seed=1, **{"leaders": R2R, **kw})
+    with pytest.raises(DrawError, match="belongs to day2, not day1"):
+        draw(PLAN, "day1", seed=1, adds=["R2r"])

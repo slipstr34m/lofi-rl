@@ -5,12 +5,13 @@ draws, S1 leaves out the sources its rounds draw, an anchor needs its sour copy 
 
     python -m lofi_rl.shootout.batch draw --plan shootouts/plan.yaml --stage day1|day2|day3 --summary <run>/summary
         [--leaders <slot>=<id>[+<id>...]/...] [--prior <run>/summary/batches.json ...]
-        [--repeats <stage>+...] [--rerun-s2 <sax id>] [--cut <name>+...] [--seed <16 hex>]
+        [--repeats <stage>+...] [--rerun-s2 <sax id>] [--cut <name>+...] [--add <stage>+...] [--seed <16 hex>]
     python -m lofi_rl.shootout.batch build --plan shootouts/plan.yaml --stage day1|day2|day3 --renders <run>/renders
         --out <inbox root> [--draw <run>/summary/draw.json] [--summary <run>/summary]
 
 `--leaders` takes the job's forms, which differ by day (docs/SHOOTOUTS.md section 7.7); the draw refuses a slot, id or
-count its day cannot play, as `draw.day_band` does.
+count its day cannot play, as `draw.day_band` does. `--add R2r` adds the optional bass re-listen to Day 2 (CD-54): its
+rounds open the groove batch, on the kits `--leaders kit=` names (the leader first).
 
 `draw` draws from `secrets.randbits(64)` unless `--seed` is given (tests only) and writes `summary/draw.json`:
 the maps, the batches' rounds in order with their hidden controls, and the renders and palettes the job must make.
@@ -391,6 +392,7 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--repeats", default="", help="stages whose rounds may come back, joined by +")
     d.add_argument("--rerun-s2", default=None)
     d.add_argument("--cut", default="", help="cut-list names joined by +")
+    d.add_argument("--add", default="", help="optional stages joined by + (Day 2: R2r, the bass re-listen, CD-54)")
     d.add_argument("--seed", default=None, help="16 hex digits (tests only; the job draws a fresh seed)")
     b = sub.add_parser("build", help="build the stage's batches from the draw and the renders")
     b.add_argument("--plan", type=Path, default=PLAN)
@@ -405,7 +407,8 @@ def main(argv: list[str] | None = None) -> int:
         if a.cmd == "draw":
             doc = draw(plan, a.stage, seed=_seed(a.seed), leaders=parse_leaders(a.leaders),
                        priors=[load_prior(x) for x in a.prior], repeats=[x for x in a.repeats.split("+") if x],
-                       rerun_s2=a.rerun_s2, cuts=[x for x in a.cut.split("+") if x])
+                       rerun_s2=a.rerun_s2, cuts=[x for x in a.cut.split("+") if x],
+                       adds=[x for x in a.add.split("+") if x])
             path = write_draw(doc, a.summary / "draw.json")
             n = sum(len(x["rounds"]) for x in doc["batches"])
             print(f"draw: {path}: {len(doc['batches'])} batches, {n} rounds, {len(doc['renders'])} renders, "

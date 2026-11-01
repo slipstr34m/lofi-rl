@@ -227,17 +227,19 @@ def test_every_documented_leaders_form_is_one_the_draw_and_the_job_take(tmp_path
                     wrong.append(f"{path.name}:{n}: {form} names no --stage")
                     continue
                 text = _filled(form, plan)
+                add = re.findall(r"--add ([A-Za-z0-9_+]+)", line[m.end():])[:1]     # the switch on its line (CD-54)
+                adds = add[0].split("+") if add else []
                 try:
-                    draw(plan, stage[-1], seed=1, leaders=parse_leaders(text))
+                    draw(plan, stage[-1], seed=1, leaders=parse_leaders(text), adds=adds)
                     job.check(job._args(["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"),
-                                         "--stage", stage[-1], "--leaders", text]))
+                                         "--stage", stage[-1], "--leaders", text, *(["--add", add[0]] if add else [])]))
                 except (DrawError, job.JobError) as err:
                     wrong.append(f"{path.name}:{n}: {stage[-1]} {form}: {err}")
                     continue
-                days.setdefault(path.name, set()).add(stage[-1])
+                days.setdefault(path.name, set()).add(stage[-1] + (" +" + add[0] if add else ""))
     assert wrong == []
     assert {name: days.get(name) for name in ("SHOOTOUTS.md", "shootout.sbatch", "job.py")} == \
-        dict.fromkeys(("SHOOTOUTS.md", "shootout.sbatch", "job.py"), {"day2", "day3"})
+        dict.fromkeys(("SHOOTOUTS.md", "shootout.sbatch", "job.py"), {"day2", "day2 +R2r", "day3"})
 
 
 def test_a_missing_tool_stops_the_job_before_any_stage(tmp_path, capsys, monkeypatch):
@@ -292,3 +294,54 @@ def test_the_runner_records_each_stages_wall_time(tmp_path, capsys, monkeypatch)
     assert all(s["seconds"] == 5.0 and s["exit"] == 0 for s in doc["stages"]) and doc["seconds"] == 30.0
     out = capsys.readouterr().out
     assert "shootout: render: done in 5.0 s" in out and "shootout: every stage done in 30.0 s" in out
+
+
+@pytest.mark.parametrize("add,takes", [("", {1}), ("R2r", {2})])
+def test_the_kit_takes_one_id_or_the_two_kits_r2r_plays(tmp_path, capsys, add, takes):
+    """CD-54: Day 2's kit slot takes the R1 leader alone, as before, or with --add R2r the two surviving kits it
+    plays, the leader first (kit_rank 1 and 2). The runner's check and the draw agree, a refused form exits 2 under
+    --dry-run with the hint, and leaders.json and the draw command carry the add."""
+    plan = load_plan()
+    kits = plan.band_options["kit"]
+    drawn, checked = set(), set()
+    for k in range(1, 4):
+        text = f"keys={KEYS3}/kit={'+'.join(kits[:k])}/bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor"
+        try:
+            draw(plan, "day2", seed=1, leaders=parse_leaders(text), adds=[add] if add else [])
+            drawn.add(k)
+        except DrawError:
+            pass
+        try:
+            job.check(job._args(["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"), "--stage", "day2",
+                                 "--leaders", text, *(["--add", add] if add else [])]))
+            checked.add(k)
+        except job.JobError:
+            pass
+    assert drawn == checked == takes
+    two = f"keys={KEYS3}/kit={kits[0]}+{kits[2]}/bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor"
+    run = tmp_path / "runs" / "shootout-13640009"
+    base = ["--run", str(run), "--inbox", str(tmp_path / "inbox"), "--stage", "day2", "--leaders", two]
+    if not add:
+        assert job.main([*base, "--dry-run"]) == 2
+        assert "2 kits go with --add R2r" in capsys.readouterr().err and not run.exists()
+        return
+    assert job.main([*base, "--add", add, "--dry-run"]) == 0
+    doc = json.loads((run / "summary" / "leaders.json").read_text())
+    assert doc["add"] == ["R2r"] and doc["leaders"]["kit"] == [kits[0], kits[2]]
+    lines = [x for x in capsys.readouterr().out.splitlines() if x.startswith("draw: ")]
+    assert len(lines) == 1 and " --add R2r" in lines[0]
+
+
+@pytest.mark.parametrize("args,said", [
+    (["--add", "R3a"], "not an optional stage"),
+    (["--add", "R2r/R3a"], "expected names joined by +"),
+    (["--add", "R2r+R2r"], "twice"),
+])
+def test_a_bad_add_stops_the_job_before_anything_runs(tmp_path, capsys, args, said):
+    two = f"keys={KEYS3}/kit=kit_virtuosity+kit_gu_jazz/bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor"
+    rc = job.main(["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"), "--stage", "day2",
+                   "--leaders", two, *args, "--dry-run"])
+    assert rc == 2 and said in capsys.readouterr().err and not (tmp_path / "run").exists()
+    day1 = job.main(["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"), "--stage", "day1",
+                     "--add", "R2r", "--dry-run"])
+    assert day1 == 2 and "belongs to day2, not day1" in capsys.readouterr().err

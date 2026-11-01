@@ -12,9 +12,15 @@ draw: K1's family pairs, S1's two registers, the vamps' one per mood, a ranks st
 names the buses each of its clips takes its own fader on. `apply_cuts` gives the plan with §2.7's cuts applied, and
 `substitute` rewrites a loop's statement lines (§5 Substitutions).
 
-    from lofi_rl.shootout.plan import apply_cuts, load_plan
+An optional stage (`optional: true`; Day 2's bass re-listen R2r, CD-54) is in `Plan.stages` but in no day's
+`stages` and no batch's `rounds` until `apply_adds` adds it: it then joins its day and opens the batch whose `adds`
+names it (`Batch.lead`: its rounds are served first). A slot's `kit_rank` names the n-th kit of the job's
+`--leaders kit=` (leader first) on a day with no kit stage, as R2's `kit` names an R1 symbol on Day 1.
+
+    from lofi_rl.shootout.plan import apply_adds, apply_cuts, load_plan
     plan = apply_cuts(load_plan(), ["latin3"])
     plan.stages["K1"].slots[0].tiles        # ("P1a", "P1b", "P2a", "P2b")
+    apply_adds(load_plan(), ["R2r"]).batches_of(2)[0].stages   # ("R2r", "R3a", "R3b")
 
 Standard library and PyYAML only.
 """
@@ -131,6 +137,7 @@ class Slot:
     loop: str                                # L1..L9
     tiles: tuple[str, ...]                   # symbols, tile 1 first
     kit: str | None = None                   # R2: the symbol of the day's kit stage whose kit plays in this round
+    kit_rank: int | None = None              # R2r: the rank of the job's kit leader that plays (1 = the leader)
 
 
 @dataclass(frozen=True)
@@ -173,6 +180,12 @@ class Stage:
     groups: tuple[Group, ...] = ()
     match: tuple[str, ...] = ()              # CD-53: the buses each clip takes its own fader on, in MIX_ORDER
     match_loops: bool = False                # CD-53: each option's palette is also measured on the 9 loops (§3 step 1)
+    optional: bool = False                   # CD-54: in its day only when the job's --add names it (apply_adds)
+
+    @property
+    def kit_ranks(self) -> int:
+        """How many of the job's kit leaders the stage's slots play (`kit_rank`): 0 for every stage but R2r."""
+        return max((s.kit_rank for s in self.slots if s.kit_rank), default=0)
 
     @property
     def anchor(self) -> bool:
@@ -239,6 +252,8 @@ class Batch:
     est_min_plan: float = 0.0
     est_min_full: float = 0.0
     split: str | None = None
+    adds: Mapping[str, int] = field(default_factory=lambda: MappingProxyType({}), hash=False)  # CD-54: optional rounds
+    lead: tuple[str, ...] = ()               # the added stages whose rounds open the batch (apply_adds)
 
     @property
     def stages(self) -> tuple[str, ...]:
@@ -293,6 +308,7 @@ class Plan:
     rerun_day: int | None = None
     rerun_stages: tuple[str, ...] = ()
     applied_cuts: tuple[str, ...] = ()
+    applied_adds: tuple[str, ...] = ()
 
     def briefs(self) -> dict[str, Brief]:
         """loop name -> its brief, from <loops>/briefs.yaml (§5)."""
@@ -312,9 +328,15 @@ class Plan:
         raise PlanError(f"no loop is named {name!r}")
 
     def stages_of(self, day: int | str) -> tuple[Stage, ...]:
-        """The day's stages in plan order (after cuts, those left)."""
+        """The day's stages in plan order (after cuts, those left; an optional stage only once `apply_adds` added
+        it)."""
         n = day_number(day)
         return tuple(self.stages[s] for s in self.days[n].stages if s in self.stages)
+
+    def optional_of(self, day: int | str) -> tuple[str, ...]:
+        """The optional stages of a day that `apply_adds` has not added (CD-54)."""
+        n = day_number(day)
+        return tuple(s for s, st in self.stages.items() if st.optional and st.day == n and s not in self.days[n].stages)
 
     def batches_of(self, day: int | str) -> tuple[Batch, ...]:
         n = day_number(day)
@@ -461,6 +483,11 @@ def parse_plan(doc: Any, path: Path | str = "", sha256: str = "", *, root: Path 
             if opt is not None and opt not in band_options[slot]:
                 raise _fail(f"stages.{st.id}.band.{slot}", f"{opt!r} is not one of the {SLOT_LIST[slot]} options")
     days = _days(top["days"], stages, candidates, band_options)
+    for st in stages.values():
+        if st.kit_ranks and ("kit" not in days[st.day].leaders
+                             or any(s.day == st.day and s.fills == "kit" for s in stages.values())):
+            raise _fail(f"stages.{st.id}.slots", f"kit_rank names the job's kit leaders, which day {st.day} does not "
+                                                 "take (its kits come from its own kit stage)")
     batches = _batches(top["batches"], stages)
     cuts = _cuts(top["cuts"], stages)
     levels = _levels(top["levels"], candidates)
@@ -634,7 +661,10 @@ def _stages(node: Any, loop_names: Mapping[str, str], loops: Mapping[str, Loop],
         w = f"stages.{sid}"
         _str(sid, f"{w} id", _STAGE)
         m = _map(raw, w, ("day", "bus", "fills", "category", "symbols", "slots"),
-                 ("what", "options", "draw", "groups", "ranks", "sub", "tie", "default", "band", "sax_muted", "match"))
+                 ("what", "options", "draw", "groups", "ranks", "sub", "tie", "default", "band", "sax_muted", "match",
+                  "optional"))
+        if not isinstance(m.get("optional", False), bool):
+            raise _fail(f"{w}.optional", "expected true or false")
         symbols = _strs(m["symbols"], f"{w}.symbols")
         bus = _str(m["bus"], f"{w}.bus")
         if bus not in STAGE_BUSES:
@@ -690,7 +720,10 @@ def _stages(node: Any, loop_names: Mapping[str, str], loops: Mapping[str, Loop],
             raise _fail(f"{w}.slots", "expected a non-empty list")
         for i, s in enumerate(m["slots"]):
             sw = f"{w}.slots[{i}]"
-            sm = _map(s, sw, ("id", "loop", "tiles"), ("kit",))
+            sm = _map(s, sw, ("id", "loop", "tiles"), ("kit", "kit_rank"))
+            if "kit" in sm and "kit_rank" in sm:
+                raise _fail(sw, "a slot names its kit by an earlier stage's symbol (kit) or by the job's kit leaders "
+                                "(kit_rank), not both")
             slot_id = _str(sm["id"], f"{sw}.id", _SLOT)
             if slot_id.rsplit(".", 1)[0] != sid:
                 raise _fail(f"{sw}.id", f"{slot_id!r} is not a slot of {sid}")
@@ -703,7 +736,8 @@ def _stages(node: Any, loop_names: Mapping[str, str], loops: Mapping[str, Loop],
                     raise _fail(f"{sw}.tiles", f"{t!r} is not a symbol of {sid}: tiles hold symbols, never options")
             if not 2 <= len(tiles) <= MAX_TILES:
                 raise _fail(f"{sw}.tiles", f"a round shows 2-{MAX_TILES} clips")
-            slots.append(Slot(slot_id, sid, loop, tiles, _str(sm["kit"], f"{sw}.kit") if "kit" in sm else None))
+            slots.append(Slot(slot_id, sid, loop, tiles, _str(sm["kit"], f"{sw}.kit") if "kit" in sm else None,
+                              _int(sm["kit_rank"], f"{sw}.kit_rank", 1, 3) if "kit_rank" in sm else None))
         if len({s.id for s in slots}) != len(slots):
             raise _fail(f"{w}.slots", "a slot id is used twice")
         slot_ids = [s.id for s in slots]
@@ -753,10 +787,16 @@ def _stages(node: Any, loop_names: Mapping[str, str], loops: Mapping[str, Loop],
                                     where=MappingProxyType({"mood": moods.pop()} if len(moods) == 1 else {})))
         else:
             groups = _groups_of(draw, symbols, options, tie, candidates)
+        ranks_used = sorted({s.kit_rank for s in slots if s.kit_rank})
+        if ranks_used and ranks_used != list(range(1, len(ranks_used) + 1)):
+            raise _fail(f"{w}.slots", f"kit_rank must count the job's kit leaders from 1 without a gap, got "
+                                      f"{ranks_used}")
+        if ranks_used and fills == "kit":
+            raise _fail(f"{w}.slots", "a stage that fills the kit slot plays its own options, not the kit leaders")
         out[sid] = Stage(sid, _int(m["day"], f"{w}.day", 1, 3), _str(m["category"], f"{w}.category"), symbols,
                          options, draw, tuple(slots), bus, str(m.get("what", "")), MappingProxyType(sub), ranks, tie,
                          fills, default, MappingProxyType(band), bool(m.get("sax_muted", False)), None, tuple(groups),
-                         match, match_loops)
+                         match, match_loops, bool(m.get("optional", False)))
     for st in list(out.values()):
         if st.ranks is not None:
             of = out.get(st.ranks["of"])
@@ -867,7 +907,10 @@ def _days(node: Any, stages: Mapping[str, Stage], candidates: Mapping[str, Candi
         for s in names:
             if s not in stages or stages[s].day != d:
                 raise _fail(f"{w}.stages", f"{s!r} is not a day-{d} stage")
-        if {s.id for s in stages.values() if s.day == d} != set(names):
+            if stages[s].optional:
+                raise _fail(f"{w}.stages", f"{s} is optional: it joins the day only when the job's --add names it "
+                                           "(CD-54), so the day's stages leave it out")
+        if {s.id for s in stages.values() if s.day == d and not s.optional} != set(names):
             raise _fail(f"{w}.stages", "must list every stage of the day")
         band = _map(m["band"], f"{w}.band", BUSES)
         for bus, inst in band.items():
@@ -900,27 +943,40 @@ def _batches(node: Any, stages: Mapping[str, Stage]) -> tuple[Batch, ...]:
     out = []
     for i, raw in enumerate(node):
         w = f"batches[{i}]"
-        m = _map(raw, w, ("names", "date", "day", "rounds", "anchors", "category", "note", "est_min"), ("split",))
+        m = _map(raw, w, ("names", "date", "day", "rounds", "anchors", "category", "note", "est_min"),
+                 ("split", "adds"))
         names = _strs(m["names"], f"{w}.names")
         for n in names:
             if not BATCH_RE.fullmatch(n):
                 raise _fail(f"{w}.names", f"batch name {n!r} must match {BATCH_RE.pattern}")
         day = _int(m["day"], f"{w}.day", 1, 3)
-        rounds = {}
-        for s, count in _map(m["rounds"], f"{w}.rounds", tuple(m["rounds"]) if isinstance(m["rounds"], dict)
-                             else ()).items():
-            if s not in stages:
-                raise _fail(f"{w}.rounds", f"{s!r} is not a stage")
-            if stages[s].day != day:
-                raise _fail(f"{w}.rounds", f"stage {s} belongs to day {stages[s].day}, not day {day}")
-            rounds[s] = _int(count, f"{w}.rounds.{s}", 1, 12)
+        rounds, adds = {}, {}
+        for key, table in (("rounds", rounds), ("adds", adds)):
+            node = m.get(key) or {}
+            for s, count in _map(node, f"{w}.{key}", tuple(node) if isinstance(node, dict) else ()).items():
+                if s not in stages:
+                    raise _fail(f"{w}.{key}", f"{s!r} is not a stage")
+                if stages[s].day != day:
+                    raise _fail(f"{w}.{key}", f"stage {s} belongs to day {stages[s].day}, not day {day}")
+                if stages[s].optional != (key == "adds"):
+                    raise _fail(f"{w}.{key}", f"stage {s} is {'' if stages[s].optional else 'not '}optional: a batch's "
+                                              "`adds` holds its optional stages (CD-54), its `rounds` the others")
+                table[s] = _int(count, f"{w}.{key}.{s}", 1, 12)
+                if key == "adds" and table[s] != len(stages[s].slots):
+                    raise _fail(f"{w}.adds.{s}", f"stage {s} has {len(stages[s].slots)} slots, not {table[s]}")
+        if not rounds:
+            raise _fail(f"{w}.rounds", "expected a non-empty mapping")
         est = m["est_min"]
         if not isinstance(est, list) or len(est) != 2:
             raise _fail(f"{w}.est_min", "expected [plan, full]")
         out.append(Batch(names, _str(m["date"], f"{w}.date"), day, MappingProxyType(rounds),
                          _int(m["anchors"], f"{w}.anchors", 0, 3), _str(m["category"], f"{w}.category"),
                          _str(m["note"], f"{w}.note"), _num(est[0], f"{w}.est_min[0]"), _num(est[1], f"{w}.est_min[1]"),
-                         _str(m["split"], f"{w}.split", _ID) if "split" in m else None))
+                         _str(m["split"], f"{w}.split", _ID) if "split" in m else None, MappingProxyType(adds)))
+    for sid, st in stages.items():
+        if st.optional and sum(sid in b.adds for b in out) != 1:
+            raise _fail(f"stages.{sid}.optional", "an optional stage opens exactly one batch: the one whose `adds` "
+                                                  "names it (CD-54)")
     return tuple(out)
 
 
@@ -1001,3 +1057,34 @@ def apply_cuts(plan: Plan, names: Sequence[str]) -> Plan:
                     for b in plan.batches)
     return replace(plan, stages=MappingProxyType(stages), days=MappingProxyType(days), batches=batches,
                    applied_cuts=plan.applied_cuts + tuple(names))
+
+
+def apply_adds(plan: Plan, names: Sequence[str]) -> Plan:
+    """The plan with the named optional stages added (CD-54; a new Plan, `plan` unchanged): each joins its day's
+    stages, first, and opens the batch whose `adds` names it, so its rounds are served before the batch's own
+    (`Batch.lead`), and the batch's category names it first. With no names the plan is returned as it is. PlanError
+    for a name that is not an optional stage, or one already added or given twice."""
+    names = list(names)
+    if not names:
+        return plan
+    optional = sorted(s for s, st in plan.stages.items() if st.optional)
+    for name in names:
+        if name not in optional:
+            raise PlanError(f"--add {name!r}: not an optional stage of the plan ({optional})")
+        if names.count(name) > 1 or name in plan.applied_adds:
+            raise PlanError(f"--add {name}: added twice")
+    days = dict(plan.days)
+    for name in names:
+        d = plan.stages[name].day
+        days[d] = replace(days[d], stages=(name, *days[d].stages))
+    batches = []
+    for b in plan.batches:
+        new = [s for s in b.adds if s in names]
+        if not new:
+            batches.append(b)
+            continue
+        cats = [plan.stages[s].category for s in new]
+        batches.append(replace(b, rounds=MappingProxyType({**{s: b.adds[s] for s in new}, **b.rounds}),
+                               lead=b.lead + tuple(new), category=", ".join([*cats, b.category])))
+    return replace(plan, days=MappingProxyType(days), batches=tuple(batches),
+                   applied_adds=plan.applied_adds + tuple(names))

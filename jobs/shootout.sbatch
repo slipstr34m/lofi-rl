@@ -25,6 +25,8 @@
 # Submit (ARGS hold no spaces; every ARG also goes into summary/leaders.json):
 #   make submit JOB=jobs/shootout.sbatch ARGS='--stage day1'
 #   make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id> --prior <job1>'
+#   with the bass undecided (SHOOTOUTS.md CD-54: R2r, the bass re-listen, on the two surviving kits, leader first):
+#   make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>+<id>/bass=bass_gu_acoustic/sax=<id>+<id> --prior <job1> --add R2r'
 #   make submit JOB=jobs/shootout.sbatch ARGS='--stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id> --prior <job1>+<job2> --repeats <stage>+... [--rerun-s2 <sax id>] [--cut <name>+...]'
 # Results: $REMOTE_SCR/runs/shootout-<job>/summary/ (draw.json, leaders.json, levels.json, palettes/, renders.json,
 # batches.json, and summary/stages.json: each stage's exit code and wall time) and $REMOTE_SCR/inbox/<date>/<batch>/;
