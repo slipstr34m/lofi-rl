@@ -753,6 +753,46 @@ def r2_choice(how: dict, order=R2R_ORDER):
     return choose
 
 
+def answers(by_slot: dict | None = None, *, by_kit: dict | None = None, order=R2R_ORDER):
+    """`prefer(order)` everywhere but the design rounds named: by slot (`R1.3`, `R2r.1`), or an R2 round by its kit
+    (`by_kit`). A spec is "G" (all bad), or (best, worst) with None for T (no best) or B (no worst), and an optional
+    third item {option: heard_bars} for those tiles' bars in the attempt."""
+    base = prefer(order)
+
+    def choose(r, hr):
+        first = hr.clips[r.ids[0]]
+        spec = None
+        if hr.kind == "none":
+            spec = (by_kit or {}).get(first.get("kit")) if first["stage"] == "R2" else (by_slot or {}).get(first["slot"])
+        if spec is None:
+            return base(r, hr)
+        if spec == "G":
+            return {"all_bad": True}
+        best, worst, *heard = spec
+        opt = {hr.clips[c]["option"]: c for c in r.ids}
+        p = {"best": opt[best]} if best else {"no_best": True}
+        p.update({"worst": opt[worst]} if worst else {"no_worst": True})
+        if heard:
+            p["heard"] = {opt[o]: bars for o, bars in heard[0].items()}
+        return p
+    return choose
+
+
+R2R_LEADERS = parse_leaders("keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/"
+                            "bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor")      # decisions 2 and 3's line
+V, J, W = "kit_virtuosity", "kit_gu_jazz", "kit_swirly"
+VS, FP, GU = "bass_vsco2_pizz", "bass_fp_finger_yr", "bass_gu_acoustic"
+
+
+def r2r_groove(tmp: Path, votes: Path, by_slot: dict, *, clock: Clock | None = None, leaders=R2R_LEADERS,
+               seed: int = 0x596D) -> dict[str, Path]:
+    """A Day-2 build with R2r into tmp/inbox (beside any Day 1 there), its groove batch voted `answers(by_slot)`."""
+    folders = _day(tmp, "day2", seed, leaders=leaders, adds=["R2r"])
+    votes.mkdir(exist_ok=True)
+    vote(folders["b1104-1-groove"], votes, clock or Clock(), answers(by_slot))
+    return folders
+
+
 def test_an_undecided_bass_adds_r2r_on_the_surviving_kits_and_keeps_the_default(inbox, tmp_path):
     """CD-54, decisions 2 and 3 of 2026-10-31 in shape: no R2 round has a best (T in two, G in one), so job 2's
     ARGS add R2r, the kit slot carries the two surviving kits (R1 leader first) and the bass slot the default; the
@@ -814,31 +854,16 @@ def test_a_pooled_r2_tie_without_the_default_adds_r2r_only_when_a_surviving_kit_
 
 def test_after_day_2_each_kit_takes_the_best_bass_of_its_own_r2r_rounds(tmp_path):
     """CD-43 as CD-54 reads it: the leader kit (two R2r rounds) takes the CD-39 leader of its own rounds; the other
-    kit, whose one round has no best, takes the pooled R2r leader; R2's votes are not pooled in. A tie over a kit's
-    own rounds without the default goes to Shresth's word, the default staying meanwhile."""
-    leaders = parse_leaders("keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/"
-                            "bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor")
-    folders = _day(tmp_path, "day2", 0x596D, leaders=leaders, adds=["R2r"])
+    kit, whose one round has no best, takes the pooled R2r leader. A tie over a kit's own rounds without the default
+    goes to Shresth's word, the default staying meanwhile. (That R2's votes are not pooled in is
+    test_after_day_2_the_r2_votes_are_not_pooled_in's.)"""
+    folders = _day(tmp_path, "day2", 0x596D, leaders=R2R_LEADERS, adds=["R2r"])
     box = {"root": tmp_path / "inbox", "folders": folders}
     m, h = load_batch(folders["b1104-1-groove"], check_files=False)
     r2r = {h.rounds[r.id].clips[r.ids[0]]["slot"]: r.id for r in m.rounds
            if h.rounds[r.id].clips[r.ids[0]]["stage"] == "R2r"}
     assert [m.rounds[i].id for i in range(3)] == sorted(r2r.values(), key=[r.id for r in m.rounds].index)
     assert sorted(r2r) == ["R2r.1", "R2r.2", "R2r.3"]
-
-    def answers(plan_of):
-        base = prefer(R2R_ORDER)
-
-        def choose(r, hr):
-            slot = hr.clips[r.ids[0]]["slot"]
-            if slot not in plan_of:
-                return base(r, hr)
-            best, worst = plan_of[slot]
-            opt = {hr.clips[c]["option"]: c for c in r.ids}
-            return ({"no_best": True, "worst": opt[worst]} if best is None
-                    else {"best": opt[best], "worst": opt[worst]})
-        return choose
-
     votes = tmp_path / "votes"
     votes.mkdir()
     vote(folders["b1104-1-groove"], votes, Clock(), answers({
@@ -863,6 +888,43 @@ def test_after_day_2_each_kit_takes_the_best_bass_of_its_own_r2r_rounds(tmp_path
     assert pv2["bass"] == "bass_gu_acoustic"                               # the default meanwhile (CD-39)
     assert doc2["rules"]["R2r"]["pairings"]["kit_gu_jazz"]["bass"] == "bass_vsco2_pizz"
     assert any(n["stage"] == "R2r" and "kit_virtuosity" in n["what"] for n in doc2["needs_word"])
+
+
+def test_one_g_in_the_leaders_two_r2r_rounds_still_leaves_it_its_best_bass(tmp_path):
+    """CD-44 over every R2r round (SHOOTOUTS.md 7.9): a G in one of the leader kit's two R2r rounds makes every bass
+    all-bad in half of that kit's rounds but in one of the three R2r rounds, so every bass can still survive and the
+    leader takes the best of its other round; Shresth used G in R2 on Day 1."""
+    votes = tmp_path / "votes"
+    r2r_groove(tmp_path, votes, {"R2r.1": "G", "R2r.3": (FP, VS), "R2r.2": (VS, GU)})
+    doc, _ = T.tally(votes, tmp_path / "inbox", plan=PLAN, batches=["b1104-1-groove"])
+    r = doc["rules"]["R2r"]
+    assert "raised" not in r and not any(o["cannot_survive"] for o in r["rank"])
+    assert doc["stages"]["R2r"]["escape"]["all_bad"] == 1
+    pv, pg = r["pairings"][V], r["pairings"][J]
+    assert (pv["bass"], pv["from"], pv["best_in"]) == (FP, "its own R2r rounds", ["R2r.3"])
+    assert (pg["bass"], pg["from"]) == (VS, "its own R2r rounds")
+    assert not any(n["stage"] == "R2r" and n["blocking"] for n in doc["needs_word"])
+
+
+def test_after_day_2_the_r2_votes_are_not_pooled_in(tmp_path):
+    """Section 8 Basses after R2r: R2r decides. Day 1's R2 votes, a best on bass_vsco2_pizz in every round, change
+    nothing when the Day-1 batches are tallied with the groove batch: the same pairings and the same pooled leader as
+    the groove batch alone, where the leader kit's own R2r rounds tie fp and vsco2 and so keep the default."""
+    folders = _day(tmp_path, "day1", 0x596A)
+    votes = tmp_path / "votes"
+    clock = vote_days({"root": tmp_path / "inbox", "folders": folders}, votes,
+                      choose=r2_choice(dict.fromkeys((V, J, W), VS)))
+    r2r_groove(tmp_path, votes, {"R2r.1": (FP, GU), "R2r.3": (VS, GU), "R2r.2": (FP, VS)}, clock=clock)
+    alone, _ = T.tally(votes, tmp_path / "inbox", plan=PLAN, batches=["b1104-1-groove"])
+    both, _ = T.tally(votes, tmp_path / "inbox", plan=PLAN, batches=[*DAY1, "b1104-1-groove"], runs=tmp_path / "runs")
+    assert "R2" not in alone["stages"] and both["stages"]["R2"]["voted"] == 3          # R2 is read, every best vsco2
+    assert {p["bass"] for p in both["rules"]["R2"]["pairings"].values()} == {VS}
+    a, b = alone["rules"]["R2r"], both["rules"]["R2r"]
+    assert {k: (p["bass"], p["from"]) for k, p in b["pairings"].items()} == {
+        k: (p["bass"], p["from"]) for k, p in a["pairings"].items()}
+    assert a["rank"] == b["rank"] and a["pooled_leader"]["pick"] == b["pooled_leader"]["pick"] == FP
+    assert a["pairings"][V]["pick"]["needs_word"] and a["pairings"][V]["bass"] == GU   # fp and vsco2 tie on its rounds
+    assert a["pairings"][J]["bass"] == FP
 
 
 def test_day2s_minutes_are_the_drawn_plans():
