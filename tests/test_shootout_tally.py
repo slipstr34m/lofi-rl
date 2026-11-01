@@ -1095,3 +1095,148 @@ def test_shresths_word_on_day_2s_cuts_overrides_the_cut_list_and_keeps_the_final
     assert T.main(cli + ["--day2-cuts-by", words]) == 2 and "goes with --day2-cuts" in capsys.readouterr().err
     with pytest.raises(T.TallyError, match="not Day-2 cuts"):
         T.tally(votes, inbox["root"], plan=PLAN, day2_cuts=["w2-two"])
+
+
+# ------------------------------------------------------------------------------ after Day 2: job 3's ARGS (7.9)
+SERVE = date(2026, 11, 3)
+
+
+def facts_days(tmp: Path, *, final_best: str = "sax_mtg_alto") -> dict:
+    """Day 1 and a Day 2 with R2r in the shape of the real ones (decisions of 2026-10-31 and 2026-11-01), every vote
+    synthetic: Day 1 voted on 2026-10-31 (no R2 round with a best, so R2r on kit_virtuosity + kit_gu_jazz), job 2's
+    leaders.json written by the job's own --dry-run, and Day 2 voted on 2026-11-01: R2r gives kit_virtuosity
+    bass_vsco2_pizz from its two rounds and kit_gu_jazz bass_fp_finger_yr from its one; the final's best is
+    `final_best` in every round; S2a's best is sax_plain, S2b's timing_lag, R3b's humanize_off."""
+    s1, s2 = 0x5961, 0x5962
+    folders = _day(tmp, "day1", s1)
+    folders |= _day(tmp, "day2", s2, leaders=R2R_LEADERS, adds=["R2r"])
+    run2 = tmp / "runs" / f"shootout-{s2}"
+    args2 = ["--stage", "day2", "--leaders", "keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+"
+             "kit_gu_jazz/bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor", "--prior", str(s1), "--add", "R2r"]
+    assert job.main(["--run", str(run2), "--inbox", str(tmp / "unused"), *args2, "--dry-run"]) == 0
+    votes = tmp / "votes"
+    votes.mkdir()
+    day1 = r2_choice({"kit_virtuosity": "T", "kit_gu_jazz": "TB", "kit_swirly": "G"})
+    clock = Clock(datetime(2026, 10, 31, 19, 0, tzinfo=PST))
+    for n in DAY1:
+        vote(folders[n], votes, clock, day1)
+    other = {"sax_mtg_alto": "sax_mtg_tenor", "sax_mtg_tenor": "sax_mtg_alto"}[final_best]
+    day2 = answers({"R2r.1": (VS, GU), "R2r.3": (VS, FP), "R2r.2": (FP, VS),
+                    **{f"S1f.{i}": (final_best, other) for i in (1, 2, 3)},
+                    **{f"S2a.{i}": ("sax_plain", "sax_expr_off") for i in (1, 2, 3)},
+                    **{f"S2b.{i}": ("timing_lag", "timing_grid") for i in (1, 2, 3)},
+                    **{f"R3b.{i}": ("humanize_off", "humanize_h2") for i in (1, 2, 3)},
+                    **{f"R3a.{i}": (None, None) for i in (1, 2)}})
+    clock = Clock(datetime(2026, 11, 1, 19, 0, tzinfo=PST))
+    for n in DAY2:
+        vote(folders[n], votes, clock, day2)
+    return {"root": tmp / "inbox", "folders": folders, "votes": votes, "runs": tmp / "runs", "jobs": (str(s1), str(s2))}
+
+
+def test_job_3s_args_carry_the_day2_picks_both_priors_and_the_repeats_the_serving_date_allows(tmp_path, capsys):
+    f = facts_days(tmp_path)
+    doc, _ = T.tally(f["votes"], f["root"], plan=PLAN, runs=f["runs"], serve_date=SERVE)
+    p = doc["proposal"]["day3"]
+    leaders = parse_leaders(p["leaders"])
+    assert p["status"] == "ready" and not p["blocking"]
+    assert leaders == {"keys": (doc["rules"]["K2"]["leader"]["pick"],), "kit": ("kit_virtuosity",),
+                       "bass": ("bass_vsco2_pizz",), "sax": ("sax_mtg_alto",), "swing": ("swing_55",),
+                       "humanize": ("humanize_off",), "sax_variant": ("sax_plain",), "timing": ("timing_lag",)}
+    assert p["pairings"] == {"kit_virtuosity": "bass_vsco2_pizz", "kit_gu_jazz": "bass_fp_finger_yr"}
+    s1, s2 = f["jobs"]
+    every = "K1+R1+R2+S1+R2r+R3a+R3b+S1f+S2a+S2b+K2+V"              # plan order: Day 1's, then Day 2's
+    assert p["args"] == f"--stage day3 --leaders {p['leaders']} --prior {s1}+{s2} --repeats {every}"
+    assert p["rerun_s2"] is None and p["cut"] == [] and p["no_repeat"] == []
+    fv = doc["first_votes"]
+    assert fv["K1"]["last_vote"] == "2026-10-31" and fv["K1"]["days_before"] == 3 and fv["K1"]["eligible"]
+    assert fv["R2r"]["last_vote"] == "2026-11-01" and fv["R2r"]["days_before"] == 2 and fv["R2r"]["eligible"]
+    assert all(x["against"] == "2026-11-03" and x["serve_date"] for x in fv.values())
+    assert "W1" not in fv, "Day 3's own stages never come back"
+    assert p["check"]["day_band"]["timing"] == "timing_lag" and p["check"]["day_band"]["bass"] == "bass_vsco2_pizz"
+    # the job takes the line, and the draw makes the five repeats from both priors
+    run = tmp_path / "runs" / "shootout-13640101"
+    assert job.main(["--run", str(run), "--runs", str(f["runs"]), "--inbox", str(tmp_path / "inbox3"),
+                     *shlex.split(p["args"]), "--dry-run"]) == 0
+    sent = json.loads((run / "summary" / "leaders.json").read_text())
+    assert sent["repeats"] == every.split("+") and sent["prior"] == [s1, s2]
+    priors = [load_prior(f["runs"] / f"shootout-{j}" / "summary" / "batches.json") for j in (s1, s2)]
+    d3 = draw(PLAN, "day3", seed=5, leaders=leaders, priors=priors, repeats=sent["repeats"])
+    reps = [r for b in d3["batches"] for r in b["rounds"] if r["kind"] == "repeat"]
+    assert sorted(r["group"] for r in reps) == sorted(PLAN.repeat_groups)
+    assert d3["band"]["kit"] == "kit_virtuosity" and d3["band"]["timing"] == "timing_lag"
+    md = T.report_md(doc)
+    assert f"After Day 2 (job 3, ready): `--leaders {p['leaders']}`" in md and p["submit"] in md
+    assert "2026-10-31" not in md, "the vote dates stay in the JSON (RATING.md: he is never told)"
+    assert T.main(["--votes", str(f["votes"]), "--inbox", str(f["root"]), "--runs", str(f["runs"]),
+                   "--out", str(tmp_path / "audit"), "--serve-date", "2026-11-03"]) == 0
+    assert f"day 3 proposal: ready: {p['args']}\n" in capsys.readouterr().out
+    assert T.main(["--votes", str(f["votes"]), "--inbox", str(f["root"]), "--out", str(tmp_path / "audit"),
+                   "--serve-date", "Nov 3"]) == 2 and "is not a date" in capsys.readouterr().err
+
+
+def test_a_stage_voted_under_two_days_before_the_serving_date_brings_no_repeat(tmp_path):
+    f = facts_days(tmp_path)
+    doc, _ = T.tally(f["votes"], f["root"], plan=PLAN, runs=f["runs"], serve_date=date(2026, 11, 2))
+    p = doc["proposal"]["day3"]
+    assert p["repeats"] == ["K1", "R1", "R2", "S1"] and p["args"].endswith("--repeats K1+R1+R2+S1")
+    assert sorted(p["no_repeat"]) == ["sax_variants", "vamps"]          # keys, drums + bass, sax sources from Day 1
+    assert doc["first_votes"]["V"]["days_before"] == 1 and not doc["first_votes"]["V"]["eligible"]
+    assert any("repeat group vamps" in n["what"] for n in doc["needs_word"])
+    none, _ = T.tally(f["votes"], f["root"], plan=PLAN, runs=f["runs"], serve_date=date(2026, 11, 1))
+    assert "--repeats" not in none["proposal"]["day3"]["args"] and len(none["proposal"]["day3"]["no_repeat"]) == 5
+    late = T.tally(f["votes"], f["root"], plan=PLAN, runs=f["runs"])[0]["proposal"]["day3"]
+    assert late["status"] == "needs_serve_date" and late["blocking"] and "--serve-date" in late["blocking"][0]
+
+
+def test_the_final_picking_the_other_finalist_re_runs_s2_on_day_3(tmp_path):
+    f = facts_days(tmp_path, final_best="sax_mtg_tenor")
+    doc, _ = T.tally(f["votes"], f["root"], plan=PLAN, runs=f["runs"], serve_date=SERVE)
+    p = doc["proposal"]["day3"]
+    assert doc["rules"]["S1f"]["winner"] == "sax_mtg_tenor" and p["rerun_s2"] == "sax_mtg_tenor"
+    assert parse_leaders(p["leaders"])["sax"] == ("sax_mtg_tenor",) and " --rerun-s2 sax_mtg_tenor" in p["args"]
+    assert doc["rules"]["day3_cut"]["rerun_minutes"] > 5.0 and p["status"] == "ready"
+    assert job.main(["--run", str(tmp_path / "runs" / "shootout-13640102"), "--runs", str(f["runs"]),
+                     "--inbox", str(tmp_path / "inbox3"), *shlex.split(p["args"]), "--dry-run"]) == 0
+
+
+def test_job_3s_args_wait_for_job_2s_pulled_leaders_and_day_3s_cut_follows_its_minutes(tmp_path):
+    f = facts_days(tmp_path)
+    (f["runs"] / f"shootout-{f['jobs'][1]}" / "summary" / "leaders.json").unlink()
+    doc, _ = T.tally(f["votes"], f["root"], plan=PLAN, runs=f["runs"], serve_date=SERVE)
+    assert doc["proposal"]["day3"]["status"] == "blocked"
+    assert any(n["stage"] == "day3" and n["blocking"] and "leaders.json" in n["what"] for n in doc["needs_word"])
+    # the cut: Day 3 at r x its plan over 30 minutes cuts W1 to two rounds first, then W2; his word overrides
+    base = T.day3_cut(PLAN, 60.0, 60.0, 340.0, 0.0)
+    assert base["cuts"] == [] and base["fits"] and 14.0 < base["day3_plan"] < 17.0
+    slow = T.day3_cut(PLAN, 120.0, 60.0, 340.0, 0.0)                     # r = 2: 2 x 15.x passes 30
+    assert slow["cuts"][0] == "w1-two" and slow["saves_min"] > 0
+    assert slow["day3_minutes"] <= 30.0 or slow["cuts"] == ["w1-two", "w2-two"]
+    word = T.day3_cut(PLAN, 120.0, 60.0, 340.0, 0.0, decided=[], by="his word")
+    assert (word["decided"]["cuts"], word["decided"]["by"], word["decided"]["saves_min"]) == ([], "his word", 0.0)
+    assert word["decided"]["day3_minutes"] > 30.0 and not word["decided"]["fits"]
+    with pytest.raises(T.TallyError, match="not Day-3 cuts"):
+        T.tally(f["votes"], f["root"], plan=PLAN, day3_cuts=["latin3"])
+
+
+def test_a_w1_round_whose_beds_spread_over_1_lu_is_flagged_and_w2s_levels_never_are(inbox, tmp_path):
+    import shutil
+    root = tmp_path / "inbox"
+    for n in DAY3:
+        src = inbox["folders"][n]
+        shutil.copytree(src, root / src.parent.name / n)
+    for n in DAY3:
+        path = next(root.glob(f"*/{n}")) / HIDDEN_NAME
+        hid = json.loads(path.read_text())
+        for hr in hid["rounds"].values():
+            first = next(iter(hr["clips"].values()))
+            if first["stage"] == "W1" and hr["kind"] == "none":
+                first["bed_lu"] = round(first["bed_lu"] + 1.25, 4)
+        path.write_text(json.dumps(hid, indent=2))
+    votes = tmp_path / "votes"
+    votes.mkdir()
+    doc, _ = T.tally(votes, root, plan=PLAN)
+    flagged = [f for f in doc["flags"] if f["stage"] in ("W1", "W2")]
+    assert {f["stage"] for f in flagged} == {"W1"} and len(flagged) == 3
+    assert all(f["field"] == "bed_lu" and f["spread_lu"] == pytest.approx(1.25) and f["limit_lu"] == 1.0
+               for f in flagged)
+    assert "W1" in {s["stage"] for s in doc["largest_spread"]} and "W2" not in {s["stage"] for s in doc["largest_spread"]}
