@@ -90,6 +90,30 @@ def test_r_taste_is_par_against_the_briefs_references_and_p_acc_scales_g(tmp_pat
     assert scorer.terms() == {"pq_gate": False, "pacc_gate": True, "ce": False, "theme": False, "taste": True}
 
 
+def test_identical_items_are_scored_once_and_another_brief_id_is_scored_again(tmp_path):
+    class Counting(fakes.TableRM):
+        calls = 0
+
+        def utilities(self, feats):
+            Counting.calls += 1
+            return super().utilities(feats)
+
+    refs = {"596:0": [[0.0] * 4] * 5, "596:1": [[1.0] * 4] * 5}
+    rm = rm_api.RMState(Counting({canon_sha_of(EX): ([2.0] * 5, 0.9)}), rm_api.Refs(
+        "table-rm/1", 5, {k: tuple(tuple(x) for x in v) for k, v in refs.items()}, "p", "s"), None, "live",
+        "table-rm/1")
+    scorer = make_scorer(tmp_path, rm=rm)
+    items = [protocol.item_dict(i, EX, BRIEF_A, "596:0") for i in range(3)] + \
+        [protocol.item_dict(3, fixture_text("example_leniency.ls"), BRIEF_A, "596:1")]
+    out = scorer.score(protocol.parse_score_request(protocol.score_request(items, palette_sha256=PAL.sha256)))["items"]
+    assert Counting.calls == 2, "one RM call per (clip, brief_id)"
+    a, b, c, d = out
+    assert b["r"] == c["r"] == a["r"] and (b["diag"]["dup_of"], c["diag"]["dup_of"]) == (0, 0)
+    assert b["t_ms"] == {"render": 0.0, "features": {}, "score": 0.0} and b["i"] == 1 and c["i"] == 2
+    assert d["clip_id"] == a["clip_id"] and d["diag"]["cache"] == "dup"
+    assert a["r"]["taste"] == pytest.approx(sigmoid(2.0)) and d["r"]["taste"] == pytest.approx(sigmoid(1.0))
+
+
 def test_an_rm_without_references_keeps_p_acc_but_not_taste(tmp_path):
     table = {canon_sha_of(EX): ([1.0] * 5, 0.2)}
     scorer = make_scorer(tmp_path, rm=_rm_state(tmp_path, table))

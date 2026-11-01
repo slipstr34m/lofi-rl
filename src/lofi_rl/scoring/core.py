@@ -308,10 +308,19 @@ class Scorer:
             recs = self._records(unique)
             t2 = time.perf_counter()
             items = []
+            scored: dict[tuple, dict[str, Any]] = {}     # one score per (clip, brief_id, scene): PAR keys on brief_id
             for p in prepared:
                 rec, kind = recs[p.clip_id]
+                key = (p.clip_id, p.item.brief_id, p.item.brief.scene)
+                if key in scored:
+                    first = scored[key]
+                    items.append({**first, "i": p.item.i, "r": dict(first["r"]), "sig": dict(first["sig"]),
+                                  "diag": {**first["diag"], "cache": "dup", "dup_of": first["i"]},
+                                  "t_ms": {"render": 0.0, "features": {}, "score": 0.0}})
+                    continue
                 kind = "dup" if dup_of[p.item.i] is not None else kind
                 items.append(self.score_item(p, rec, kind, dup_of[p.item.i]))
+                scored[key] = items[-1]
         kinds = Counter(it["diag"]["cache"] for it in items)
         fails = Counter(it["gate"] for it in items if it["gate"] is not None)
         total = 1000 * (time.perf_counter() - t0)
