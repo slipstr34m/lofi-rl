@@ -37,6 +37,10 @@ QWEN = ("Qwen/Qwen3-4B-Instruct-2507", "cdbee75f17c01a7cc42f958dc650907174af0554
 MERT = ("m-a-p/MERT-v1-95M", "12af15fef9d0ac838c3f475bfbbf26d2060dd4f5",
         ("config.json", "preprocessor_config.json", "configuration_MERT.py", "modeling_MERT.py", "pytorch_model.bin"))
 CLAP = ("lukewys/laion_clap", "b3708341862f581175dba5c356a4ebf74a9b6651", ("music_audioset_epoch_15_esc_90.14.pt",))
+# fetched by 13624271 (CHANGELOG; docs/design/infra_schedule.md). initialize_predictor() loads it by repo id through
+# refs/main, so lofi_rl.scoring.features checks refs/main against this revision before it loads
+AUDIOBOX = ("facebook/audiobox-aesthetics", "9b1dd8e5df9af7216e836a98974fe3b82c56ded6",
+            ("config.json", "model.safetensors"))
 EXAMPLE = ROOT / "tests" / "fixtures" / "loops" / "example.ls"
 STEP_TIMEOUT_S = {"facts": 120, "scorer": 480, "policy": 900}   # + 30 s backstops + pytest (~1 min): 27.4 of 30 min
 CLAP_MAX = 480_000          # laion_clap's 10 s at 48 kHz; a longer clip gets a random crop ('rand_trunc')

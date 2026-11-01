@@ -2,10 +2,13 @@
 the gate G = hard x 1[PQ >= tau_PQ] x clip(P_acc / 0.5, 0.25, 1) and PAR on hand-built numbers, the theme margin on
 hand-built embeddings, every term off when its calibration is missing and on when present, the 422 for a brief
 without references, and the feature cache on disk and in memory."""
+import importlib.metadata
 import json
 import math
 import shutil
 import statistics
+import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -14,6 +17,7 @@ from helpers_scoring import BRIEF_A, PALETTE, ROOT, canon_sha_of, fixture_text, 
 from lofi_rl.palette import load_palette
 from lofi_rl.scoring import features, fakes, protocol, rm_api, theme
 from lofi_rl.scoring.cache import FeatureCache
+from lofi_rl.smoke import AUDIOBOX
 from lofi_rl.scoring.calib import MAD_SCALE, robust_sigmoid, sigmoid
 from lofi_rl.scoring.core import Unprocessable, gate_factor
 
@@ -248,6 +252,55 @@ def test_feat_ver_follows_the_render_and_feature_source_files(tmp_path):
     with (tmp_path / "src" / "lofi_rl" / "render" / "mix.py").open("ab") as f:
         f.write(b"\n")
     assert features.source_sha8(tmp_path) != sha and features.feat_version("fake", root=tmp_path) != ver
+
+
+STACK_KEYS = ("numpy", "scipy", "pedalboard", "pyloudnorm", "soundfile", "mido", "fluidsynth", "libsndfile", "python",
+              *features.ML_PACKAGES, "cuda")
+
+
+def test_feat_ver_names_the_audiobox_revision_and_every_library_of_the_stack():
+    stack = {k: "1.0" for k in STACK_KEYS}                     # synthetic versions: only their changes matter
+    v = features.feat_version("real", src="0" * 8, stack=stack)
+    assert f".abx-{AUDIOBOX[1][:8]}." in v and v == features.feat_version("real", src="0" * 8, stack=dict(stack))
+    changed = {features.feat_version("real", src="0" * 8, stack={**stack, k: "1.1"}) for k in STACK_KEYS}
+    assert len(changed | {v}) == len(STACK_KEYS) + 1, "each library's version is in feat_ver"
+
+
+@pytest.mark.skipif(shutil.which("fluidsynth") is None, reason="fluidsynth not on PATH")
+def test_the_stack_is_the_render_stack_without_the_cpu_plus_the_ml_stack(monkeypatch):
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(version=SimpleNamespace(cuda="cuda-x")))
+    s = features.stack_versions()
+    assert "cpu" not in s and set(STACK_KEYS) <= set(s), "the CPU model keys the cache directory instead"
+    assert s["cuda"] == "cuda-x" and s["numpy"] == np.__version__
+
+
+def test_the_audiobox_checkpoint_must_be_the_pinned_revision_in_refs_main(tmp_path):
+    repo, rev, need = AUDIOBOX
+    base = tmp_path / "hub" / ("models--" + repo.replace("/", "--"))
+    with pytest.raises(FileNotFoundError, match="refs/main"):
+        features.check_audiobox_ref(str(tmp_path))
+    (base / "refs").mkdir(parents=True)
+    (base / "refs" / "main").write_text("f" * 40)            # what a fetch without @rev would have written
+    with pytest.raises(RuntimeError, match=f"pinned at {rev[:12]}"):
+        features.check_audiobox_ref(str(tmp_path))
+    (base / "refs" / "main").write_text(rev + "\n")
+    with pytest.raises(FileNotFoundError, match="no cached snapshot"):
+        features.check_audiobox_ref(str(tmp_path))
+    (base / "snapshots" / rev).mkdir(parents=True)
+    for f in need:
+        (base / "snapshots" / rev / f).write_text("{}")
+    assert features.check_audiobox_ref(str(tmp_path)) == rev
+
+
+def test_the_installed_audiobox_package_must_be_the_one_feat_ver_names():
+    assert features.check_audiobox_package(lambda name: features.AUDIOBOX_PKG) == "0.0.4"
+    with pytest.raises(RuntimeError, match="0.0.5 is installed"):
+        features.check_audiobox_package(lambda name: "0.0.5")
+
+    def missing(name):
+        raise importlib.metadata.PackageNotFoundError(name)
+    with pytest.raises(RuntimeError, match="None is installed"):
+        features.check_audiobox_package(missing)
 
 
 def test_a_record_for_another_feat_ver_clip_or_schema_is_a_miss(tmp_path):

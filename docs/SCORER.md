@@ -78,7 +78,7 @@ So the server's item keeps §5's names where they survive and drops the rest:
 | version | value | changes when |
 |---|---|---|
 | `reward_ver` | `audio-reward/1` (`protocol.REWARD_VER`) | the gate, r_ce, r_theme or PAR formulas change (a manual bump) |
-| `feat_ver` | `feat1.mert-12af15fe.clap-b3708341.abx-0.0.4.w4.src-<sha8>` | a model pin, the window count, or the render or feature code (`features.source_sha8`: dsl, compile, theory, render, brief, palette, prng, smoke.py, features.py, render_pool.py) |
+| `feat_ver` | `feat1.mert-12af15fe.clap-b3708341.abx-9b1dd8e5.w4.src-<sha8>.env-<sha8>` | a model pin (MERT, CLAP, the Audiobox revision), the window count, the render or feature code (`features.source_sha8`: dsl, compile, theory, render, brief, palette, prng, smoke.py, features.py, render_pool.py), or a library of the stack (`features.stack_versions`: numpy, scipy, pedalboard, pyloudnorm, soundfile, mido, FluidSynth, libsndfile, python, torch, torchaudio, transformers, laion_clap, audiobox_aesthetics, CUDA); the fake featurizer's is `fake1.render-<fake|real>.w4.src-<sha8>` |
 | `rm_ver` | the RM's (`rm.json`), `null` without one | another RM |
 | `render_ver` | `render-cfg-<sha8>` of §2's render config | the render schema or chain constants |
 
@@ -251,11 +251,15 @@ rewarded**; PC and CU are logged as signatures (`sig`, `diag`).
 |---|---|---|
 | MERT-v1-95M @12af15fe | the mix, mono, 24 kHz, four equal 2-bar windows in one batch | per-layer means over windows and frames, (13, 768) |
 | CLAP music @b3708341 (HTSAT-base) | the mix and the music stem, mono, 48 kHz, four 2-bar windows each (`smoke.clap_windows`) | unit window embeddings, (4, 512) each |
-| Audiobox aesthetics 0.0.4 | the mix, written to a float WAV under the server's temp dir (the call the Phase-0 smoke verified) | PQ, CE, PC, CU |
+| Audiobox aesthetics 0.0.4 @9b1dd8e5 | the mix, written to a float WAV under the server's temp dir (the call the Phase-0 smoke verified) | PQ, CE, PC, CU |
 
   Eval mode, `torch.no_grad`, float32 with TF32 off, cuDNN deterministic without benchmark autotuning,
   `use_deterministic_algorithms(warn_only=True)`, `CUBLAS_WORKSPACE_CONFIG=:4096:8`, one clip per batch: a clip's
   features never depend on the rest of the request. A non-finite feature is a 500.
+  `initialize_predictor()` loads Audiobox by repo id through `refs/main`, which `jobs/fetch.sbatch` rewrites to
+  whatever it fetched, so the Featurizer first checks that `refs/main` names the pinned revision
+  (`lofi_rl.smoke.AUDIOBOX`, fetched by 13624271) and its snapshot holds `config.json` and `model.safetensors`,
+  and that the installed `audiobox_aesthetics` is 0.0.4: it fails closed (exit 1) before any model loads.
 - **Cache** (`cache.py`): `<cache>/feat/<feat_ver>/<clip_id>.npz` (arrays `mert`, `clap_mix`, `clap_music` plus a
   JSON `meta`: the render numbers, Audiobox, the canonical text, the device) and an in-memory LRU of 4,096
   records. A record is a function of the clip id and feat_ver alone, so a resumed run or a restarted server
@@ -267,9 +271,11 @@ rewarded**; PC and CU are logged as signatures (`sig`, `diag`).
 ## 8. Choices the design left open (each pinned by a test)
 1. **The split** of §2, and only symbolic-gate passes are sent.
 2. **Clip id** = §2's formula as the shootout computes it, not a new one, so votes and scores share ids.
-3. **feat_ver hashes the render and feature code**, since the clip id does not change when the renderer's
-   output does (voicing V2 and V2.1 changed renders under the same schema): a code change starts a new cache
-   directory instead of serving features of other audio. Cost: any edit to those files re-renders once.
+3. **feat_ver hashes the render and feature code and the library stack**, since the clip id does not change when
+   the renderer's output does (voicing V2 and V2.1 changed renders under the same schema), and a rebuilt scorer
+   env can move scipy, soundfile or pedalboard under the same code: a change starts a new cache directory
+   instead of serving features of other audio. Cost: any edit to those files, or any library bump, re-renders
+   once.
 4. **Features on the mix**, theme on the music stem (§5), Audiobox on the mix (votes hear the mix, and τ_PQ comes
    from voted clips), the centroid on the mix.
 5. **r_ce** uses the same robust sigmoid as r_theme, with the pool's CE median and MAD in `ce.json` (§5 gives CE
@@ -342,7 +348,8 @@ feat_ver names another renderer than the one it runs (the real featurizer names 
 - laion_clap 1.1.7: `get_audio_embedding_from_data` on two batches of 4 windows per clip, and
   `get_text_embedding` on 29 texts in one batch (the Phase-0 smoke used 4 windows and 2 texts).
 - MERT: `Wav2Vec2FeatureExtractor` on a list of 4 equal windows (the smoke used one), and its normalization.
-- Audiobox: `initialize_predictor()` on the GPU under the memory cap; one clip per call.
+- Audiobox: `initialize_predictor()` on the GPU under the memory cap; one clip per call; `refs/main` naming the
+  full pinned revision (the CHANGELOG records 13624271's fetch as 9b1dd8e5, the first 8 hex).
 - Determinism across processes on one GPU (b vs a), the 6 GB cap with all three models, and every timing:
   model loads, renders with 7 workers on 8 CPUs, MERT, CLAP, Audiobox, a whole 32-item batch.
 - §5's sizing (n* ≈ 7 render workers on an L40S) and its "reward 9 s" step estimate.
