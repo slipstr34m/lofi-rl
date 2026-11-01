@@ -18,7 +18,7 @@ import pytest
 from helpers_scoring import BRIEF_A, PALETTE, ROOT, fixture_text, make_scorer
 from lofi_rl.palette import load_palette
 from lofi_rl.scoring import fakes, protocol
-from lofi_rl.scoring.render_pool import RenderJob, RenderPool, spectral_centroid
+from lofi_rl.scoring.render_pool import RenderJob, RenderPool, render_config, spectral_centroid
 
 PAL = load_palette(PALETTE, verify=False)
 needs_fluidsynth = pytest.mark.skipif(shutil.which("fluidsynth") is None, reason="fluidsynth not on PATH")
@@ -67,6 +67,9 @@ def test_one_real_render_through_the_pool_reaches_the_featurizer_once(tmp_path):
         out["items"][0]["diag"]["render"]["audio_sha256"], "the same clip renders to the same PCM"
     assert (sr, pcm.shape) == (44100, (man["n"], 2)) and Path(rendered["files"]["flac"]).name == \
         f"{out['items'][0]['clip_id']}.flac"
+    from lofi_rl.shootout.render import clip_id as shootout_clip_id
+    assert shootout_clip_id(man) == out["items"][0]["clip_id"], "the id votes are kept under (taste_pipeline.md §2)"
+    assert render_config() == {"schema": man["schema"], "chain": man["chain"], "flac": protocol.FLAC_FORMAT}
     a, b, junk = out["items"]
     assert (a["hard"], a["diag"]["cache"], b["diag"]["cache"], b["clip_id"]) == (1, "miss", "dup", a["clip_id"])
     assert (junk["hard"], junk["gate"]) == (0, "G1") and out["batch"]["rendered"] == 1

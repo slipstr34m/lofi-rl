@@ -113,7 +113,8 @@ rendered, cache counts, failing gates, parse/records/total ms).
 ### 3.4 Clip ids and dedup
 - `clip_id = "c" + sha256(sha256(canonical LoopScript) | bpm,key,mode,energy | palette_id@sha8 | render_cfg_sha8)[:16]`,
   taste_pipeline.md §2's formula, equal to `lofi_rl.shootout.render.clip_id(manifest)`
-  (`tests/test_scoring_protocol.py`), so the scorer's ids are the ids votes are kept under. The render config is
+  (`tests/test_scoring_protocol.py`, and `tests/test_scoring_render.py` on a real render's manifest), so the
+  scorer's ids are the ids votes are kept under. The render config is
   `{schema, chain, flac}` of the render manifest, built from the pipeline's constants before rendering.
 - The canonical form comes from parsing the text with the palette's vocabulary in the brief's mode. Texts with
   one canonical form, brief and palette are one clip, rendered and featurized once per request (`example.ls` and
@@ -337,9 +338,9 @@ the features, for the cluster smoke). They never render or hear audio. `python -
 |---|---|
 | `test_scoring_protocol.py` | clip id = the shootout formula, its parts, canonical-form sharing; request round trips; 25 malformed requests; NaN; response and health checks; pinned versions |
 | `test_scoring_server.py` | the real server on a real socket with fakes: health, score (order, fields, dedup, memory hits, stats), render, 400/404/405/413, 500 with its trace, 409, render gate and infrastructure failures, mode 0600, the path rules, close() leaving a socket that replaced its own, the client's errors, a real client refusing a fake backend, SIGTERM and SIGINT removing the socket (a subprocess), exit 2 on a foreign path |
-| `test_scoring_core.py` | G on 11 hand-built cases, PAR on hand-built utilities, the RM with and without references, the 422, the theme margin on hand-built embeddings, the prompt file, every term off without calibration and on with it, CE that fails its check, the disk cache read by a fresh scorer, an unreadable file, LRU eviction, the fakes |
+| `test_scoring_core.py` | G on 11 hand-built cases, PAR on hand-built utilities, the RM with and without references, the 422, the theme margin on hand-built embeddings, the prompt file, every term off without calibration and on with it, CE that fails its check, the disk cache read by a fresh scorer, an unreadable file, records of another feat_ver, clip or schema read as misses, feat_ver following the source files, LRU eviction, the fakes |
 | `test_scoring_calib_rm.py` | the calibration and RM loaders: missing, valid, every malformed case, CE thresholds, exit 2 before binding |
-| `test_scoring_render.py` | two real renders through the pool (example.ls, dev_gu): `/score`, where the mix and music stem reach the featurizer once and their hashes match the manifest and the laptop's golden hashes, and `/render` to a FLAC and manifest named by clip id with the same PCM; a gate failure in a worker, a batch past its deadline, a broken pool (in flight, and found broken at submit after a worker died between batches), the centroid |
+| `test_scoring_render.py` | two real renders through the pool (example.ls, dev_gu): `/score`, where the mix and music stem reach the featurizer once and their hashes match the manifest and the laptop's golden hashes, and `/render` to a FLAC and manifest named by clip id with the same PCM, the clip id equal to the shootout's id of that manifest; a gate failure in a worker, a batch past its deadline, a broken pool (in flight, and found broken at submit after a worker died between batches), the centroid |
 | `test_scoring_reward_hook.py` | the no-scorer golden byte for byte; the env var; G, r, gate and the new fields with a stand-in client; the CE rule; failures raise; nothing sent without a pass; TRL hooks; the real client and server end to end |
 | `test_scoring_job.py` | the job's size, cost line, env, timeouts, steps and outputs; the smoke's batch; the steps rehearsed on fakes to SCORER_SMOKE_OK; the verdict failing on drift, a missing pass, a bad exit and a left socket |
 | `test_scoring_imports.py` | every scoring module imports without the ML stack; client, protocol and the reward without numpy or the audio stack |

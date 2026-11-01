@@ -4,14 +4,16 @@ hand-built embeddings, every term off when its calibration is missing and on whe
 without references, and the feature cache on disk and in memory."""
 import json
 import math
+import shutil
 import statistics
 
 import numpy as np
 import pytest
 
-from helpers_scoring import BRIEF_A, PALETTE, canon_sha_of, fixture_text, make_scorer, variant
+from helpers_scoring import BRIEF_A, PALETTE, ROOT, canon_sha_of, fixture_text, make_scorer, variant
 from lofi_rl.palette import load_palette
-from lofi_rl.scoring import fakes, protocol, rm_api, theme
+from lofi_rl.scoring import features, fakes, protocol, rm_api, theme
+from lofi_rl.scoring.cache import FeatureCache
 from lofi_rl.scoring.calib import MAD_SCALE, robust_sigmoid, sigmoid
 from lofi_rl.scoring.core import Unprocessable, gate_factor
 
@@ -232,6 +234,49 @@ def test_features_are_cached_on_disk_by_feat_ver_and_clip_id_and_read_back_by_a_
     again = c.score(_req([EX]))["items"][0]
     assert again["diag"]["cache"] == "miss" and c.cache.counters()["bad"] == 1 and again["r"] == first[0]["r"]
     assert np.load(bad, allow_pickle=False)["mert"].shape == (13, 768), "rewritten"
+
+
+def test_feat_ver_follows_the_render_and_feature_source_files(tmp_path):
+    # SCORER.md §8.3: an edit to the code a clip's audio and features come from starts a new cache directory.
+    files = sorted({p for g in features.SOURCE_GLOBS for p in ROOT.glob(g) if p.is_file()})
+    for p in files:
+        dst = tmp_path / p.relative_to(ROOT)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(p, dst)
+    assert features.source_sha8(tmp_path) == features.source_sha8(tmp_path) == features.source_sha8(ROOT)
+    sha, ver = features.source_sha8(tmp_path), features.feat_version("fake", root=tmp_path)
+    with (tmp_path / "src" / "lofi_rl" / "render" / "mix.py").open("ab") as f:
+        f.write(b"\n")
+    assert features.source_sha8(tmp_path) != sha and features.feat_version("fake", root=tmp_path) != ver
+
+
+def test_a_record_for_another_feat_ver_clip_or_schema_is_a_miss(tmp_path):
+    root = tmp_path / "cache"
+    feat_a = fakes.FakeFeaturizer()
+    feat_a.feat_ver = "A"
+    a = make_scorer(tmp_path, cache_root=root, featurizer=feat_a)
+    cid = a.score(_req([EX]))["items"][0]["clip_id"]
+    rec = root / "feat" / "A" / f"{cid}.npz"
+    assert rec.is_file() and FeatureCache(root, "B").get(cid) is None
+    shutil.copyfile(rec, root / "feat" / "B" / f"{cid}.npz")         # A's record under B's name: still a miss
+    b_cache = FeatureCache(root, "B")
+    assert b_cache.get(cid) is None and b_cache.counters()["bad"] == 1
+    feat_b, r = fakes.FakeFeaturizer(), fakes.FakeRenderer()
+    feat_b.feat_ver = "B"
+    b = make_scorer(tmp_path, cache_root=root, featurizer=feat_b, renderer=r)
+    it = b.score(_req([EX]))["items"][0]
+    assert it["diag"]["cache"] == "miss" and len(r.calls) == 1 and b.cache.counters()["bad"] == 1, "rendered again"
+    other = "c" + "f" * 16                                            # A's record under another clip's name
+    shutil.copyfile(rec, root / "feat" / "A" / f"{other}.npz")
+    a_cache = FeatureCache(root, "A")
+    assert a_cache.get(other) is None and a_cache.counters()["bad"] == 1
+    with np.load(rec, allow_pickle=False) as z:                       # another schema
+        arrays = {k: z[k] for k in z.files}
+    meta = json.loads(str(arrays["meta"]))
+    arrays["meta"] = np.array(json.dumps({**meta, "schema": "lofi-scorer/clip/0"}))
+    with rec.open("wb") as f:
+        np.savez(f, **arrays)
+    assert a_cache.get(cid) is None and a_cache.counters()["bad"] == 2
 
 
 def test_the_memory_lru_evicts_the_oldest_clip(tmp_path):
