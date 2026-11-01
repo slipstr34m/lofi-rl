@@ -5,9 +5,9 @@ A batch is one folder, `inbox/<date>/<batch>/`, holding opaque audio files and t
 - `manifest.json` (public): the batch id, mode, scene text, bpm and bars, and rounds of opaque clip ids with
   their files. The page gets a trimmed copy of it (`Manifest.public()`).
 - `manifest.hidden.json` (never served): which rounds are repeats or anchors, and what each clip really is
-  (its real clip id, option or variant name, source). The server reads it only to label the votes it writes,
-  once voting is done for the audit aggregates, and, when it names one, for `serve_from`, the first day the batch
-  may be served (a Day-3 shootout batch: its repeats come at least 2 days after their first showing's vote, D-013).
+  (its real clip id, option or variant name, source). The server reads it only to label the votes it writes, for
+  the audit aggregates once voting is done, and for `serve_from` when it names one: the first day the batch may be
+  served (a Day-3 shootout batch, whose repeats come at least 2 days after their first showing's vote, D-013).
 
 Both are validated on load; every problem is reported at once (`ManifestError.errors`). Opaque ids and file
 names must not leak what a clip is: the check compares them with every word in the hidden manifest.

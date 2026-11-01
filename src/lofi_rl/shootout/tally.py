@@ -1793,7 +1793,7 @@ def report_md(doc: dict, out_dir: str | None = None) -> str:
                  f"Repeats (CD-47): {r['voted']} voted, no implied pair to compare. {r['caveat']}")
         if r["too_soon"] or r["undated"]:         # D-013: at least min_days_after days after the first showing
             L.append(f"Left out of the pairs: {len(r['too_soon'])} repeat(s) voted under {r['min_days_after']} days "
-                     f"after their first showing (D-013) and {len(r['undated'])} without a vote date on both sides.")
+                     f"after their first showing (D-013) and {len(r['undated'])} with a vote date that cannot be read.")
     else:                         # nothing here says which rounds come back or when (RATING.md: never told)
         L.append("Repeats (CD-47): none voted yet.")
     pb = doc["position_of_best"]["rows"]

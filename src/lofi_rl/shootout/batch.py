@@ -200,8 +200,8 @@ def _hidden_clip(rec: Mapping, rnd: Mapping, clip: Mapping) -> dict:
         info.update(trim_db=None, fader_db=None, bus_lufs=rec.get("bed_lufs"))
         if "music_lufs" in rec:                      # section 4.5: the music under the bed, the bed in the render
             info.update(music_lufs=rec["music_lufs"], bed_lu=(rec.get("bed") or {}).get("bed_lu"))
-        sax = buses.get("sax") or {}                 # the sax as rendered (its loudness before the fader + the fader):
-        info.update(sax_fader_db=sax.get("fader_db"), sax_lufs=sax.get("post_lufs"))   # an anchor's sour copy's own
+        sax = buses.get("sax") or {}                 # the sax as rendered: an anchor's sour copy plays its own fader
+        info.update(sax_fader_db=sax.get("fader_db"), sax_lufs=sax.get("post_lufs"))
     elif level and "buses" in level:                 # Day 2 on (CD-53): every matched bus's own fader and loudness
         lb = level["buses"]
         first = next(b for b in [*bus.split("+"), *MIX_ORDER] if b in lb)   # the stage's bus; the vamps': the keys
