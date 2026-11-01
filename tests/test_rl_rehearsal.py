@@ -14,17 +14,35 @@ from typing import Any
 import pytest
 
 import kit.hf_cache
-from helpers_rl import fake_prompt, fake_verify
+from helpers_rl import TRL_LIKE_SOURCE, fake_prompt, fake_verify
 from lofi_rl.rl import config as rc
-from lofi_rl.rl import smoke_check, train
+from lofi_rl.rl import smoke_check, train, trl_probe
 
 ROOT = Path(__file__).resolve().parents[1]
 SMOKE = ROOT / "configs" / "grpo_smoke.yaml"
+V2_GRAMMAR = ROOT / "configs" / "grpo_smoke_v2_grammar.yaml"
 EOS = (151645, 151643)
 
 
-def _stack(missing: set[str]) -> dict[str, types.ModuleType]:
-    cfg = rc.load_config(SMOKE)
+class FakeLLM:
+    """vllm.LLM's shape for the backend pin: keyword arguments in, llm_engine.vllm_config.structured_outputs_config
+    out (what junk.read_backend reads)."""
+
+    def __init__(self, model, **kw):
+        self.model, self.kw = model, kw
+        backend = (kw.get("structured_outputs_config") or {}).get("backend", "auto")
+        self.llm_engine = SimpleNamespace(vllm_config=SimpleNamespace(
+            structured_outputs_config=SimpleNamespace(backend=backend)))
+
+
+def _plain_texts(k: int, batch: list[dict]) -> list[str]:
+    texts = [f"theory=0.{i % 8 + 1} knobs=0.5 | {k}-{i}" for i in range(len(batch))]
+    texts[1] = texts[0]                                         # a duplicate in group 0
+    return texts
+
+
+def _stack(missing: set[str], config: Path = SMOKE, texts=_plain_texts) -> dict[str, types.ModuleType]:
+    cfg = rc.load_config(config)
     names = {k for p in cfg.profiles for k in rc.resolve(cfg, p)} | {"output_dir", "run_name"}
     GRPOConfig = dataclasses.make_dataclass("GRPOConfig", [(n, Any, None) for n in sorted(names - missing)],
                                             namespace={"to_dict": lambda self: dataclasses.asdict(self)})
@@ -62,6 +80,9 @@ def _stack(missing: set[str]) -> dict[str, types.ModuleType]:
             self.model, (self.reward,), self.args, self.rows = model, reward_funcs, args, list(train_dataset)
             self.tok, self.lora, self.callbacks = processing_class, peft_config, callbacks
             self.state = SimpleNamespace(global_step=0)
+            # colocate mode: TRL builds its own vLLM engine, here on a helper object as a newer TRL might
+            self.vllm_generation = SimpleNamespace(llm=sys.modules["vllm"].LLM(
+                model="snapshot", gpu_memory_utilization=args.vllm_gpu_memory_utilization))
             seen["trainers"].append(self)
 
         def _each(self, hook, **kw):
@@ -77,18 +98,18 @@ def _stack(missing: set[str]) -> dict[str, types.ModuleType]:
             while self.state.global_step < a.max_steps:
                 k = self.state.global_step
                 batch = [r for r in self.rows[k * prompts:(k + 1) * prompts] for _ in range(a.num_generations)]
-                texts = [f"theory=0.{i % 8 + 1} knobs=0.5 | {k}-{i}" for i in range(len(batch))]
-                texts[1] = texts[0]                                         # a duplicate in group 0
-                ids = [[7] * 10 + [EOS[0]] for _ in batch]
+                ids = [[7] * (10 + k) + [EOS[0]] for _ in batch]          # lengths that differ by step
                 ids[2] = [7] * a.max_completion_length                      # cut at the limit: G2
+                columns = {c: [r[c] for r in batch] for c in batch[0] if c != "prompt"}   # TRL passes every column
                 out = self.reward(prompts=[r["prompt"] for r in batch], completion_ids=ids, trainer_state=self.state,
-                                  completions=[[{"role": "assistant", "content": t}] for t in texts],
-                                  brief=[r["brief"] for r in batch], brief_id=[r["brief_id"] for r in batch])
+                                  completions=[[{"role": "assistant", "content": t}] for t in texts(k, batch)],
+                                  **columns)
                 assert len(out) == len(batch) == 32
                 self.state.global_step += 1
                 self._each("on_step_end")
                 self._each("on_log", logs={"loss": 0.0, "reward": sum(out) / len(out), "reward_std": 0.1,
-                                           "kl": 0.001 * k, "completions/mean_length": 11.0})
+                                           "kl": 0.001 * k, "completions/mean_length": 11.0,
+                                           "sampling/sampling_logp_difference/mean": 0.002 * (k + 1)})
                 if self.state.global_step % a.save_steps == 0:
                     d = Path(a.output_dir) / f"checkpoint-{self.state.global_step}"
                     d.mkdir(parents=True)
@@ -112,18 +133,20 @@ def _stack(missing: set[str]) -> dict[str, types.ModuleType]:
         "transformers": mod("transformers", AutoModelForCausalLM=Model, AutoTokenizer=Tok, TrainerCallback=object,
                             GenerationConfig=SimpleNamespace(from_pretrained=lambda p: SimpleNamespace(eos_token_id=list(EOS)))),
         "trl": mod("trl", GRPOConfig=GRPOConfig, GRPOTrainer=Trainer),
+        "vllm": mod("vllm", LLM=type("LLM", (FakeLLM,), {})),       # a fresh class each time: the pin patches it
         "_seen": seen,
     }
 
 
 @pytest.fixture
 def stack(monkeypatch, tmp_path):
-    def install(missing=frozenset({"vllm_max_model_length"})):
-        mods = _stack(set(missing))
+    def install(missing=frozenset({"vllm_max_model_length"}), config=SMOKE, texts=_plain_texts, real_prompts=False):
+        mods = _stack(set(missing), config, texts)
         seen = mods.pop("_seen")
         for name, m in mods.items():
             monkeypatch.setitem(sys.modules, name, m)
-        monkeypatch.setitem(sys.modules, "lofi_rl.prompt", fake_prompt())
+        if not real_prompts:            # the v2 rehearsal reads the real templates (example ids, references)
+            monkeypatch.setitem(sys.modules, "lofi_rl.prompt", fake_prompt())
         monkeypatch.setitem(sys.modules, "lofi_rl.verify", fake_verify())
         monkeypatch.setattr(kit.hf_cache, "resolve_pinned", lambda repo, rev, need: str(tmp_path / "snapshot"))
         monkeypatch.delenv("SLURM_JOB_ID", raising=False)
@@ -179,3 +202,105 @@ def test_a_required_field_trl_lacks_stops_the_run_before_the_model_loads(stack, 
     man = json.loads((tmp_path / "summary" / "a" / "run.json").read_text())
     assert man["status"] == "failed" and "loss_type" in man["error"] and seen["loads"] == 0
     assert not (tmp_path / "a").exists()
+
+
+# ------------------------------------------------------------------------------------------ D-020's run-1 settings
+def _v2_texts(k: int, batch: list[dict]) -> list[str]:
+    """Per group of 8: the shown example verbatim (J 1), a cut completion (index 2 of the batch, cut by its ids),
+    and the shown example with new A and B phrases (in the ramp); every stop completion is in the regex's language."""
+    from lofi_rl import prompt_v2
+    from lofi_rl.palette import load_palette
+    refs = prompt_v2.reference_texts(load_palette(ROOT / "palettes" / "dev_gu.yaml", verify=False))
+    out = []
+    for i, r in enumerate(batch):
+        lines = refs[r["example_id"]].splitlines()
+        if i % 8 == 0:
+            out.append(refs[r["example_id"]])
+        elif i == 2:
+            out.append("cut at the limit, not a loop")
+        else:
+            out.append("\n".join(lines[:-2] + [f"A: h1 h3 | w5 | h.6 q5 | w{1 + i % 7}", "B: w1 | w3 | w5 | w1"]) + "\n")
+    return out
+
+
+def test_the_v2_grammar_smoke_pins_the_backend_counts_the_language_and_reads_the_is_metric(stack, tmp_path,
+                                                                                            monkeypatch):
+    seen = stack(config=V2_GRAMMAR, texts=_v2_texts, real_prompts=True)
+    base = tmp_path / "site" / "trl"
+    (base / "trainer").mkdir(parents=True)
+    (base / "trainer" / "grpo_trainer.py").write_text(TRL_LIKE_SOURCE)
+    real = trl_probe.logp_metric_source
+    monkeypatch.setattr(trl_probe, "logp_metric_source", lambda *a, **k: real(base=base))    # a TRL-shaped install
+    cfg, run = rc.load_config(V2_GRAMMAR), tmp_path / "grpo-smoke-2"
+    llm_cls = sys.modules["vllm"].LLM
+    assert train.train(cfg, run_dir=run / "a", summary_dir=run / "summary" / "a") == 0
+    assert train.train(cfg, run_dir=run / "b", summary_dir=run / "summary" / "b",
+                       resume_from=run / "a" / "checkpoint-5") == 0
+
+    a, b = seen["trainers"]
+    assert a.args.vllm_structured_outputs_regex == cfg.structured_outputs["regex"]
+    assert a.vllm_generation.llm.kw["structured_outputs_config"] == {"backend": "xgrammar"}, "the pin reached LLM()"
+    assert "__init__" not in vars(llm_cls), "and was taken off after the launch"
+    from lofi_rl import prompt_v2
+    from lofi_rl.brief import Brief
+    assert [r["example_id"] for r in a.rows] == [prompt_v2.example_id(Brief(**json.loads(r["brief"]))) for r in a.rows]
+    man = json.loads((run / "summary" / "a" / "run.json").read_text())
+    so = man["structured_outputs"]
+    assert so["sha256"] == cfg.structured_outputs["sha256"] and "regex" not in so
+    assert {k: so["backend"][k] for k in ("requested", "pin_accepted", "backend", "applied", "engine", "calls")} == {
+        "requested": "xgrammar", "pin_accepted": True, "backend": "xgrammar", "applied": True,
+        "engine": "trainer.vllm_generation.llm", "calls": 1}
+    assert so["backend"]["source"] == "llm_engine.vllm_config.structured_outputs_config.backend"
+    p = man["prompt"]
+    assert p["version"] == "v2" and p["template_sha256"] == "127e3094fd5a2183fb952059c2221ad018bdef6d062f51a80b14367b8064466e"
+    assert p["example_ids"] == [r["example_id"] for r in a.rows] and p["tokens"]["max"] > 0
+    assert man["copy_penalty"]["references"] == 9 and man["trl_logp_metric"]["verdict"] == "match"
+
+    recs = [json.loads(l) for l in (run / "summary" / "a" / "rewards.jsonl").read_text().splitlines()]
+    assert len(recs) == 320 and all({"p_copy", "copy_j", "finish", "in_language", "example_id"} <= set(r) for r in recs)
+    assert {r["finish"] for r in recs if r["i"] == 2} == {"length"} and all(r["gate"] == "G2" for r in recs if r["i"] == 2)
+    assert all(r["in_language"] for r in recs if r["finish"] == "stop")
+    shown = [r for r in recs if r["i"] % 8 == 0]
+    assert all(r["copy_j"] == 1.0 and r["p_copy"] == 0.3 and r["copy_nearest"] == r["example_id"] for r in shown)
+    from lofi_rl.rl.copy_penalty import ramp
+    edited = [r for r in recs if r["i"] % 8 != 0 and r["i"] != 2]
+    assert all(r["p_copy"] == ramp(r["copy_j"]) for r in recs)
+    assert any(0 < r["p_copy"] < 0.3 for r in edited) and any(r["p_copy"] == 0 for r in edited), \
+        sorted({round(r["copy_j"], 3) for r in edited})
+
+    rep = smoke_check.check(run, "final", cfg, {"a": "0", "b": "0"})
+    assert rep["ok"], rep["failures"]
+    assert rep["in_language"]["stop"] == {"n": 15 * 31, "in_language": 15 * 31, "out_of_language": 0}
+    assert rep["in_language"]["length"]["n"] == 15 and rep["in_language"]["other"]["n"] == 0
+    assert rep["backend"]["a"]["applied"] is True and rep["backend"]["b"]["applied"] is True
+    penalized = [r for r in recs if r["p_copy"] > 0]
+    assert rep["copy"]["a"]["penalized"] == len(penalized) and rep["copy"]["a"]["n"] == 320
+    assert rep["copy"]["a"]["nearest_is_shown"] == sum(1 for r in penalized if r["copy_nearest"] == r["example_id"])
+    isr = rep["is_ratio"]
+    steps = list(range(1, 11)) + list(range(6, 11))
+    tokens = [31 * (10 + s) for s in steps]                 # step s scores reward step s-1: 31 uncut of 11 + (s-1)
+    values = [0.002 * s for s in steps]
+    assert [r["value"] for r in isr["steps"]] == pytest.approx(values) and [r["tokens"] for r in isr["steps"]] == tokens
+    assert isr["value_source"] == "trl:sampling/sampling_logp_difference/mean"
+    assert isr["mean_of_steps"] == pytest.approx(sum(values) / 15)
+    assert isr["token_weighted_mean"] == pytest.approx(sum(v * t for v, t in zip(values, tokens)) / sum(tokens))
+    rule = isr["rule"]
+    assert rule["applies"] is True and rule["reads"] == "token_weighted_mean" and rule["exceeds"] is False
+    assert rule["value"] == isr["token_weighted_mean"] and "keeps the grammar on" in rule["says"]
+    assert any("truncated completions" in c for c in rule["caveats"]), "each step had one cut completion"
+    assert set(isr["by_launch"]) == {"a", "b"}
+
+
+def test_without_a_checked_trl_source_the_is_readout_is_unavailable_and_says_why(stack, tmp_path):
+    stack(config=V2_GRAMMAR, texts=_v2_texts, real_prompts=True)        # the laptop: no TRL installed to read
+    cfg, run = rc.load_config(V2_GRAMMAR), tmp_path / "grpo-smoke-3"
+    assert train.train(cfg, run_dir=run / "a", summary_dir=run / "summary" / "a") == 0
+    assert train.train(cfg, run_dir=run / "b", summary_dir=run / "summary" / "b",
+                       resume_from=run / "a" / "checkpoint-5") == 0
+    rep = smoke_check.check(run, "final", cfg, {"a": "0", "b": "0"})
+    assert rep["ok"], rep["failures"]
+    isr = rep["is_ratio"]
+    assert isr["value_source"] == "unavailable" and isr["rule"] is None and isr["mean_of_steps"] is None
+    assert isr["verdicts"] == {"a": "not_found", "b": "not_found"} and "not checked" in isr["reason"]
+    assert any(w.startswith("IS readout unavailable") for w in rep["warnings"])
+    assert [r["value"] for r in isr["steps"]][:2] == pytest.approx([0.002, 0.004]), "TRL's values stay visible"
