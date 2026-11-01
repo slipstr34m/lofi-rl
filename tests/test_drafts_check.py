@@ -283,3 +283,6 @@ def test_bad_arguments_exit_2(tmp_path, capsys):
     folder = write_folder(tmp_path / "v1")
     assert C.main([str(folder), "--briefs", "d02"]) == 2
     assert "not in the briefs file" in capsys.readouterr().err
+    assert C.main([str(folder), "--against", str(folder)]) == 2
+    assert "itself" in capsys.readouterr().err
+    assert C.main([str(folder), "--against", str(tmp_path / "nowhere")]) == 2

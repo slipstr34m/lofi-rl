@@ -222,6 +222,10 @@ def check_folder(folder: Path | str, *, scope: list[str] | None = None, against:
     others: list[Draft] = []
     for extra in against:
         extra = Path(extra)
+        if not extra.is_dir():
+            raise B.BriefsError(f"--against {extra} is not a folder")
+        if extra.resolve() == folder.resolve():
+            raise B.BriefsError(f"--against {extra} is the drafts folder itself (each draft would match itself)")
         try:
             eb = B.load(B.briefs_file_for(extra))
         except B.BriefsError:
