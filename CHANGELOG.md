@@ -21,6 +21,33 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (09:35 PST): Day 2 fully voted, backed up and tallied; results wait for Shresth's word
+
+**What was done**
+- **Voted:** `b1104-1-groove` 8/8, `b1104-2-sax` 10/10 (one undo and redo), `b1104-3-keys` 2/2 and `b1104-4-vamps` 9/9, 09:00–09:22 PST. Every event is on ui `2beeee4ab4b4`, the page with the 2-clip hint fix.
+- **Backed up:** private repo `695c446`, and the cluster's `$REMOTE_KEEP/votes/`.
+- **The hidden check missed:** the sax batch's anchor (a deliberately sour sax line, on tile 1) was marked "no clear best" and "no clear worst". Under D-013, micro-session `s1101a`/1 counts at half weight. That session holds every Day-2 vote, so no Day-2 outcome changes.
+- **Tally** at main `7a0dfd0` (private `data/votes/audit/day2-report.md`). An independent recount over the raw logs (scratch `recount_day2.py`) matches every stage table, R2r per kit and V per mood. What the rules give:
+  - **Sax:** `sax_mtg_alto` wins the final on more bests (S1f: alto 1, tenor 0.5, weighted).
+  - **Sax variants:**
+    - warmth: `sax_plain`, tied with `sax_warm_on`; the default stays (CD-39);
+    - expression stays on, since `sax_expr_off` comes last;
+    - timing: `timing_lag`, the S2b BW leader at +0.333.
+  - **Keys survivors** (CD-40, over K1 + K2): all three, `gu_tine_ep` leading. K2 had no marks (T and B in both rounds), and all three sit at +0.250.
+  - **Basses** (CD-43 over R2r): `kit_virtuosity` takes `bass_vsco2_pizz` (+0.5 over its two rounds), and `kit_gu_jazz` takes `bass_fp_finger_yr` (+1.0 in its one round).
+  - **Swing:** no marks in R3a, so it stays `swing_55` (advisory, CD-13).
+  - **Humanize:** no marks in R3b, so `humanize_off`, the default.
+  - **Vamps** (seed data):
+    - hopeful: `aruarian`;
+    - melancholy: `plagal`, tied on BW with `rise` and ahead on bests;
+    - wistful: `float`, at +1.0.
+  - **Borrowed chords** (CD-45): not met; `float` is first in wistful. So the chord list stays, and SHOOTOUTS.md §11 question 2 does not arise.
+- **Waiting on Shresth:** confirmation of the Day-2 results (SHOOTOUTS.md §1 step 1), with swing at 0.55 unless he names another.
+
+**SU spent:** 0.
+
+---
+
 ## 2026-11-01 (08:45 PST): Day 2 rendered on the cluster, checked twice, and queued for listening
 
 **What was done**
