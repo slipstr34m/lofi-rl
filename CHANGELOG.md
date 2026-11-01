@@ -21,6 +21,58 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (12:20 PST): Day 3 review fixes: the serving date reaches the batches, the S2 re-run's slots, every seed splits, the anchor's sax matched
+
+**What was done** (worktree branch, laptop only; no ssh, sync, submit or pull; `data/` never read; the review's
+fixes, on Shresth's "Yes, use these")
+- **Serving date (spec-F1).** Only the tally knew it, so job 3's batches would have gone into the inbox at the next
+  `make pull` and `make rate` would have served them at once, a day after Day 2's votes, against D-013's 2 days.
+  Job 3 now takes `--serve-date` (day 3 only, required with `--repeats`) into leaders.json and the draw
+  (`repeats.serve_date`); the builder writes `serve_from` into every Day-3 hidden manifest; `make rate` passes over
+  a batch before its `serve_from` and refuses it by name with the date; the tally's job-3 line carries the date, and
+  the tally scores a repeat only when its vote falls at least 2 calendar days after its first showing's (`too_soon`
+  otherwise). Main's code refuses the new line (exit 2, unknown argument), so job 3 waits for this branch.
+- **S2 re-run (spec-F2).** The re-run took the Day-3 band's S2a and S2b picks for its variant slots; it now plays them
+  at their Day-2 values (`sax_plain`, `timing_grid`), so S2a compares warmth at grid timing and S2b the timings at
+  warm off (CD-19). Latent for the confirmed job 3 (no `--rerun-s2`).
+- **Split (spec-F3).** When the greedy split's 500 redraws find no orderable split, the draw now tries every split
+  within the longest round of equal length, in an order drawn from the seed, and takes the first that orders; a
+  redraw whose part cannot be ordered at all (`_may_order`, exact on every part of up to 6 rounds on 3 loops) is
+  passed over without its 4000 shuffles.
+- **Anchor's sour sax (audio review).** The sour copy now plays its own palette with the sax fader that puts its sax
+  where its round-mates' sits (the band sax at its median F on the round's own rain palette), measured by the level
+  tool on that palette; each rain clip's hidden record gives `sax_fader_db` and `sax_lufs`, and the tally flags an
+  anchor rain round whose sax spreads over 1.0 LU.
+
+**Numbers**
+- Split: 4020a9d's draw on 1,200 seeds (300 each: every repeat or none, no cut or both Day-3 cuts; synthetic priors)
+  could not order 91 (9 with every repeat and both cuts, 82 with both cuts and no repeat; scratch
+  `day3/fix/golden300_narrow.log`); the branch draws all 1,200, searches exactly those 91, and gives the other 1,109
+  the same batches (`tests/golden/day3_split.json`). On the pulled summaries the review's four failing seeds draw
+  (0.01 s each); the forced search on a 19-round re-run pool takes 0.12-0.13 s per draw; the dry run's seed
+  00000000009003a1 gives the dry run's draw.json (batches, renders, palettes) before the anchor change.
+- Job 3 on the laptop with the review fixes (`…/scratchpad/day3/runs/shootout-900303/summary/`, the dry run's seed,
+  priors and assets, `--serve-date 2026-11-03`): every stage exit 0 in 38.6 s (levels 15.4, render 21.8); a second
+  run at the same paths: same bytes in 173 of 175 run files (renders.json and stages.json: wall times) and 48 of 48
+  inbox files, 44.3 s, peak 2.63 GB. The anchor W2.2 on L4: round-mates' sax −29.8594 LUFS after the +2.55 dB
+  fader; the sour copy's L −34.0617, fader +4.20 dB, −29.8617: 0.0023 LU apart, against 1.6523 LU at the median
+  fader (`levels.json` `rounds`); its render read the tool's L exactly. 26 of 26 renders at −14.064 … −14.000 LUFS,
+  true peak at most −1.486 dBTP; both batches carry `serve_from: 2026-11-03`.
+- Days 1 and 2: 80 draws on 4020a9d's code and the branch's are the same documents, and the batches built from 12
+  of them (fake renders) the same manifest bytes.
+- Suite: 2305 passed, 3 skipped, 68 deselected (`pytest -q`, 160 s; 2286 before the fixes).
+
+**Failed approach:** the first test run of the anchor's config raised a TypeError in `config_flags`: the level tool's
+loop over the round config's cases reused the name of the bus table (`rec`), overwriting it; renamed before the commit.
+
+**SU spent:** 0.
+
+**Next:** merge this branch; place the converted rain under `assets/big/derived/rain/` and `make push-assets`; `make
+sync` once D-020's freeze allows; `make submit` job 3 with SHOOTOUTS.md §7.7's ARGS, which now end in `--serve-date
+2026-11-03`; `make pull` may then bring the batches in early, and `make rate` serves them from that date.
+
+---
+
 ## 2026-11-01 (10:35 PST): Day 3 made runnable on a branch; laptop dry run of job 3 passes every stage
 
 **What was done** (worktree branch, laptop only; no ssh, sync, submit or pull; `data/` never read)

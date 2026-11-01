@@ -36,8 +36,9 @@ ARGS hold no spaces, so they need no comma-safe `--export`.
    `summary/palettes/measure/`; from day 2 on with the draw too (its band, and each stage palette a matched clip
    plays: CD-53).
 4. `levels`: the levels tool (section 7.1), with the draw (every clip's own fader, its sour copies' texts
-   included: CD-52; from day 2 on every bus a clip matches, on its own palette: CD-53) and with `--prior` the first
-   prior job's levels.json (its drift keys, and each instrument's move from it).
+   included: CD-52; from day 2 on every bus a clip matches, on its own palette: CD-53; on day 3 the anchor's sour
+   copy matched to its round-mates' sax on its rain palette) and with `--prior` the first prior job's levels.json
+   (its drift keys, and each instrument's move from it).
 5. `palettes`: the generator again, with the measured trims and faders and the draw: `summary/palettes/<key>.yaml`
    for every palette the draw asks for, each clip of an instrument stage its own.
 6. `render`: every clip, `--jobs` at a time with 1 worker each (`python -m lofi_rl.shootout.render`).

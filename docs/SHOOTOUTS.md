@@ -1127,7 +1127,9 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   so `make rate` serves no Day-3 batch before it), and, if the final picked the other finalist, `--rerun-s2 <sax
   id>`. For the Day-2 results Shresth confirmed (gates/GATE_palette.md, 2026-11-01), served on 2026-11-03:
   `ARGS='--stage day3 --leaders keys=gu_tine_ep/kit=kit_virtuosity/bass=bass_vsco2_pizz/sax=sax_mtg_alto/swing=swing_55/humanize=humanize_off/sax_variant=sax_plain/timing=timing_lag --prior 13635646+13651610 --repeats K1+R1+R2+S1+R2r+R3a+R3b+S1f+S2a+S2b+K2+V --serve-date 2026-11-03'`
-  (a later serving date keeps every repeat; the job refuses the line without `--serve-date`).
+  (a later serving date keeps every repeat; the job refuses the line without `--serve-date`, and a mirror of code
+  before the 2026-11-01 review refuses it with it, exit 2 on the unknown argument, so job 3 is submitted only once
+  this code is merged and synced).
   `ARGS` reach the script as arguments, so they need no comma-safe `--export`; they hold no spaces. A cut adds
   `--cut vamps-high+latin3+final` on Day 2 (the cut list's, or Shresth's word given to the tally as `--day2-cuts`,
   §7.9) or `--cut w1-two+w2-two` on Day 3 (`--day3-cuts`). **The bass re-listen** (CD-54)
