@@ -46,7 +46,7 @@ from lofi_rl.palette import Palette
 
 from . import protocol
 from .cache import ClipRecord, FeatureCache
-from .calib import Calibration, robust_sigmoid
+from .calib import Calibration, calib_version, robust_sigmoid
 from .protocol import AUDIO_TERMS, DIAG_KEYS, PROTOCOL, SIG_KEYS, Item, ProtocolError, RenderRequest, ScoreRequest
 from .render_pool import RenderJob, RenderPoolDrift, drift, failure
 from .rm_api import RMState, par
@@ -125,7 +125,9 @@ class Scorer:
         self.calib, self.rm, self.cache, self.backend = calib, rm, cache, backend
         self.render_cfg = dict(render_cfg)
         self.versions = {"reward_ver": protocol.REWARD_VER, "feat_ver": featurizer.feat_ver, "rm_ver": rm.rm_ver,
-                         "render_ver": protocol.render_version(render_cfg)}
+                         "render_ver": protocol.render_version(render_cfg),
+                         "calib_ver": calib_version(calib, refs_sha256=None if rm.refs is None else rm.refs.sha256,
+                                                    theme_sha256=theme.config.sha256)}
         if cache.feat_ver != featurizer.feat_ver:
             raise ValueError(f"the cache is for {cache.feat_ver}, the featurizer makes {featurizer.feat_ver}")
         if cache.hw is not None and cache.hw != getattr(featurizer, "hw", None):

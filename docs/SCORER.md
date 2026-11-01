@@ -27,7 +27,7 @@ make submit JOB=jobs/scorer_smoke.sbatch                                     # o
 ```python
 from lofi_rl.scoring.client import ScorerClient
 c = ScorerClient("/tmp/lofi-scorer.sock")
-c.wait_healthy(600)                                   # pins reward_ver, feat_ver, rm_ver, render_ver
+c.wait_healthy(600)                                   # pins the five versions (§3.1) and the live terms
 out = c.score([{"i": 0, "text": loop, "brief": {...}, "brief_id": "596:0"}], palette_sha256=pal.sha256, step=3)
 ```
 
@@ -72,9 +72,16 @@ So the server's item keeps §5's names where they survive and drops the rest:
 - HTTP/1.1 + JSON over `AF_UNIX` (`client.UnixHTTPConnection`, an `http.client.HTTPConnection` subclass), one
   connection per request. Bodies are UTF-8 JSON with no NaN or infinity, at most 16 MiB.
 - `protocol: "lofi-scorer/1"` in every request and response.
-- Every response and `/health` carry four versions. `ScorerClient.wait_healthy` pins them; a later answer with
-  another value raises, and every `/score` request sends them as `expect`, so the server answers 409 if it was
-  restarted with another RM, other features or other formulas.
+- Every response and `/health` carry five versions. `ScorerClient.wait_healthy` pins them with the live
+  `terms`; a later answer with another value raises, and every `/score` request sends the versions as `expect`,
+  so the server answers 409 if it was restarted with another RM, other features, other formulas, or another
+  calibration or references. A `/score` answer whose `terms` differ from the pinned ones raises too: the reward
+  takes its CE-rule weights from them (§10).
+- **The pin lasts a run, not a process.** `client.read_pin` and `write_pin` keep the pinned versions and terms in a
+  file every link of a chained run shares (`make_reward(..., scorer_pin=…)`; the trainer's `--scorer-pin`, by
+  default `<run-dir>/scorer_pin.json`, copied from the run dir of the `--resume-from` checkpoint). The first link
+  writes it; every later link seeds its client from it before `/health`, so a link whose server has another RM,
+  references or calibration is refused before it trains (taste_pipeline.md §4: "rm_ver is pinned per run").
 
 | version | value | changes when |
 |---|---|---|
@@ -82,6 +89,7 @@ So the server's item keeps §5's names where they survive and drops the rest:
 | `feat_ver` | `feat1.mert-12af15fe.clap-b3708341.abx-9b1dd8e5.w4.src-<sha8>.env-<sha8>` | a model pin (MERT, CLAP, the Audiobox revision), the window count, the render or feature code (`features.source_sha8`: dsl, compile, theory, render, brief, palette, prng, smoke.py, features.py, render_pool.py), or a library of the stack (`features.stack_versions`: numpy, scipy, pedalboard, pyloudnorm, soundfile, mido, FluidSynth, libsndfile, python, torch, torchaudio, transformers, laion_clap, audiobox_aesthetics, CUDA); the fake featurizer's is `fake1.render-<fake|real>.w4.src-<sha8>` |
 | `rm_ver` | the RM's (`rm.json`), `null` without one | another RM |
 | `render_ver` | `render-cfg-<sha8>` of §2's render config | the render schema or chain constants |
+| `calib_ver` | `calib-<sha12>` (`calib.calib_version`) of the sha256 of `pq.json`, `theme.json`, `ce.json`, the RM's `refs.json` (`missing` for an absent one) and the theme config | another τ_PQ, theme median/MAD, CE check, references or prompt file, a file added or removed |
 
 ### 3.2 Requests
 - `POST /score`: `{protocol, palette_sha256, step, items: [{i, text, brief: {energy, mood, bpm, tonic, scene},
@@ -339,7 +347,10 @@ feat_ver names another renderer than the one it runs (the real featurizer names 
   - **the CE rule:** when the server reports CE not validated, w_ce = 0 and w_knobs = 0.20 at every step
     (taste_pipeline.md §5, written beside W0: "ce→0, knobs→.20 unless CE validated"); `w` records the weights
     used and `w_rule` the rule. With CE validated the weights are the curriculum's.
-  - **New fields:** `G_sym`, `audio` (the server's whole item), `clip_id`, `w_rule`, `scorer` (the four versions).
+  - **New fields:** `G_sym`, `audio` (the server's whole item), `clip_id`, `w_rule`, `scorer` (the five versions).
+- **The run's pin** (`scorer_pin`): before its first `/health` the reward seeds the client from the run's pin file
+  when it exists (a `/health` with other versions or terms raises), else it writes the versions and terms its
+  scorer reported, with the palette sha256, the socket and the first step (§3.1).
 - **Per-step stats** gain `audio`: sent, hard_rate, G_mean, r means over gate_ok, signature means, P_acc and
   rm_std means, the rate of P_acc < 0.5, failing gates, PQ failures, render errors, the server's batch numbers,
   the call's ms, versions, terms and the rule. TRL's hooks get `lofi/G_mean`, `hack/<signature>` and
@@ -377,10 +388,10 @@ feat_ver names another renderer than the one it runs (the real featurizer names 
 | file | what it checks |
 |---|---|
 | `test_scoring_protocol.py` | clip id = the shootout formula, its parts, canonical-form sharing; request round trips; 25 malformed requests; NaN; response and health checks; pinned versions |
-| `test_scoring_server.py` | the real server on a real socket with fakes: health, score (order, fields, dedup, memory hits, stats), render, 400/404/405/413, 500 with its trace, a 500 for a render from a drifted worker or of another clip id, 409, render gate and infrastructure failures (a lone fault with a healthy canary), exit 2 before binding when the canary fails at start, a 500 when it fails after a fault, mode 0600, the path rules, close() leaving a socket that replaced its own, the client's errors, a real client refusing a fake backend, SIGTERM and SIGINT removing the socket (a subprocess), exit 2 on a foreign path |
+| `test_scoring_server.py` | the real server on a real socket with fakes: health, score (order, fields, dedup, memory hits, stats), render, 400/404/405/413, 500 with its trace, a 500 for a render from a drifted worker or of another clip id, 409, render gate and infrastructure failures (a lone fault with a healthy canary), exit 2 before binding when the canary fails at start, a 500 when it fails after a fault, 409 on calib_ver for a server restarted with another τ_PQ or without ce.json, a response whose terms differ from the pinned ones refused, mode 0600, the path rules, close() leaving a socket that replaced its own, the client's errors, a real client refusing a fake backend, SIGTERM and SIGINT removing the socket (a subprocess), exit 2 on a foreign path |
 | `test_scoring_core.py` | G on 11 hand-built cases, PAR on hand-built utilities, the RM with and without references, the 422, the theme margin on hand-built embeddings, the prompt file, every term off without calibration and on with it, CE that fails its check, the disk cache read by a fresh scorer, an unreadable file, records of another feat_ver, clip or schema read as misses, feat_ver following the source files, the library stack and the Audiobox pin, the server's cache keyed by machine and GPU, fake features of another renderer in another cache, LRU eviction, the fakes |
 | `test_scoring_calib_rm.py` | the calibration and RM loaders: missing, valid, every malformed case, CE thresholds, exit 2 before binding |
 | `test_scoring_render.py` | three real renders through the pool (dev_gu): `/score` of example.ls, where the mix and music stem reach the featurizer once and their hashes match the manifest and the laptop's golden hashes, `/render` to a FLAC and manifest named by clip id with the same PCM (the clip id equal to the shootout's id of that manifest), and the canary in spec; a gate failure in a worker, a batch past its deadline, a broken pool (in flight, and found broken at submit after a worker died between batches), a worker's child process ended by the pool's kill, a worker ending itself after its server's SIGKILL, workers on other code or another palette refused at warm and after a restart, the centroid |
-| `test_scoring_reward_hook.py` | the no-scorer golden byte for byte; the env var; G, r, gate and the new fields with a stand-in client; the CE rule; failures raise; nothing sent without a pass; TRL hooks; the real client and server end to end |
+| `test_scoring_reward_hook.py` | the no-scorer golden byte for byte; the env var; G, r, gate and the new fields with a stand-in client; the CE rule; failures raise; nothing sent without a pass; TRL hooks; the run's pin (a later link against another rm_ver refused, a seeded client's 409, a pin with other terms or a malformed one refused); the real client and server end to end |
 | `test_scoring_job.py` | the job's size, cost line, env, timeouts, steps and outputs; the smoke's batch; the steps rehearsed on fakes to SCORER_SMOKE_OK; the verdict failing on drift, a missing pass, a bad exit and a left socket |
 | `test_scoring_imports.py` | every scoring module imports without the ML stack; client, protocol and the reward without numpy or the audio stack |

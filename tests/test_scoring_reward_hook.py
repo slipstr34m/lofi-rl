@@ -14,16 +14,17 @@ from types import SimpleNamespace
 import pytest
 
 from helpers_rl import fake_verify
-from helpers_scoring import GOLDEN, PALETTE, run_fixed_batch, short_sock_dir
+from helpers_scoring import GOLDEN, PALETTE, make_scorer, run_fixed_batch, serving, short_sock_dir
 from lofi_rl.rl import curriculum
 from lofi_rl.rl.reward import CE_RULE, KNOBS_WITHOUT_CE, make_reward, resolve_scorer
 from lofi_rl.scoring import protocol
-from lofi_rl.scoring.client import ENV_SOCK, ScorerClient, ScorerError
+from lofi_rl.scoring.client import ENV_SOCK, PIN_SCHEMA, ScorerClient, ScorerError, read_pin
 from lofi_rl.palette import load_palette
 
 FULL = "theory=0.8 knobs=0.6 p_sax=0.05 bars=0.1 len=0.02 p_fix=0.04 repairs=2"
 BRIEF = {"energy": "mid", "mood": "wistful", "bpm": 82, "tonic": 2, "scene": "city at night"}
-VERS = {"reward_ver": protocol.REWARD_VER, "feat_ver": "fake1.w4.src-0", "rm_ver": "null", "render_ver": "render-cfg-x"}
+VERS = {"reward_ver": protocol.REWARD_VER, "feat_ver": "fake1.render-fake.w4.src-0", "rm_ver": "null",
+        "render_ver": "render-cfg-x", "calib_ver": "calib-x"}
 
 
 @pytest.fixture(autouse=True)
@@ -179,6 +180,62 @@ def test_hack_metrics_and_clip_ids_reach_trls_hooks(tmp_path):
     assert ("clip_id", ["c" + "0" * 16, "", "c" + "0" * 16]) in extra and reward.stats[0]["hook_errors"] == []
     a = reward.stats[0]["audio"]
     assert a["p_acc_below_half"] == 1 and a["diag_mean"]["p_acc_lt_half"] == 0.5, "P_acc 0.0 counts as below half"
+
+
+# ------------------------------------------------------------------------------------------ the run's pin
+def _rm(rm_ver):
+    from lofi_rl.scoring import fakes, rm_api
+    return rm_api.RMState(fakes.TableRM({}, rm_ver=rm_ver), None, None, "no_refs", rm_ver)
+
+
+def test_every_link_of_a_run_pins_what_its_first_link_pinned(tmp_path):
+    pin = tmp_path / "run" / "scorer_pin.json"
+    pal = load_palette(PALETTE, verify=False)
+    with short_sock_dir() as d:
+        sock = d / "s.sock"
+        with serving(make_scorer(tmp_path, rm=_rm("table-rm/1")), sock):
+            first = make_reward(PALETTE, tmp_path / "a.jsonl", verify=fake_verify(),
+                                scorer=ScorerClient(sock, allow_fake=True), scorer_pin=pin)
+            _call(first, [FULL], step=0)
+        doc = read_pin(pin)
+        assert doc["schema"] == PIN_SCHEMA and doc["versions"]["rm_ver"] == "table-rm/1" and doc["first_step"] == 0
+        assert set(doc["versions"]) == set(protocol.VERSION_KEYS) and doc["terms"]["pacc_gate"] is True
+        with serving(make_scorer(tmp_path, rm=_rm("table-rm/2")), sock):     # the next link's server: another RM
+            fresh = ScorerClient(sock, allow_fake=True)
+            fresh.pinned = dict(doc["versions"])                          # seeded from the pin file
+            with pytest.raises(ScorerError) as err:
+                fresh.score([protocol.item_dict(0, FULL, BRIEF)], palette_sha256=pal.sha256)
+            assert err.value.status == 409 and "rm_ver" in str(err.value)
+            link = make_reward(PALETTE, tmp_path / "b.jsonl", verify=fake_verify(),
+                               scorer=ScorerClient(sock, allow_fake=True), scorer_pin=pin, start_step=5)
+            with pytest.raises(ScorerError, match="rm_ver"):
+                _call(link, [FULL], step=5)
+        assert read_pin(pin) == doc, "a later link never rewrites the run's pin"
+        assert not (tmp_path / "b.jsonl").exists() or (tmp_path / "b.jsonl").read_text() == ""
+        with serving(make_scorer(tmp_path, rm=_rm("table-rm/1")), sock):     # a server like the first one
+            ok = make_reward(PALETTE, tmp_path / "c.jsonl", verify=fake_verify(),
+                             scorer=ScorerClient(sock, allow_fake=True), scorer_pin=pin, start_step=5)
+            assert len(_call(ok, [FULL], step=5)) == 1
+
+
+def test_a_pin_with_other_terms_or_a_malformed_pin_is_refused(tmp_path):
+    pin = tmp_path / "scorer_pin.json"
+    with short_sock_dir() as d:
+        sock = d / "s.sock"
+        with serving(make_scorer(tmp_path), sock):
+            make_reward(PALETTE, tmp_path / "a.jsonl", verify=fake_verify(), scorer=ScorerClient(sock, allow_fake=True),
+                        scorer_pin=pin)(prompts=[[]], completions=[[{"role": "assistant", "content": FULL}]],
+                                        brief=[json.dumps(BRIEF)], brief_id=["596:0"])
+            doc = json.loads(pin.read_text())
+            pin.write_text(json.dumps({**doc, "terms": {**doc["terms"], "ce": True}}))
+            link = make_reward(PALETTE, tmp_path / "b.jsonl", verify=fake_verify(),
+                               scorer=ScorerClient(sock, allow_fake=True), scorer_pin=pin)
+            with pytest.raises(ScorerError, match="live terms"):
+                _call(link, [FULL])
+            pin.write_text("{not json")
+            with pytest.raises(ScorerError, match="malformed"):
+                _call(make_reward(PALETTE, tmp_path / "c.jsonl", verify=fake_verify(),
+                                  scorer=ScorerClient(sock, allow_fake=True), scorer_pin=pin), [FULL])
 
 
 # ------------------------------------------------------------------------------------------ end to end

@@ -2,6 +2,7 @@
 fake backends (lofi_rl.scoring.fakes): /health, /score, /render, /stats, status codes and the client's errors,
 the 0600 socket, the stale/live/foreign path rules, and SIGTERM/SIGINT removing the socket (a subprocess)."""
 import contextlib
+import dataclasses
 import json
 import os
 import signal
@@ -14,7 +15,8 @@ import time
 
 import pytest
 
-from helpers_scoring import BRIEF_A, BRIEF_B, PALETTE, ROOT, canon_sha_of, fixture_text, make_scorer, short_sock_dir
+from helpers_scoring import (BRIEF_A, BRIEF_B, PALETTE, ROOT, canon_sha_of, fixture_text, make_scorer, serving,
+                             short_sock_dir)
 from lofi_rl.palette import load_palette
 from lofi_rl.scoring import fakes, protocol, server
 from lofi_rl.scoring.client import ScorerClient, ScorerError, ScorerUnavailable, UnixHTTPConnection
@@ -206,6 +208,48 @@ def test_a_render_whose_worker_and_manifest_agree_is_scored(tmp_path):
     sha = canon_sha(parse(EX, vocab=PAL.vocab(), mode=BRIEF_A.mode).ast)
     with served(tmp_path, renderer=Drifting(lambda j: {"worker": want, "manifest": _manifest(sha)})) as (client, _, _s):
         assert client.score(_items([EX]), palette_sha256=PAL.sha256)["items"][0]["hard"] == 1
+
+
+def _calib(d, *, tau=6.0, ce=True):
+    from lofi_rl.scoring import theme
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "pq.json").write_text(json.dumps({"tau_pq": tau}))
+    (d / "theme.json").write_text(json.dumps({"med": 0.0, "mad": 0.05, "theme_sha256": theme.load_config().sha256}))
+    if ce:
+        (d / "ce.json").write_text(json.dumps({"agree": 0.6, "lower95": 0.55, "n_pairs": 400, "med": 5.5, "mad": 0.5}))
+    return d
+
+
+def test_a_server_restarted_with_another_calibration_is_409_on_calib_ver(tmp_path):
+    # rm_ver, feat_ver, reward_ver and render_ver are the same after these restarts: only calib_ver tells.
+    first = _calib(tmp_path / "c1")
+    with short_sock_dir() as d:
+        sock = d / "s.sock"
+        client = ScorerClient(sock, allow_fake=True, timeout=30)
+        with serving(make_scorer(tmp_path, calib_dir=first), sock):
+            client.wait_healthy(10)
+            assert client.score(_items([EX]), palette_sha256=PAL.sha256)["terms"]["ce"] is True
+        for name, cal in (("another tau_PQ", _calib(tmp_path / "c2", tau=5.0)),
+                          ("ce.json removed", _calib(tmp_path / "c3", ce=False))):
+            with serving(make_scorer(tmp_path, calib_dir=cal), sock):
+                with pytest.raises(ScorerError) as err:
+                    client.score(_items([EX]), palette_sha256=PAL.sha256)
+            assert err.value.status == 409 and "calib_ver" in str(err.value), name
+        with serving(make_scorer(tmp_path, calib_dir=_calib(tmp_path / "c4")), sock):     # the same files again
+            assert client.score(_items([EX]), palette_sha256=PAL.sha256)["items"][0]["hard"] == 1
+
+
+def test_a_response_whose_live_terms_differ_from_the_pinned_ones_is_refused(tmp_path):
+    # The reward takes its CE-rule weights from the pinned terms; terms that change under the same versions (a
+    # server bug: calib_ver covers every file they come from) must not be scored silently.
+    with served(tmp_path, calib_dir=_calib(tmp_path / "c")) as (client, scorer, _sock):
+        assert client.pinned_terms["ce"] is True
+        scorer.calib = dataclasses.replace(scorer.calib, ce=None)
+        with pytest.raises(ScorerError, match="terms") as err:
+            client.score(_items([EX]), palette_sha256=PAL.sha256)
+        assert err.value.status == 200
+        with pytest.raises(ScorerError, match="live terms"):
+            client.wait_healthy(5)
 
 
 def test_another_palette_or_pinned_version_is_409(tmp_path):

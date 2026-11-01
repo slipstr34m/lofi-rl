@@ -8,9 +8,11 @@
   this laptop is longer than that).
 - `pid_alive`, `wait_gone`: whether a process this test did not start still runs (a zombie does not), and a
   bounded wait for it to end; `start_sleeper`: a render-pool task that starts a child process and waits on it.
+- `serving`: a ScorerServer on a socket for the length of a block (two blocks on one socket: a restart).
 """
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import os
@@ -84,6 +86,24 @@ class short_sock_dir:
 
     def __exit__(self, *exc) -> None:
         shutil.rmtree(self.path, ignore_errors=True)
+
+
+@contextlib.contextmanager
+def serving(scorer, sock):
+    """`scorer` on `sock` until the block ends: a server stopped and another started on the same socket is a
+    restart, as far as a client can tell."""
+    import threading
+    from lofi_rl.scoring.server import ScorerServer
+    srv = ScorerServer(scorer, sock, logf=lambda m: None)
+    srv.bind()
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    try:
+        yield srv
+    finally:
+        srv.shutdown()
+        t.join(5)
+        srv.close()
 
 
 def pid_alive(pid: int) -> bool:

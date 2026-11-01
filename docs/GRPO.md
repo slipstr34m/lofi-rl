@@ -20,7 +20,7 @@ GPU.
 ```bash
 python -m lofi_rl.rl.train --config configs/grpo_smoke.yaml --dry-run          # laptop or cluster: no torch
 python -m lofi_rl.rl.train --config configs/grpo_smoke.yaml [--resume-from <run>/a/checkpoint-5] \
-    [--run-dir DIR] [--summary-dir DIR] [--gpu-profile a100-80gb|48gb]        # policy env, one GPU
+    [--run-dir DIR] [--summary-dir DIR] [--gpu-profile a100-80gb|48gb] [--scorer-pin FILE]   # policy env, one GPU
 python -m lofi_rl.rl.smoke_check --run <run> --stage first|final [--rc a=0 --rc b=0]
 make submit JOB=jobs/grpo_smoke.sbatch                                          # once the job type is registered
 ```
@@ -29,7 +29,9 @@ make submit JOB=jobs/grpo_smoke.sbatch                                          
   long for the limits); 3 no policy env (torch, transformers, TRL, PEFT, datasets or vLLM missing: use `--dry-run`).
   Any other failure is a traceback and 1.
 - **Defaults:** `--run-dir` is `$REMOTE_SCR/runs/<run>-<SLURM_JOB_ID>` (or `./runs/<run>-local`), `--summary-dir`
-  is `<run-dir>/summary`, and the GPU profile follows the card's memory (§3).
+  is `<run-dir>/summary`, and the GPU profile follows the card's memory (§3). `--scorer-pin` (used only with a
+  scorer, docs/SCORER.md §10) is `<run-dir>/scorer_pin.json`, which a resumed link first copies from the run dir
+  of its `--resume-from` checkpoint, so every link of a run pins what its first link pinned.
 
 ## 2. The interim reward (`lofi_rl.rl.reward`)
 

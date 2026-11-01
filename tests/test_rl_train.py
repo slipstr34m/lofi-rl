@@ -218,6 +218,23 @@ def test_the_step_log_writes_one_line_per_optimizer_step_with_trl_and_reward_met
     assert rows[2]["trl"]["train_runtime"] == 53.0
 
 
+def test_every_link_of_a_run_shares_one_scorer_pin(tmp_path):
+    # docs/GRPO.md's layout: <run>/a, then <run>/b resumed from <run>/a/checkpoint-5, then <run>/c from b's.
+    run = tmp_path / "run"
+    a = train.scorer_pin_path(run / "a")
+    assert a == run / "a" / "scorer_pin.json" and not a.exists(), "nothing is written before a scorer pins"
+    a.parent.mkdir(parents=True)
+    a.write_text('{"pinned": "by a"}')
+    b = train.scorer_pin_path(run / "b", resume_from=run / "a" / "checkpoint-5")
+    assert b == run / "b" / "scorer_pin.json" and b.read_text() == a.read_text(), "inherited from a"
+    c = train.scorer_pin_path(run / "c", resume_from=run / "b" / "checkpoint-10")
+    assert c.read_text() == a.read_text(), "and passed on"
+    c.write_text('{"pinned": "by c"}')
+    assert train.scorer_pin_path(run / "c", resume_from=run / "b" / "checkpoint-10").read_text() == '{"pinned": "by c"}'
+    assert train.scorer_pin_path(run / "d", explicit=run / "pin.json") == run / "pin.json"
+    assert not train.scorer_pin_path(tmp_path / "x", resume_from=tmp_path / "nowhere" / "checkpoint-1").exists()
+
+
 def test_resume_reads_the_global_step_of_the_checkpoint(tmp_path):
     ck = tmp_path / "checkpoint-5"
     ck.mkdir()

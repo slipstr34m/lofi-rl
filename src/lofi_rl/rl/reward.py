@@ -21,6 +21,10 @@ reward(prompts=..., completions=..., completion_ids=..., **columns) -> list[floa
   "ce→0, knobs→.20 unless CE validated": w_ce = 0 and w_knobs = 0.20 at every step. Any scorer failure (a non-200,
   a timeout, a malformed answer) raises, whatever `strict` says: the trainer crashes and resumes from its
   checkpoint rather than train on a silently partial reward (§5).
+- **The run's pin** (scorer_pin): a file every link of a chained run shares. The first link writes the versions
+  and live terms its scorer reported; every later link seeds its client from the file before /health, so a
+  server with another RM, references, calibration, features or formulas than the run started with is refused
+  (taste_pipeline.md §4: "rm_ver is pinned per run"), and the CE rule's weights never change under a run.
 - **Penalties**: verify.score's P_sax and per-loop penalties (bars, len) and P_fix (repairs), plus
   verify.group_penalties over each prompt's group. A group is the completions of one dataset row (the trainer's
   `brief_id` column), or of one prompt text when that column is absent. TRL repeats each row num_generations
@@ -30,7 +34,7 @@ reward(prompts=..., completions=..., completion_ids=..., **columns) -> list[floa
   (lofi_rl.rl.smoke_check) and fails on any.
 
 Every completion is one JSONL line in log_path with every sub-reward, its weights, the step and the text; with a
-scorer also G_sym, the server's item (`audio`), the clip id, the CE rule (`w_rule`) and the server's versions.
+scorer also G_sym, the server's item (`audio`), the clip id, the CE rule (`w_rule`) and the server's five versions.
 Without a scorer the rewards, the log and the per-step stats are byte-for-byte what they were before the scorer
 hook (tests/test_scoring_reward_hook.py against tests/golden/reward_no_scorer.json).
 Standard library and the project's standard-library modules only, so it imports in the policy env and on the
@@ -167,7 +171,8 @@ class LofiReward:
 
     def __init__(self, palette: Palette, log_path: Path | str, verify: ModuleType, *,
                  max_completion_length: int | None = None, eos_token_ids: Iterable[int] = (),
-                 start_step: int = 0, strict: bool = False, scorer: Any = None, scorer_wait_s: float = 600.0):
+                 start_step: int = 0, strict: bool = False, scorer: Any = None, scorer_wait_s: float = 600.0,
+                 scorer_pin: Path | str | None = None):
         self.__name__ = NAME
         self.palette, self.verify, self.strict = palette, verify, strict
         self.log_path = Path(log_path)
@@ -176,6 +181,7 @@ class LofiReward:
         self.start_step, self.calls = int(start_step), 0
         self.stats: dict[int, dict[str, Any]] = {}
         self.scorer, self.scorer_wait_s, self._scorer_ready = scorer, float(scorer_wait_s), False
+        self.scorer_pin = None if scorer_pin is None else Path(scorer_pin)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     # -------------------------------------------------------------------------------------- inputs
@@ -325,11 +331,22 @@ class LofiReward:
     def _scorer_weights(self, w: dict[str, float]) -> tuple[dict[str, float], str | None]:
         """The curriculum's weights, with §5's CE rule when the server reports CE as not validated."""
         if not self._scorer_ready:
-            self.scorer.wait_healthy(self.scorer_wait_s)
+            self._pin_scorer()
             self._scorer_ready = True
         if self.scorer.ce_validated:
             return w, None
         return {**w, "ce": 0.0, "knobs": KNOBS_WITHOUT_CE}, CE_RULE
+
+    def _pin_scorer(self) -> None:
+        """wait_healthy under the run's pin (module docstring): seed the client from scorer_pin when the file
+        exists (ScorerError if /health differs from it), else write what this first link pinned."""
+        pin = None if self.scorer_pin is None else scoring_client.read_pin(self.scorer_pin)
+        if pin is not None:
+            self.scorer.pinned, self.scorer.pinned_terms = dict(pin["versions"]), dict(pin["terms"])
+        self.scorer.wait_healthy(self.scorer_wait_s)
+        if self.scorer_pin is not None and pin is None:
+            scoring_client.write_pin(self.scorer_pin, self.scorer, palette_sha256=self.palette.sha256,
+                                     sock=str(getattr(self.scorer, "sock", "")), first_step=self.start_step + self.calls)
 
     def _audio(self, step: int, texts: list[str], briefs: list[Brief], brief_ids: list[Any],
                records: list[dict]) -> dict[str, Any]:
@@ -440,7 +457,7 @@ class LofiReward:
 def resolve_scorer(scorer: Any = None, environ: Mapping[str, str] | None = None) -> Any:
     """The scorer a reward uses: None reads $LOFI_SCORER_SOCK (unset or empty: no scorer); False is no scorer;
     a str or Path is a socket path; anything else is used as a client (ScorerClient or a stand-in with
-    wait_healthy, ce_validated, terms, pinned and score)."""
+    wait_healthy, ce_validated, terms, pinned and score; with a scorer_pin, also pinned_terms)."""
     if scorer is None:
         return scoring_client.from_env(environ)
     if scorer is False:
@@ -453,7 +470,7 @@ def resolve_scorer(scorer: Any = None, environ: Mapping[str, str] | None = None)
 def make_reward(palette_path: Path | str | Palette, log_path: Path | str, *, verify: ModuleType | None = None,
                 max_completion_length: int | None = None, eos_token_ids: Iterable[int] = (),
                 start_step: int = 0, strict: bool = False, scorer: Any = None,
-                scorer_wait_s: float = 600.0) -> LofiReward:
+                scorer_wait_s: float = 600.0, scorer_pin: Path | str | None = None) -> LofiReward:
     """The TRL reward function: (prompts, completions, **kwargs) -> list[float] (module docstring).
 
     palette_path: the palette the loops are scored against (loaded with verify=False: the reward is symbolic and
@@ -462,11 +479,13 @@ def make_reward(palette_path: Path | str | Palette, log_path: Path | str, *, ver
     completion cut at the token limit (gate G2); start_step is the step of the first call when TRL passes no
     trainer_state (a resumed run starts at its checkpoint's step); strict re-raises verifier errors.
     `scorer` (resolve_scorer: default $LOFI_SCORER_SOCK) adds the scorer server's audio part; the first call
-    waits up to scorer_wait_s for its /health. The GRPO config has no scorer field yet (lofi_rl.rl.config refuses
-    unknown keys), so until it does a run turns the scorer on with the environment variable."""
+    waits up to scorer_wait_s for its /health, under the run's pin when `scorer_pin` names one (a file shared by
+    every link of the run, never a per-link summary directory). The GRPO config has no scorer field yet
+    (lofi_rl.rl.config refuses unknown keys), so until it does a run turns the scorer on with the environment
+    variable."""
     if verify is None:
         verify = importlib.import_module("lofi_rl.verify")
     palette = palette_path if isinstance(palette_path, Palette) else load_palette(palette_path, verify=False)
     return LofiReward(palette, log_path, verify, max_completion_length=max_completion_length,
                       eos_token_ids=eos_token_ids, start_step=start_step, strict=strict,
-                      scorer=resolve_scorer(scorer), scorer_wait_s=scorer_wait_s)
+                      scorer=resolve_scorer(scorer), scorer_wait_s=scorer_wait_s, scorer_pin=scorer_pin)

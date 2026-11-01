@@ -153,7 +153,7 @@ def test_bodies_with_nan_or_bad_bytes_are_refused_and_nan_is_never_sent():
 
 
 # ------------------------------------------------------------------------------------------ responses
-VERS = {"reward_ver": protocol.REWARD_VER, "feat_ver": "f", "rm_ver": "null", "render_ver": "r"}
+VERS = {"reward_ver": protocol.REWARD_VER, "feat_ver": "f", "rm_ver": "null", "render_ver": "r", "calib_ver": "c"}
 TERMS = {k: False for k in protocol.TERM_FLAGS}
 
 

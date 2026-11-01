@@ -1,11 +1,14 @@
 """The scorer server's wire protocol (docs/SCORER.md §3): versions, the request and response schema, validation
 and clip ids. Standard library only: the policy env imports it through lofi_rl.scoring.client.
 
-Every response names four versions, and a client that pinned them at /health refuses a response that differs:
+Every response names five versions, and a client that pinned them at /health refuses a response that differs:
 - **reward_ver** (REWARD_VER): the server's formulas: the audio gate, r_ce, r_theme and PAR;
-- **feat_ver**: the features (MERT, CLAP and Audiobox revisions, windows) and the render code they were taken on;
+- **feat_ver**: the features (MERT, CLAP and Audiobox revisions, windows), the render code and the library stack;
 - **rm_ver**: the reward model, "null" without one (taste_pipeline.md §4: pinned per run);
-- **render_ver**: the render configuration in the clip id (taste_pipeline.md §2's render_cfg_sha8).
+- **render_ver**: the render configuration in the clip id (taste_pipeline.md §2's render_cfg_sha8);
+- **calib_ver**: the calibrations and references the terms are computed with (calib.calib_version: pq.json,
+  theme.json, ce.json, the RM's refs.json and the theme config), so a server restarted with another tau_PQ,
+  theme median, CE check or references is a 409, not a reward silently computed another way.
 
 One item per completion. Items are keyed by clip_id (taste_pipeline.md §2, as lofi_rl.shootout.render.clip_id
 computes it from a manifest):
@@ -39,7 +42,7 @@ AUDIO_TERMS: tuple[str, ...] = ("ce", "theme", "taste")
 SIG_KEYS: tuple[str, ...] = ("pq", "pc", "ce", "cu", "clap_margin", "centroid_hz")       # taste_pipeline.md §7
 DIAG_KEYS: tuple[str, ...] = ("rm_mean", "rm_std", "p_acc", "pq", "pc", "cu")             # taste_pipeline.md §5
 TERM_FLAGS: tuple[str, ...] = ("pq_gate", "pacc_gate", "ce", "theme", "taste")
-VERSION_KEYS: tuple[str, ...] = ("reward_ver", "feat_ver", "rm_ver", "render_ver")
+VERSION_KEYS: tuple[str, ...] = ("reward_ver", "feat_ver", "rm_ver", "render_ver", "calib_ver")
 CACHE_KINDS: tuple[str, ...] = ("miss", "mem", "disk", "dup", "none")
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _CLIP = re.compile(r"c[0-9a-f]{16}")
@@ -241,7 +244,7 @@ def _finite(v: Any, where: str, *, null: bool = False, lo: float | None = None, 
 
 
 def check_versions(obj: Mapping[str, Any], expect: Mapping[str, str] | None, where: str) -> dict[str, str]:
-    """The four versions of a response, checked against the pinned ones (when given)."""
+    """The versions of a response (VERSION_KEYS), checked against the pinned ones (when given)."""
     got = {}
     for k in VERSION_KEYS:
         v = obj.get(k)

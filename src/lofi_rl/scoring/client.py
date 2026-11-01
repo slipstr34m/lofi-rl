@@ -1,13 +1,19 @@
 """ScorerClient: HTTP/1.1 + JSON to the scorer server over a node-local Unix socket (docs/SCORER.md §4).
 
     client = ScorerClient("/tmp/lofi-scorer.sock")
-    client.wait_healthy(600)                  # polls GET /health; pins the four versions and the CE flag
+    client.wait_healthy(600)                  # polls GET /health; pins the five versions and the live terms
     out = client.score(items, palette_sha256=palette.sha256, step=12)     # POST /score, 300 s timeout
 
-Any non-200 answer, an unreachable socket, a timeout, a malformed response or a version that differs from the
-pinned one raises ScorerError (taste_pipeline.md §5: "Any error crashes the trainer, which then resumes from its
-checkpoint"); nothing is ever scored silently on the client side. One connection per request, so a restarted
-server is simply reached again. Standard library only: lofi_rl.rl.reward imports it in the policy env.
+Any non-200 answer, an unreachable socket, a timeout, a malformed response, or a version or live terms that
+differ from the pinned ones raise ScorerError (taste_pipeline.md §5: "Any error crashes the trainer, which then
+resumes from its checkpoint"); nothing is ever scored silently on the client side. One connection per request,
+so a restarted server is simply reached again, and refused (409) if it was restarted with another RM,
+calibration, references, features or formulas.
+
+A pin lasts one client; a run outlives its processes. read_pin and write_pin keep it in a file that every link
+of a chained run shares (lofi_rl.rl.reward's scorer_pin): a link seeds its client from the file, so a server
+with another version than the run's first link pinned is refused before the link trains. Standard library
+only: lofi_rl.rl.reward imports it in the policy env.
 """
 from __future__ import annotations
 
@@ -26,6 +32,7 @@ from .protocol import ProtocolError
 SCORE_TIMEOUT_S = 300.0         # taste_pipeline.md §5
 HEALTH_TIMEOUT_S = 10.0
 ENV_SOCK = "LOFI_SCORER_SOCK"   # the reward hook's switch (lofi_rl.rl.reward.make_reward)
+PIN_SCHEMA = "lofi-scorer/pin/1"
 
 
 class ScorerError(RuntimeError):
@@ -72,6 +79,7 @@ class ScorerClient:
         self.timeout = float(timeout)
         self.allow_fake = allow_fake
         self.pinned: dict[str, str] | None = None
+        self.pinned_terms: dict[str, bool] | None = None
         self.health_doc: dict[str, Any] | None = None
 
     def __repr__(self) -> str:
@@ -122,8 +130,9 @@ class ScorerClient:
         return doc
 
     def wait_healthy(self, timeout: float = 600.0, poll: float = 0.5) -> dict[str, Any]:
-        """Poll /health until it answers ok, then pin its versions (later answers must carry the same ones).
-        ScorerUnavailable after `timeout` seconds; a server that answers but is wrong raises at once."""
+        """Poll /health until it answers ok, then pin its versions and live terms (later answers must carry the
+        same ones; a client seeded from a pin file must find them here already). ScorerUnavailable after
+        `timeout` seconds; a server that answers but is wrong raises at once."""
         deadline = time.monotonic() + float(timeout)
         last: Exception | None = None
         while True:
@@ -144,7 +153,11 @@ class ScorerClient:
             versions = protocol.check_versions(doc["versions"], self.pinned, "/health")
         except ProtocolError as err:            # a restarted server with another RM, features or formulas
             raise ScorerError(str(err), status=200, body=doc) from err
-        self.pinned, self.health_doc = versions, doc
+        terms = dict(doc["terms"])
+        if self.pinned_terms is not None and terms != self.pinned_terms:
+            raise ScorerError(f"/health: the live terms {terms} are not the pinned {self.pinned_terms}", status=200,
+                              body=doc)
+        self.pinned, self.pinned_terms, self.health_doc = versions, terms, doc
         return doc
 
     def score(self, items: Sequence[Mapping[str, Any]], *, palette_sha256: str, step: int | None = None,
@@ -153,9 +166,14 @@ class ScorerClient:
         body = protocol.score_request(items, palette_sha256=palette_sha256, step=step, expect=self.pinned)
         doc = self.request("POST", "/score", body, timeout=timeout)
         try:
-            return protocol.check_score_response(doc, body["items"], self.pinned)
+            out = protocol.check_score_response(doc, body["items"], self.pinned)
         except ProtocolError as err:
             raise ScorerError(f"/score: {err}", status=200, body=doc) from err
+        if self.pinned_terms is not None and dict(out["terms"]) != self.pinned_terms:
+            # the reward took its CE-rule weights from the pinned terms: a response computed with others is refused
+            raise ScorerError(f"/score: the response's terms {out['terms']} are not the pinned {self.pinned_terms}",
+                              status=200, body=doc)
+        return out
 
     def render(self, items: Sequence[Mapping[str, Any]], *, palette_sha256: str, out_dir: str | None = None,
                flac: bool = False, timeout: float | None = None) -> dict[str, Any]:
@@ -179,6 +197,40 @@ class ScorerClient:
     def ce_validated(self) -> bool:
         """Whether the server's CE term is live: Audiobox CE validated on Shresth's votes (calib ce.json)."""
         return bool(self._health()["terms"]["ce"])
+
+
+# ------------------------------------------------------------------------------------------ the run's pin
+def read_pin(path: str | Path) -> dict[str, Any] | None:
+    """A run's scorer pin (write_pin), or None when there is none yet. ScorerError for a file that is not one."""
+    p = Path(path)
+    try:
+        raw = p.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except OSError as err:
+        raise ScorerError(f"{p}: cannot read the run's scorer pin: {err}") from err
+    try:
+        doc = json.loads(raw)
+        if not isinstance(doc, dict) or doc.get("schema") != PIN_SCHEMA:
+            raise ProtocolError(f"not a {PIN_SCHEMA} document")
+        protocol.check_versions(doc.get("versions") or {}, None, "the pin")
+        protocol.check_terms(doc.get("terms"), "the pin")
+    except (ValueError, ProtocolError) as err:
+        raise ScorerError(f"{p}: the run's scorer pin is malformed: {err}") from None
+    return doc
+
+
+def write_pin(path: str | Path, client: ScorerClient, **extra: Any) -> dict[str, Any]:
+    """Write `client`'s pinned versions and terms (after wait_healthy) to `path`, atomically."""
+    if client.pinned is None or client.pinned_terms is None:
+        raise ScorerError("wait_healthy() first: the client has nothing pinned to write")
+    doc = {"schema": PIN_SCHEMA, "versions": dict(client.pinned), "terms": dict(client.pinned_terms), **extra}
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(f".{p.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, p)
+    return doc
 
 
 def from_env(environ: Mapping[str, str] | None = None) -> ScorerClient | None:

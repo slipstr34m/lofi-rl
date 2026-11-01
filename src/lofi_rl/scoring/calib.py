@@ -187,6 +187,14 @@ class Calibration:
         return out
 
 
+def calib_version(c: Calibration, *, refs_sha256: str | None, theme_sha256: str) -> str:
+    """calib_ver (lofi_rl.scoring.protocol): "calib-" + the first 12 hex of sha256 over the sha256 of pq.json,
+    theme.json, ce.json and the RM's refs.json ("missing" for an absent one) and of the theme config."""
+    parts = [x.sha256 if x is not None else "missing" for x in (c.pq, c.theme, c.ce)]
+    parts += [refs_sha256 or "missing", theme_sha256]
+    return "calib-" + hashlib.sha256("|".join(parts).encode()).hexdigest()[:12]
+
+
 def load(directory: Path | str | None, *, theme_sha256: str) -> Calibration:
     """Read the calibration directory. None (no --calib) or a missing file disables; a bad file, or a directory
     that is given but does not exist, raises CalibError."""
