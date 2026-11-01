@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -42,14 +43,27 @@ def _req(texts):
 
 @needs_fluidsynth
 def test_one_real_render_through_the_pool_reaches_the_featurizer_once(tmp_path):
+    """The suite's two real scorer renders: one /score (this clip) and one /render of the same clip to FLAC."""
+    import soundfile as sf
     from lofi_rl.render.machine import golden_key
     feat = RecordingFeaturizer()
     pool = RenderPool(PALETTE, workers=2, timeout_s=120)
     try:
         scorer = make_scorer(tmp_path, renderer=pool, featurizer=feat)
         out = scorer.score(_req([fixture_text("example.ls"), fixture_text("example_leniency.ls"), "vamp: no"]))
+        files = tmp_path / "out"
+        files.mkdir()
+        rendered = scorer.render(protocol.parse_render_request(protocol.render_request(
+            [protocol.item_dict(0, fixture_text("example.ls"), BRIEF_A)], palette_sha256=PAL.sha256,
+            out_dir=str(files), flac=True)))["items"][0]
     finally:
         pool.close()
+    man = json.loads(Path(rendered["files"]["manifest"]).read_text())
+    pcm, sr = sf.read(rendered["files"]["flac"], dtype="int16")
+    assert rendered["ok"] and man["audio_sha256"] == rendered["render"]["audio_sha256"] == \
+        out["items"][0]["diag"]["render"]["audio_sha256"], "the same clip renders to the same PCM"
+    assert (sr, pcm.shape) == (44100, (man["n"], 2)) and Path(rendered["files"]["flac"]).name == \
+        f"{out['items'][0]['clip_id']}.flac"
     a, b, junk = out["items"]
     assert (a["hard"], a["diag"]["cache"], b["diag"]["cache"], b["clip_id"]) == (1, "miss", "dup", a["clip_id"])
     assert (junk["hard"], junk["gate"]) == (0, "G1") and out["batch"]["rendered"] == 1
