@@ -668,8 +668,8 @@ def test_every_day2_stage_matches_each_bus_its_varied_thing_moves(plan):
     # instrument stages and the sax variants their own bus. K2 and S2a also measure each option's palette on the 9
     # loops (section 3 step 1: the spread voicing, warm on and expression off). Day 1 keeps CD-52 (no `match`), and
     # the rain is not matched (the level is the candidate).
-    want = {"R2r": ("bass",), "R3a": ("sax", "keys", "bass", "drums"), "R3b": ("keys", "bass", "drums"), "S1f": ("sax",),
-            "S2a": ("sax",), "S2b": ("sax",), "K2": ("keys",), "V": ("keys", "bass")}
+    want = {"R2r": ("bass",), "R3a": ("sax", "keys", "bass", "drums"), "R3b": ("keys", "bass", "drums"),
+            "S1f": ("sax",), "S2a": ("sax",), "S2b": ("sax",), "K2": ("keys",), "V": ("keys", "bass")}
     assert {sid: st.match for sid, st in plan.stages.items() if st.match} == want
     assert {sid for sid, st in plan.stages.items() if st.match_loops} == {"K2", "S2a"}
     assert all(st.day == 2 for st in plan.stages.values() if st.match)

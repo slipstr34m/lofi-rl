@@ -714,7 +714,8 @@ def test_repeat_agreement_reads_the_bars_of_every_attempt_of_both_showings(inbox
     row = next(r for r in doc["repeats"]["rows"] if r["round"] == rid)
     assert row["found"] and row["compared"] > 0                       # the redo's own bars are all 0
     logs = read_all(votes)
-    merged = {k: with_merged_heard(v, heard_over_attempts(logs[b])) for b in logs for k, v in active_votes(logs[b]).items()}
+    merged = {k: with_merged_heard(v, heard_over_attempts(logs[b])) for b in logs
+              for k, v in active_votes(logs[b]).items()}
     assert (row["agree"], row["compared"]) == agreement("shootout", merged[of], merged[rid], 1)
     assert agreement("shootout", active_votes(logs[day1[of]])[of], merged[rid], 1)[1] == 0     # unmerged: no pair
 

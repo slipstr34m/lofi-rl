@@ -36,9 +36,9 @@ Day-2 band the draw builds (`draw.day_band`, after the adds and section 2.7's cu
 job whose pulled summary (--runs, runs/shootout-<job>/summary/batches.json) built the Day-1 batches, since job 2
 compares its drift keys with job 1's (section 3); `--add R2r` when the bass is undecided (CD-54: the kit slot then
 carries the surviving kits, leader first, and the bass slot the default meanwhile); and `--cut`, from the minutes of
-the Day-2 plan the draw will play with those leaders (`draw.day_minutes`). A case the spec does not decide raises `RuleGap`, which names the
-section; the tally records it and lists it with everything else that needs Shresth's word. A batch with no votes is
-reported as such, never as zeros. A seeded draw (CD-41, CD-18, a provisional leader) is keyed by the stage's
+the Day-2 plan the draw will play with those leaders (`draw.day_minutes`). A case the spec does not decide raises
+`RuleGap`, which names the section; the tally records it and lists it with everything else that needs Shresth's
+word. A batch with no votes is reported as such, never as zeros. A seeded draw (CD-41, CD-18, a provisional leader) is keyed by the stage's
 standing vote ids, so it is fixed once the votes exist and the private logs reproduce it.
 
 --report writes the tables, the flags, the repeats and the proposal as markdown, which Claude pastes into
@@ -60,8 +60,8 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
-from lofi_rl.ui.audit import (aggregate, agreement, anchor_caught, chi2_uniform, heard_bars, heard_over_attempts, wilson,
-                              with_merged_heard)
+from lofi_rl.ui.audit import (aggregate, agreement, anchor_caught, chi2_uniform, heard_bars, heard_over_attempts,
+                              wilson, with_merged_heard)
 from lofi_rl.ui.manifest import ManifestError, load_batch, load_public
 from lofi_rl.ui.serve import ROOT as REPO
 from lofi_rl.ui.serve import ConfigError, _inside, load_config
@@ -522,8 +522,9 @@ def bass_after_relisten(r2r: Sequence[Round], kits: Sequence[str], *, default: s
         counted = [rd.slot for rd in own
                    if (c := _counted_best(rd)) is not None and not pooled_rows[c["option"]].out]
         if not counted:
-            why = ("it plays no R2r round" if not own else "its R2r rounds have no counted best (T, G, a best on a clip "
-                   "that never played, or one that cannot survive)")
+            why = ("it plays no R2r round" if not own else
+                   "its R2r rounds have no counted best (T, G, a best on a clip that never played, or one that cannot "
+                   "survive)")
             pairs[kit] = {**entry, "bass": pooled["pick"], "from": "the pooled R2r leader", "why": why, "pick": pooled}
             continue
         rows = {o: _judged(x, pooled_rows[o]) for o, x in tally_rows(own).items() if not pooled_rows[o].out}
@@ -1225,7 +1226,8 @@ def _day2(plan: Plan, stages: Mapping[str, dict], rows: Mapping[str, dict], by_s
         if relisten["left_out"]:
             needs.append({"stage": "R2", "blocking": False,
                           "what": f"{relisten['left_out']} survive R1 but play no R2r round (it plays "
-                                  f"{len(relisten['kits'])} kits); after Day 2 they take the pooled R2r leader (CD-54)"})
+                                  f"{len(relisten['kits'])} kits); after Day 2 they take the pooled R2r leader "
+                                  "(CD-54)"})
     elif bass and any(p["from"] == "the pooled R2 leader" for p in bass["pairings"].values()):
         _note_pick(needs, "R2", "the pooled R2 leader", bass["pooled_leader"])
     if sax:

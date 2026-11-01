@@ -1170,6 +1170,38 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   later rule ran on the Day-2 manifests (K2's four keys, the three-source final), and no round was flagged on any
   matched bus. One case is the spec's to decide: with `latin3`, R3b has 2 rounds, so a single G puts every humanize
   option all-bad in half its rounds (CD-44), and the tally raises a `RuleGap` for Shresth.
+- **End to end, R2r** (2026-10-31, the laptop, branch `worktree-wf_5d8416c0-2da-1`; scratch runs, inbox, votes and
+  `LOFI_ASSETS` of symlinks to the real banks and kits; votes synthetic, `data/votes` never read):
+  1. **Day 1:** `--stage day1 --jobs 8`, a scratch seed (run `shootout-900201`): every stage exit 0 in 84.7 s
+     (levels 41.4, render 41.9); 67 of 67 renders at −14.099 … −13.996 LUFS, true peak at most −1.479 dBTP; the 3
+     batches (6 rounds and 24 clips, 6 and 18, 7 with the anchor and 28) pass `ui.manifest check` with no leak;
+     per-round spread 0.0012–0.0091 LU.
+  2. **Votes** in the shape of Shresth's Day-1 decisions (2026-10-31), written by the page's own `Ledger` on a fake
+     clock (session and round starts; 19 standing votes): K1 a full three-way tie of `gs_wurli_ep200`,
+     `gu_tine_ep` and `vcsl_upright_knight` (2 bests, 0 worsts each); R1 `kit_virtuosity` 2 bests and 1 worst,
+     `kit_gu_jazz` 1 best, `kit_swirly` 2 worsts; R2 T with the worst on `bass_gu_acoustic`, T + B, and G; S1
+     `sax_mtg_alto` then `sax_mtg_tenor`, the anchor caught. Two redos whose bars must carry over: the K1 round
+     whose best is `gu_tine_ep` was answered, taken back (undo) and answered again with that tile at 0 bars, and
+     R1.1 was left with Esc after 2 bars of each tile and answered again with every tile at 0 bars.
+  3. **Tally** (exit 0; Day 1 20.7 min, r 0.900; Day 2's drawn plan 31.2 min with R2r, 28.1 at r, no cut):
+     `--stage day2 --leaders keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor --prior 900201 --add R2r`.
+     K1 BW +0.667 for the three (the default leads, CD-39), R1 +0.333, +0.333 (virtuosity on bests) and −0.667
+     (swirly dropped), R2 0, 0 and −0.333 (no best: CD-54, both of its cases), S1 +1.0 and +0.5; no mark left
+     out, the batch files keeping the redone tiles' own 0-bar records. The same logs through main's tally
+     (4b9cd64, no merge) leave 1 K1 mark and 2 R1 marks out and propose
+     `keys=vcsl_upright_knight+gs_wurli_ep200+gu_tine_ep/kit=kit_gu_jazz/bass=bass_fp_finger_yr`, with two
+     provisional seeded leaders and no R2r.
+  4. **Day 2** with that line and a scratch seed (run `shootout-900202`): every stage exit 0 in 130.3 s (levels
+     66.4, render 62.3); 93 of 93 renders (R2r 9) at −14.099 … −13.991 LUFS, true peak at most −1.448 dBTP, each
+     reading the tool's L before every matched fader exactly (171 bus-clip pairs). The 11 instruments measured
+     again moved 0.00 dB from the Day-1 run and S\* did not move; 210 own faders on 25 palettes (R2r's 6), 196 in
+     one measurement and 14 corrected, the worst 0.0050 LU off target. Batches: `b1104-1-groove` 8 rounds and 26
+     clips (R2r's three first, then R3b, R3a, R3b, R3a, R3b; category "bass, swing, humanize"; est 8.6 min),
+     `b1104-2-sax` 10 and 27 (9.3 min), `b1104-3-keys` 2 and 6 (1.9), `b1104-4-vamps` 9 and 36 (11.6).
+  5. **Spreads after matching** (levels.json `rounds`; the hidden manifests give the same): R2r's bass 0.0069
+     (R2r.1 on L1), 0.0006 (R2r.2 on L5) and 0.0020 LU (R2r.3 on L9), against 1.55, 2.19 and 1.01 LU at the
+     band's median faders; every Day-2 round 0.0002–0.0093 LU (29 rounds). `python -m lofi_rl.ui.manifest
+     check` passes on all 4 Day-2 batches and `batch.public_leaks` finds nothing in any public manifest.
 
 ### 7.8 Shootout plan and palette generator
 - **Plan:** `shootouts/plan.yaml` transcribes §4 and §6 in symbols: candidates (source, preset, register, family,

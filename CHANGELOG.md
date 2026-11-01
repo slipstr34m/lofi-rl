@@ -21,6 +21,30 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-10-31 (21:20 PDT): tally heard rule (1 bar over every attempt) and R2r, the Day-2 bass re-listen (CD-54)
+
+**What was done** (workflow `wf_5d8416c0-2da`, branch `worktree-wf_5d8416c0-2da-1` cut from `4b9cd64`; laptop only, nothing synced)
+- **The heard rule in the tally** (D-013 as amended; SHOOTOUTS.md CD-38): every vote the tally scores carries its round's bars OR-ed over every attempt in its batch's log (`ui.audit.heard_over_attempts`), the repeats' first showings included; `tally()` defaults to 1 bar, as `configs/rating.yaml`. 2 new tests; each fails with the merge taken out.
+- **R2r** (Shresth, "Yes, use these": a 3-round bass re-listen in Day 2, the default bass meanwhile; CD-54):
+  - `shootouts/plan.yaml`: an optional stage, the 3 basses as a Latin square on L1, L5 and L9 (one per mood and energy, none of R2's or R1's loops), the R1 leader in R2r.1 and R2r.3, the other survivor in R2r.2, matched on the bass bus (CD-53), served first in `b1104-1-groove`.
+  - The switch is `--add R2r` (job, draw, `day_band`): the kit slot then takes the 2 surviving kits, leader first. Without it, 16 draws on 4 seeds (Day 1, and Day 2 with 3 or 4 keys, 2 or 3 saxes, every cut) are byte-identical to `4b9cd64`'s, plan path and sha aside.
+  - The tally's Day-1 proposal adds R2r when no R2 round has a best, or when a surviving kit takes a pooled R2 leader tied without the default; after Day 2 each kit takes the best bass of its own R2r rounds, else the pooled R2r leader.
+  - The cut list reads Day 2 from the plan the draw will play (`draw.day_minutes`): 28.2 min by default (the fixed figure was 28.3), 28.8 with 4 keys, 29.2 with a 3-sax final, 31.2 with R2r.
+- **`jobs/shootout.sbatch`:** one comment line added; sha `12f706e7f61efe72` unchanged, `scripts/approve_job.py --check` reports nothing stale.
+- **End to end on the laptop** (SHOOTOUTS.md §7.7 "End to end, R2r"; scratch folders under the session scratchpad):
+  - Day 1 (`shootout-900201`): exit 0 in 84.7 s, 67/67 renders, 3 batches pass `ui.manifest check`, spread 0.0012–0.0091 LU.
+  - Synthetic votes in the shape of decisions 2 and 3, with an undo and an Esc whose bars must carry over. Tally exit 0: `--stage day2 --leaders keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor --prior 900201 --add R2r` (Day 1 20.7 min, r 0.900, no cut). Main's tally on the same logs leaves 3 marks out and proposes another keys leader, `kit_gu_jazz` and no R2r.
+  - Day 2 (`shootout-900202`): exit 0 in 130.3 s, 93/93 renders (R2r 9), 171 bus-clip pairs at the tool's L exactly, instruments moved 0.00 dB. R2r's bass spread 0.0006–0.0069 LU after matching (1.01–2.19 at the median faders); every Day-2 round 0.0002–0.0093 LU. All 4 batches pass `ui.manifest check`, and the leak guard finds nothing.
+- **Suite:** 2081 passed, 2 skipped (main at `4b9cd64`: 2039; +2 heard, +40 R2r and the cut list).
+
+**Needs Shresth's word, if it happens:** on the real Day-1 votes the cut list reads the audit's minutes (30.7, which include the silent attempt), so the proposal will carry a `--cut` that his "no Day-2 cuts" drops; with R2r, Day 2 is about 31 min at the plan's pace, so its first push (groove + sax) is 17.8 min.
+
+**SU spent:** 0 (laptop only).
+
+**Next:** review and merge the branch; run the tally on the real logs from the main checkout and check it against the recount; drop the proposal's `--cut` per his word; submit job 2 once D-020's jobs end and the mirror can be synced.
+
+---
+
 ## 2026-10-31 (20:05 PDT): D-020 checked, amended before either run, and the fixes it called for
 
 **What was done**
