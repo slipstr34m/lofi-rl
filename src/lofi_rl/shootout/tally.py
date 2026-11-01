@@ -2,6 +2,7 @@
 
     python -m lofi_rl.shootout.tally --votes data/votes --inbox inbox [--batch <name> ...] [--out <dir>]
         [--report <file.md>] [--plan shootouts/plan.yaml] [--config configs/rating.yaml] [--levels <levels.json> ...]
+        [--runs runs]
 
 It reads each shootout batch's vote log (`<votes>/<batch>.jsonl`, the rating page's events: docs/RATING.md Part 2)
 and its manifests (`<inbox>/<date>/<batch>/`), reruns `ui.audit.aggregate` on each batch, and writes
@@ -20,15 +21,18 @@ across its batches (section 8):
   of the counts [CD-47]; position-of-best counts pooled by clip count over the shootout batches (descriptive);
 - rounds flagged by section 3, from the hidden manifests' levels: a round whose candidates' bus loudness (`bus_lufs`)
   spreads over 1.0 LU, over 0.5 LU for the timing variants [CD-26], and a vamp round whose keys (`bus_lufs`) or bass
-  (`bass_lufs`) loudness spreads over 1.0 LU [CD-27]; with --levels, every trim or fader a job's drift check moved by
-  more than 0.1 dB.
+  (`bass_lufs`) loudness spreads over 1.0 LU [CD-27]; from Day 2 on every other bus a stage matches too
+  (`<bus>_lufs`, CD-53: R3a's sax, keys and bass, R3b's keys and bass), at its stage's limit; with --levels, every
+  trim or fader a job's drift check moved by more than 0.1 dB.
 
 Section 8's rules are the functions `keys_to_k2`, `kits_after_r1`, `bass_pairings`, `sax_to_final` and `day2_cut`
 (after Day 1), `keys_survivors`, `sax_final`, `warmth`, `timing`, `swing`, `humanize` and `vamp_ranks` (after Day
 2), and `rain_excerpt` and `rain_level` (after Day 3), each applied once every round of its stage's batches has a
 vote (an anchor anywhere in them can halve a micro-session that began earlier). After Day 1 they make job 2's
 `--leaders` string (section 7.7), checked with `draw.parse_leaders` and the Day-2 band the draw builds
-(`draw.day_band`, after section 2.7's cuts). A case the spec does not decide raises `RuleGap`, which names the
+(`draw.day_band`, after section 2.7's cuts), and its ARGS add `--cut` and `--prior`: the job whose pulled summary
+(--runs, runs/shootout-<job>/summary/batches.json) built the Day-1 batches, since job 2 compares its drift keys with
+job 1's (section 3). A case the spec does not decide raises `RuleGap`, which names the
 section; the tally records it and lists it with everything else that needs Shresth's word. A batch with no votes is
 reported as such, never as zeros. A seeded draw (CD-41, CD-18, a provisional leader) is keyed by the stage's
 standing vote ids, so it is fixed once the votes exist and the private logs reproduce it.
@@ -59,7 +63,7 @@ from lofi_rl.ui.serve import ConfigError, _inside, load_config
 from lofi_rl.ui.votes import active_votes, atomic_write, read_all, read_events
 
 from .draw import DrawError, Rng, day_band, parse_leaders
-from .plan import BAND_SLOTS, BUS_SLOT, PLAN, Plan, PlanError, load_plan
+from .plan import BAND_SLOTS, BUS_SLOT, MIX_ORDER, PLAN, Plan, PlanError, load_plan
 
 SCHEMA = "lofi-rl/shootout-tally/1"
 BATCH_SCHEMA = "lofi-rl/shootout-tally-batch/1"
@@ -589,6 +593,30 @@ def rain_level(rows: Mapping[str, Row], seed: int, *, default: str | None) -> di
 
 
 # ------------------------------------------------------------------------------------------------ loading
+def built_by(runs: Path | None, rounds_of: Mapping[str, Iterable[str]]) -> dict[str, list[str]]:
+    """batch -> the lofi-shootout job ids whose pulled summary built it (`make pull` brings back
+    runs/shootout-<job>/summary/): a batches.json, written by that job (its `run` is `shootout-<job id>`), that lists
+    the batch with exactly the round ids of its manifest. Opaque round ids are random per batch, so a dry run's
+    batches of the same names never match."""
+    out: dict[str, list[str]] = {n: [] for n in rounds_of}
+    if runs is None or not Path(runs).is_dir():
+        return out
+    for path in sorted(Path(runs).glob("shootout-*/summary/batches.json")):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        run = doc.get("run") if isinstance(doc, dict) else None
+        job = run.removeprefix("shootout-") if isinstance(run, str) else ""
+        if not job.isdigit() or not isinstance(doc.get("batches"), dict):
+            continue
+        for name, b in doc["batches"].items():
+            ids = {r.get("id") for r in (b.get("rounds") or []) if isinstance(r, dict)}
+            if name in out and ids == set(rounds_of[name]) and job not in out[name]:
+                out[name].append(job)
+    return out
+
+
 def find_batches(inbox: Path) -> tuple[dict[str, Path], list[str]]:
     """batch name -> folder for every shootout batch at <inbox>/<date>/<batch>/, and the folders that did not load."""
     out: dict[str, Path] = {}
@@ -730,17 +758,19 @@ def row_doc(o: Row) -> dict:
 
 
 def flag_rules(plan: Plan, stage: str) -> list[tuple[str, float, str]]:
-    """(hidden-manifest field, limit in LU, bus) for the rounds of a stage (section 3)."""
+    """(hidden-manifest field, limit in LU, bus) for the rounds of a stage (section 3). A stage that names `match`
+    (CD-53, Day 2 on) is checked on every bus it matches, under the fields the batch builder writes: `bus_lufs` for
+    the stage's own bus (a vamp round's keys) and `<bus>_lufs` for each other one (R3a's sax, keys and bass, R3b's
+    keys and bass, the vamps' bass)."""
     st = plan.stages.get(stage.removesuffix(RERUN))
     if st is None:
         return [("bus_lufs", MATCHED_LU, "bus")]
-    if st.fills is None:                                  # the vamps: the band's keys and bass move (CD-27)
-        return [("bus_lufs", MATCHED_LU, "keys"), ("bass_lufs", MATCHED_LU, "bass")]
     if st.fills in UNMATCHED_SLOTS:
         return []
-    if st.fills in TIMING_SLOTS:                          # CD-26
-        return [("bus_lufs", TIMING_LU, st.bus)]
-    return [("bus_lufs", MATCHED_LU, st.bus)]             # instruments (CD-52) and the S2a warmth variants (step 1)
+    limit = TIMING_LU if st.fills in TIMING_SLOTS else MATCHED_LU    # CD-26; instruments (CD-52), S2a, the vamps
+    buses = list(st.match) or (["keys", "bass"] if st.fills is None else [st.bus])   # the vamps: keys and bass (CD-27)
+    first = next(b for b in [*st.bus.split("+"), *MIX_ORDER] if b in buses)        # as batch._hidden_clip names it
+    return [("bus_lufs", limit, first)] + [(f"{b}_lufs", limit, b) for b in MIX_ORDER if b in buses and b != first]
 
 
 def round_levels(plan: Plan, rd: Round) -> tuple[list[dict], list[dict]]:
@@ -918,9 +948,11 @@ def _note_pick(needs: list[dict], key: str, label: str, pick: Mapping) -> None:
 
 
 def tally(votes_dir: Path, inbox: Path, *, plan: Plan, batches: Sequence[str] | None = None, heard_min: int = 4,
-          toss_min: int = 2, budget_min: float = 60.0, levels: Sequence[Path] = (), today: date | None = None
-          ) -> tuple[dict, dict[str, dict]]:
-    """The tally of every shootout batch in `inbox` (or the named ones): (shootouts.json, {batch: <batch>.json})."""
+          toss_min: int = 2, budget_min: float = 60.0, levels: Sequence[Path] = (), today: date | None = None,
+          runs: Path | None = None) -> tuple[dict, dict[str, dict]]:
+    """The tally of every shootout batch in `inbox` (or the named ones): (shootouts.json, {batch: <batch>.json}).
+    `runs` holds the pulled job summaries (runs/shootout-<job>/summary/): the job that built the Day-1 batches is
+    job 2's --prior (section 3, drift)."""
     votes_dir, inbox = Path(votes_dir), Path(inbox)
     found, problems = find_batches(inbox)
     names = list(batches) if batches else sorted(found)
@@ -966,7 +998,9 @@ def tally(votes_dir: Path, inbox: Path, *, plan: Plan, batches: Sequence[str] | 
     rows = {sid: tally_rows(by_stage[sid]) for sid in stages}
     needs: list[dict] = []
     rules: dict[str, dict] = {}
-    proposal = _day2(plan, stages, rows, by_stage, audits, {n: loaded[n].status for n in names}, rules, needs)
+    built = built_by(runs, {n: [rd.id for rd in loaded[n].rounds] for n in names})
+    proposal = _day2(plan, stages, rows, by_stage, audits, {n: loaded[n].status for n in names}, rules, needs,
+                     built=built, runs=runs)
     _later(plan, stages, rows, by_stage, rules, needs)
     pooled = {}
     for name, a, b in POOLS:                             # BW over K1 + K2 (CD-40); combined S1 + final BW (CD-18)
@@ -982,7 +1016,9 @@ def tally(votes_dir: Path, inbox: Path, *, plan: Plan, batches: Sequence[str] | 
         "votes": str(votes_dir), "inbox": str(inbox), "plan": {"path": str(plan.path), "sha256": plan.sha256},
         "heard_min_bars": heard_min, "problems": problems + [f"{n}: {p}" for n in names for p in loaded[n].problems],
         "batches": {n: {k: batch_docs[n][k] for k in ("date", "day", "status", "log", "rounds", "voted")}
-                    | {"minutes": (audits[n]["time"]["minutes"] if n in audits else None)} for n in names},
+                    | {"minutes": (audits[n]["time"]["minutes"] if n in audits else None), "jobs": built[n]}
+                    for n in names},
+        "runs": None if runs is None else str(runs),
         "stages": stages,
         "pooled": pooled,
         "micro_sessions": [{**g, "batches": sorted(g["batches"])} for _, g in sorted(
@@ -1039,9 +1075,12 @@ def _defaults(plan: Plan) -> dict[str, str]:
 
 
 def _day2(plan: Plan, stages: Mapping[str, dict], rows: Mapping[str, dict], by_stage: Mapping[str, list[Round]],
-          audits: Mapping[str, dict], batches: Mapping[str, str], rules: dict, needs: list[dict]) -> dict:
-    """Day 1's rules and job 2's --leaders (section 7.7), once every round of the Day-1 batches has a vote (the
-    anchor in the last one can halve a micro-session that began in an earlier one, D-013)."""
+          audits: Mapping[str, dict], batches: Mapping[str, str], rules: dict, needs: list[dict], *,
+          built: Mapping[str, Sequence[str]] | None = None, runs: Path | None = None) -> dict:
+    """Day 1's rules and job 2's ARGS (section 7.7): --leaders, the cut list's --cut, and --prior, the job that built
+    the Day-1 batches (`built`), whose drift keys job 2 compares with its own (section 3; jobs/shootout.sbatch's Day-2
+    form), once every round of the Day-1 batches has a vote (the anchor in the last one can halve a micro-session
+    that began in an earlier one, D-013)."""
     status = {s: (stages[s]["status"] if s in stages else "missing") for s in DAY1_STAGES}
     day1 = [n for b in plan.batches if b.day == 1 for n in b.names]
     unfinished = [n for n in day1 if batches.get(n) != "complete"]
@@ -1088,10 +1127,25 @@ def _day2(plan: Plan, stages: Mapping[str, dict], rows: Mapping[str, dict], by_s
         band = day_band(plan, "day2", parsed, cut["cuts"])
     except (DrawError, PlanError) as err:
         raise TallyError(f"the proposal {text!r} fails the Day-2 band check: {err}") from err
-    args = f"--stage day2 --leaders {text}" + (f" --cut {'+'.join(cut['cuts'])}" if cut["cuts"] else "")
-    blocking = [n["what"] for n in needs if n["blocking"] and n["stage"] in DAY1_STAGES]
-    return {"day2": {"status": "ready", "stages": status, "leaders": text, "cut": cut["cuts"], "args": args,
-                     "blocking": blocking,
+    built = built or {}
+    jobs = sorted({j for n in day1 for j in built.get(n) or []}, key=int)
+    unbuilt = [n for n in day1 if not built.get(n)]
+    if unbuilt:                 # job 2 needs job 1 as --prior: its drift keys and each instrument's move (section 3)
+        jobs = []
+        where = f"under {runs}" if runs is not None else "(no runs folder given)"
+        needs.append({"stage": "prior", "blocking": True,
+                      "what": f"job 2's --prior: no pulled summary {where} built {unbuilt} "
+                              "(runs/shootout-<job>/summary/batches.json, from make pull); job 2 compares its drift "
+                              "keys with job 1's (section 3), so add --prior <job 1> before submitting"})
+    elif len(jobs) > 1:
+        needs.append({"stage": "prior", "blocking": False,
+                      "what": f"the Day-1 batches come from {len(jobs)} jobs ({'+'.join(jobs)}); job 2 compares its "
+                              "drift keys with the first one's levels.json (section 3)"})
+    args = (f"--stage day2 --leaders {text}" + (f" --prior {'+'.join(jobs)}" if jobs else "")
+            + (f" --cut {'+'.join(cut['cuts'])}" if cut["cuts"] else ""))       # jobs/shootout.sbatch's order
+    blocking = [n["what"] for n in needs if n["blocking"] and n["stage"] in (*DAY1_STAGES, "prior")]
+    return {"day2": {"status": "ready", "stages": status, "leaders": text, "cut": cut["cuts"], "prior": jobs,
+                     "args": args, "blocking": blocking,
                      "submit": f"make submit JOB=jobs/shootout.sbatch ARGS='{args}'",
                      "check": {"parse_leaders": {k: list(v) for k, v in parsed.items()}, "day_band": band},
                      "kits": kits["survivors"],
@@ -1366,7 +1420,10 @@ def _rules_md(doc: dict) -> list[str]:
                     L.append(f"- **No free sax passes:** {why} (D-012's fallback is Shresth's call).")
         if p2["status"] == "ready":
             cut = f" with `--cut {'+'.join(p2['cut'])}`" if p2["cut"] else ""
-            L += ["", f"Job 2: `--leaders {p2['leaders']}`{cut}",
+            prior = (f"; `--prior {'+'.join(p2['prior'])}`, the job that built the Day-1 batches (its drift keys, "
+                     "section 3)" if p2.get("prior") else
+                     "; **`--prior` missing:** no pulled summary built the Day-1 batches (see below)")
+            L += ["", f"Job 2: `--leaders {p2['leaders']}`{cut}{prior}",
                   "", f"    {p2['submit']}", "",
                   "Checked: the string reads back through `draw.parse_leaders`, and `draw.day_band` builds the Day-2 "
                   f"band from it: {', '.join(f'{k} `{v}`' for k, v in p2['check']['day_band'].items() if v)}."]
@@ -1454,6 +1511,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--config", type=Path, default=None, help="configs/rating.yaml (heard.min_bars and the budget)")
     p.add_argument("--levels", type=Path, nargs="+", action="extend", default=[],
                    help="levels.json files whose drift moves go into the report (section 3)")
+    p.add_argument("--runs", type=Path, default=REPO / "runs",
+                   help="the pulled job summaries, runs/shootout-<job>/summary/ (job 2's --prior; default <repo>/runs)")
     a = p.parse_args(argv)
     try:
         if not a.votes.is_dir():
@@ -1466,7 +1525,7 @@ def main(argv: list[str] | None = None) -> int:
         plan = load_plan(a.plan)
         doc, batch_docs = tally(a.votes, a.inbox, plan=plan, batches=a.batch or None,
                                 heard_min=cfg["heard"]["min_bars"], toss_min=cfg["heard"]["toss_min_bars"],
-                                budget_min=cfg["daily_budget_minutes"], levels=a.levels)
+                                budget_min=cfg["daily_budget_minutes"], levels=a.levels, runs=a.runs)
         written = write_outputs(doc, batch_docs, out, report)
     except (TallyError, ConfigError, PlanError, DrawError, ManifestError, OSError) as err:
         print(f"error: {err}", file=sys.stderr)

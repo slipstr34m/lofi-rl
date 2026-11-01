@@ -109,7 +109,11 @@ def vote_days(inbox: dict, votes: Path, names=DAY1, choose=None, **kw) -> Clock:
 
 
 def tally(inbox: dict, votes: Path, **kw):
+    kw.setdefault("runs", inbox["root"].parent / "runs")         # the fixture's job summaries, shootout-<seed>
     return T.tally(votes, inbox["root"], plan=PLAN, today=date(2026, 11, 3), **kw)
+
+
+JOB1 = str(0x596A)                 # the fixture's Day-1 run is runs/shootout-<seed>, as the cluster's is shootout-<job>
 
 
 def _row(option, best=0, worst=0, heard=4, all_bad=0, rounds=None) -> T.Row:
@@ -284,6 +288,7 @@ def test_the_leaders_string_round_trips_through_parse_leaders_and_the_day2_band(
     doc, _ = tally(inbox, votes)
     p = doc["proposal"]["day2"]
     assert p["status"] == "ready" and p["cut"] == [] and not p["blocking"]       # 19 min of 23 planned: r 0.826
+    assert p["prior"] == [JOB1] and p["args"] == f"--stage day2 --leaders {p['leaders']} --prior {JOB1}"
     text = p["leaders"]
     leaders = parse_leaders(text)
     assert T.leaders_string(leaders) == text and list(leaders) == ["keys", "kit", "bass", "sax"]
@@ -302,8 +307,49 @@ def test_the_leaders_string_round_trips_through_parse_leaders_and_the_day2_band(
     run = tmp_path / "runs" / "shootout-13640002"
     assert job.main(["--run", str(run), "--inbox", str(tmp_path / "inbox2"), *shlex.split(p["args"]),
                      "--dry-run"]) == 0                                            # and so does the job's own check
-    assert json.loads((run / "summary" / "leaders.json").read_text())["leaders"] == {
-        k: list(v) for k, v in leaders.items()}
+    written = json.loads((run / "summary" / "leaders.json").read_text())
+    assert written["leaders"] == {k: list(v) for k, v in leaders.items()}
+    assert written["prior"] == [JOB1] and written["prior_runs"] == [str(run.parent / f"shootout-{JOB1}")]
+
+
+def test_job_2s_args_name_the_job_that_built_the_day1_batches_as_prior(inbox, tmp_path):
+    """Section 3 "Drift between jobs": job 2 compares its drift keys with job 1's, so its ARGS carry --prior <job 1>
+    (jobs/shootout.sbatch's Day-2 form). The tally finds job 1 in the pulled summaries: the batches.json whose `run`
+    is shootout-<job> and which lists every Day-1 batch with its manifest's round ids."""
+    votes = tmp_path / "votes"
+    vote_days(inbox, votes)
+    runs = inbox["root"].parent / "runs"
+    found = T.built_by(runs, {n: [r.id for r in load_batch(inbox["folders"][n], check_files=False)[0].rounds]
+                              for n in DAY1 + DAY2})
+    assert {n: found[n] for n in DAY1} == dict.fromkeys(DAY1, [JOB1])
+    assert {n: found[n] for n in DAY2} == dict.fromkeys(DAY2, [str(0x596B)])
+    doc, _ = tally(inbox, votes)
+    assert doc["batches"]["b1103-1-keys"]["jobs"] == [JOB1] and doc["runs"] == str(runs)
+    md = T.report_md(doc)
+    assert f"--prior {JOB1}'" in md and f"`--prior {JOB1}`, the job that built the Day-1 batches" in md
+    # no summary pulled (or none that built these batches): the leaders stand, the --prior is put to Claude/Shresth
+    other = tmp_path / "runs"
+    doc0, _ = tally(inbox, votes, runs=other)
+    p0 = doc0["proposal"]["day2"]
+    assert p0["status"] == "ready" and p0["prior"] == [] and "--prior" not in p0["args"]
+    assert p0["leaders"] == doc["proposal"]["day2"]["leaders"]
+    assert any(n["stage"] == "prior" and n["blocking"] for n in doc0["needs_word"]) and p0["blocking"]
+    assert "**`--prior` missing:**" in T.report_md(doc0)
+    # a dry run's summary of the same batch names, with its own random round ids, is not job 1; nor is a run that
+    # is not shootout-<job id>
+    src = json.loads((runs / f"shootout-{JOB1}" / "summary" / "batches.json").read_text())
+    fake = json.loads(json.dumps(src))
+    for b in fake["batches"].values():
+        for r in b["rounds"]:
+            r["id"] = "r" + "0" * 8
+    for name, doc_ in ((f"shootout-{JOB1}", fake), ("shootout-day1", dict(src, run="shootout-day1"))):
+        (other / name / "summary").mkdir(parents=True)
+        (other / name / "summary" / "batches.json").write_text(json.dumps(doc_))
+    assert T.tally(votes, inbox["root"], plan=PLAN, runs=other)[0]["proposal"]["day2"]["prior"] == []
+    (other / "shootout-13650001" / "summary").mkdir(parents=True)                 # job 1's summary, pulled
+    (other / "shootout-13650001" / "summary" / "batches.json").write_text(json.dumps(dict(src, run="shootout-13650001")))
+    p1 = T.tally(votes, inbox["root"], plan=PLAN, runs=other)[0]["proposal"]["day2"]
+    assert p1["prior"] == ["13650001"] and p1["args"].endswith("--prior 13650001") and not p1["blocking"]
 
 
 def test_the_cut_list_follows_the_day1_minutes_and_the_final_cut_leaves_one_sax(inbox, tmp_path):
@@ -526,13 +572,48 @@ def test_rounds_whose_levels_spread_too_far_are_flagged(inbox, tmp_path):
     assert "spread 1.2 LU > 1.0" in md2 and "2 flag(s) in batches still being voted" in md2
 
 
+def test_day2_rounds_are_flagged_on_every_bus_they_match(inbox, tmp_path):
+    """CD-53: a Day-2 clip takes its own fader on every bus its round's varied thing moves, and the batch builder
+    writes the stage's bus as `bus_lufs` and each other one as `<bus>_lufs`; the tally checks each of them at the
+    stage's limit (0.5 LU for the timing variants, CD-26), and a matched bus with no level is a flag too."""
+    import shutil
+    root = tmp_path / "inbox"
+    src = inbox["folders"]["b1104-1-groove"]
+    shutil.copytree(src, root / src.parent.name / src.name)
+    path = root / src.parent.name / src.name / HIDDEN_NAME
+    hid = json.loads(path.read_text())
+    design = [(k, v) for k, v in hid["rounds"].items() if v["kind"] == "none"]
+    r3a = [(k, v) for k, v in design if next(iter(v["clips"].values()))["stage"] == "R3a"]
+    r3b = [(k, v) for k, v in design if next(iter(v["clips"].values()))["stage"] == "R3b"]
+    assert all({"bus_lufs", "sax_lufs", "keys_lufs", "bass_lufs"} <= set(c) for _, v in r3a for c in v["clips"].values())
+    assert all({"bus_lufs", "keys_lufs", "bass_lufs"} <= set(c) and "sax_lufs" not in c
+               for _, v in r3b for c in v["clips"].values())
+    edits = {(r3a[0][0], "sax_lufs"): 0.6, (r3b[0][0], "keys_lufs"): 0.4, (r3b[1][0], "bass_lufs"): 0.7}
+    for (rid, field), delta in edits.items():
+        first = next(iter(hid["rounds"][rid]["clips"].values()))
+        first[field] = round(first[field] + delta, 4)
+    next(iter(r3a[1][1]["clips"].values())).pop("keys_lufs")                       # a matched bus with no level
+    path.write_text(json.dumps(hid, indent=2))
+    (tmp_path / "votes").mkdir()
+    doc, _ = T.tally(tmp_path / "votes", root, plan=PLAN)
+    got = {(f["round"], f["field"], f["what"], f["limit_lu"], f["bus"]) for f in doc["flags"]}
+    assert got == {(r3a[0][0], "sax_lufs", "spread", 0.5, "sax"), (r3b[1][0], "bass_lufs", "spread", 0.5, "bass"),
+                   (r3a[1][0], "keys_lufs", "missing", 0.5, "keys")}          # R3b's keys at 0.4 LU stay under 0.5
+    largest = {(s["stage"], s["bus"]): s["spread_lu"] for s in doc["largest_spread"]}
+    assert largest[("R3a", "sax")] == pytest.approx(0.6) and largest[("R3b", "keys")] == pytest.approx(0.4)
+    assert {b for s, b in largest if s == "R3a"} == {"drums", "sax", "keys", "bass"}
+    assert {b for s, b in largest if s == "R3b"} == {"drums", "keys", "bass"}
+
+
 def test_the_cli_writes_private_files_and_refuses_a_public_path(inbox, tmp_path, capsys):
     votes = tmp_path / "votes"
     vote_days(inbox, votes)
     report = tmp_path / "private" / "tally.md"
-    rc = T.main(["--votes", str(votes), "--inbox", str(inbox["root"]), "--batch", *DAY1, "--report", str(report)])
+    rc = T.main(["--votes", str(votes), "--inbox", str(inbox["root"]), "--batch", *DAY1, "--report", str(report),
+                 "--runs", str(inbox["root"].parent / "runs")])
     out = capsys.readouterr().out
     assert rc == 0 and "day 2 proposal: ready: --stage day2 --leaders keys=fp_fm_ep1+" in out
+    assert next(x for x in out.splitlines() if x.startswith("day 2 proposal")).endswith(f" --prior {JOB1}")
     files = sorted(p.name for p in (votes / "audit").iterdir())
     assert files == sorted([f"{n}.json" for n in DAY1] + ["shootouts.json"])
     doc = json.loads((votes / "audit" / "shootouts.json").read_text())

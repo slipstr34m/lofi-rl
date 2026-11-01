@@ -971,9 +971,11 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   scripts/job_env.sh` (so `LOFI_ASSETS` and `LOFI_CACHE` are set). Header cost line: 8 CPU + 4 (16 GB) =
   12 SU/min, **at most 240 SU**. Claude registers it (`make approve JOB=jobs/shootout.sbatch MAX=240 BY=Claude`;
   ≤ 500 SU).
-- **Submitted only by** `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id>'`.
+- **Submitted only by** `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id> --prior <job1>'`.
   Day 2 takes the K1 top 3 as keys (4 on a tie at third place, §4.1) and the S1 top 2 as sax (3 on a tie, §4.4),
-  leader first, and one kit and one bass; with the `final` cut, sax takes one id. Day 3 takes one id per slot,
+  leader first, and one kit and one bass; with the `final` cut, sax takes one id. `--prior <job1>` names job 1, whose
+  drift keys and trims and faders job 2 compares with its own (§3, "Drift between jobs"; `jobs/shootout.sbatch`
+  states the same form); the tally writes the whole line (§7.9). Day 3 takes one id per slot,
   `ARGS='--stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>'`, and also names `swing`, `humanize`,
   `sax_variant` and `timing` when a Day-2 pick is not the plan's default (`swing_55`, `humanize_off`, `sax_plain`,
   `timing_grid`). `ARGS` reach the script as arguments, so they need no comma-safe `--export`; they hold no spaces.
@@ -1167,7 +1169,8 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   missed anchor halves its micro-session's weight.
 - **Built (2026-10-31, branch `wt/tally`):** `src/lofi_rl/shootout/tally.py` and `tests/test_shootout_tally.py`. As
   built: `python -m lofi_rl.shootout.tally --votes <dir> --inbox <dir> [--batch <name> ...] [--out <dir>] [--report
-  <file.md>] [--plan shootouts/plan.yaml] [--config configs/rating.yaml] [--levels <levels.json> ...]`. `--out`
+  <file.md>] [--plan shootouts/plan.yaml] [--config configs/rating.yaml] [--levels <levels.json> ...] [--runs
+  runs]` (`--runs` added at integration: the pulled job summaries, for job 2's `--prior`). `--out`
   defaults to `<votes>/audit/`; inside the repo `--out` and `--report` are written only under `data/`, never in the
   inbox (exit 2 otherwise), since a tally is as private as the votes until Shresth confirms it (§1 step 2).
   - **What it writes.** `<out>/<batch>.json`: the batch's status (`no_votes`, `partial`, `complete`), the audit's
@@ -1190,9 +1193,14 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     `rain_level` (a `rain_none` lead goes to Shresth). S2a and S2b rounds in a Day-3 batch are tallied apart, as
     the S2 re-run.
   - **Job 2's proposal:** `keys=<K2, the K1 leader first>/kit=<the R1 leader>/bass=<its R2 pairing>/sax=<the
-    finalists, the S1 leader first>` (one sax id with the `final` cut), and `--cut` from the cut list. The tool
-    stops unless `draw.parse_leaders` reads the string back and `draw.day_band` builds the Day-2 band from it after
-    the cuts; the report gives the `make submit` line.
+    finalists, the S1 leader first>` (one sax id with the `final` cut), `--prior <job 1>` and `--cut` from the cut
+    list. The tool stops unless `draw.parse_leaders` reads the string back and `draw.day_band` builds the Day-2 band
+    from it after the cuts; the report gives the `make submit` line. **`--prior` (integration, 2026-10-31):** job 1
+    is the job whose pulled summary built the Day-1 batches: `--runs` (default `runs/`, where `make pull` puts
+    `runs/shootout-<job>/summary/`) holds a `batches.json` whose `run` is `shootout-<job id>` and which lists each
+    Day-1 batch with exactly its manifest's round ids (random per batch, so a dry run's batches of the same names
+    never match). With none found the leaders still stand, but the line carries no `--prior` and a blocking item
+    asks for it, since job 2 compares its drift keys with job 1's (§3).
   - **Raised** (`RuleGap`, naming the section; the tally records it, blocks what depends on it and puts it to
     Shresth): after CD-44, fewer than 3 keys left for K2, fewer than 2 kits, or fewer than 2 saxes for the final;
     no option left on a single-winner choice; a kit without exactly one R2 round; keys survivors fully tied across
@@ -1214,7 +1222,9 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     list's limits are 30 and 55 minutes, on the audits' `time.minutes`. CD-45's tie is a BW equal to another vamp's
     of its mood. `sax_expr_off` "has the top BW" when it shares it. Flags: over 1.0 LU for the instrument stages and
     S2a's warmth variants, over 0.5 LU for R3a, R3b and S2b, over 1.0 LU on keys or bass for the vamps, none for
-    rain; a level missing where one is checked is a flag too. The rules wait for every round of their batches, and
+    rain; from Day 2 on on every bus a stage matches (CD-53: `bus_lufs` for its own bus, `<bus>_lufs` for R3a's sax,
+    keys and bass and R3b's keys and bass), each at its stage's limit (integration, 2026-10-31); a level missing
+    where one is checked is a flag too. The rules wait for every round of their batches, and
     job 2's proposal for every round of the Day-1 batches, because the anchor in the last batch can halve a
     micro-session that began in an earlier one. The S2 re-run note compares the final's winner with the S1 leader
     this tally proposes (job 2's own is in its `summary/leaders.json`). The recount's audit-style counts must equal
@@ -1230,6 +1240,9 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     variant, vamp and rain rules; Day-2 and Day-3 votes through every later rule; level flags on the instrument,
     timing and vamp limits; the CLI's files and its refusal of a public path. Seven mutations of the recount
     (heard filter, half weight, repeats, anchors, the tie at third, CD-44, G) each fail the test meant for it.
+    Integration added 2 (19 in all): job 2's `--prior` found from the pulled summaries (and not from a dry run's
+    batches of the same names, or a run that is not `shootout-<job id>`), and the Day-2 flags on every matched bus
+    (R3a's `sax_lufs`, R3b's `bass_lufs`, a missing `keys_lufs`); dropping either change fails its test.
   - **Checked on the real Day-1 batches** (laptop, 2026-10-31; the inbox read-only, synthetic votes in a scratch
     folder, options ranked alphabetically so nothing depends on the draw): 3 batches and 19 rounds read, the S1
     anchor found, no round flagged (per-round spread 0.0012–0.0091 LU, read independently from the hidden
