@@ -6,7 +6,10 @@ failure paths need no FluidSynth: a gate failure in the worker, a batch past its
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import signal
+import time
 from pathlib import Path
 
 import numpy as np
@@ -115,6 +118,26 @@ def test_a_broken_pool_retries_each_render_alone_then_records_an_infrastructure_
     pool = RenderPool(tmp_path / "missing.yaml", workers=1, timeout_s=60)     # every worker's initializer fails
     got = _outcomes(pool, [RenderJob("c1", "vamp: Im9", protocol.brief_dict(BRIEF_A))])
     assert got[0]["gate"] == "render-error" and got[0]["transient"] is True and "BrokenProcessPool" in got[0]["error"]
+
+
+def test_a_pool_found_broken_at_submit_is_restarted_before_the_batch():
+    # A worker that died between batches breaks the pool before anything is in flight: submit itself raises
+    # BrokenProcessPool, which render_many answers with a fresh pool instead of a 500 that crashes the trainer.
+    pool = RenderPool(PALETTE, workers=1, timeout_s=120)
+    got = {}
+    try:
+        [pid] = pool.warm()
+        os.kill(pid, signal.SIGKILL)
+        deadline = time.monotonic() + 10
+        while not pool._ex._broken and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert pool._ex._broken, "the executor noticed its dead worker"
+        pool.render_many([RenderJob("c1", "vamp: Im9", protocol.brief_dict(BRIEF_A))],
+                         lambda k, out: got.__setitem__(k, out))
+        assert pool.rebuilds == 1
+    finally:
+        pool.close()
+    assert (got[0]["gate"], got[0]["transient"]) == ("G3", False), "rendered (and gated) on the fresh pool"
 
 
 def test_the_spectral_centroid_of_a_tone_and_of_silence():
