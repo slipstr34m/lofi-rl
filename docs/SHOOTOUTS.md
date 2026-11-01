@@ -23,6 +23,12 @@ which freezes on Nov 6 and never changes after (docs/DECISIONS.md D-017).
   R2r, a 3-round bass re-listen, when R2 leaves the bass undecided (CD-54, §4.2): the Day-1 votes had no best in any
   R2 round. The whole path ran on the laptop with R2r (§7.7 "End to end, R2r"). His "no Day-2 cuts" goes to the
   tally as `--day2-cuts none` (§2.7, §7.9), which keeps the sax final.
+- **Day 3 is built** (2026-11-01, after his confirmation of the Day-2 results, "Yes, use these"): the rain converted
+  once to 44.1 kHz and its three excerpts picked and pinned (§7.2, `shootouts/rain_excerpts.json`), the generator and
+  the level tool for `--stage day3` (§7.8, §7.1), the bed recorded per clip and the music held fixed in every rain
+  round (§3 "Day 3: the rain"), and the tally's job-3 line with `--serve-date` (§7.9). Job 3's ARGS name every variant
+  slot (§7.7). A laptop dry run with both pulled summaries passed every stage (§7.7 "Dry run, Day 3"); the converted
+  rain file still has to reach `assets/big/derived/rain/` and the cluster (`make push-assets`) before job 3.
 - **Sound claims:** none. Every candidate, variant and level here is a starting point for Shresth's ear. Claude
   records counts and picks, never descriptions of sound (TASTE.md: "Shootout prunes, votes decide").
 - **Blind by construction.** This file gives every round in symbols (`P1a`, `k2`, `v3`, ...). Which option sits
@@ -146,7 +152,10 @@ follow it as written. Whether to keep these checks in the shootouts at all is pu
   first one served of each stage [CD-24], tiles reversed, in a Nov-6 batch: Day-1 rounds come back 3 days later and
   Day-2 rounds 2 days later. Before job 3 Claude reads the vote dates and names the stages whose rounds were first
   heard at least 2 days before Nov 6; repeats are drawn only from those, and a group with none gets no repeat. No
-  repeat comes after the freeze, so rain has none. 5 of 58 rounds (8.6 %).
+  repeat comes after the freeze, so rain has none. 5 of 58 rounds (8.6 %). *As built (2026-11-01):* the days moved
+  earlier (Day 1 voted 2026-10-31, Day 2 2026-11-01), so the date that counts is the day Day 3 is served, which
+  Claude gives the tally (`--serve-date`, §7.9): a stage is named when every one of its design rounds has a
+  standing vote at least 2 days before that date, read from the logs' own timestamps (the latest one counts).
 - **Anchors: 3**, one per day [CD-23]. An anchor is an extra round of its batch's stage (loop, candidates and tiles
   drawn) in which one clip is a **sour copy**: the same loop with every sax note's accidental raised by one (a
   natural becomes `#`, a `b` becomes natural), rendered with that clip's candidate. The 9 loops' sour copies pass
@@ -373,6 +382,23 @@ level-independent up to about +14 dB, but at +21 dB the drum chain took 1.7 dB m
   flagged. *Amended by CD-53:* each vamp clip takes its own keys and bass faders (the bass spread up to 9.85 LU at
   the median faders), so the harmony is heard at one loudness.
 - **Rain:** the level is the candidate.
+
+**Day 3: the rain** (as built, 2026-11-01). The bed is on no bus: the renderer sets it per clip at LUFS_music − Δ,
+with the music measured after the master chain and before the limiter (RENDER.md §3.4), so every clip's bed is
+matched on its own loop and its own music by construction, and nothing about it is measured ahead or faded per
+clip. What the rain rounds need is the music held fixed:
+- **The music is the same in every clip of a rain round.** The rain palettes are the Day-2 picks at each
+  instrument's t and median F, measured again against job 1's (§3 "Drift between jobs"), the values the frozen
+  palette takes, so no clip has a fader of its own; within a round the palettes differ only in the bed (a test diffs
+  them, §7.8). Each rain clip's record carries the music's pre-limiter loudness (`music_lufs`) and its pcm_sha256,
+  and the batch builder refuses a rain design round whose clips do not share it (an anchor's sour copy has music of
+  its own).
+- **The bed as heard is recorded:** `bed_lu`, the loudness of render.wav − music.wav relative to music.wav. Set before
+  the limiter, the bed comes out closer to the music than Δ by what the limiter takes off the music's peaks and not
+  off the steady bed: in the Day-3 dry run (§7.7) by 0.00–2.02 LU depending on the loop (L6 the most), the same for
+  every clip of a round within 0.03 LU. A W1 round (every excerpt at Δ 18) whose `bed_lu` spreads over 1.0 LU is
+  flagged like an instrument round (§3 step 8); W2's level is its candidate and is not flagged. The hidden manifest
+  gives each rain clip `bus_lufs` (its bed's set loudness, null for no bed), `music_lufs` and `bed_lu`.
 
 **How the values are carried** [CD-51]. Each shootout palette holds one instrument per bus, so no palette code is
 needed before the freeze: a kit's trim is added to every lane's `db`, a FluidSynth instrument's trim is a `Gain`
@@ -642,8 +668,13 @@ renders). Two kinds of round, each a Latin square [CD-14]: warmth with the contr
   60 BPM (RENDER.md §3.4), so each candidate is a 33.5 s stretch. Claude's picker (§7.2) takes the three
   non-overlapping stretches with the smallest range of momentary loudness (400 ms blocks), with no claim about what
   they hold; `excerpt_e1` is the one with the smallest range. The page says the recording also has hum, birds and
-  distant thunder, which only his ear can place.
-- **Fixed:** the Day-2 picks everywhere, with the sax.
+  distant thunder, which only his ear can place. *Picked 2026-11-01* (`shootouts/rain_excerpts.json`, from the
+  44.1 kHz file of sha256 `e6884875…`): e1 from 150.4 s (range 5.087 LU), e2 from 44.3 s (5.736 LU), e3 from 77.8 s
+  (7.155 LU), each `start_s` after its 0.5 s warm-up; e2's and e3's stretches touch at 77.3 s without overlapping.
+- **Fixed:** the Day-2 picks everywhere, with the sax. For the Day-2 results Shresth confirmed (2026-11-01; gates/
+  GATE_palette.md): keys `gu_tine_ep`, kit `kit_virtuosity` with its R2r bass `bass_vsco2_pizz`, sax `sax_mtg_alto`
+  played `sax_plain` (warm off, expression on) with `timing_lag`, `swing_55`, `humanize_off`. Job 3 names every one
+  of these in its `--leaders` (§7.7). How the bed meets the music is §3 "Day 3: the rain".
 
 W1 (excerpts at Δ 18, the loudest bed under test; z1–z3 drawn among `excerpt_e1`, `excerpt_e2`, `excerpt_e3`)
 and W2 (levels on `excerpt_e1`; y1–y4 drawn among `rain_none`, `rain_d30`, `rain_d24`, `rain_d18`), Latin
@@ -888,6 +919,32 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   synthetic file with one steady stretch it returns that stretch as e1; a file shorter than 3 × 33.5 s is refused.
 - **Built 2026-10-31, the resampler only** (`src/lofi_rl/convert/resample.py`, `tests/test_resample.py`; docs/KITS.md
   §2): every resampler test above passes. The rain picker is not built.
+- **Built 2026-11-01: the rain conversion and the picker.**
+  - **The conversion** ran once on the laptop: `python -m lofi_rl.convert.resample
+    assets/big/rain/235827__metadex__soft-rain-on-roof-window.wav <assets>/derived/rain/235827__metadex__soft-rain-on-roof-window_44k.wav`
+    read the original (sha256 `60f7398e…`, its assets/MANIFEST.yaml pin; 9,408,000 frames at 48 kHz, PCM_24) and
+    wrote 8,643,600 frames at 44.1 kHz, float32 stereo: sha256
+    `e6884875cba57f32b56f96faddee580fd3d4d3064c91176c63741045a72fd6f2` (69,148,858 bytes), pcm_sha256
+    `01e17ded919e4582482686c1b9bb8565275620cb1e3274417e0caf03f5cc73f3`. A second run gave the same bytes. The file
+    is pinned in assets/MANIFEST.yaml (`assets/big/derived/rain/`, fetch-only); it was written into a scratch
+    assets folder, so it still has to be placed under `assets/big/derived/rain/` on the laptop (the same command
+    gives the same bytes) and pushed to the cluster with `make push-assets` before job 3.
+  - **The picker:** `src/lofi_rl/convert/rain_excerpts.py`, `tests/test_rain_excerpts.py` (7 tests, one skipped
+    where the real file is absent). Its record `shootouts/rain_excerpts.json` (§4.5's three excerpts) names the file
+    by its path under `$LOFI_ASSETS`, sha256 and pcm_sha256, the original by its path and sha256, the licence and
+    url from the original's manifest entry, the parameters, and per excerpt its `start_s`, its stretch in seconds
+    and samples, its range, its quietest and loudest block and the pcm_sha256 of its samples. Two runs wrote the same
+    bytes. The generator reads it on Day 3 (§7.8). Choices the spec left open:
+    - **Measured as the bed plays:** momentary loudness after the bed's own HighpassFilter 200 Hz (render/bed.py),
+      run once over the whole file. Without the high-pass the picks are the same stretches but for e1 starting
+      0.1 s later (150.5 s, ranges 4.318, 5.181 and 6.473 LU).
+    - **Blocks** are BS.1770's (pyloudnorm's K-weighting, 400 ms, stepped 100 ms on exact 4,410-sample bounds); a
+      stretch of 33.5 s holds 332. A block under BS.1770's −70 LUFS gate counts as silence, and a stretch holding
+      one is never taken.
+    - **Order:** (range, start), each next excerpt disjoint from those taken, warm-ups included; an excerpt is taken
+      only if the rest can still be placed, so a small range in the middle of a short file cannot leave too little
+      room on both sides (the real file needed no such step). A file shorter than 3 × 33.5 s, or one holding fewer
+      than 3 disjoint stretches with a range, is refused.
 
 ### 7.3 Sax mute for the vamp rounds (no code)
 - The palette generator (§7.8) writes the vamp palettes with `[Gain, {gain_db: -200.0}]` at the head of the sax
@@ -980,7 +1037,12 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   mood, P_chrom ≥ 0.2) and has the job render it.
 - **Repeats** (day3): read from the `--prior` maps. Each reuses the first showing's render (same real clip ids) under
   new opaque ids, `kind: repeat`, `of` = the first showing's opaque round id, tiles reversed. A render that scratch
-  has purged is rendered again and must match its recorded `pcm_sha256`.
+  has purged is rendered again and must match its recorded `pcm_sha256`. *As built (2026-11-01):* the render made
+  again is `prior.<job id>.<render id>` (it was `prior.shootout-<job>.…`, whose word "shootout", the public
+  manifest's mode, made the builder's leak guard refuse the batch), from its first job's draw entry and palette.
+  On the laptop a render made again does not reproduce the cluster's pcm_sha256 (LESSONS 38), so it stops the job;
+  on the cluster job 1's and job 2's renders sit in `$REMOTE_SCR/runs/shootout-<job>/renders/` and are shown as
+  they are.
 - **Acceptance tests:**
   1. The folder holds only the FLACs and the two manifests; `ui.manifest check` passes (leak check, one pass per
      clip, equal lengths per round, one sample rate).
@@ -1030,13 +1092,18 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   Day 2 takes the K1 top 3 as keys (4 on a tie at third place, §4.1) and the S1 top 2 as sax (3 on a tie, §4.4),
   leader first, and one kit and one bass; with the `final` cut, sax takes one id. `--prior <job1>` names job 1, whose
   drift keys and trims and faders job 2 compares with its own (§3, "Drift between jobs"; `jobs/shootout.sbatch`
-  states the same form); the tally writes the whole line (§7.9). Day 3 takes one id per slot,
-  `ARGS='--stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>'`, and also names `swing`, `humanize`,
-  `sax_variant` and `timing` when a Day-2 pick is not the plan's default (`swing_55`, `humanize_off`, `sax_plain`,
-  `timing_grid`). `ARGS` reach the script as arguments, so they need no comma-safe `--export`; they hold no spaces.
-  Day 3 adds `--prior <job>+<job>`, `--repeats <stage>+...` (the stages first heard at least 2 days before Nov 6),
-  and, if needed, `--rerun-s2 <sax id>`. A cut adds `--cut vamps-high+latin3+final` (the cut list's, or Shresth's
-  word given to the tally as `--day2-cuts`, §7.9). **The bass re-listen** (CD-54)
+  states the same form); the tally writes the whole line (§7.9). **Day 3** takes one id per slot and names every
+  variant slot too (2026-11-01: explicit, so nothing rides on a default; a slot left out would take the plan's,
+  `swing_55`, `humanize_off`, `sax_plain`, `timing_grid`), the kit's bass being its own pairing (R2r's, CD-54),
+  `ARGS='--stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>/swing=<id>/humanize=<id>/sax_variant=<id>/timing=<id> --prior <job1>+<job2> --repeats <stage>+...'`:
+  `--prior` the jobs that built the Day-1 and Day-2 batches (their renders are the repeats' first showings, and job
+  1's levels.json the drift reference), `--repeats` the stages voted at least 2 days before the serving date (the
+  tally's `--serve-date`, §2.5, §7.9), and, if the final picked the other finalist, `--rerun-s2 <sax id>`. For the
+  Day-2 results Shresth confirmed (gates/GATE_palette.md, 2026-11-01), served on 2026-11-03 or later:
+  `ARGS='--stage day3 --leaders keys=gu_tine_ep/kit=kit_virtuosity/bass=bass_vsco2_pizz/sax=sax_mtg_alto/swing=swing_55/humanize=humanize_off/sax_variant=sax_plain/timing=timing_lag --prior 13635646+13651610 --repeats K1+R1+R2+S1+R2r+R3a+R3b+S1f+S2a+S2b+K2+V'`.
+  `ARGS` reach the script as arguments, so they need no comma-safe `--export`; they hold no spaces. A cut adds
+  `--cut vamps-high+latin3+final` on Day 2 (the cut list's, or Shresth's word given to the tally as `--day2-cuts`,
+  §7.9) or `--cut w1-two+w2-two` on Day 3 (`--day3-cuts`). **The bass re-listen** (CD-54)
   is the switch `--add R2r` (optional stages joined by `+`; R2r is the plan's only one): the kit slot then carries
   the two surviving kits, the R1 leader first, and the bass slot the default meanwhile,
   `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>+<id>/bass=bass_gu_acoustic/sax=<id>+<id> --prior <job1> --add R2r'`.
@@ -1061,7 +1128,7 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   |---|---|---|---|---|
   | day1 (Nov 2) | 72 (8 per loop) | 67 | 3.9–10.9 min (from the dry runs below; first estimate 3.0–4.1) | 46–131 |
   | day2 (Nov 3) | 36 (4 per loop) and 201 own faders on 19 palettes (CD-53) | 84 | 4.7–14.3 min (from the Day-2 dry runs below; first estimate 2.9–3.8) | 56–171 |
-  | day3 (Nov 5) | re-measures only on drift | 26 (+18 for an S2 re-run) | 2.2–2.5 min | 27–30 (+2–4) |
+  | day3 (Nov 5) | re-measures only on drift (2 runs: the band and the anchors) | 26 (+18 for an S2 re-run; +15 if scratch purged the repeats' renders) | 2.2–2.5 min (laptop 33.8–36.9 s, the dry run below) | 27–30 (+2–4) |
 
   Job 1 used 25.8 SU (13635646: 128.6 s of stages, `runs/shootout-13635646/summary/stages.json`, against 86.4–98.7 s
   on the laptop, 1.30–1.49 times). Day 2 on that observed ratio would take 2.7–3.4 min of stages, about 32–41 SU; the
@@ -1207,6 +1274,40 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
      (R2r.1 on L1), 0.0006 (R2r.2 on L5) and 0.0020 LU (R2r.3 on L9), against 1.55, 2.19 and 1.01 LU at the
      band's median faders; every Day-2 round 0.0002–0.0093 LU (29 rounds). `python -m lofi_rl.ui.manifest
      check` passes on all 4 Day-2 batches and `batch.public_leaks` finds nothing in any public manifest.
+- **Audit before Day 3** (2026-11-01, main 316f710, the laptop): job 3's `--dry-run` took the ARGS above (exit 0),
+  and a real laptop run drew 2 batches, 13 rounds and 41 renders (15 of them job 2's repeat clips to make again,
+  their renders being on the cluster only), then stopped at the measuring stage: the generator and the level tool
+  took day1 and day2 only (exit 2). Missing besides: the converted rain file and the picker (§7.2); a palette field
+  for the excerpt (the plan's `bed.excerpt` names an excerpt, the palette's bed needs a source and a `start_s`); the
+  rain as a palette source (the base must list every candidate's source and nothing else, so the generator adds
+  it); any record of the bed or check of the music in a rain round (§3 "Day 3: the rain"); the tally's job-3 line
+  and a serving date for the repeats (§7.9). Found while building: `levels.round_spreads` read the repeats' renders
+  from the Day-3 draw (KeyError), and a render made again was named `prior.shootout-<job>.…`, which the leak guard
+  refused (§7.6).
+- **Dry run, Day 3** (2026-11-01, the laptop, this branch; scratch runs, inbox and `LOFI_ASSETS` of links to the real
+  banks and kits plus the converted rain; votes none, `data/votes` never read). Both pulled summaries
+  (`runs/shootout-13635646`, `runs/shootout-13651610`) copied into the scratch runs folder; the ARGS above with a
+  scratch seed. The 15 clips the drawn repeats show are not on the laptop, so for this dry run only they were
+  rendered on the laptop from job 2's own draw entries and palettes into the scratch copy of its run, and the scratch
+  copy of its batches.json was given their pcm and FLAC sha256s (their clip ids came out equal: they hash the loop,
+  brief, palette and render config); the cluster shows its own renders. Every stage exit 0 in 36.9 s (levels 14.1,
+  render 21.5); a second run at the same paths gave the same bytes in 171 of 173 run files and all 48 inbox files
+  (renders.json and stages.json differ only in wall times), 33.8 s, peak memory 2.98 GB.
+  1. **Levels:** the 7 instruments the rain palettes play (the band and the anchors) measured again, every t and
+     median F 0.00 dB from job 1's, S\* −31.9247 LUFS, no flag; no config (the rain matches nothing).
+  2. **Renders:** 26 of 26 (W1 9, W2 12, the anchor's 4 with 1 sour copy, P_chrom 0.3) at −14.064 … −14.000 LUFS,
+     true peak at most −1.486 dBTP, 3.13–8.67 s each.
+  3. **Batches:** `b1106-1-mix` 6 rounds (4 design, 2 repeats) and 21 clips, est 7.0 min; `b1106-2-mix` 7 rounds (3
+     design, 3 repeats, the anchor, which imitates a W2 round) and 23 clips, est 7.7 min; 14.7 min in all. One
+     repeat per group; each batch opens with a design round and never repeats a loop back to back. `python -m
+     lofi_rl.ui.manifest check` passed on both and `batch.public_leaks` found nothing.
+  4. **Spreads:** in every rain design round one pre-limiter music (spread 0.0000 LU); `bed_lu` + Δ per round
+     0.0002–0.0274 LU apart (W1 0.0074, 0.0101 and 0.0274 LU, the largest on L5), each round's offset from Δ
+     0.00–2.02 LU (L6 the most); the repeats' first-showing fields 0.0002–0.0093 LU.
+- **Day 1 and Day 2 unchanged** (2026-11-01): main 316f710 and this branch, each run from one scratch code folder
+  at the same paths with the same seeds (Day 1 `--stage day1`; Day 2 job 2's ARGS with `--prior 13635646 --add
+  R2r`), gave the same bytes in 509 of 511 Day-1 run files, 710 of 712 Day-2 run files and all 179 inbox files;
+  renders.json and stages.json differ only in wall times.
 
 ### 7.8 Shootout plan and palette generator
 - **Plan:** `shootouts/plan.yaml` transcribes §4 and §6 in symbols: candidates (source, preset, register, family,
@@ -1293,6 +1394,24 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   R2r's slots in the stage index, and an R2r map that is not one to one refused), `tests/test_shootout_batch.py`
   (the groove batch opening with R2r, its hidden fields, the leak guard; the draw CLI run as job 2 writes it, with
   `--add R2r` and refused without it).
+- **Built for Day 3 (2026-11-01; job 3).** The generator and the level tool take `--stage day3` as Day 2, with the
+  job's draw: the band is its `--leaders`, the variant slots included, so the measuring runs are the band's
+  instruments and the four anchors (2 runs on the facts of §4.5), measured again against job 1's levels.json, and
+  every rain palette plays them at their t and median F with the band's settings. The plan is unchanged: its
+  variants' `bed.excerpt` and `bed.delta_lu` are read by the generator (`bed_block`), applied in the order
+  `band_settings` gives (the band's swing, humanize, sax variant and timing, then the bed variants with the stage's
+  own option last, so W1's excerpt wins over the stage band's `rain_d18` and W2's level, or `rain_none`, over its
+  `excerpt_e1`), and a bed becomes `{src: rain, start_s: <the excerpt's>, xfade_s: 1.0, delta_lu: Δ}` with
+  `shootouts/rain_excerpts.json`'s file added as the fetch source `rain` of the palettes that play a bed (`--rain`,
+  default that file; the file must sit under `$LOFI_ASSETS` with its pinned sha256, or the measuring stage stops).
+  Days 1 and 2 name no bed, so their palettes are as before (the base still lists every candidate's source and
+  nothing else); a Day-1 or Day-2 draw that plays a bed is refused. The index records each rain palette's `bed` and
+  the excerpt record's sha256. An S2 re-run's stages (plan.yaml `rerun_s2`) belong to Day 3 too, measured and
+  written as on Day 2. Tests: `tests/test_shootout_day3.py` (the measuring runs with no config, each rain palette's
+  band, faders, settings and bed, the rain source only where a bed plays, every palette loading with `verify=True`,
+  within each rain round only the bed differing, a missing or changed rain file and an unknown excerpt refused, a
+  bed before Day 3 refused, the S2 re-run; the level tool on Day 3; the bed record; the Day-3 batches' hidden fields
+  and five repeats, a rain round with two musics refused, a purged first showing made again and built).
 
 ### 7.9 Tally tool (laptop)
 - **Interface:** `python -m lofi_rl.shootout.tally --votes data/votes --inbox inbox [--batch <name> ...]` reads the
@@ -1319,7 +1438,8 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
 - **Built (2026-10-31, branch `wt/tally`):** `src/lofi_rl/shootout/tally.py` and `tests/test_shootout_tally.py`. As
   built: `python -m lofi_rl.shootout.tally --votes <dir> --inbox <dir> [--batch <name> ...] [--out <dir>] [--report
   <file.md>] [--plan shootouts/plan.yaml] [--config configs/rating.yaml] [--levels <levels.json> ...] [--runs
-  runs]` (`--runs` added at integration: the pulled job summaries, for job 2's `--prior`). `--out`
+  runs] [--day2-cuts ...] [--serve-date YYYY-MM-DD] [--day3-cuts ...]` (`--runs` added at integration: the
+  pulled job summaries, for job 2's `--prior` and job 3's line; `--serve-date` for job 3's repeats). `--out`
   defaults to `<votes>/audit/`; inside the repo `--out` and `--report` are written only under `data/`, never in the
   inbox (exit 2 otherwise), since a tally is as private as the votes until Shresth confirms it (§1 step 2).
   - **What it writes.** `<out>/<batch>.json`: the batch's status (`no_votes`, `partial`, `complete`), the audit's
@@ -1403,8 +1523,36 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     micro-session that began in an earlier one. The S2 re-run note compares the final's winner with the S1 leader
     this tally proposes (job 2's own is in its `summary/leaders.json`). The recount's audit-style counts must equal
     `ui.audit.aggregate`'s per option, or the tool stops.
-  - **Not built:** Day 3's `--leaders` (it needs job 2's `leaders.json`, which the inbox does not hold; the report
-    lists the Day-2 picks it is made of) and Day 3's cut (plan.yaml gives no saving for `w1-two` or `w2-two`).
+  - **Not built until 2026-11-01:** Day 3's `--leaders` (it needs job 2's `leaders.json`, which the inbox does not
+    hold) and Day 3's cut (plan.yaml gives no saving for `w1-two` or `w2-two`). Built then:
+  - **Job 3's proposal** (`proposal.day3`, once every round of the Day-1 and Day-2 batches has a vote and every
+    stage job 2 played is ready): the CLI's `--serve-date YYYY-MM-DD` (the day Day 3 will be served) and `--runs`,
+    where `make pull` put both jobs' summaries. Job 1 and job 2 are the jobs whose pulled batches.json built the
+    Day-1 and the Day-2 batches (as job 2's `--prior` is found); job 2's `summary/leaders.json` says what it ran (its
+    kits, the sax S2 ran on, its adds and cuts). The line: `--leaders` with one id per slot and every variant slot
+    (keys: the leader over K1 + K2, CD-40; kit: job 2's first, the R1 leader Shresth confirmed; bass: that kit's
+    R2r pairing when job 2 added R2r, else job 2's bass; sax: the final's winner, or job 2's when it cut the final;
+    sax_variant: the S2a warmth; timing: S2b's; swing: R3a's, the default unless he names another, CD-13; humanize:
+    R3b's), `--prior <job1>+<job2>`, `--repeats` the stages whose design rounds all have a standing vote at least 2
+    days before the serving date (`first_votes`: first and last vote date per stage, from the logs' timestamps, the
+    last one deciding; a group with none gets no repeat, which goes to the report), `--rerun-s2` when the final's
+    winner is not the sax job 2 ran S2 on, and `--cut` by Day 3's rule. It is checked through `draw.parse_leaders` and
+    `draw.day_band`, and the report gives the `make submit` line without any vote date. Without `--serve-date` the
+    status is `needs_serve_date`; a missing job summary or leaders.json blocks it. The JSON adds each kit's bass (the
+    frozen palette's pairings) and the keys survivors.
+  - **Day 3's cut** (`day3_cut`, §2.7): r = Days 1-2's audit minutes over their plans (Day 1's batches, 23.0, and Day
+    2's as job 2 drew it, `draw.day_minutes` with its counts, adds and cuts: a choice the spec left open, since §2.7
+    reads r after Day 1); Day 3's plan = the drawn plan's rain rounds and anchor, the repeats' expected minutes
+    (`repeat_minutes`: per group, the mean round over the rounds a repeat may show) and an S2 re-run's rounds; while
+    r x that passes 30 minutes it cuts `w1-two`, then `w2-two`, each saving the drop it makes. `--day3-cuts
+    none|<cut>+<cut>` with `--day3-cuts-by` is Shresth's word, as for Day 2.
+  - **Flags on Day 3:** a W1 round whose `bed_lu` spreads over 1.0 LU (§3 "Day 3: the rain"); none for W2.
+  - **Tests** (2026-11-01, `tests/test_shootout_tally.py`, synthetic votes in the shape of the real days: Day 1
+    voted 2026-10-31 with no R2 best, Day 2 with R2r voted 2026-11-01, job 2's leaders.json written by the job's own
+    `--dry-run`): the line for a 2026-11-03 serving date (every stage eligible, the job's `--dry-run` takes it, the draw
+    makes one repeat per group, the report holds no vote date) and its CLI; a 2026-11-02 date (Day 1's stages only, the
+    vamps and sax-variant groups none), 2026-11-01 (no repeat) and none (`needs_serve_date`); the final picking the
+    other finalist (`--rerun-s2`); a missing leaders.json (blocked); the cut rule and his word; the W1 flag.
   - **Tests** (17, on batches the real draw and batch builder make from fake renders, every vote written by the
     rating page's own `Ledger` on a fake clock): the four acceptance tests above; a retracted vote; the Day-2
     proposal waiting for the anchor, and a late missed anchor halving the groove votes of its micro-session; the

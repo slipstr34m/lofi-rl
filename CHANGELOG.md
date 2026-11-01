@@ -21,6 +21,55 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (10:35 PST): Day 3 made runnable on a branch; laptop dry run of job 3 passes every stage
+
+**What was done** (worktree branch, laptop only; no ssh, sync, submit or pull; `data/` never read)
+- **Audit first** (main 316f710): job 3's `--dry-run` took the Day-3 line (exit 0); a real laptop run drew 2 batches,
+  13 rounds and 41 renders, then stopped at the measuring stage (the generator and the level tool took day1 and day2
+  only, exit 2). Missing: the 44.1 kHz rain and the excerpt picker, a way from the plan's `bed.excerpt` to a palette
+  bed, the rain as a palette source, any bed record or music check, the tally's job-3 line and a serving date for the
+  repeats (docs/SHOOTOUTS.md §7.7 "Audit before Day 3").
+- **The rain** (§7.2): converted once, sha256 `e6884875…` (69,148,858 bytes, 8,643,600 frames; two runs equal),
+  pinned in assets/MANIFEST.yaml; `lofi_rl.convert.rain_excerpts` picked e1 150.4 s (range 5.087 LU), e2 44.3 s
+  (5.736), e3 77.8 s (7.155) into `shootouts/rain_excerpts.json` (two runs equal). The file sits in the session's
+  scratch assets folder, not yet in `assets/big/derived/rain/`.
+- **Job 3's path:** the generator and the level tool for `--stage day3` (the Day-2 picks at t and median F, every rain
+  palette's bed from the excerpt record, the S2 re-run as Day 2); bed clips record `bed`, `bed_lu`, `music_lufs` and
+  the pre-limiter music hash, and the builder refuses a rain round whose music differs; two bugs the run found
+  (`round_spreads` on the repeats, a re-made render's name tripping the leak guard). The tally proposes job 3's line
+  from the logs and job 2's leaders.json, with `--serve-date` for the repeats.
+- **Job 3's ARGS for the confirmed Day-2 results** (served 2026-11-03 or later): `--stage day3 --leaders
+  keys=gu_tine_ep/kit=kit_virtuosity/bass=bass_vsco2_pizz/sax=sax_mtg_alto/swing=swing_55/humanize=humanize_off/sax_variant=sax_plain/timing=timing_lag
+  --prior 13635646+13651610 --repeats K1+R1+R2+S1+R2r+R3a+R3b+S1f+S2a+S2b+K2+V`.
+
+**Numbers** (scratch run `…/scratchpad/day3/runs/shootout-900302/summary/` and its inbox; §7.7 "Dry run, Day 3")
+- Every stage exit 0 in 36.9 s (levels 14.1, render 21.5); a second run at the same paths: same bytes in 171 of 173
+  run files and 48 of 48 inbox files (the other two hold wall times), 33.8 s, peak 2.98 GB.
+- Levels: 7 instruments measured again, every t and median F 0.00 dB from job 1's; S\* −31.9247 LUFS; no flag.
+- 26 of 26 renders at −14.064 … −14.000 LUFS, true peak at most −1.486 dBTP. `b1106-1-mix` 6 rounds, 21 clips,
+  7.0 min; `b1106-2-mix` 7 rounds (with the anchor), 23 clips, 7.7 min; one repeat per group; `ui.manifest check`
+  and `batch.public_leaks` clean on both.
+- Rain rounds: one pre-limiter music per round; `bed_lu` + Δ 0.0002–0.0274 LU apart within a round; each round's
+  offset from Δ 0.00–2.02 LU (L6 the most).
+- The repeats' 15 clips are on the cluster only: for this dry run they were rendered on the laptop from job 2's own
+  palettes into the scratch copy of its run, and that copy's batches.json was given their hashes.
+- Day 1 and Day 2 unchanged: main's code and this branch's, same seeds and paths, same bytes in 509/511 and 710/712
+  run files and 179/179 inbox files (renders.json and stages.json: wall times only).
+- Suite: 2286 passed, 3 skipped, 68 deselected (`pytest -q`, 132 s).
+
+**Failed approach:** a per-clip check that each clip's bed sits at −Δ within 0.1 LU in the finished render failed 14
+of 26 renders (+0.11 to +2.02 LU): the bed is set before the limiter, which takes more off the music's peaks than off
+the steady bed. Within a round the offsets agree within 0.03 LU, so the check moved to the round (a W1 `bed_lu`
+spread over 1.0 LU is flagged) and the value is recorded per clip.
+
+**SU spent:** 0.
+
+**Next:** place the converted rain under `assets/big/derived/rain/` and `make push-assets`; Shresth's reading of what
+W2's Δ means (set before the limiter, heard up to 2 LU closer on some loops); merge; tally with `--serve-date`;
+`make sync` once D-020's freeze allows it; `make submit` job 3.
+
+---
+
 ## 2026-11-01 (09:45 PST): Shresth confirmed the Day-2 results; gate file updated
 
 **What was done**

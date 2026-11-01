@@ -3,6 +3,7 @@
     python -m lofi_rl.shootout.tally --votes data/votes --inbox inbox [--batch <name> ...] [--out <dir>]
         [--report <file.md>] [--plan shootouts/plan.yaml] [--config configs/rating.yaml] [--levels <levels.json> ...]
         [--runs runs] [--day2-cuts none|<cut>+<cut> [--day2-cuts-by <his words, date>]]
+        [--serve-date YYYY-MM-DD] [--day3-cuts none|<cut>+<cut> [--day3-cuts-by <his words, date>]]
 
 It reads each shootout batch's vote log (`<votes>/<batch>.jsonl`, the rating page's events: docs/RATING.md Part 2)
 and its manifests (`<inbox>/<date>/<batch>/`), reruns `ui.audit.aggregate` on each batch, and writes
@@ -39,7 +40,12 @@ compares its drift keys with job 1's (section 3); `--add R2r` when the bass is u
 carries the surviving kits, leader first, and the bass slot the default meanwhile); and `--cut`, from the minutes of
 the Day-2 plan the draw will play with those leaders (`draw.day_minutes`), or, with `--day2-cuts`, from Shresth's
 word on Day 2's cuts, which overrides the list: job 2 runs his cuts, the S1 rule keeps the final unless he cuts it,
-and the list's cuts stay in the report as advice. A case the spec does not decide raises
+and the list's cuts stay in the report as advice. After Day 2 they make job 3's line the same way (`_day3`): the
+Day-2 picks as `--leaders`, every variant slot named, from the rules and job 2's pulled summary/leaders.json (what
+job 2 ran: its kits, the sax S2 ran on, its adds and cuts); `--prior` job 1 and job 2; `--repeats`, the stages whose
+design rounds were all voted at least two days before the serving date Claude gives with --serve-date
+(`first_votes`); `--rerun-s2` when the final picks the other finalist; and Day 3's cut (`day3_cut`, or his word with
+--day3-cuts). A case the spec does not decide raises
 `RuleGap`, which names the section; the tally records it and lists it with everything else that needs Shresth's
 word. A batch with no votes is reported as such, never as zeros. A seeded draw (CD-41, CD-18, a provisional leader) is keyed by the stage's
 standing vote ids, so it is fixed once the votes exist and the private logs reproduce it.
