@@ -14,7 +14,8 @@ BLOCKED = ("mido", "soundfile", "scipy", "pedalboard",
            "torch", "trl", "vllm", "transformers", "peft", "datasets", "accelerate")
 MODULES = ("lofi_rl.dsl", "lofi_rl.compile", "lofi_rl.compile.compiler", "lofi_rl.theory", "lofi_rl.brief",
            "lofi_rl.palette", "lofi_rl.grammar", "lofi_rl.rl.curriculum", "lofi_rl.rl.reward", "lofi_rl.rl.config",
-           "lofi_rl.rl.train", "lofi_rl.rl.smoke_check")
+           "lofi_rl.rl.train", "lofi_rl.rl.smoke_check", "lofi_rl.rl.copy_penalty", "lofi_rl.rl.trl_probe",
+           "lofi_rl.prompt_v2")
 OTHER_BUILDERS = ("lofi_rl.prompt", "lofi_rl.verify")
 
 
