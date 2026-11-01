@@ -478,11 +478,13 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
         raise
     finally:
         if pin is not None:
-            backend = (man.get("structured_outputs") or {}).get("backend")
-            if trainer is not None and (backend is None or backend.get("engine") is None):
-                man["structured_outputs"]["backend"] = {**trl_probe.engine_record(trainer, pin),
-                                                        "read": "after training (no engine on the trainer at init)"}
-            elif backend is not None:               # the pin's own record goes on counting LLM() calls
+            backend = man["structured_outputs"].get("backend")
+            if backend is None or backend.get("engine") is None:     # read again, or record the pin's state alone
+                man["structured_outputs"]["backend"] = {
+                    **trl_probe.engine_record(trainer, pin),
+                    "read": ("after the launch: no engine on the trainer when it was built" if trainer is not None
+                             else "no trainer: GRPOTrainer was not built")}
+            else:                                   # the pin's own record goes on counting LLM() calls
                 backend.update(calls=pin.record.get("calls"), pin_accepted=pin.record.get("pin_accepted"))
             pin.restore()
         if steps is not None and steps.t_begin is not None:

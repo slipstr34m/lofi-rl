@@ -291,6 +291,24 @@ def test_the_v2_grammar_smoke_pins_the_backend_counts_the_language_and_reads_the
     assert set(isr["by_launch"]) == {"a", "b"}
 
 
+def test_a_trainer_that_fails_to_build_still_records_the_pin_and_restores_the_class(stack, tmp_path):
+    stack(config=V2_GRAMMAR, texts=_v2_texts, real_prompts=True)
+    base = sys.modules["trl"].GRPOTrainer
+
+    class Failing(base):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)               # the engine is built, then the trainer fails
+            raise RuntimeError("trainer init failed")
+    sys.modules["trl"].GRPOTrainer = Failing
+    llm_cls = sys.modules["vllm"].LLM
+    with pytest.raises(RuntimeError, match="trainer init failed"):
+        train.train(rc.load_config(V2_GRAMMAR), run_dir=tmp_path / "a", summary_dir=tmp_path / "summary" / "a")
+    man = json.loads((tmp_path / "summary" / "a" / "run.json").read_text())
+    b = man["structured_outputs"]["backend"]
+    assert man["status"] == "failed" and (b["pin_accepted"], b["calls"], b["engine"]) == (True, 1, None)
+    assert b["read"] == "no trainer: GRPOTrainer was not built" and "__init__" not in vars(llm_cls)
+
+
 def test_without_a_checked_trl_source_the_is_readout_is_unavailable_and_says_why(stack, tmp_path):
     stack(config=V2_GRAMMAR, texts=_v2_texts, real_prompts=True)        # the laptop: no TRL installed to read
     cfg, run = rc.load_config(V2_GRAMMAR), tmp_path / "grpo-smoke-3"

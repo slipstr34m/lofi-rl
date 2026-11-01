@@ -216,8 +216,8 @@ def _language(name: str, meta: dict[str, Any], rewards: list[dict[str, Any]], cf
     bad = counts["stop"]["out_of_language"]
     if bad:
         problems.append(f"launch {name}: {bad} of {counts['stop']['n']} stop completions are not in the regex's "
-                        "language: the engine did not apply the grammar as re reads it (D-020, Validity); first "
-                        f"{out[:2]}")
+                        "language: the engine did not apply the grammar as re reads it, or the text TRL decoded for "
+                        f"the reward is not the text vLLM generated (D-020, Validity); first {out[:2]}")
     return {"regex_sha256": want, **counts, "unrecorded": unrecorded, "first_out_of_language": out,
             "by_step": {str(k): v for k, v in sorted(by_step.items(), key=lambda kv: (kv[0] is None, kv[0]))}}
 
