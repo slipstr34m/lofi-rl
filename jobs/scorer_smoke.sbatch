@@ -48,11 +48,12 @@ start() {   # NAME CACHE SECONDS: a server in the background on $SOCKS/NAME.sock
     --calib "$RUN/calib" --rm "$RUN/rm" --gpu-mem-gb 6 --device cuda > "$OUT/server_$1.log" 2>&1 &
   PID=$!
 }
-stop() {    # NAME: SIGTERM, up to 60 s to exit, then SIGKILL; its exit code goes to the verdict
+stop() {    # NAME: SIGTERM, up to 60 s to exit, then SIGKILL to the wrapper's process group (timeout leads one, so
+            # the server dies with it, and its render workers end themselves once it is gone); rc to the verdict
   local rc=0 n=0
   kill -TERM "$PID" 2>/dev/null || true
   while kill -0 "$PID" 2>/dev/null && [ "$n" -lt 60 ]; do sleep 1; n=$((n + 1)); done
-  if kill -0 "$PID" 2>/dev/null; then kill -KILL "$PID" 2>/dev/null || true; fi
+  if kill -0 "$PID" 2>/dev/null; then kill -KILL -- "-$PID" 2>/dev/null || kill -KILL "$PID" 2>/dev/null || true; fi
   wait "$PID" || rc=$?
   RCS+=(--rc "$1=$rc")
   PID=""
