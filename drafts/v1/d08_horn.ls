@@ -14,4 +14,4 @@ hat: x.x.xxx.x.x.xxx. x.xxx.x.x.xxx.x.
 @7 comp: x-------x--x----
 @8 bass: x-----x-x-------
 A: e1 e3 e4 e#4 h5 | e6 e5 e3 e1 hr | q.7 e6 q5 qr | h.2 qr
-B: e1 e3 e4 e#4 h5 | e6 e5 q4 hr | h#4 e5 e4 qr | q6 e4 e2 hr
+B: e1 e3 e4 e#4 h5 | e6 e5 q4 hr | h#4 e5 e4 qr | q6 e2 e4 hr

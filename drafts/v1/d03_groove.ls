@@ -14,4 +14,4 @@ hat: x.x...x.x.x...x. x.x...x.x.....g.
 @7 hat: x.x...x.xgx...x.
 @8 kick: x.........x.....
 A: h3 e2 e3 q4 | q.6 e4 hr | q5 e6 e7 q2' qr | e1' e7 h6 qr
-B: h3 e2 e3 q4 | e6 e1' q6 hr | h2' e1' e7 q6 | q.5 e6 hr
+B: h3 e2 e3 q4 | e6 e1' q6 hr | h2' e1' e7 q6 | q.6 e5 hr

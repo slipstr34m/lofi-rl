@@ -13,4 +13,4 @@ hat: x...x..gx...x..g x..gx...x...x.g.
 @7 hat: x..gx...x..gx..g
 @8 rim: ....x..g....X...
 A: h.5 e7 e5 | q3 e2 e1 hr | q.4 e6 q5 qr | h3 hr
-B: h.5 e7 e5 | q3 e5 e7 h1' | q.6 e5 q4 qr | e3 e4 q3 hr
+B: h.5 e7 e5 | q3 e5 e7 h1' | q.6 e5 q4 qr | e3 e4 q5 hr
