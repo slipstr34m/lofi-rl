@@ -81,6 +81,7 @@ def test_a_score_request_round_trips_through_json():
     assert [it.i for it in req.items] == [0, 1, 2] and req.items[1].brief == BRIEF_A
     assert req.items[0].brief == BRIEF_B and req.items[2].brief_id == "596:2"
     assert req.items[0].text == fixture_text("example.ls")
+    assert dict(protocol.parse_score_request({**body, "expect": None}).expect) == {}, "null: nothing pinned"
     r = protocol.parse_render_request(json.loads(json.dumps(
         protocol.render_request(_items(1), palette_sha256=PAL.sha256, out_dir="/tmp/x", flac=True))))
     assert r.out_dir == "/tmp/x" and r.flac is True and len(r.items) == 1
@@ -107,6 +108,10 @@ def _broken(path, value):
     (("step",), True, "integer"),
     (("expect",), {"rm_ver": 3}, "version strings"),
     (("expect",), {"colour": "x"}, "unknown keys"),
+    (("expect",), [], "must be a JSON object"),          # falsy, but not null: never read as "nothing pinned"
+    (("expect",), 0, "must be a JSON object"),
+    (("expect",), "", "must be a JSON object"),
+    (("expect",), False, "must be a JSON object"),
     (("surprise",), 1, "unknown keys"),
     (("items", 0, "i"), -1, ">= 0"),
     (("items", 0, "i"), 1, "repeated"),

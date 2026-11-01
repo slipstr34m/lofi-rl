@@ -85,6 +85,8 @@ So the server's item keeps §5's names where they survive and drops the rest:
 - `POST /score`: `{protocol, palette_sha256, step, items: [{i, text, brief: {energy, mood, bpm, tonic, scene},
   brief_id}], expect?}`. `i` is the completion's index in the reward's batch, unique; at most 1,024 items of at
   most 32,768 characters. The brief is validated as a `lofi_rl.brief.Brief`. Unknown keys are refused.
+  `expect` is null (nothing pinned) or an object of pinned versions: `[]`, `0`, `""` or `false` is a 400,
+  never read as nothing pinned.
 - `POST /render`: `{protocol, palette_sha256, items, out_dir?, flac?}`: render only (no features, no cache). With
   an absolute `out_dir`, it writes `<clip_id>.manifest.json` and, with `flac`, `<clip_id>.flac` (the 16-bit
   dithered listening copy) there, for hack-watch and ear checks.
@@ -327,7 +329,7 @@ the features, for the cluster smoke). They never render or hear audio. `python -
 
 | file | what it checks |
 |---|---|
-| `test_scoring_protocol.py` | clip id = the shootout formula, its parts, canonical-form sharing; request round trips; 21 malformed requests; NaN; response and health checks; pinned versions |
+| `test_scoring_protocol.py` | clip id = the shootout formula, its parts, canonical-form sharing; request round trips; 25 malformed requests; NaN; response and health checks; pinned versions |
 | `test_scoring_server.py` | the real server on a real socket with fakes: health, score (order, fields, dedup, memory hits, stats), render, 400/404/405/413, 500 with its trace, 409, render gate and infrastructure failures, mode 0600, the path rules, the client's errors, a real client refusing a fake backend, SIGTERM and SIGINT removing the socket (a subprocess), exit 2 on a foreign path |
 | `test_scoring_core.py` | G on 11 hand-built cases, PAR on hand-built utilities, the RM with and without references, the 422, the theme margin on hand-built embeddings, the prompt file, every term off without calibration and on with it, CE that fails its check, the disk cache read by a fresh scorer, an unreadable file, LRU eviction, the fakes |
 | `test_scoring_calib_rm.py` | the calibration and RM loaders: missing, valid, every malformed case, CE thresholds, exit 2 before binding |

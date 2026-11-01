@@ -197,8 +197,8 @@ def parse_score_request(obj: Any) -> ScoreRequest:
     step = d.get("step")
     if step is not None:
         step = _int(step, "step")
-    expect = d.get("expect") or {}
-    expect = _keys(expect, "expect", set(), set(VERSION_KEYS))
+    raw = d.get("expect")                          # null or absent: nothing pinned; [], 0, "" or false: a 400
+    expect = {} if raw is None else _keys(raw, "expect", set(), set(VERSION_KEYS))
     if not all(isinstance(v, str) for v in expect.values()):
         raise ProtocolError("expect holds version strings")
     return ScoreRequest(_items(d["items"]), d["palette_sha256"], step, expect)
