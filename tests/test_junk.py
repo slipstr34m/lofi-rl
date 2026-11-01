@@ -4,6 +4,10 @@ The laptop has no vLLM, so `generate` runs here on a fake engine with the real p
 real one runs in jobs/junk_rate.sbatch (tests/test_junk_job.py). `score` runs for real on a synthetic completions file whose every number
 is worked out by hand below (gates, CI, repairs, P_fix, token percentiles, near-copies). `render` runs here with
 the audio stubbed out; a `cluster`-marked test renders two loops for real (the node suites run it).
+
+Prompt versions: generate takes --prompt v1 (the default) or v2 and records it; score reads the version from
+generate.json and compares each row with the example its own prompt showed (a v2 synthetic run below), and the copy
+readouts (copy.any, containment, verbatim lines, grid share, forms, knobs, by_cell) are checked on hand-built loops.
 """
 from __future__ import annotations
 
@@ -20,8 +24,8 @@ from pathlib import Path
 
 import pytest
 
-from lofi_rl import grammar, prompt
-from lofi_rl.brief import Brief, sample_briefs
+from lofi_rl import grammar, prompt, prompt_v2
+from lofi_rl.brief import ENERGIES, MOOD_NAMES, Brief, sample_briefs
 from lofi_rl.compile.compiler import CompileError
 from lofi_rl.palette import load_palette
 from lofi_rl.rl import junk
@@ -90,27 +94,39 @@ def _cases(pal) -> list[tuple[str, str, str, str, int]]:
     ]
 
 
-def _write_run(run: Path, pal, cases=None, *, drift: int | None = 11) -> list[dict]:
-    """A synthetic run directory: generate.json and completions.jsonl, as `generate` writes them."""
+def _write_run(run: Path, pal, cases=None, *, drift: int | None = 11, version: str = "v1") -> list[dict]:
+    """A synthetic run directory: generate.json and completions.jsonl, as `generate` writes them. A v1 run's rows
+    are v0's (no prompt_version or example field); a v2 run's rows carry both, as generate writes them now."""
     cases = _cases(pal) if cases is None else cases
+    mod = {"v1": prompt, "v2": prompt_v2}[version]
     summ = run / "summary"
     summ.mkdir(parents=True, exist_ok=True)
     rows = []
     for i, (text, fin, energy, mood, n_tok) in enumerate(cases):
         b = Brief(energy=energy, mood=mood, bpm=82, tonic=2)
-        sha = prompt.messages_sha256(prompt.build_messages(b, pal))
-        rows.append({"i": i, "brief": junk.brief_dict(b), "prompt_sha256": "0" * 64 if i == drift else sha,
-                     "text": text, "finish_reason": fin, "n_tokens": n_tok, "prompt_tokens": 1388 + i % 3})
+        sha = mod.messages_sha256(mod.build_messages(b, pal))
+        row = {"i": i, "brief": junk.brief_dict(b), "prompt_sha256": "0" * 64 if i == drift else sha}
+        if version != "v1":
+            row.update(prompt_version=version, example=prompt_v2.example_id(b))
+        rows.append({**row, "text": text, "finish_reason": fin, "n_tokens": n_tok, "prompt_tokens": 1388 + i % 3})
     with (summ / "completions.jsonl").open("w") as f:
         f.writelines(json.dumps(r) + "\n" for r in rows)
+    system = junk.sha256_text(prompt.system_message(pal)) if version == "v1" else None
     meta = {"schema": junk.GENERATE_SCHEMA, "partial": False, "requested": len(rows), "generated": len(rows),
             "stopped": None, "briefs": {"seed": 1, "count": len(rows)},
             "model": {"repo": "fake/model", "revision": "f" * 40},
-            "prompt": {"version": prompt.PROMPT_VERSION, "template_sha256": prompt.template_sha256(),
-                       "system_sha256": junk.sha256_text(prompt.system_message(pal))},
+            "prompt": {"version": mod.PROMPT_VERSION, "template_sha256": mod.template_sha256(), "system_sha256": system},
             "palette": {"id": pal.id, "sha256": pal.sha256}, "sampling": dict(junk.SAMPLING)}
     (summ / "generate.json").write_text(json.dumps(meta))
     return rows
+
+
+def _score(run: Path) -> tuple[dict, list[dict]]:
+    """junk.json and scored.jsonl after `score` on a run directory."""
+    assert junk.main(["score", "--run", str(run), "--palette", str(DEV)]) == 0
+    summ = run / "summary"
+    return (json.loads((summ / "junk.json").read_text()),
+            [json.loads(line) for line in (summ / "scored.jsonl").read_text().splitlines()])
 
 
 def _percentile(xs, q):     # numpy's default ("linear"), written out
@@ -208,6 +224,46 @@ def test_score_summary_on_a_synthetic_completions_file(tmp_path, pal):
     assert s["prompt"]["rows_matching"] == 11, "row 11 was sent another prompt"
     assert s["palette"] == {"id": "dev_gu", "sha256": pal.sha256, "matches_generate": True}
 
+    # the near-copy rule compares each row with the example its own prompt showed: v1's one example
+    assert [r["copy_reference"] for r in scored] == ["example"] * 12
+    assert nc["rule"] == "J5 >= 0.8 with the example shown in the row's own prompt"
+    assert nc["references"] == {"example": 12}
+    p = s["prompt"]
+    assert p["module"] == "lofi_rl.prompt" and p["template_matches_generate"] is True
+    assert p["systems"] == {f"{e}/{m}": p["system_sha256"] for e in ENERGIES for m in MOOD_NAMES}
+    assert (p["example_recorded"], p["example_mismatch"]) == (0, 0), "v0's rows record no example"
+    # readouts: copy.any (all 9 v2 examples) is near_copy here, as at step 0
+    c = s["copy"]
+    assert c["any"]["count"] == nc["count"] == 3 and c["any"]["count_passing"] == nc["count_passing"] == 2
+    assert c["any"]["sources"] == {"example": 3} and c["any"]["refused"] == {}
+    assert c["any"]["references"] == [ex_id for ex_id, _ in prompt_v2.EXAMPLES.values()]
+    assert [r["near_copy_any"] for r in scored] == [r["near_copy"] for r in scored]
+    assert [r["quasi_copy"] for r in scored] == [True, True, False, False, True, False, True] + [False] * 5, (
+        "row 6 is the start of v1's example, cut by max_tokens: a quasi-copy, not a near-copy")
+    assert scored[6]["containment"] == pytest.approx(34 / 35, abs=1e-4) and scored[6]["copy_jaccard"] < 0.8
+    assert c["quasi_copy"]["count"] == 4 and c["quasi_copy"]["count_passing"] == 2
+    assert c["pass_not_quasi_copy"] == {**junk._rate(2, 12)}
+    assert c["containment_passing"] == {"p10": pytest.approx(0.4429, abs=1e-4), "p50": pytest.approx(0.7573, abs=1e-4),
+                                        "p90": 1.0, "max": 1.0}
+    assert c["jaccard_hist_passing"] == {"<0.5": 2, "0.5-0.6": 0, "0.6-0.7": 0, "0.7-0.75": 0, "0.75-0.8": 0,
+                                         "0.8-0.9": 0, ">=0.9": 2}
+    assert c["verbatim_passing"] == {"vamp": 2, "keys": 2, "A": 2, "B": 2, "AB": 2}
+    assert scored[0]["grid_share"] == scored[1]["grid_share"] == [18, 18]
+    k, n = (sum(scored[i]["grid_share"][j] for i in range(4)) for j in (0, 1))
+    assert c["grid_share_passing"] == {"verbatim": k, "grids": n, "share": round(k / n, 4)} and n == 58
+    assert c["forms_passing"] == {"span1": 1, "lock": 1, "snare": 1, "ohat": 2, "shaker": 1,
+                                  "edits": {"3": 1, "4": 1, "6": 2}}
+    assert c["knobs_passing"] == {"n": 4, "energy_match": 2, "f_mood": 4, "energy_bands": [0.38, 0.59]}
+    assert c["knobs_error"] is None
+    assert [r["energy_match"] for r in scored[:4]] == [True, False, False, True] and scored[3]["E"] == pytest.approx(0.4305)
+    assert all(r[k] is None for r in scored[4:] for k in ("verbatim", "grid_share", "forms", "E", "energy_match", "f_mood"))
+    assert list(s["by_cell"]) == [f"{e}/{m}" for e in ENERGIES for m in MOOD_NAMES]
+    assert {cell["example"] for cell in s["by_cell"].values()} == {"example"}
+    assert s["by_cell"]["mid/wistful"] == {"example": "example", "n": 2, "near_copy": 2, "quasi_copy": 2, "pass": 1,
+                                           "near_copy_passing": 1, "quasi_copy_passing": 1, "pass_not_copy": 0,
+                                           "pass_not_quasi_copy": 0, "energy_match": 1, "f_mood": 1}
+    assert junk.headline(s).endswith(" | quasi-copies 4 (pass, not a quasi-copy: 2) | prompt v1")
+
     assert s["by_knob"]["energy"] == {"low": {"n": 4, "pass": 1}, "mid": {"n": 4, "pass": 2}, "high": {"n": 4, "pass": 1}}
     assert s["by_knob"]["mood"] == {"melancholy": {"n": 4, "pass": 1}, "wistful": {"n": 4, "pass": 2},
                                     "hopeful": {"n": 4, "pass": 1}}
@@ -255,6 +311,170 @@ def test_score_without_completions_fails_loudly(tmp_path):
     assert junk.main(["score", "--run", str(tmp_path), "--palette", str(DEV)]) == 2
 
 
+def _v2_cases(pal) -> list[tuple[str, str, str, str, int]]:
+    """(text, finish_reason, energy, mood, n_tokens) of a synthetic prompt-v2 run."""
+    refs = prompt_v2.reference_texts(pal)
+    return [
+        (refs["l4_wistful_low"], "stop", "low", "melancholy", 280),     # 0 shown l4, writes l4: a copy
+        (prompt.example_text(pal), "stop", "high", "hopeful", 263),    # 1 shown l3, writes v1's example: no copy
+        (ORIG, "stop", "mid", "wistful", 300),                          # 2 shown l8: neither
+        (prompt.example_text(pal), "stop", "mid", "melancholy", 263),  # 3 the control cell: shown v1's, a copy
+        ("kick: four on the floor\n", "stop", "low", "hopeful", 10),   # 4 G1
+    ]
+
+
+def test_score_v2_compares_each_row_with_the_example_its_own_prompt_showed(tmp_path, pal):
+    _write_run(tmp_path, pal, _v2_cases(pal), drift=None, version="v2")
+    s, scored = _score(tmp_path)
+    assert [r["copy_reference"] for r in scored] == ["l4_wistful_low", "l3_melancholy_high", "l8_hopeful_mid",
+                                                    "example", "l1_melancholy_low"]
+    assert [r["ok"] for r in scored] == [True, True, True, True, False]
+    assert [r["near_copy"] for r in scored] == [True, False, False, True, False]
+    assert [r["quasi_copy"] for r in scored] == [True, False, False, True, False]
+    assert scored[0]["copy_jaccard"] == 1.0 and scored[0]["containment"] == 1.0
+    assert scored[1]["copy_jaccard"] < 0.5 and scored[1]["containment"] < 0.85, "v1's example is not l3"
+    # copy.any compares with all 9: v1's example in a high/hopeful row is counted there, with its source
+    assert [r["copy_any_source"] for r in scored[:4]] == ["l4_wistful_low", "example", "l8_hopeful_mid", "example"]
+    assert [r["near_copy_any"] for r in scored] == [True, True, False, True, False]
+    c = s["copy"]
+    assert (c["any"]["count"], c["any"]["count_passing"]) == (3, 3)
+    assert c["any"]["sources"] == {"example": 2, "l4_wistful_low": 1}
+    nc = s["near_copy"]
+    assert (nc["count"], nc["count_passing"]) == (2, 2)
+    assert nc["references"] == {"example": 1, "l1_melancholy_low": 1, "l3_melancholy_high": 1, "l4_wistful_low": 1,
+                                "l8_hopeful_mid": 1}
+    assert s["pass"]["count"] == 4
+    assert s["pass_not_copy"] == junk._rate(2, 5), "rows 1 and 2"
+    assert c["pass_not_quasi_copy"] == junk._rate(2, 5)
+    assert c["quasi_copy"]["count"] == 2 and c["quasi_copy"]["count_passing"] == 2
+    assert scored[0]["verbatim"] == {"vamp": True, "keys": True, "A": True, "B": True}
+    assert scored[1]["verbatim"] == {"vamp": False, "keys": True, "A": False, "B": False}, "keys: rhodes rootless"
+    assert scored[0]["grid_share"] == [14, 14] and scored[1]["grid_share"] == [0, 18]
+    assert scored[0]["forms"] == {"span1": False, "lock": True, "snare": False, "ohat": False, "shaker": False,
+                                  "edits": 6}
+    assert (scored[0]["energy_match"], scored[0]["f_mood"]) == (True, False), "l4: low energy, wistful chords"
+    cells = s["by_cell"]
+    assert [cells[k]["example"] for k in cells] == ["l4_wistful_low", "l7_hopeful_low", "l1_melancholy_low", "example",
+                                                    "l8_hopeful_mid", "l2_melancholy_mid", "l6_wistful_high",
+                                                    "l9_hopeful_high", "l3_melancholy_high"]
+    zero = {"n": 0, "near_copy": 0, "quasi_copy": 0, "pass": 0, "near_copy_passing": 0, "quasi_copy_passing": 0,
+            "pass_not_copy": 0, "pass_not_quasi_copy": 0, "energy_match": 0, "f_mood": 0}
+    assert cells["low/wistful"] == {"example": "l7_hopeful_low", **zero}
+    assert cells["low/melancholy"] == {"example": "l4_wistful_low", "n": 1, "near_copy": 1, "quasi_copy": 1, "pass": 1,
+                                       "near_copy_passing": 1, "quasi_copy_passing": 1, "pass_not_copy": 0,
+                                       "pass_not_quasi_copy": 0, "energy_match": 1, "f_mood": 0}
+    assert cells["high/hopeful"] == {"example": "l3_melancholy_high", "n": 1, "near_copy": 0, "quasi_copy": 0,
+                                     "pass": 1, "near_copy_passing": 0, "quasi_copy_passing": 0, "pass_not_copy": 1,
+                                     "pass_not_quasi_copy": 1, "energy_match": 0, "f_mood": 0}
+    assert cells["mid/wistful"]["pass_not_quasi_copy"] == 1 and cells["mid/melancholy"]["near_copy"] == 1
+    assert cells["low/hopeful"]["n"] == 1 and cells["low/hopeful"]["pass"] == 0
+    assert sum(cell["n"] for cell in cells.values()) == 5
+    p = s["prompt"]
+    assert (p["version"], p["module"]) == ("v2", "lofi_rl.prompt_v2")
+    assert p["template_sha256"] == prompt_v2.template_sha256() and p["template_matches_generate"] is True
+    assert p["system_sha256"] is None and len(set(p["systems"].values())) == 9
+    assert p["systems"]["mid/melancholy"] == junk.sha256_text(prompt.system_message(pal)), "the control cell"
+    assert (p["rows_matching"], p["example_recorded"], p["example_mismatch"]) == (5, 5, 0)
+    assert junk.headline(s).endswith(" | quasi-copies 2 (pass, not a quasi-copy: 2) | prompt v2")
+
+
+def test_score_reads_the_prompt_version_from_generate_json(tmp_path, pal, capsys):
+    gen = tmp_path / "summary" / "generate.json"
+    _write_run(tmp_path, pal, drift=None)
+    meta = json.loads(gen.read_text())
+    del meta["prompt"]["version"]
+    gen.write_text(json.dumps(meta))
+    s, _ = _score(tmp_path)
+    assert s["prompt"]["version"] == "v1" and s["near_copy"]["count"] == 3, "no version: v1, as v0's record reads"
+    del meta["prompt"]
+    gen.write_text(json.dumps(meta))
+    s, _ = _score(tmp_path)
+    assert s["prompt"]["version"] == "v1" and s["prompt"]["template_matches_generate"] is None
+    meta["prompt"] = {"version": "v9"}
+    gen.write_text(json.dumps(meta))
+    (tmp_path / "summary" / "junk.json").unlink()
+    assert junk.main(["score", "--run", str(tmp_path), "--palette", str(DEV)]) == 2
+    assert "'v9'" in capsys.readouterr().err
+    assert not (tmp_path / "summary" / "junk.json").exists(), "nothing is scored under a prompt it does not know"
+
+
+def test_score_counts_rows_whose_recorded_example_is_not_the_rules(tmp_path, pal):
+    _write_run(tmp_path, pal, _v2_cases(pal), drift=None, version="v2")
+    comp = tmp_path / "summary" / "completions.jsonl"
+    rows = [json.loads(line) for line in comp.read_text().splitlines()]
+    rows[2]["example"] = "l5_wistful_mid"
+    comp.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    s, scored = _score(tmp_path)
+    assert (s["prompt"]["example_recorded"], s["prompt"]["example_mismatch"]) == (5, 1)
+    assert scored[2]["copy_reference"] == "l8_hopeful_mid", "the rule decides what a row is compared with"
+
+
+def test_rows_matching_rebuilds_the_messages_with_the_runs_version(tmp_path, pal):
+    _write_run(tmp_path, pal, _v2_cases(pal), drift=None, version="v2")
+    s, _ = _score(tmp_path)
+    assert s["prompt"]["rows_matching"] == 5
+    gen = tmp_path / "summary" / "generate.json"
+    meta = json.loads(gen.read_text())
+    meta["prompt"]["version"] = "v1"                 # the same rows, read as a v1 run
+    gen.write_text(json.dumps(meta))
+    s, scored = _score(tmp_path)
+    assert s["prompt"]["rows_matching"] == 1, "only the control cell's v2 messages are v1's"
+    assert s["prompt"]["template_matches_generate"] is False, "the recorded sha is v2's"
+    assert [r["copy_reference"] for r in scored] == ["example"] * 5
+
+
+def test_copy_readouts_on_hand_built_loops():
+    g = junk.grams
+    assert junk.containment(g("abcdefg"), g("xabcdefx")) == pytest.approx(2 / 3), "abcde and bcdef of 3 grams"
+    assert junk.containment(g(""), g("abcdef")) == 0.0 and junk.containment(g("abcdef"), frozenset()) == 0.0
+    assert junk.best_match(g("abcdef"), ()) == (0.0, None)
+    ref = junk.Reference.of("ref", "vamp: Im9 IV13 span 1\nkeys: rhodes rootless\ncomp: x-------x------- x---x-----------\n"
+                                   "bass: lock\ndrums: jazz\nkick: x.......x.......\nrim: ....x.......x...\n"
+                                   "hat: x.x.x.x.x.x.x.x.\n@3 hat: xxxxxxxxxxxxxxxx\n@5 comp: x---------------\n"
+                                   "A: w1 | w2 | w3 | w4\nB: w1 | w2 | w3 | h5 hr\n")
+    loop = ("vamp: Im9 IV13 span 2\nkeys: rhodes rootless\n"
+            "comp: x--------------- x---x-----------\n"     # 2: the ref's @5 comp edit grid and its base comp grid
+            "bass: x.......x.......\n"                       # 0: the ref's bass is lock (no grid)
+            "drums: jazz\nkick: x.......x.......\n"           # 1
+            "snare: ....x.......x...\n"                      # 0: no snare lane in the ref
+            "hat: xxxxxxxxxxxxxxxx\n"                         # 1: the ref's @3 hat edit grid
+            "ohat: ..............x.\n"                       # 0
+            "@2 hat: x.x.x.x.x.x.x.x.\n"                     # 1: the ref's base hat grid
+            "@4 bass: x---------------\n"                    # 0: the ref's @5 comp grid, but another lane
+            "A: w1 | w2 | w3 | w4\nB: w1 | w2 | w3 | w5\n")
+    assert junk.grid_share(loop, [ref]) == (5, 9)
+    assert junk.grid_share(ref.text, [ref]) == (7, 7), "bass: lock holds no grid"
+    assert junk.verbatim(loop, [ref]) == {"vamp": False, "keys": True, "A": True, "B": False}
+    assert junk.verbatim(ref.text, [ref]) == dict.fromkeys(("vamp", "keys", "A", "B"), True)
+    assert junk.forms(loop) == {"span1": False, "lock": False, "snare": True, "ohat": True, "shaker": False, "edits": 2}
+    assert junk.forms(ref.text) == {"span1": True, "lock": True, "snare": False, "ohat": False, "shaker": False,
+                                    "edits": 2}
+    assert dict(ref.grids) == {"comp": frozenset({"x-------x-------", "x---x-----------", "x---------------"}),
+                               "kick": frozenset({"x.......x......."}), "rim": frozenset({"....x.......x..."}),
+                               "hat": frozenset({"x.x.x.x.x.x.x.x.", "xxxxxxxxxxxxxxxx"})}
+    bins = {0.0: "<0.5", 0.4999: "<0.5", 0.5: "0.5-0.6", 0.6: "0.6-0.7", 0.7: "0.7-0.75", 0.7499: "0.7-0.75",
+            0.75: "0.75-0.8", 0.7999: "0.75-0.8", 0.8: "0.8-0.9", 0.8999: "0.8-0.9", 0.9: ">=0.9", 1.0: ">=0.9"}
+    assert {j: junk.jaccard_bin(j) for j in bins} == bins, "left-closed bins"
+
+
+def test_a_knob_readout_that_raises_is_null_and_never_stops_score(tmp_path, pal, monkeypatch, capsys):
+    _write_run(tmp_path, pal, drift=None)
+
+    def broken(*args, **kw):
+        raise RuntimeError("verifier exploded")
+    monkeypatch.setattr(junk, "knob_readout", broken)
+    s, scored = _score(tmp_path)
+    assert all(r[k] is None for r in scored for k in ("E", "energy_match", "f_mood"))
+    assert scored[0]["verbatim"] is not None, "the other readouts stand"
+    c = s["copy"]
+    assert c["knobs_passing"] is None
+    assert c["knobs_error"] == {"loops": 4, "first": "RuntimeError: verifier exploded"}
+    assert s["by_cell"]["mid/wistful"]["energy_match"] is None and s["by_cell"]["mid/wistful"]["f_mood"] is None
+    assert s["by_cell"]["high/hopeful"]["energy_match"] == 0, "a cell with no passing loop counts 0"
+    assert s["pass"]["count"] == 4 and s["near_copy"]["count"] == 3, "the score itself is unchanged"
+    assert "knob readout failed on 4 loop(s)" in capsys.readouterr().err
+
+
 # ------------------------------------------------------------------------------------------- generate (fake engine)
 class FakeEngine:
     """The engine interface junk.generate uses: .info, .load_s, .sampling(**kw), .chat(convs, sp)."""
@@ -300,9 +520,19 @@ def test_generate_writes_one_row_per_brief_with_the_v1_prompt(tmp_path, pal, mon
     assert [Brief(**r["brief"]) for r in rows] == list(briefs)
     assert [r["prompt_sha256"] for r in rows] == [prompt.messages_sha256(c) for c in sent]
     assert rows[1]["text"] == ORIG and rows[9]["n_tokens"] == 109 and rows[0]["finish_reason"] == "stop"
+    assert all(r["prompt_version"] == "v1" and r["example"] == "example" for r in rows)
     meta = json.loads((tmp_path / "summary" / "generate.json").read_text())
     assert meta["partial"] is False and meta["generated"] == meta["requested"] == 10 and meta["stopped"] is None
     assert meta["prompt"]["version"] == "v1" and meta["prompt"]["template_sha256"] == prompt.template_sha256()
+    longest = max((c[0]["content"] + "\n" + c[1]["content"] for c in sent), key=len)
+    system = junk.sha256_text(prompt.system_message(pal))
+    cells = {f"{e}/{m}": {"example": "example", "example_cell": "mid/wistful",
+                          "example_sha256": junk.sha256_text(prompt.example_text(pal)), "system_sha256": system,
+                          "messages_sha256": prompt.messages_sha256(prompt.build_messages(junk.cell_brief(e, m), pal))}
+             for e in ENERGIES for m in MOOD_NAMES}
+    assert meta["prompt"] == {"version": "v1", "module": "lofi_rl.prompt", "template_sha256": V1_TEMPLATE_SHA256,
+                              "system_sha256": system, "cells": cells, "chars": len(longest),
+                              "tokens_estimate_4cpt": prompt.estimate_tokens(longest)}, "v1's record, plus module and cells"
     assert meta["briefs"] == {"seed": 33, "count": 10, "sampler": "lofi_rl.brief.sample_briefs"}
     assert meta["model"] == {"repo": junk.QWEN[0], "revision": junk.QWEN[1]}
     assert [c["count"] for c in meta["timing"]["chunks"]] == [4, 4, 2] and meta["timing"]["load_s"] == 1.5
@@ -312,6 +542,82 @@ def test_generate_writes_one_row_per_brief_with_the_v1_prompt(tmp_path, pal, mon
     s = json.loads((tmp_path / "summary" / "junk.json").read_text())
     assert s["n"] == 10 and s["prompt"]["rows_matching"] == 10 and s["near_copy"]["count"] == 5
     assert s["constrained"] == {**UNCONSTRAINED, "in_language": None}
+
+
+V1_TEMPLATE_SHA256 = "7aceb2bc0d7339a7d3c9af7bf0d808ee156d4f7a8684e0393d923940fa5c1e68"     # tests/test_prompt.py's pin
+# brief cell -> the example prompt v2 shows it (tests/test_prompt_v2.py's table)
+V2_TABLE = {"low/melancholy": "l4_wistful_low", "low/wistful": "l7_hopeful_low", "low/hopeful": "l1_melancholy_low",
+            "mid/melancholy": "example", "mid/wistful": "l8_hopeful_mid", "mid/hopeful": "l2_melancholy_mid",
+            "high/melancholy": "l6_wistful_high", "high/wistful": "l9_hopeful_high",
+            "high/hopeful": "l3_melancholy_high"}
+
+
+def test_generate_prompt_v2_sends_v2s_messages_and_records_its_nine_cells(tmp_path, pal, monkeypatch):
+    engine = FakeEngine([prompt.example_text(pal), ORIG])
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: engine)
+    rc = junk.main(["generate", "--run", str(tmp_path), "--n", "30", "--seed", "7", "--chunk", "16",
+                    "--palette", str(DEV), "--hang-s", "0", "--prompt", "v2"])
+    assert rc == 0
+    briefs = sample_briefs(7, 30)
+    sent = [conv for call in engine.calls for conv in call]
+    assert sent == [prompt_v2.build_messages(b, pal) for b in briefs]
+    assert any(c != prompt.build_messages(b, pal) for c, b in zip(sent, briefs)), "not v1's messages"
+    rows = [json.loads(l) for l in (tmp_path / "summary" / "completions.jsonl").read_text().splitlines()]
+    assert [r["prompt_sha256"] for r in rows] == [prompt_v2.messages_sha256(c) for c in sent]
+    assert [r["example"] for r in rows] == [V2_TABLE[f"{b.energy}/{b.mood}"] for b in briefs]
+    assert all(r["prompt_version"] == "v2" for r in rows)
+    meta = json.loads((tmp_path / "summary" / "generate.json").read_text())
+    rec = meta["prompt"]
+    longest = max((c[0]["content"] + "\n" + c[1]["content"] for c in sent), key=len)
+    assert {k: v for k, v in rec.items() if k != "cells"} == {
+        "version": "v2", "module": "lofi_rl.prompt_v2", "template_sha256": prompt_v2.template_sha256(),
+        "system_sha256": None, "chars": len(longest), "tokens_estimate_4cpt": prompt.estimate_tokens(longest)}
+    assert list(rec["cells"]) == list(V2_TABLE)
+    for cell, want in V2_TABLE.items():
+        b = junk.cell_brief(*cell.split("/"))
+        e, m = prompt_v2.example_cell(b)
+        assert rec["cells"][cell] == {
+            "example": want, "example_cell": f"{e}/{m}",
+            "example_sha256": junk.sha256_text(prompt_v2.example_text(pal, b)),
+            "system_sha256": junk.sha256_text(prompt_v2.system_message(pal, b)),
+            "messages_sha256": prompt_v2.messages_sha256(prompt_v2.build_messages(b, pal))}, cell
+    assert rec["cells"]["mid/melancholy"]["system_sha256"] == junk.sha256_text(prompt.system_message(pal))
+    assert len({c["system_sha256"] for c in rec["cells"].values()}) == 9
+    s, scored = _score(tmp_path)
+    assert s["prompt"]["version"] == "v2" and s["prompt"]["rows_matching"] == 30
+    assert (s["prompt"]["example_recorded"], s["prompt"]["example_mismatch"]) == (30, 0)
+    assert [r["copy_reference"] for r in scored] == [r["example"] for r in rows]
+    assert s["near_copy"]["count"] == 1 == sum(1 for r in rows if r["example"] == "example" and r["i"] % 2 == 0), (
+        "v1's example (every even row) is a near-copy only where it was shown: the mid/melancholy cell (row 18)")
+    assert s["copy"]["any"]["count"] == 15 and s["copy"]["any"]["sources"] == {"example": 15}, (
+        "every even row is a copy of v1's example, which only copy.any sees outside its cell")
+
+
+def test_generate_refuses_an_unknown_prompt_version(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: pytest.fail("no engine for a refused argument"))
+    with pytest.raises(SystemExit) as stop:
+        junk.main(["generate", "--run", str(tmp_path), "--n", "2", "--prompt", "v3", "--hang-s", "0"])
+    assert stop.value.code == 2 and "invalid choice: 'v3'" in capsys.readouterr().err
+    assert not (tmp_path / "summary").exists()
+
+
+def test_generate_v2_stops_before_the_engine_on_a_palette_that_cannot_play_an_example(tmp_path, pal, monkeypatch):
+    no_maj9 = replace(pal, qualities=tuple(q for q in pal.qualities if q != "maj9"), sha256="3" * 64)
+    monkeypatch.setattr(junk, "load_palette", lambda path, verify=False: no_maj9)
+    loads = []
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: loads.append(model) or FakeEngine([ORIG]))
+    rc = junk.main(["generate", "--run", str(tmp_path), "--n", "4", "--palette", str(DEV), "--hang-s", "0",
+                    "--prompt", "v2"])
+    assert rc != 0 and loads == [], "no GPU time is spent on a prompt the palette cannot serve"
+    assert not (tmp_path / "summary" / "completions.jsonl").exists()
+    meta = json.loads((tmp_path / "summary" / "generate.json").read_text())
+    assert meta["generated"] == 0 and meta["stopped"].startswith("error: PromptError: ")
+    assert "l7_hopeful_low" in meta["stopped"] and "maj9" in meta["stopped"]
+    assert meta["prompt"] == {"version": "v2", "module": "lofi_rl.prompt_v2",
+                              "template_sha256": prompt_v2.template_sha256()}
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: FakeEngine([ORIG]))
+    assert junk.main(["generate", "--run", str(tmp_path / "v1"), "--n", "4", "--palette", str(DEV),
+                      "--hang-s", "0"]) == 0, "v1's example needs no maj9"
 
 
 UNCONSTRAINED = {"enabled": False, "regex_sha256": None, "regex_chars": None, "builder": None, "backend": None}
@@ -673,6 +979,10 @@ def test_render_samples_passing_loops_and_merges_g7_into_the_summary(tmp_path, p
     clips = json.loads((tmp_path / "summary" / "clips.json").read_text())
     assert [c["i"] for c in clips["clips"]] == calls and clips["k"] == 3 and clips["seed"] == 1
     assert all("copy_jaccard" in c and "brief" in c for c in clips["clips"])
+    scored = {r["i"]: r for r in map(json.loads, (tmp_path / "summary" / "scored.jsonl").read_text().splitlines())}
+    for c in clips["clips"]:
+        assert (c["copy_reference"], c["quasi_copy"]) == (scored[c["i"]]["copy_reference"], scored[c["i"]]["quasi_copy"])
+        assert c["copy_reference"] == "example"
     s = json.loads((tmp_path / "summary" / "junk.json").read_text())
     want_fail = int(3 in calls)
     assert s["failures"]["G7"] == want_fail
@@ -720,17 +1030,17 @@ def test_render_writes_one_pass_flacs_for_real(tmp_path, pal):
 
 # ------------------------------------------------------------------------------------------- the policy env
 def test_score_runs_with_the_policy_envs_missing_modules_blocked(tmp_path, pal):
-    """lofi_rl.{dsl, compile, theory, brief, palette, prompt, rl.junk} import, and `score` runs, with mido,
+    """lofi_rl.{dsl, compile, theory, brief, palette, prompt, prompt_v2, rl.junk} import, and `score` runs, with mido,
     soundfile, scipy and pedalboard blocked (requirements/policy.lock.txt has none of them) and without numpy
-    (the policy env's numpy 2.3.5 is not the laptop's 1.26.4, so the score path does not touch it).
-    lofi_rl.verify and lofi_rl.rl.reward are checked too once they exist."""
+    (the policy env's numpy 2.3.5 is not the laptop's 1.26.4, so the score path does not touch it). The knob readout
+    (lofi_rl.verify.scoring) runs there too. lofi_rl.verify and lofi_rl.rl.reward are checked too once they exist."""
     _write_run(tmp_path, pal, drift=None)
     code = f"""
 import importlib, importlib.util, sys
 for m in ("mido", "soundfile", "scipy", "pedalboard", "numpy"):
     sys.modules[m] = None
 for m in ("lofi_rl.dsl", "lofi_rl.compile", "lofi_rl.compile.compiler", "lofi_rl.theory", "lofi_rl.theory.voicing",
-          "lofi_rl.brief", "lofi_rl.palette", "lofi_rl.prompt", "lofi_rl.rl", "lofi_rl.rl.junk"):
+          "lofi_rl.brief", "lofi_rl.palette", "lofi_rl.prompt", "lofi_rl.prompt_v2", "lofi_rl.rl", "lofi_rl.rl.junk"):
     importlib.import_module(m)
 from lofi_rl.rl import junk
 rc = junk.main(["score", "--run", {str(tmp_path)!r}, "--palette", {str(DEV)!r}])
@@ -743,4 +1053,7 @@ print("RC", rc)
     env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=120)
     assert out.returncode == 0 and "RC 0" in out.stdout, out.stderr[-3000:]
-    assert json.loads((tmp_path / "summary" / "junk.json").read_text())["pass"]["count"] == 4
+    s = json.loads((tmp_path / "summary" / "junk.json").read_text())
+    assert s["pass"]["count"] == 4
+    assert s["copy"]["knobs_passing"] == {"n": 4, "energy_match": 2, "f_mood": 4, "energy_bands": [0.38, 0.59]}, (
+        "the knob readout ran with numpy blocked")

@@ -13,6 +13,10 @@ GPU.
 - **Interfaces used:** `lofi_rl.prompt` (`PROMPT_VERSION`, `build_messages`, `template_sha256`) and
   `lofi_rl.verify` (`score`, `group_penalties`) are written by other builders. The tests use fakes that follow
   their shared interfaces exactly.
+- **Prompt version:** the trainer builds prompt v1 (`lofi_rl.prompt`). Prompt v2 (`lofi_rl.prompt_v2`, the same
+  interface; it shows each brief the example of its energy and the next mood) is used only by the junk-rate test so
+  far. Switching GRPO to it needs a config key, and first a pool-copy penalty (P_pool) that also covers the 9
+  examples v2 shows (`prompt_v2.reference_texts(palette)`) besides the seed pool.
 - **Sound claims:** none. Nothing here renders audio.
 
 ## 1. Entry points

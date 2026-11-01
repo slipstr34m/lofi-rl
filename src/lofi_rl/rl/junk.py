@@ -1,13 +1,17 @@
 """Base-model junk rate: the Phase 1-2 progress oracle (CLAUDE.md §6) and the data of the Phase 1 gate (§9).
 
     python -m lofi_rl.rl.junk generate --run DIR [--n 500] [--seed 2026] [--model REPO@SHA] [--constrained]
-                                                                                             policy env (vLLM)
+                                       [--prompt v1|v2]                                      policy env (vLLM)
     python -m lofi_rl.rl.junk score    --run DIR                                             policy env
     python -m lofi_rl.rl.junk render   --run DIR [--k 50]                                    scorer env
 
 jobs/junk_rate.sbatch runs the three in order on one GPU node, with DIR = $REMOTE_SCR/runs/junk-<job>.
 
-- generate: N briefs from brief.sample_briefs(seed, N), one completion each, with prompt v1 (lofi_rl.prompt),
+- generate: N briefs from brief.sample_briefs(seed, N), one completion each, with prompt v1 (lofi_rl.prompt, the
+  default) or, with --prompt v2, prompt v2 (lofi_rl.prompt_v2: v1 with its one example chosen per brief, the loop of
+  the brief's energy and the next mood). Every message is built before the model loads, so a palette the prompt
+  cannot serve (PromptError) stops generate before any GPU work, with the error in generate.json. Each row records
+  its prompt_version and the id of the example its prompt showed. The completions are
   sampled as GRPO samples (taste_pipeline §6): temperature 1.0, top_p 1, top_k 0 (every token), max_tokens 512,
   no penalties. The model is Qwen3-4B-Instruct-2507 at the commit smoke.py pins, read from the HF cache
   (kit.hf_cache.resolve_pinned), in bf16 and eager mode as the Phase-0 smoke ran it. Prompts go to vLLM in chunks;
@@ -22,8 +26,10 @@ jobs/junk_rate.sbatch runs the three in order on one GPU node, with DIR = $REMOT
   what LLM() was built with, read back from it (BACKEND_PATHS; "unknown" when none resolves). The sampling settings
   stay v0's.
 - score: gates G1-G6 (dsl.parse with the palette's vocabulary and the brief's mode) and compile (compile_loop). No
-  audio, no numpy, so it runs in the policy env. Writes scored.jsonl and junk.json. For a constrained run it also
-  counts the completions in the recorded regex's language, by finish_reason (stop, length, other).
+  audio, no numpy, so it runs in the policy env. Writes scored.jsonl and junk.json. The prompt version is
+  generate.json's (v1 when it names none; one this file does not know exits 2), and each row is compared with the
+  example its own prompt showed. For a constrained run it also counts the completions in the recorded regex's
+  language, by finish_reason (stop, length, other).
 - render: a seeded sample of --k gate-passing loops rendered with dev_gu (render.pipeline) to one-pass 16-bit
   FLACs under DIR/clips/, for a later ear check. G7 comes from these renders and is merged into junk.json.
   Nothing goes to the inbox.
@@ -39,10 +45,23 @@ junk.json (schema lofi-rl/junk/1):
 - repairs: by code (loops, count, penalized), repairs per loop (all, passing), P_fix of passing loops (mean, hist);
 - tokens: completion-length percentiles, truncations (finish_reason "length", which is G2), loops over 360 tokens
   (instrument.md §1's soft length penalty), and the prompt tokens vLLM counted;
-- near_copy: character 5-gram Jaccard with the in-prompt example of at least 0.8. A loop that passes G1-G6 is
-  compared by its canonical text without `sax:` (the form the example is printed in), any other by its raw text
-  with fences, blank lines and extra spaces dropped;
-- prompt: version, template sha, system-message sha, and how many rows were sent exactly today's prompt;
+- near_copy: character 5-gram Jaccard of at least 0.8 with the example shown in the row's own prompt (v1: its one
+  example; v2: the brief's, prompt_v2.shown_examples). A loop that passes G1-G6 is compared by its canonical text
+  without `sax:` (the form the examples are printed in), any other by its raw text with fences, blank lines and
+  extra spaces dropped. `references` counts the rows compared with each example. pass_not_copy is D-019's gated
+  number under this rule;
+- prompt: version, module, template sha (and whether it is the one generate recorded), the system-message sha (v1)
+  or one per energy x mood cell (systems), how many rows were sent exactly today's messages for their brief, and
+  how many rows record an example other than the rule's;
+- copy: readouts, none of them a gate. any: J5 >= 0.8 with any example prompt v2 can show (all 9, v1's among them).
+  quasi_copy: containment, the share of a completion's 5-grams found in the shown example, of at least 0.85, and
+  pass_not_quasi_copy (pass, neither a near- nor a quasi-copy, with its CI); then, over the passing loops: the
+  containment percentiles, a histogram of copy_jaccard, the vamp/keys/A/B lines equal to the shown example's, the
+  share of 16-cell grids equal to a grid of the same lane in it, the forms (span 1, bass lock, snare, ohat and
+  shaker bases, edits per loop) and the knob readouts (verify.scoring: the energy band match and the mood
+  signature, with the provisional ENERGY_BANDS). A knob readout that raises is recorded as null and never stops
+  score;
+- by_cell: per energy x mood cell, the example shown and the copy, pass and knob counts;
 - constrained: generate.json's record of the decoding grammar (enabled, regex sha256 and length, builder, backend:
   requested, pin_accepted, backend, source, applied), plus in_language: the regex rebuilt from the palette, whether its sha256
   is the recorded one, and for "stop", "length" and "other" completions n, in_language and out_of_language (counted
@@ -70,20 +89,23 @@ import sys
 import sysconfig
 import time
 import traceback
+from bisect import bisect_right
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
+from types import MappingProxyType
 
+from lofi_rl import prompt, prompt_v2
 from lofi_rl.brief import ENERGIES, MOOD_NAMES, Brief, sample_briefs
 from lofi_rl.compile.compiler import compile_loop
 from lofi_rl.dsl import canon, canon_sha, parse
 from lofi_rl.dsl.repair import penalty
+from lofi_rl.dsl.vocab import EDIT_TARGETS
 from lofi_rl.grammar import loopscript_regex
 from lofi_rl.palette import ROOT, Palette, load_palette
 from lofi_rl.prng import MASK, splitmix64
-from lofi_rl.prompt import (PROMPT_VERSION, build_messages, estimate_tokens, example_text, messages_sha256,
-                            system_message, template_sha256)
+from lofi_rl.prompt import PromptError, estimate_tokens, messages_sha256
 from lofi_rl.smoke import QWEN
 
 SCHEMA = "lofi-rl/junk/1"
@@ -94,7 +116,21 @@ DEFAULT_N, DEFAULT_SEED, DEFAULT_CHUNK, RENDER_K = 500, 2026, 128, 50
 # taste_pipeline §6: GRPO's sampling, which make junk-rate shares; top_k 0 is "every token" in vLLM
 SAMPLING = {"temperature": 1.0, "top_p": 1.0, "top_k": 0, "min_p": 0.0, "repetition_penalty": 1.0,
             "presence_penalty": 0.0, "frequency_penalty": 0.0, "max_tokens": 512}
+PROMPTS = MappingProxyType({"v1": prompt, "v2": prompt_v2})      # the template versions, side by side
+DEFAULT_PROMPT = "v1"
 NEAR_COPY, NGRAM = 0.8, 5
+NEAR_COPY_RULE = "J5 >= 0.8 with the example shown in the row's own prompt"
+ANY_RULE = "J5 >= 0.8 with any example prompt v2 can show (prompt_v2.reference_texts)"
+# runs/junk-13632676: v0's 122 near-copies hold >= 0.8768 of their 5-grams in v1's example, and no v0 completion
+# holds more than 0.5748 in a shootout loop it never saw
+QUASI_COPY = 0.85
+QUASI_RULE = "containment |G5(x) & G5(shown)| / |G5(x)| >= 0.85"
+JACCARD_EDGES = (0.5, 0.6, 0.7, 0.75, 0.8, 0.9)                 # left-closed bins of copy_jaccard
+JACCARD_BINS = ("<0.5", "0.5-0.6", "0.6-0.7", "0.7-0.75", "0.75-0.8", "0.8-0.9", ">=0.9")
+GRID_LANES = EDIT_TARGETS               # comp, bass and the six drum lanes: the lanes a 16-cell grid belongs to
+VERBATIM = ("vamp", "keys", "A", "B")
+FORMS = ("span1", "lock", "snare", "ohat", "shaker")
+CELL_BRIEF = {"bpm": 82, "tonic": 0}    # a cell's stand-in brief: the messages read only scene, energy and mood
 HANG_MARGIN_S = 90                      # generate's stack-dump watchdog: --deadline-s plus this
 OVER_LENGTH = 360                       # instrument.md §1: the soft length penalty starts above 360 tokens
 GATES = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "compile", "crash")
@@ -209,6 +245,55 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 def _rel(path: Path) -> str:
     path = Path(path).resolve()
     return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
+
+
+# --------------------------------------------------------------------------------------------- prompts
+def cell_brief(energy: str, mood: str) -> Brief:
+    """A stand-in brief for one energy x mood cell: tempo and tonic never reach the messages (tests/test_prompt*.py)."""
+    return Brief(energy=energy, mood=mood, **CELL_BRIEF)
+
+
+def example_id(version: str, brief: Brief) -> str:
+    """The id of the example a brief's prompt shows: v1's one example, or v2's rule."""
+    return "example" if version == "v1" else PROMPTS[version].example_id(brief)
+
+
+def example_cell(version: str, brief: Brief) -> tuple[str, str]:
+    """(energy, mood) of the brief the shown example was written for."""
+    if version == "v1":
+        return prompt.EXAMPLE_BRIEF["energy"], prompt.EXAMPLE_BRIEF["mood"]
+    return PROMPTS[version].example_cell(brief)
+
+
+def shown_examples(version: str, brief: Brief, palette: Palette) -> tuple[tuple[str, str], ...]:
+    """(id, text) of every complete loop the brief's prompt shows: what its near-copy check compares with."""
+    if version == "v1":
+        return (("example", prompt.example_text(palette)),)
+    return PROMPTS[version].shown_examples(brief, palette)
+
+
+def system_text(version: str, brief: Brief, palette: Palette) -> str:
+    return prompt.system_message(palette) if version == "v1" else PROMPTS[version].system_message(palette, brief)
+
+
+def prompt_record(version: str, palette: Palette, convs: list[list[dict]]) -> dict:
+    """generate.json's "prompt": the version, its module and template sha, v1's one system sha (None for v2), and per
+    energy x mood cell the example shown, its own cell and the shas of the example, the system message and the
+    messages; chars and the 4-characters estimate are the longest prompt the run sends."""
+    mod = PROMPTS[version]
+    cells = {}
+    for e in ENERGIES:
+        for m in MOOD_NAMES:
+            b = cell_brief(e, m)
+            ((ex_id, ex_text),) = shown_examples(version, b, palette)
+            cells[f"{e}/{m}"] = {"example": ex_id, "example_cell": "/".join(example_cell(version, b)),
+                                 "example_sha256": sha256_text(ex_text),
+                                 "system_sha256": sha256_text(system_text(version, b, palette)),
+                                 "messages_sha256": messages_sha256(mod.build_messages(b, palette))}
+    longest = max((c[0]["content"] + "\n" + c[1]["content"] for c in convs), key=len)
+    return {"version": version, "module": mod.__name__, "template_sha256": mod.template_sha256(),
+            "system_sha256": sha256_text(prompt.system_message(palette)) if version == "v1" else None,
+            "cells": cells, "chars": len(longest), "tokens_estimate_4cpt": estimate_tokens(longest)}
 
 
 def _host() -> dict:
@@ -401,18 +486,26 @@ def cmd_generate(a: argparse.Namespace) -> int:
     palette = load_palette(a.palette, verify=False)             # names only: no audio in the policy env
     repo, rev = split_model(a.model)
     briefs = sample_briefs(a.seed, a.n)
-    convs = [build_messages(b, palette) for b in briefs]
+    mod = PROMPTS[a.prompt]
+    head = {"schema": GENERATE_SCHEMA, "partial": True, "requested": a.n, "generated": 0, "stopped": None,
+            "briefs": {"seed": a.seed, "count": a.n, "sampler": "lofi_rl.brief.sample_briefs"},
+            "model": {"repo": repo, "revision": rev}}
+    pal_rec = {"id": palette.id, "sha256": palette.sha256, "path": _rel(a.palette)}
+    try:                                # every message is built here, before the model loads
+        convs = [mod.build_messages(b, palette) for b in briefs]
+        examples = [example_id(a.prompt, b) for b in briefs]
+        prompt_rec = prompt_record(a.prompt, palette, convs)
+    except PromptError as err:
+        stopped = f"error: PromptError: {err}"[:2000]
+        _write_json(summ / "generate.json", {
+            **head, "partial": False, "stopped": stopped, "palette": pal_rec, "host": _host(),
+            "prompt": {"version": a.prompt, "module": mod.__name__, "template_sha256": mod.template_sha256()}})
+        print(f"GENERATE_FAILED 0/{a.n} prompt={a.prompt} stopped={stopped}", flush=True)
+        return 2
     shas = [messages_sha256(c) for c in convs]
-    longest = max((c[0]["content"] + "\n" + c[1]["content"] for c in convs), key=len)
     sampling = dict(SAMPLING, max_tokens=a.max_tokens)
     regex = loopscript_regex(palette) if a.constrained else None
-    meta = {"schema": GENERATE_SCHEMA, "partial": True, "requested": a.n, "generated": 0, "stopped": None,
-            "briefs": {"seed": a.seed, "count": a.n, "sampler": "lofi_rl.brief.sample_briefs"},
-            "model": {"repo": repo, "revision": rev},
-            "prompt": {"version": PROMPT_VERSION, "template_sha256": template_sha256(),
-                       "system_sha256": sha256_text(system_message(palette)), "chars": len(longest),
-                       "tokens_estimate_4cpt": estimate_tokens(longest)},
-            "palette": {"id": palette.id, "sha256": palette.sha256, "path": _rel(a.palette)},
+    meta = {**head, "prompt": prompt_rec, "palette": pal_rec,
             "sampling": sampling, "constrained": constrained_block(regex), "engine": {},
             "timing": {"chunks": []}, "host": _host()}
     _write_json(summ / "generate.json", meta)
@@ -445,6 +538,7 @@ def cmd_generate(a: argparse.Namespace) -> int:
                 for k, c in enumerate(outs):
                     i = start + k
                     f.write(json.dumps({"i": i, "brief": brief_dict(briefs[i]), "prompt_sha256": shas[i],
+                                        "prompt_version": a.prompt, "example": examples[i],
                                         "text": c.text, "finish_reason": c.finish_reason, "n_tokens": c.n_tokens,
                                         "prompt_tokens": c.prompt_tokens}, ensure_ascii=False) + "\n")
                 f.flush()
@@ -466,14 +560,141 @@ def cmd_generate(a: argparse.Namespace) -> int:
     regex_sha = meta["constrained"]["regex_sha256"]
     backend = (meta["constrained"]["backend"] or {}).get("backend")
     print(f"GENERATE_{'OK' if rc == 0 and meta['generated'] else 'FAILED'} {meta['generated']}/{a.n} "
-          f"stopped={meta['stopped']} tok/s={meta['timing']['tok_per_s']} "
+          f"prompt={a.prompt} stopped={meta['stopped']} tok/s={meta['timing']['tok_per_s']} "
           f"constrained={f'{regex_sha[:16]} backend={backend}' if regex_sha else 'off'}", flush=True)
     return rc if meta["generated"] else 1
 
 
+# --------------------------------------------------------------------------------------------- copy readouts
+def head_lines(text: str) -> dict[str, str]:
+    """A loop text's lines by statement head, the text before the first colon (vamp, keys, A, B, @3 hat, ...)."""
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        head, sep, _ = line.partition(":")
+        if sep:
+            out[head] = line
+    return out
+
+
+def lane_grids(text: str) -> dict[str, list[str]]:
+    """The 16-cell grids of a canonical loop text, by lane: each base lane's 1 or 2 grids (comp; bass unless it is
+    `lock`; the drum lanes) and each per-bar edit's grid, under the lane it replaces."""
+    out: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        head, sep, body = line.partition(": ")
+        if not sep:
+            continue
+        lane = head.split()[-1] if head.startswith("@") else head
+        if lane in GRID_LANES and body != "lock":
+            out.setdefault(lane, []).extend(body.split())
+    return out
+
+
+@dataclass(frozen=True)
+class Reference:
+    """A complete loop a prompt shows: its id, its canonical text, and what the copy readouts compare with."""
+    id: str
+    text: str
+    grams: frozenset[str]
+    lines: Mapping[str, str]                    # head_lines
+    grids: Mapping[str, frozenset[str]]         # lane -> every grid of that lane, base or edit
+
+    @classmethod
+    def of(cls, ref_id: str, text: str) -> Reference:
+        return cls(ref_id, text, grams(text), MappingProxyType(head_lines(text)),
+                   MappingProxyType({lane: frozenset(gs) for lane, gs in lane_grids(text).items()}))
+
+
+def best_match(g: frozenset[str], refs: Sequence[Reference]) -> tuple[float, str | None]:
+    """The highest 5-gram Jaccard of a text's grams with `refs`, and the id that gives it (the first, on a tie);
+    (0.0, None) when there is nothing to compare with."""
+    best, best_id = -1.0, None
+    for r in refs:
+        j = jaccard(g, r.grams)
+        if j > best:
+            best, best_id = j, r.id
+    return (best, best_id) if best_id is not None else (0.0, None)
+
+
+def jaccard_bin(j: float) -> str:
+    """The jaccard_hist_passing bin of a copy_jaccard value: bins left-closed at JACCARD_EDGES."""
+    return JACCARD_BINS[bisect_right(JACCARD_EDGES, j)]
+
+
+def containment(g: frozenset[str], shown: frozenset[str]) -> float:
+    """|g & shown| / |g|: the share of a text's 5-grams that the shown examples hold; 0 for an empty text."""
+    return len(g & shown) / len(g) if g else 0.0
+
+
+def verbatim(text: str, shown: Sequence[Reference]) -> dict[str, bool]:
+    """Which of the vamp, keys, A and B lines equal that line of a shown example."""
+    lines = head_lines(text)
+    return {h: h in lines and any(lines[h] == r.lines.get(h) for r in shown) for h in VERBATIM}
+
+
+def grid_share(text: str, shown: Sequence[Reference]) -> tuple[int, int]:
+    """(k, n): of the text's n grids (base lanes and edits), the k that equal some grid of the same lane, base or
+    edit, in a shown example."""
+    k = n = 0
+    for lane, gs in lane_grids(text).items():
+        pool = frozenset().union(*(r.grids.get(lane, frozenset()) for r in shown))
+        n += len(gs)
+        k += sum(1 for g in gs if g in pool)
+    return k, n
+
+
+def forms(text: str) -> dict:
+    """The loop's forms: span 1, bass lock, a snare, ohat or shaker base, and how many per-bar edits."""
+    lines = text.splitlines()
+    return {"span1": head_lines(text).get("vamp", "").endswith(" span 1"), "lock": "bass: lock" in lines,
+            "snare": any(line.startswith("snare:") for line in lines),
+            "ohat": any(line.startswith("ohat:") for line in lines),
+            "shaker": any(line.startswith("shaker:") for line in lines),
+            "edits": sum(1 for line in lines if line.startswith("@"))}
+
+
+def knob_readout(text: str, brief: Brief, palette: Palette, finish_reason: str | None) -> dict:
+    """E, the energy band match and the mood signature (lofi_rl.verify.scoring.score on the raw text, as the reward
+    reads it): readouts here, never gates. Imported here, so a verifier that cannot load only loses this readout."""
+    from lofi_rl.verify.scoring import score
+    k = score(text, brief, palette, finish_reason=finish_reason).knob_parts
+    return {"E": round(k["E"], 4), "energy_match": k["energy_match"] == 1, "f_mood": k["f_mood"] == 1}
+
+
+def energy_bands() -> list[float] | None:
+    try:
+        from lofi_rl.verify.knobs import ENERGY_BANDS
+    except Exception:  # noqa: BLE001: a readout's label, never a reason to stop score
+        return None
+    return list(ENERGY_BANDS)
+
+
+class CopyCheck:
+    """What one run's completions are compared with: the examples each row's own prompt showed (near_copy, the gated
+    rule, plus containment, verbatim lines and grid share), and every example prompt v2 can show (copy.any). It also
+    collects the knob readout's errors."""
+
+    def __init__(self, version: str, palette: Palette) -> None:
+        self.version, self.palette = version, palette
+        refs = prompt_v2.reference_texts(palette, strict=False)
+        self.references = tuple(Reference.of(ref_id, text) for ref_id, text in refs.items())
+        self.refused = dict(refs.refused)
+        self.knob_errors: Counter[str] = Counter()
+        self._shown: dict[tuple[str, str], tuple[Reference, ...]] = {}
+
+    def shown(self, brief: Brief) -> tuple[Reference, ...]:
+        key = (brief.energy, brief.mood)
+        if key not in self._shown:
+            self._shown[key] = tuple(Reference.of(ref_id, text)
+                                     for ref_id, text in shown_examples(self.version, brief, self.palette))
+        return self._shown[key]
+
+
 # --------------------------------------------------------------------------------------------- score
-def score_row(row: dict, palette: Palette, example_grams: frozenset[str]) -> dict:
-    """One completion through the gates and the compiler, plus its near-copy Jaccard with the in-prompt example."""
+def score_row(row: dict, palette: Palette, check: CopyCheck) -> dict:
+    """One completion through the gates and the compiler, then the copy readouts: its 5-gram Jaccard with the example
+    its own prompt showed (near_copy) and with every v2 example (copy_any), its containment in the shown example
+    (quasi_copy) and, for a loop that passes, its verbatim lines, shared grids, forms and knob readouts."""
     brief = Brief(**row["brief"])
     out = {"i": row["i"], "energy": brief.energy, "mood": brief.mood, "n_tokens": row.get("n_tokens"),
            "finish_reason": row.get("finish_reason"), "truncated": row.get("finish_reason") == "length"}
@@ -491,11 +712,26 @@ def score_row(row: dict, palette: Palette, example_grams: frozenset[str]) -> dic
                 repairs += list(compile_loop(res.ast, brief, palette).repairs)
             except Exception as err:  # noqa: BLE001: CompileError, or a compiler bug on model output
                 gate, detail = "compile", f"{type(err).__name__}: {err}"
-    j = jaccard(grams(copy_text if copy_text is not None else plain_text(row["text"])), example_grams)
+    g = grams(copy_text if copy_text is not None else plain_text(row["text"]))
+    shown = check.shown(brief)
+    j, ref = best_match(g, shown)
+    j_any, source = best_match(g, check.references)
+    within = containment(g, frozenset().union(*(r.grams for r in shown)))
     out.update(ok=gate is None, gate=gate, detail=detail[:300],
                repairs=dict(sorted(Counter(r.code for r in repairs).items())),
                penalized_codes=sorted({r.code for r in repairs if r.penalized}), p_fix=penalty(repairs),
-               copy_jaccard=round(j, 4), near_copy=j >= NEAR_COPY)
+               copy_jaccard=round(j, 4), near_copy=j >= NEAR_COPY, copy_reference=ref,
+               copy_any_jaccard=round(j_any, 4) if source else None, copy_any_source=source,
+               near_copy_any=bool(source) and j_any >= NEAR_COPY,
+               containment=round(within, 4), quasi_copy=within >= QUASI_COPY,
+               verbatim=None, grid_share=None, forms=None, E=None, energy_match=None, f_mood=None)
+    if gate is None:
+        out.update(verbatim=verbatim(copy_text, shown), grid_share=list(grid_share(copy_text, shown)),
+                   forms=forms(copy_text))
+        try:
+            out.update(knob_readout(row["text"], brief, palette, row.get("finish_reason")))
+        except Exception as err:  # noqa: BLE001: a readout that fails is null, never a reason to stop score
+            check.knob_errors[f"{type(err).__name__}: {err}"[:300]] += 1
     return out
 
 
@@ -559,8 +795,93 @@ def constrained_summary(recorded: dict | None, rows: list[dict], palette: Palett
     return {**recorded, "in_language": in_language(rows, recorded, palette)}
 
 
-def summarize(rows: list[dict], scored: list[dict], meta: dict, palette: Palette, *, unreadable: int = 0,
-              run: str = "", clips: dict | None = None) -> dict:
+def prompt_summary(version: str, rows: list[dict], palette: Palette, meta: dict) -> dict:
+    """junk.json's "prompt": the run's version and this file's template for it, whether that is the template
+    generate recorded, the system shas, the rows sent exactly today's messages for their brief, and the rows whose
+    recorded example is not the one the rule gives their brief."""
+    mod = PROMPTS[version]
+    gen = meta.get("prompt")
+    recorded_sha = gen.get("template_sha256") if isinstance(gen, dict) else None
+    current: dict[tuple[str, str], tuple[str, str]] = {}
+    matching = recorded = mismatch = 0
+    for r in rows:
+        b = Brief(**r["brief"])
+        key = (b.energy, b.mood)
+        if key not in current:
+            current[key] = (messages_sha256(mod.build_messages(b, palette)), example_id(version, b))
+        sha, ex = current[key]
+        matching += r.get("prompt_sha256") == sha
+        if "example" in r:
+            recorded += 1
+            mismatch += r["example"] != ex
+    return {"version": version, "module": mod.__name__, "template_sha256": mod.template_sha256(),
+            "template_matches_generate": None if recorded_sha is None else recorded_sha == mod.template_sha256(),
+            "system_sha256": sha256_text(prompt.system_message(palette)) if version == "v1" else None,
+            "systems": {f"{e}/{m}": sha256_text(system_text(version, cell_brief(e, m), palette))
+                        for e in ENERGIES for m in MOOD_NAMES},
+            "rows_matching": matching, "example_recorded": recorded, "example_mismatch": mismatch,
+            "as_generated": gen}
+
+
+def copy_summary(scored: list[dict], ok: list[dict], check: CopyCheck) -> dict:
+    """junk.json's "copy": the readouts of copying, none of them a gate (module docstring)."""
+    n = len(scored)
+    any_rows = [s for s in scored if s["near_copy_any"]]
+    within = [s["containment"] for s in ok]
+    hist = Counter(jaccard_bin(s["copy_jaccard"]) for s in ok)
+    k, g = sum(s["grid_share"][0] for s in ok), sum(s["grid_share"][1] for s in ok)
+    edits = Counter(s["forms"]["edits"] for s in ok)
+    knobs = None
+    if not check.knob_errors and all(s["energy_match"] is not None for s in ok):
+        knobs = {"n": len(ok), "energy_match": sum(1 for s in ok if s["energy_match"]),
+                 "f_mood": sum(1 for s in ok if s["f_mood"]), "energy_bands": energy_bands()}
+    return {
+        "note": "readouts, never gates: the Phase 1 bar reads pass_not_copy (D-019)",
+        "any": {"rule": ANY_RULE, "threshold": NEAR_COPY, "count": len(any_rows),
+                "count_passing": sum(1 for s in any_rows if s["ok"]),
+                "sources": dict(sorted(Counter(s["copy_any_source"] for s in any_rows).items())),
+                "references": [r.id for r in check.references], "refused": dict(check.refused)},
+        "quasi_copy": {"rule": QUASI_RULE, "threshold": QUASI_COPY,
+                       "count": sum(1 for s in scored if s["quasi_copy"]),
+                       "count_passing": sum(1 for s in ok if s["quasi_copy"])},
+        "pass_not_quasi_copy": _rate(sum(1 for s in ok if not s["near_copy"] and not s["quasi_copy"]), n),
+        "containment_passing": {**_rounded(percentiles(within, (10, 50, 90)), 4), "max": max(within, default=None)},
+        "jaccard_hist_passing": {label: hist.get(label, 0) for label in JACCARD_BINS},
+        "verbatim_passing": {**{h: sum(1 for s in ok if s["verbatim"][h]) for h in VERBATIM},
+                             "AB": sum(1 for s in ok if s["verbatim"]["A"] and s["verbatim"]["B"])},
+        "grid_share_passing": {"verbatim": k, "grids": g, "share": round(k / g, 4) if g else None},
+        "forms_passing": {**{f: sum(1 for s in ok if s["forms"][f]) for f in FORMS},
+                          "edits": {str(e): edits[e] for e in sorted(edits)}},
+        "knobs_passing": knobs,
+        "knobs_error": ({"loops": sum(check.knob_errors.values()), "first": next(iter(check.knob_errors))}
+                        if check.knob_errors else None),
+    }
+
+
+def cell_summary(scored: list[dict], version: str) -> dict:
+    """junk.json's "by_cell": per energy x mood cell, in ENERGIES x MOOD_NAMES order, the example shown and the counts;
+    the knob counts are over passing loops, null when their readout failed."""
+    out = {}
+    for e in ENERGIES:
+        for m in MOOD_NAMES:
+            group = [s for s in scored if s["energy"] == e and s["mood"] == m]
+            ok = [s for s in group if s["ok"]]
+            knobs = all(s["energy_match"] is not None for s in ok)
+            out[f"{e}/{m}"] = {
+                "example": example_id(version, cell_brief(e, m)), "n": len(group),
+                "near_copy": sum(1 for s in group if s["near_copy"]),
+                "quasi_copy": sum(1 for s in group if s["quasi_copy"]), "pass": len(ok),
+                "near_copy_passing": sum(1 for s in ok if s["near_copy"]),
+                "quasi_copy_passing": sum(1 for s in ok if s["quasi_copy"]),
+                "pass_not_copy": sum(1 for s in ok if not s["near_copy"]),
+                "pass_not_quasi_copy": sum(1 for s in ok if not s["near_copy"] and not s["quasi_copy"]),
+                "energy_match": sum(1 for s in ok if s["energy_match"]) if knobs else None,
+                "f_mood": sum(1 for s in ok if s["f_mood"]) if knobs else None}
+    return out
+
+
+def summarize(rows: list[dict], scored: list[dict], meta: dict, palette: Palette, check: CopyCheck, *,
+              unreadable: int = 0, run: str = "", clips: dict | None = None) -> dict:
     n, ok = len(scored), [s for s in scored if s["ok"]]
     requested = int(meta.get("requested", n))
     fails = Counter(s["gate"] for s in scored if not s["ok"])
@@ -593,13 +914,7 @@ def summarize(rows: list[dict], scored: list[dict], meta: dict, palette: Palette
 
     copies = sum(1 for s in scored if s["near_copy"])
     copies_ok = sum(1 for s in ok if s["near_copy"])
-    current = {}
-    matching = 0
-    for r in rows:
-        key = (r["brief"]["energy"], r["brief"]["mood"])
-        if key not in current:
-            current[key] = messages_sha256(build_messages(Brief(**r["brief"]), palette))
-        matching += r.get("prompt_sha256") == current[key]
+    compared = Counter(s["copy_reference"] for s in scored)
 
     details: dict[str, Counter] = {}
     for s in scored:
@@ -622,10 +937,11 @@ def summarize(rows: list[dict], scored: list[dict], meta: dict, palette: Palette
                       "rate": round(copies / n, 4) if n else None, "count_passing": copies_ok,
                       "rate_of_passing": round(copies_ok / len(ok), 4) if ok else None,
                       "jaccard": {**_rounded(percentiles([s["copy_jaccard"] for s in scored], (50, 90, 99)), 4),
-                                  "max": max((s["copy_jaccard"] for s in scored), default=None)}},
-        "prompt": {"version": PROMPT_VERSION, "template_sha256": template_sha256(),
-                   "system_sha256": sha256_text(system_message(palette)), "rows_matching": matching,
-                   "as_generated": meta.get("prompt")},
+                                  "max": max((s["copy_jaccard"] for s in scored), default=None)},
+                      "rule": NEAR_COPY_RULE, "references": dict(sorted(compared.items()))},
+        "copy": copy_summary(scored, ok, check),
+        "by_cell": cell_summary(scored, check.version),
+        "prompt": prompt_summary(check.version, rows, palette, meta),
         "constrained": constrained_summary(meta.get("constrained"), rows, palette),
         "palette": {"id": palette.id, "sha256": palette.sha256,
                     "matches_generate": None if gen_palette is None else gen_palette == palette.sha256},
@@ -647,9 +963,20 @@ def headline(s: dict) -> str:
     in_lang = ("" if not lang else " | in the regex's language: "
                + (f"stop {stop['in_language']}/{stop['n']}, length {length['in_language']}/{length['n']}" if stop
                   else "not counted (the regex is not the one generate recorded)"))
+    copy = s.get("copy") or {}
+    quasi, not_quasi = copy.get("quasi_copy") or {}, copy.get("pass_not_quasi_copy") or {}
     return (f"JUNK n={s['n']}/{s['requested']} pass {p['count']} = {rate} [{100 * lo:.1f}, {100 * hi:.1f}] | "
             f"near-copies {s['near_copy']['count']} (pass, not a copy: {s['pass_not_copy']['count']}) | "
-            f"{gates or 'no failures'} | truncated {s['tokens']['truncated']}{in_lang}")
+            f"{gates or 'no failures'} | truncated {s['tokens']['truncated']}{in_lang} | "
+            f"quasi-copies {quasi.get('count')} (pass, not a quasi-copy: {not_quasi.get('count')}) | "
+            f"prompt {(s.get('prompt') or {}).get('version')}")
+
+
+def run_version(meta: dict) -> str:
+    """The prompt version generate.json records, "v1" when it names none (a run that predates prompt v2)."""
+    gen = meta.get("prompt")
+    version = gen.get("version") if isinstance(gen, dict) else None
+    return version or DEFAULT_PROMPT
 
 
 def cmd_score(a: argparse.Namespace) -> int:
@@ -658,16 +985,27 @@ def cmd_score(a: argparse.Namespace) -> int:
     if not comp.is_file():
         print(f"score: {comp} is missing (run generate first)", file=sys.stderr)
         return 2
+    meta = _read_json(summ / "generate.json") or {}
+    version = run_version(meta)
+    if version not in PROMPTS:
+        print(f"score: generate.json names prompt version {version!r}, which this junk.py does not know "
+              f"({', '.join(PROMPTS)})", file=sys.stderr)
+        return 2
     rows, bad = read_jsonl(comp)
     rows.sort(key=lambda r: r["i"])
-    meta = _read_json(summ / "generate.json") or {}
     palette = load_palette(a.palette, verify=False)
-    example = grams(example_text(palette))
-    scored = [score_row(r, palette, example) for r in rows]
+    try:
+        check = CopyCheck(version, palette)
+        scored = [score_row(r, palette, check) for r in rows]
+        summary = summarize(rows, scored, meta, palette, check, unreadable=bad, run=Path(a.run).name,
+                            clips=_read_json(summ / "clips.json"))
+    except PromptError as err:
+        print(f"score: prompt {version} cannot serve palette {palette.id}: {err}", file=sys.stderr)
+        return 2
     _write_jsonl(summ / "scored.jsonl", scored)
-    summary = summarize(rows, scored, meta, palette, unreadable=bad, run=Path(a.run).name,
-                        clips=_read_json(summ / "clips.json"))
     _write_json(summ / "junk.json", summary)
+    for err, count in check.knob_errors.items():
+        print(f"score: the knob readout failed on {count} loop(s), recorded as null: {err}", file=sys.stderr)
     print(headline(summary), flush=True)
     return 0
 
@@ -721,7 +1059,8 @@ def cmd_render(a: argparse.Namespace) -> int:
             rec = {"i": i, "ok": False, "gate": None, "skipped": "render deadline"}
         else:
             rec = render_clip(rows[i], palette, clips_dir, cache=a.cache, workers=a.workers)
-        rec.update(brief=rows[i]["brief"], copy_jaccard=scored[i]["copy_jaccard"], near_copy=scored[i]["near_copy"])
+        rec.update(brief=rows[i]["brief"], copy_jaccard=scored[i]["copy_jaccard"], near_copy=scored[i]["near_copy"],
+                   copy_reference=scored[i].get("copy_reference"), quasi_copy=scored[i].get("quasi_copy"))
         clips["clips"].append(rec)
         _write_json(summ / "clips.json", clips)
         print(f"[junk:render] {len(clips['clips'])}/{len(pick)} i={i} "
@@ -757,6 +1096,8 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--max-model-len", type=int, default=4096)
     g.add_argument("--constrained", action="store_true",
                    help="decode under lofi_rl.grammar's LoopScript regex (vLLM structured outputs; docs/GRAMMAR.md)")
+    g.add_argument("--prompt", choices=tuple(PROMPTS), default=DEFAULT_PROMPT,
+                   help="the prompt template: v1 (lofi_rl.prompt, the default) or v2 (lofi_rl.prompt_v2)")
     s = sub.add_parser("score", help="gates G1-G6 and compile -> summary/junk.json (policy env)")
     s.add_argument("--run", type=Path, required=True)
     s.add_argument("--palette", type=Path, default=DEFAULT_PALETTE)

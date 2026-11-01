@@ -318,7 +318,9 @@ completion cannot run on inside it.
   - on only if step-0 parse failures exceed 20 %;
   - off if the mean |log IS ratio| exceeds 0.05 (UNVERIFIED).
 - **Near-copies.** The in-prompt example is in the regex's language, so constrained decoding does nothing about
-  copying it. That is D-019's second cause.
+  copying it. That is D-019's second cause. Prompt v2 (`lofi_rl.prompt_v2`) is the lever for it: each brief is shown
+  the example of its energy and the next mood, and junk-rate's near-copy check compares each completion with the
+  example its own prompt showed. All 9 of v2's examples are in the regex's language (`tests/test_prompt_v2.py`).
 - **Line ends past v0's.** The bounds of §3.3 are what v0 wrote. A model that wants three spaces before a newline,
   or an empty line elsewhere, is masked there, though `"\n"` and `"  \n"` stay open at every line end. How often
   that happens is not measured: a constrained run's completions are all in the language, so they cannot show it.
