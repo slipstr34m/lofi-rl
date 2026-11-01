@@ -213,6 +213,27 @@ def test_the_path_rules_free_stale_live_and_not_a_socket(tmp_path):
             check_sock_path(d / "missing-dir" / "s.sock")
 
 
+def test_close_never_removes_a_socket_that_replaced_its_own(tmp_path):
+    # Another server took the path over (the socket removed by hand, a second server started on the same --sock):
+    # the first one's shutdown must leave the live socket alone, or the trainer's next /score finds nothing.
+    with short_sock_dir() as d:
+        sock = d / "s.sock"
+        srv = ScorerServer(make_scorer(tmp_path), sock, logf=lambda m: None)
+        srv.bind()
+        other = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        other.bind(str(d / "r.sock"))                   # bound while sock still exists: the inodes differ
+        try:
+            os.replace(d / "r.sock", sock)
+            assert os.lstat(sock).st_ino != srv._ident[1]
+            srv.close()
+            assert stat.S_ISSOCK(os.lstat(sock).st_mode), "the replacement is still there"
+            os.unlink(sock)
+            srv.close()                                 # a second close, with the path gone: no error
+        finally:
+            other.close()
+        assert not sock.exists()
+
+
 def test_the_client_raises_when_nothing_listens(tmp_path):
     with short_sock_dir() as d:
         c = ScorerClient(d / "none.sock", timeout=2)
