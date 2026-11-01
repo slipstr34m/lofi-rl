@@ -12,8 +12,18 @@ also loads its palette and lofi_rl.grammar, both standard library and PyYAML).
 Grammar-constrained decoding (D-016; docs/GRAMMAR.md): the top-level `structured_outputs: loopscript_regex` names a
 regex builder of lofi_rl.grammar. load_config() builds the regex from the config's palette, and resolve() sets it as
 the GRPOConfig field `vllm_structured_outputs_regex` in every profile, so the regex is never pasted into YAML and goes
-through the same field check as every other name (UNVERIFIED for TRL 1.17.1 until the cluster: a wrong name stops
-the run in about 2 minutes). Writing that field by hand in `trainer` or a profile is refused.
+through the same field check as every other name (the field exists in TRL 1.17.1's GRPOConfig:
+runs/grpo-smoke-13632679/summary/a/run.json lists it in grpo_config, as None). Writing that field by hand in
+`trainer` or a profile is refused.
+
+The prompt version (D-020): the optional top-level `prompt: v1|v2` picks the template the trainer builds every row's
+messages with, lofi_rl.prompt (v1, the default, so a config without the key is unchanged) or lofi_rl.prompt_v2 (each
+brief shown the example of its energy and the next mood).
+
+The copy penalty (taste_pipeline §5; lofi_rl.rl.copy_penalty): the optional top-level `copy_penalty: {pool: [...]}`
+turns it on, against every example the run's prompt version can show plus the LoopScript files the pool lists (`.ls`
+files, or directories of them; the seed pool, later). A config without the key has no copy penalty, so its rewards
+are byte for byte what they were.
 """
 from __future__ import annotations
 
@@ -31,9 +41,13 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 TOP_REQUIRED = ("run", "model", "palette", "briefs", "prompts_per_step", "lora", "trainer", "profiles",
                 "optional_fields")
-TOP_OPTIONAL = ("smoke", "structured_outputs")
+TOP_OPTIONAL = ("smoke", "structured_outputs", "prompt", "copy_penalty")
 STRUCTURED_BUILDERS = ("loopscript_regex",)                 # functions of lofi_rl.grammar: palette -> regex
 STRUCTURED_FIELD = "vllm_structured_outputs_regex"          # the TRL GRPOConfig field the regex goes into
+PROMPT_MODULES = MappingProxyType({"v1": "lofi_rl.prompt", "v2": "lofi_rl.prompt_v2"})   # `prompt:` -> its template
+DEFAULT_PROMPT = "v1"
+COPY_KEYS = ("pool",)                                       # copy_penalty: {pool: [paths]}
+POOL_SUFFIX = ".ls"
 # The §6 settings every run must state (in `trainer` or in each profile), so none falls to a TRL default.
 REQUIRED = ("learning_rate", "lr_scheduler_type", "warmup_steps", "max_steps", "num_generations", "num_iterations",
             "max_completion_length", "mask_truncated_completions", "beta", "loss_type", "scale_rewards",
@@ -86,10 +100,22 @@ class RunConfig:
     resume_step: int | None                         # smoke.resume_from_step
     # builder, field, regex, sha256, chars when the config sets `structured_outputs`; None otherwise
     structured_outputs: Mapping[str, Any] | None = None
+    prompt: str = DEFAULT_PROMPT                    # `prompt:`, a key of PROMPT_MODULES
+    # {"pool": (paths as written, ...)} when the config sets `copy_penalty`; None (no copy penalty) otherwise
+    copy_penalty: Mapping[str, Any] | None = None
 
     def palette_path(self, root: Path = ROOT) -> Path:
         p = Path(self.palette)
         return p if p.is_absolute() else root / p
+
+    def pool_files(self, root: Path = ROOT) -> tuple[Path, ...]:
+        """The copy penalty's pool as files: each listed .ls file, and the .ls files of each listed directory in
+        name order. Empty without a copy penalty or with an empty pool."""
+        out: list[Path] = []
+        for entry in (self.copy_penalty or {}).get("pool", ()):
+            p = Path(entry) if Path(entry).is_absolute() else root / entry
+            out += sorted(p.glob(f"*{POOL_SUFFIX}")) if p.is_dir() else [p]
+        return tuple(out)
 
 
 def _int(v: Any, where: str, lo: int | None = None) -> int:
@@ -198,6 +224,11 @@ def load_config(path: Path | str) -> RunConfig:
         if not isinstance(smoke, dict) or set(smoke) != {"resume_from_step"}:
             raise ConfigError("smoke needs exactly resume_from_step")
         resume = _int(smoke["resume_from_step"], "smoke.resume_from_step", 1)
+    version = doc.get("prompt", DEFAULT_PROMPT)
+    if not isinstance(version, str) or version not in PROMPT_MODULES:
+        raise ConfigError(f"prompt {version!r} is not one of {list(PROMPT_MODULES)} (the template the rows are built "
+                          "with: v1 lofi_rl.prompt, v2 lofi_rl.prompt_v2)")
+    copy = _copy_penalty(doc["copy_penalty"]) if "copy_penalty" in doc else None
 
     cfg = RunConfig(
         path=str(path), sha256=hashlib.sha256(data).hexdigest(), run=str(doc["run"]),
@@ -205,9 +236,10 @@ def load_config(path: Path | str) -> RunConfig:
         brief_seed=briefs["seed"], brief_count=briefs["count"], brief_start=briefs["start"], prompts_per_step=pps,
         lora=MappingProxyType(dict(lora)), trainer=MappingProxyType(dict(trainer)),
         profiles=MappingProxyType({n: MappingProxyType(dict(p)) for n, p in profiles.items()}),
-        optional_fields=frozenset(optional), resume_step=resume)
+        optional_fields=frozenset(optional), resume_step=resume, prompt=version, copy_penalty=copy)
     if not cfg.palette_path().is_file():
         raise ConfigError(f"palette {cfg.palette} does not exist")
+    _check_pool(cfg)
     if builder is not None:
         cfg = dataclasses.replace(cfg, structured_outputs=_structured(builder, cfg.palette_path()))
     for name in cfg.profiles:
@@ -224,6 +256,33 @@ def load_config(path: Path | str) -> RunConfig:
         raise ConfigError(f"briefs.count {cfg.brief_count} < max_steps {t['max_steps']} x prompts_per_step {pps} = "
                           f"{need}: the dataset would run out inside the run")
     return cfg
+
+
+def _copy_penalty(block: Any) -> Mapping[str, Any]:
+    """`copy_penalty: {pool: [...]}`: exactly the key pool, a list of paths (an empty list: the prompt's examples
+    only). The thresholds are taste_pipeline §5's and live in lofi_rl.rl.copy_penalty, never in a config."""
+    if not isinstance(block, dict) or set(block) != set(COPY_KEYS):
+        raise ConfigError(f"copy_penalty needs exactly {list(COPY_KEYS)} (a list of LoopScript files or directories; "
+                          "[] for the prompt's examples only); the thresholds are taste_pipeline §5's")
+    pool = block["pool"]
+    if not isinstance(pool, list) or not all(isinstance(p, str) and p for p in pool):
+        raise ConfigError(f"copy_penalty.pool {pool!r} is not a list of paths")
+    if len(set(pool)) != len(pool):
+        raise ConfigError(f"copy_penalty.pool {pool!r} lists a path twice")
+    return MappingProxyType({"pool": tuple(pool)})
+
+
+def _check_pool(cfg: RunConfig, root: Path = ROOT) -> None:
+    """Every pool entry is a .ls file or a directory, and a pool that lists anything holds at least one .ls file."""
+    pool = (cfg.copy_penalty or {}).get("pool", ())
+    for entry in pool:
+        p = Path(entry) if Path(entry).is_absolute() else root / entry
+        if not p.exists():
+            raise ConfigError(f"copy_penalty.pool {entry!r} does not exist")
+        if not p.is_dir() and p.suffix != POOL_SUFFIX:
+            raise ConfigError(f"copy_penalty.pool {entry!r} is not a {POOL_SUFFIX} file or a directory")
+    if pool and not cfg.pool_files(root):
+        raise ConfigError(f"copy_penalty.pool {list(pool)} holds no {POOL_SUFFIX} file")
 
 
 def _structured(builder: str, palette_path: Path) -> Mapping[str, Any]:

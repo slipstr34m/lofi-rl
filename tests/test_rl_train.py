@@ -88,6 +88,17 @@ def test_every_profile_trains_on_4_prompts_x_8_completions_per_step(profile):
     (lambda d: d["profiles"]["48gb"].update(vllm_structured_outputs_regex="x"), "structured_outputs: loopscript_regex"),
     (lambda d: d["optional_fields"].append(REGEX_FIELD) or d.update(structured_outputs="loopscript_regex"),
      "optional"),
+    (lambda d: d.update(prompt="v3"), "prompt 'v3' is not one of"),
+    (lambda d: d.update(prompt=2), "prompt 2 is not one of"),
+    (lambda d: d.update(prompt="V2"), "prompt 'V2'"),
+    (lambda d: d.update(copy_penalty=True), "copy_penalty needs exactly"),
+    (lambda d: d.update(copy_penalty={}), "copy_penalty needs exactly"),
+    (lambda d: d.update(copy_penalty={"pool": [], "j_full": 0.9}), "copy_penalty needs exactly"),
+    (lambda d: d.update(copy_penalty={"pool": "drafts/v1"}), "not a list of paths"),
+    (lambda d: d.update(copy_penalty={"pool": ["drafts/v1", "drafts/v1"]}), "twice"),
+    (lambda d: d.update(copy_penalty={"pool": ["drafts/nowhere"]}), "does not exist"),
+    (lambda d: d.update(copy_penalty={"pool": ["drafts/v1/briefs.yaml"]}), "not a .ls file"),
+    (lambda d: d.update(copy_penalty={"pool": ["configs"]}), "holds no .ls file"),
 ])
 def test_a_bad_config_is_refused_with_its_reason(tmp_path, edit, match):
     with pytest.raises(rc.ConfigError, match=match):
@@ -161,7 +172,8 @@ def test_a_card_under_40_gib_has_no_profile():
         rc.detect_profile(rc.load_config(SMOKE), 23.6)
 
 
-@pytest.mark.parametrize("path", [SMOKE, CONSTRAINED], ids=["smoke", "constrained"])
+@pytest.mark.parametrize("path", [SMOKE, CONSTRAINED, ROOT / "configs" / "grpo_smoke_v2_grammar.yaml"],
+                         ids=["smoke", "constrained", "v2_grammar"])
 def test_trl_knows_every_setting_of_the_smoke(path):
     # Skipped on the laptop (no TRL). In the policy env it checks the names this file could not verify.
     trl = pytest.importorskip("trl")
@@ -309,3 +321,104 @@ def test_dry_run_output_is_json_even_with_unicode_prompts(monkeypatch):
     report = train.dry_run(rc.load_config(SMOKE), out=buf)
     assert json.loads(buf.getvalue())["prompts"]["preview"][0]["content"] == "Δ7 ♭9"
     assert report["reward_check"].startswith("skipped")
+
+
+# ------------------------------------------------------------------------------------------ D-020: prompt v2, P_copy
+V2_GRAMMAR = ROOT / "configs" / "grpo_smoke_v2_grammar.yaml"
+SMOKE_13632679_SHA = "d0ed170267ca1ee8e711d7603e5a1b5997b2fcfe9b90c10a49e02c5189caa04d"   # its smoke.json
+V2_TEMPLATE = "127e3094fd5a2183fb952059c2221ad018bdef6d062f51a80b14367b8064466e"          # D-020, arm B
+V1_TEMPLATE = "7aceb2bc0d7339a7d3c9af7bf0d808ee156d4f7a8684e0393d923940fa5c1e68"
+
+
+def test_todays_smoke_config_is_byte_for_byte_the_one_smoke_13632679_ran():
+    cfg = rc.load_config(SMOKE)
+    assert cfg.sha256 == SMOKE_13632679_SHA, "a bare submit of jobs/grpo_smoke.sbatch runs exactly that smoke"
+    assert (cfg.prompt, cfg.copy_penalty, cfg.structured_outputs) == ("v1", None, None)
+
+
+def test_the_v2_grammar_smoke_is_the_smoke_plus_prompt_v2_the_grammar_and_the_copy_penalty():
+    plain, v2 = yaml.safe_load(SMOKE.read_text()), yaml.safe_load(V2_GRAMMAR.read_text())
+    added = {k: v2.pop(k) for k in ("prompt", "structured_outputs", "copy_penalty")}
+    assert added == {"prompt": "v2", "structured_outputs": "loopscript_regex", "copy_penalty": {"pool": []}}
+    assert v2 == plain, "every other key is the smoke's"
+    cfg = rc.load_config(V2_GRAMMAR)
+    assert cfg.prompt == "v2" and cfg.copy_penalty == {"pool": ()} and cfg.pool_files() == ()
+    assert cfg.structured_outputs["sha256"] == "1412f11f9ebdc520b50c263eda14be12829951357c17f43496ab2ddf5235e64e"
+
+
+def test_the_pool_lists_ls_files_and_directories_of_them(tmp_path):
+    p = _write(tmp_path, lambda d: d.update(copy_penalty={"pool": ["drafts/v1", "shootouts/loops/l5_wistful_mid.ls"]}))
+    cfg = rc.load_config(p)
+    files = cfg.pool_files()
+    assert len(files) == len(list((ROOT / "drafts" / "v1").glob("*.ls"))) + 1 == 31
+    assert files[-1] == ROOT / "shootouts" / "loops" / "l5_wistful_mid.ls" and all(f.suffix == ".ls" for f in files)
+
+
+def test_v2_rows_record_their_shown_example_and_v1_rows_are_unchanged():
+    from lofi_rl import prompt, prompt_v2
+    v1, v2 = rc.load_config(SMOKE), rc.load_config(V2_GRAMMAR)
+    pal = load_palette(ROOT / v1.palette, verify=False)
+    rows1 = train.build_rows(v1, pal, train.prompt_module("v1"))
+    rows2 = train.build_rows(v2, pal, train.prompt_module("v2"))
+    briefs = sample_briefs(v2.brief_seed, v2.brief_count, v2.brief_start)
+    assert all(set(r) == {"prompt", "brief", "brief_id"} for r in rows1), "no new column for v1"
+    assert [r["prompt"] for r in rows1] == [prompt.build_messages(b, pal) for b in briefs]
+    assert [r["prompt"] for r in rows2] == [prompt_v2.build_messages(b, pal) for b in briefs]
+    assert [r["example_id"] for r in rows2] == [prompt_v2.example_id(b) for b in briefs]
+    assert train.row_example_ids(rows1) == ["example"] * 40
+    rec = train.prompt_record(v2, train.prompt_module("v2"), rows2)
+    assert rec["version"] == "v2" and rec["module"] == "lofi_rl.prompt_v2" and rec["template_sha256"] == V2_TEMPLATE
+    assert rec["example_ids"] == [r["example_id"] for r in rows2] and sum(rec["example_counts"].values()) == 40
+    assert rec["messages_sha256"] == [prompt.messages_sha256(r["prompt"]) for r in rows2]
+    assert train.prompt_record(v1, train.prompt_module("v1"), rows1)["template_sha256"] == V1_TEMPLATE
+
+
+def test_a_prompt_module_of_another_version_is_refused(monkeypatch):
+    monkeypatch.setitem(sys.modules, "lofi_rl.prompt_v2", fake_prompt())       # says PROMPT_VERSION "v1"
+    with pytest.raises(rc.ConfigError, match="PROMPT_VERSION is 'v1', not the config's prompt 'v2'"):
+        train.prompt_module("v2")
+    with pytest.raises(rc.ConfigError, match="v9"):
+        train.prompt_module("v9")
+
+
+def test_the_dry_run_of_the_v2_smoke_reports_the_prompt_the_copy_penalty_and_the_language():
+    from lofi_rl import prompt_v2
+    buf = io.StringIO()
+    report = train.dry_run(rc.load_config(V2_GRAMMAR), out=buf)
+    assert json.loads(buf.getvalue()) == json.loads(json.dumps(report, default=str))
+    p = report["prompts"]
+    briefs = sample_briefs(596, 40, 0)
+    assert (p["version"], p["module"], p["template_sha256"]) == ("v2", "lofi_rl.prompt_v2", V2_TEMPLATE)
+    assert p["example_ids"] == [prompt_v2.example_id(b) for b in briefs] and len(p["messages_sha256"]) == 40
+    assert p["distinct"] == len({(b.energy, b.mood) for b in briefs}), "one message pair per energy x mood cell"
+    cp = report["reward"]["copy_penalty"]
+    assert cp["prompt_version"] == "v2" and cp["references"] == 9 and cp["pool"]["files"] == 0
+    assert (cp["j_free"], cp["j_full"], cp["p_max"], cp["ngram"]) == (0.6, 0.8, 0.3, 5)
+    assert report["reward"]["in_language"]["regex_sha256"] == report["structured_outputs"]["sha256"]
+    assert report["backend_pin"]["requested"] == "xgrammar"
+    check = report["reward_check"]
+    assert (check["copy_j"], check["copy_nearest"], check["p_copy"]) == (1.0, "example", 0.3), \
+        "example.ls is v1's example with a sax line: a copy"
+    assert check["penalty"] == pytest.approx(0.3) and check["example_id"] == prompt_v2.example_id(briefs[0])
+    assert check["in_language"] is False, "example.ls has a sax: line, which the regex does not take"
+    assert report["trl_logp_metric"]["verdict"] in ("not_found", "match", "not_matched")
+
+
+def test_the_dry_run_of_todays_smoke_scores_the_example_as_before():
+    report = train.dry_run(rc.load_config(SMOKE), out=io.StringIO())
+    check = report["reward_check"]
+    assert not {"p_copy", "copy_j", "in_language", "example_id"} & set(check)
+    assert report["reward"]["copy_penalty"] is None and report["reward"]["in_language"] is None
+    assert report["backend_pin"] is None and report["prompts"]["example_counts"] == {"example": 40}
+
+
+def test_the_v2_dry_run_runs_with_torch_trl_and_vllm_blocked():
+    block = "import sys\n" + "".join(f"sys.modules[{m!r}] = None\n" for m in HEAVY)
+    code = (block + CHILD_FAKES + "from lofi_rl.rl import train\n"
+            f"rc = train.main(['--config', {str(V2_GRAMMAR)!r}, '--dry-run'])\n"
+            f"assert not [m for m in {HEAVY!r} if sys.modules.get(m) is not None]\nraise SystemExit(rc)\n")
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60, env=env, cwd=ROOT)
+    assert p.returncode == 0, p.stderr[-3000:]
+    out = json.loads(p.stdout)
+    assert out["prompts"]["version"] == "v2" and out["trl_logp_metric"]["verdict"] == "not_found"

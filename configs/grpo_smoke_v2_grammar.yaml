@@ -1,0 +1,78 @@
+# GRPO smoke with D-020's settings for run 1 (docs/DECISIONS.md D-020, Outcome; docs/GRPO.md): configs/grpo_smoke.yaml
+# with three keys added and every other setting the smoke's.
+# - `prompt: v2`: every row's messages come from lofi_rl.prompt_v2 (each brief shown the example of its energy and the
+#   next mood); each row records the example its prompt shows (example_id).
+# - `structured_outputs: loopscript_regex`: src/lofi_rl/rl/config.py builds the LoopScript regex from this config's
+#   palette when it loads and puts it in TRL's GRPOConfig field vllm_structured_outputs_regex in every profile (never
+#   written here; its sha256 is in the dry run and in run.json). The trainer pins xgrammar on the vLLM engine TRL
+#   builds and reads the backend back, and the reward counts the completions in the regex's language.
+# - `copy_penalty: {pool: []}`: taste_pipeline §5's copy penalty against all 9 examples prompt v2 can show; the seed
+#   pool is added to `pool` once it exists.
+# Run it with: make submit JOB=jobs/grpo_smoke.sbatch ARGS='configs/grpo_smoke_v2_grammar.yaml'
+# The smoke report (summary/smoke.json) carries the in-language counts, the backend record, the copy readout and
+# D-020's IS readout. tests/test_rl_train.py keeps every other key equal to configs/grpo_smoke.yaml.
+run: grpo-smoke
+model:                                   # D-006; the pin jobs/fetch.sbatch cached (lofi_rl.smoke.QWEN)
+  repo: Qwen/Qwen3-4B-Instruct-2507
+  revision: cdbee75f17c01a7cc42f958dc650907174af0554
+palette: palettes/dev_gu.yaml            # until palettes/lofi_rain_v1.yaml is frozen (D-017)
+prompt: v2                               # D-020: prompt v2 with the grammar won (pass_not_copy 446/500 against 355/500)
+structured_outputs: loopscript_regex     # the regex: lofi_rl.grammar.loopscript_regex(palette)
+copy_penalty:                            # taste_pipeline §5: 0 at J 0.6, linear to 0.3 at J >= 0.8 (character 5-grams)
+  pool: []                               # the seed pool's .ls files or directories, once it exists
+briefs:                                  # brief.sample_briefs(seed, count, start): one dataset row per brief
+  seed: 596                              # training stream; held-out and dev briefs must use other seeds
+  count: 40                              # 10 steps x 4 prompts: no brief repeats within the smoke
+  start: 0
+prompts_per_step: 4                      # x num_generations 8 = 32 completions per optimizer step
+lora: {r: 16, alpha: 32, dropout: 0.0, target_modules: all-linear}
+
+trainer:
+  learning_rate: 1.0e-5                  # constant after 3 warmup steps (taste.md C4); 1e-5 would read as text
+  lr_scheduler_type: constant_with_warmup
+  warmup_steps: 3
+  max_steps: 10
+  num_generations: 8
+  num_iterations: 1
+  max_completion_length: 512
+  mask_truncated_completions: true
+  beta: 0.04                             # KL to the adapter-off base (no-collapse is pre-registered)
+  loss_type: dapo
+  scale_rewards: batch                   # group-std scaling amplifies RM noise in near-identical groups
+  temperature: 1.0                       # T 1, top_p 1, top_k 0: no IS bias (taste.md C2)
+  top_p: 1.0
+  top_k: 0
+  use_vllm: true
+  vllm_mode: colocate
+  max_prompt_length: 3072                # optional: TRL 0.2x defaulted to 512 and cut longer prompts on the left
+  vllm_max_model_length: 4096            # optional: otherwise vLLM may size its KV cache for the 262k context
+  save_strategy: steps
+  save_steps: 5
+  save_only_model: false                 # keep optimizer, scheduler and RNG state: the relaunch resumes from them
+  logging_steps: 1
+  bf16: true
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs: {use_reentrant: false}
+  remove_unused_columns: false           # the reward reads the brief, brief_id and example_id columns
+  log_completions: false                 # the reward's rewards.jsonl already has every completion
+  report_to: none                        # no telemetry or credentials from compute nodes
+  seed: 596
+
+profiles:                                # chosen by the GPU's memory (the largest min_gib it meets), or --gpu-profile
+  a100-80gb:
+    min_gib: 70
+    per_device_train_batch_size: 8
+    gradient_accumulation_steps: 4
+    vllm_gpu_memory_utilization: 0.25
+    vllm_enable_sleep_mode: false
+  48gb:                                  # L40S or A40 (jobs/grpo_smoke.sbatch, OVR)
+    min_gib: 40
+    per_device_train_batch_size: 4
+    gradient_accumulation_steps: 8
+    vllm_gpu_memory_utilization: 0.30
+    vllm_enable_sleep_mode: true
+
+optional_fields: [max_prompt_length, vllm_max_model_length, vllm_enable_sleep_mode, log_completions]
+
+smoke:
+  resume_from_step: 5

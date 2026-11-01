@@ -8,11 +8,21 @@ A training run (policy env, one GPU) builds TRL 1.17.1's GRPOTrainer with:
 - PEFT LoRA (lora: r 16, alpha 32, all-linear); with PEFT the KL reference is the adapter-off base;
 - the trainer settings of the config, merged with the GPU profile its memory picks, and fitted to the installed
   GRPOConfig's fields before anything heavy loads (config.fit_fields);
-- one dataset row per brief: brief.sample_briefs(seed, count, start) -> prompt.build_messages(brief, palette),
-  with the brief (JSON) and a brief_id ("<seed>:<index>") as the columns the reward reads;
+- one dataset row per brief: brief.sample_briefs(seed, count, start) -> build_messages(brief, palette) of the
+  config's prompt version (`prompt:` v1, the default, lofi_rl.prompt; v2 lofi_rl.prompt_v2, whose messages differ
+  per energy x mood cell), with the brief (JSON) and a brief_id ("<seed>:<index>") as the columns the reward reads;
+  a v2 row also carries example_id, the example its prompt shows;
 - the interim symbolic reward (lofi_rl.rl.reward.make_reward), which logs every completion to
   <summary>/rewards.jsonl, and a callback that writes one line per optimizer step to <summary>/steps.jsonl
-  (TRL's metrics: reward mean and std, completion lengths, KL; and the reward's sub-reward means);
+  (TRL's metrics: reward mean and std, completion lengths, KL; and the reward's sub-reward means). A config with
+  `copy_penalty` adds P_copy (lofi_rl.rl.copy_penalty) against every example its prompt version can show and the
+  pool; a constrained config (`structured_outputs`) counts the completions in the regex's language;
+- a constrained config also pins the structured-outputs backend of the vLLM engine TRL builds in colocate mode
+  (lofi_rl.rl.trl_probe.BackendPin: xgrammar, as junk.py pins its own) and reads it back from the engine it finds
+  on the trainer; run.json records requested, pin_accepted, backend, source, applied under structured_outputs;
+- run.json's trl_logp_metric: where the installed TRL computes sampling/sampling_logp_difference/mean and whether
+  that is D-020's |log pi_vLLM - log pi_trainer| over completion tokens (lofi_rl.rl.trl_probe), so smoke_check
+  reads TRL's per-step value as the IS readout only when the source was checked to match;
 - checkpoints every save_steps in --run-dir; --resume-from continues from one (its global step restarts the
   curriculum at the right weights even if TRL passes no trainer_state);
 - with a scorer ($LOFI_SCORER_SOCK), the run's scorer pin (scorer_pin_path): the versions and live terms its first
@@ -23,8 +33,10 @@ context, so nothing is silently cut.
 
 --dry-run (laptop or cluster) validates the config, builds the prompts and prints the resolved settings of
 every profile as JSON, and scores tests/fixtures/loops/example.ls through the reward when lofi_rl.verify
-exists: the symbolic reward, with the scorer off whatever $LOFI_SCORER_SOCK says (the report records whether it
-is set; the scorer is never contacted). It never imports torch, TRL, vLLM, transformers, PEFT or datasets
+exists: the symbolic reward, with the copy penalty and the language count as the config sets them and the scorer
+off whatever $LOFI_SCORER_SOCK says (the report records whether it is set; the scorer is never contacted). It also
+records the prompt version, its template sha and every row's example id, and where the installed TRL (if any) defines
+its IS metric, read as text. It never imports torch, TRL, vLLM, transformers, PEFT or datasets
 (tests/test_rl_train.py).
 """
 from __future__ import annotations
@@ -52,9 +64,11 @@ from typing import IO, Any
 
 from lofi_rl.brief import sample_briefs
 from lofi_rl.palette import Palette, load_palette
-from lofi_rl.rl import curriculum
-from lofi_rl.rl.config import (ConfigError, RunConfig, detect_profile, fit_fields, load_config, resolve,
-                               structured_summary)
+from lofi_rl.rl import curriculum, trl_probe
+from lofi_rl.rl.config import (PROMPT_MODULES, ConfigError, RunConfig, detect_profile, fit_fields, load_config,
+                               resolve, structured_summary)
+from lofi_rl.rl.copy_penalty import CopyPenalty
+from lofi_rl.rl.junk import STRUCTURED_BACKEND
 from lofi_rl.rl.reward import SERVER_TERMS, make_reward
 from lofi_rl.scoring.client import ENV_SOCK
 
@@ -69,13 +83,25 @@ _HARD_EXIT = False
 
 
 # ------------------------------------------------------------------------------------------ prompts
-def prompt_module():
-    """lofi_rl.prompt (builder "prompt": PROMPT_VERSION, build_messages, template_sha256)."""
+V1_EXAMPLE = "example"          # the id junk.py gives v1's one example (junk.example_id)
+
+
+def prompt_module(version: str = "v1"):
+    """The template module of a prompt version (config.PROMPT_MODULES: v1 lofi_rl.prompt, v2 lofi_rl.prompt_v2):
+    PROMPT_VERSION, build_messages, template_sha256 (v2 also example_id). A module whose PROMPT_VERSION names another
+    version is refused, so a row is never built from a template the config did not name."""
+    if version not in PROMPT_MODULES:
+        raise ConfigError(f"prompt version {version!r} is not one of {list(PROMPT_MODULES)}")
+    name = PROMPT_MODULES[version]
     try:
-        return importlib.import_module("lofi_rl.prompt")
+        mod = importlib.import_module(name)
     except ImportError as err:
-        raise ConfigError(f"lofi_rl.prompt cannot be imported ({err}): the trainer builds its prompts with "
-                          "prompt.build_messages(brief, palette)") from err
+        raise ConfigError(f"{name} cannot be imported ({err}): the trainer builds the rows of prompt {version} with "
+                          "its build_messages(brief, palette)") from err
+    got = getattr(mod, "PROMPT_VERSION", version)
+    if got != version:
+        raise ConfigError(f"{name}.PROMPT_VERSION is {got!r}, not the config's prompt {version!r}")
+    return mod
 
 
 def _verify_module():
@@ -96,13 +122,49 @@ def _check_messages(msgs: Any, where: str) -> list[dict[str, str]]:
 
 
 def build_rows(cfg: RunConfig, palette: Palette, prompts: Any) -> list[dict[str, Any]]:
-    """One dataset row per brief: the chat prompt, the brief as JSON, and its id '<seed>:<index>'."""
+    """One dataset row per brief: the chat prompt, the brief as JSON, and its id '<seed>:<index>'. A prompt v2 row
+    also has example_id, the example its prompt shows (prompt_v2.example_id); a v1 row has no such column (its one
+    example is "example"), so v1's rows, and the reward's log of them, are what they were before v2."""
+    shown = getattr(prompts, "example_id", None) if cfg.prompt != "v1" else None
+    if cfg.prompt != "v1" and not callable(shown):
+        raise ConfigError(f"{getattr(prompts, '__name__', prompts)} has no example_id(brief): a prompt {cfg.prompt} row "
+                          "records the example its prompt shows")
     rows = []
     for i, b in enumerate(sample_briefs(cfg.brief_seed, cfg.brief_count, cfg.brief_start)):
         bid = f"{cfg.brief_seed}:{cfg.brief_start + i}"
-        rows.append({"prompt": _check_messages(prompts.build_messages(b, palette), f"brief {bid}"),
-                     "brief": json.dumps(dataclasses.asdict(b), sort_keys=True), "brief_id": bid})
+        row = {"prompt": _check_messages(prompts.build_messages(b, palette), f"brief {bid}"),
+               "brief": json.dumps(dataclasses.asdict(b), sort_keys=True), "brief_id": bid}
+        if shown is not None:
+            row["example_id"] = shown(b)
+        rows.append(row)
     return rows
+
+
+def row_example_ids(rows: list[dict[str, Any]]) -> list[str]:
+    """The id of the example each row's prompt shows: its example_id column, else v1's one example."""
+    return [r.get("example_id", V1_EXAMPLE) for r in rows]
+
+
+def prompt_record(cfg: RunConfig, prompts: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """What run.json and the dry run record of the prompt: the version, its module and template sha, and per row the
+    brief id, the example its prompt shows and the sha256 of its messages (prompt.messages_sha256)."""
+    template = getattr(prompts, "template_sha256", None)
+    msg_sha = getattr(prompts, "messages_sha256", None)
+    ids = row_example_ids(rows)
+    return {"version": cfg.prompt, "module": getattr(prompts, "__name__", None),
+            "module_version": getattr(prompts, "PROMPT_VERSION", None),
+            "template_sha256": template() if callable(template) else None, "rows": len(rows),
+            "example_ids": ids, "example_counts": dict(sorted(Counter(ids).items())),
+            "brief_ids": [r["brief_id"] for r in rows],
+            "messages_sha256": [msg_sha(r["prompt"]) for r in rows] if callable(msg_sha) else None}
+
+
+def copy_penalty(cfg: RunConfig, palette: Palette, prompts: Any) -> CopyPenalty | None:
+    """The run's P_copy when the config sets `copy_penalty`: every example the prompt module shows (v1 its
+    example_text, v2 all 9 of its reference_texts) and the pool's .ls files; None otherwise."""
+    if cfg.copy_penalty is None:
+        return None
+    return CopyPenalty.for_prompt(cfg.prompt, palette, cfg.pool_files(), root=ROOT, module=prompts)
 
 
 def scorer_pin_path(run_dir: Path | str, resume_from: Path | str | None = None,
@@ -136,30 +198,35 @@ def checkpoint_step(ckpt: Path | str) -> int:
 
 
 # ------------------------------------------------------------------------------------------ dry run
-def _reward_check(cfg: RunConfig, row: Mapping[str, Any]) -> dict[str, Any] | str:
+def _reward_check(cfg: RunConfig, row: Mapping[str, Any], copy: CopyPenalty | None = None) -> dict[str, Any] | str:
     """Score tests/fixtures/loops/example.ls under the first row's brief, through the real reward path. The
     symbolic path only: scorer=False, so an exported $LOFI_SCORER_SOCK never makes the quick check before any GPU
-    work wait for a scorer (dry_run records whether it is set)."""
+    work wait for a scorer (dry_run records whether it is set). The copy penalty and the language count are the
+    run's: example.ls is v1's example with a `sax:` line, so with P_copy on it is a copy (J 1.0 with "example")."""
     verify = _verify_module()
     if verify is None:
         return "skipped: lofi_rl.verify is not importable here (another builder's module)"
     if not EXAMPLE.is_file():
         return f"skipped: {EXAMPLE} is missing"
+    extra = {"example_id": [row["example_id"]]} if "example_id" in row else {}
     with tempfile.TemporaryDirectory() as d:
-        reward = make_reward(cfg.palette_path(), Path(d) / "rewards.jsonl", verify=verify, strict=True, scorer=False)
+        reward = make_reward(cfg.palette_path(), Path(d) / "rewards.jsonl", verify=verify, strict=True, scorer=False,
+                             copy=copy, language=cfg.structured_outputs)
         out = reward(prompts=[row["prompt"]], completions=[[{"role": "assistant", "content": EXAMPLE.read_text()}]],
-                     brief=[row["brief"]], brief_id=[row["brief_id"]])
+                     brief=[row["brief"]], brief_id=[row["brief_id"]], **extra)
         rec = json.loads((Path(d) / "rewards.jsonl").read_text().splitlines()[0])
-    keep = ("step", "gate", "G", "w", "r", "p_sax", "penalties", "p_group", "p_fix", "repairs", "positive", "penalty")
+    keep = ("step", "gate", "G", "w", "r", "p_sax", "penalties", "p_group", "p_fix", "repairs", "positive", "penalty",
+            "p_copy", "copy_j", "copy_nearest", "example_id", "finish", "in_language")
     return {"text": str(EXAMPLE.relative_to(ROOT)), "brief_id": row["brief_id"], "reward": out[0],
-            **{k: rec[k] for k in keep}}
+            **{k: rec[k] for k in keep if k in rec}}
 
 
 def dry_run(cfg: RunConfig, out: IO[str] | None = None, prompts: Any = None) -> dict[str, Any]:
     """Validate, build the prompts, print every profile's resolved settings as JSON (module docstring)."""
     palette = load_palette(cfg.palette_path(), verify=False)
-    prompts = prompts if prompts is not None else prompt_module()
+    prompts = prompts if prompts is not None else prompt_module(cfg.prompt)
     rows = build_rows(cfg, palette, prompts)
+    copy = copy_penalty(cfg, palette, prompts)
     profiles = {}
     for name in cfg.profiles:
         kw = resolve(cfg, name)
@@ -167,7 +234,7 @@ def dry_run(cfg: RunConfig, out: IO[str] | None = None, prompts: Any = None) -> 
                           "completions_per_step": kw["per_device_train_batch_size"] * kw["gradient_accumulation_steps"]}
     chars = [sum(len(m["content"]) for m in r["prompt"]) for r in rows]
     mix = Counter(f"{json.loads(r['brief'])['energy']}/{json.loads(r['brief'])['mood']}" for r in rows)
-    template = getattr(prompts, "template_sha256", None)
+    record = prompt_record(cfg, prompts, rows)
     report = {
         "dry_run": True,
         "config": {"path": cfg.path, "sha256": cfg.sha256, "run": cfg.run},
@@ -177,8 +244,8 @@ def dry_run(cfg: RunConfig, out: IO[str] | None = None, prompts: Any = None) -> 
         "palette": {"path": cfg.palette, "id": palette.id, "sha256": palette.sha256},
         "briefs": {"seed": cfg.brief_seed, "count": cfg.brief_count, "start": cfg.brief_start},
         "prompts": {"rows": len(rows), "distinct": len({json.dumps(r["prompt"], sort_keys=True) for r in rows}),
-                    "version": getattr(prompts, "PROMPT_VERSION", None),
-                    "template_sha256": template() if callable(template) else None,
+                    **{k: record[k] for k in ("version", "module", "module_version", "template_sha256",
+                                              "example_counts", "example_ids", "messages_sha256")},
                     "energy_x_mood": dict(sorted(mix.items())), "chars": {"min": min(chars), "max": max(chars)},
                     "preview": rows[0]["prompt"]},
         "profiles": profiles,
@@ -188,8 +255,14 @@ def dry_run(cfg: RunConfig, out: IO[str] | None = None, prompts: Any = None) -> 
         "resume_from_step": cfg.resume_step,
         "reward": {"w0": dict(curriculum.W0), "w1": dict(curriculum.W1), "ramp_steps": curriculum.RAMP_STEPS,
                    "zero_in_smoke": list(SERVER_TERMS),
-                   "scorer": {"env": ENV_SOCK, "sock": os.environ.get(ENV_SOCK) or None, "contacted": False}},
-        "reward_check": _reward_check(cfg, rows[0]),
+                   "scorer": {"env": ENV_SOCK, "sock": os.environ.get(ENV_SOCK) or None, "contacted": False},
+                   "copy_penalty": None if copy is None else copy.summary(),
+                   "in_language": None if cfg.structured_outputs is None
+                   else {"regex_sha256": cfg.structured_outputs["sha256"], "by": "finish reason from the token ids"}},
+        "backend_pin": None if cfg.structured_outputs is None
+        else {"requested": STRUCTURED_BACKEND, "how": "lofi_rl.rl.trl_probe.BackendPin on vllm.LLM, at run time"},
+        "trl_logp_metric": trl_probe.logp_metric_source(),
+        "reward_check": _reward_check(cfg, rows[0], copy),
     }
     print(json.dumps(report, indent=1, ensure_ascii=False, default=str), file=out or sys.stdout)
     return report
@@ -334,9 +407,12 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
         "model": {"repo": cfg.model_repo, "revision": cfg.model_revision}, "run_dir": str(run_dir),
         "summary_dir": str(summary_dir), "resume_from": str(resume_from) if resume_from else None,
         "job": job, "node": platform.node(), "stamp": stamp.read_text().strip() if stamp.is_file() else None,
-        "versions": _versions(), "lora": dict(cfg.lora), "structured_outputs": structured_summary(cfg)}
+        "versions": _versions(), "lora": dict(cfg.lora), "structured_outputs": structured_summary(cfg),
+        "trl_logp_metric": trl_probe.logp_metric_source(), "vllm_logprobs": trl_probe.vllm_logprobs_evidence()}
     _write_json(summary_dir / "run.json", man)
     steps: StepLog | None = None
+    pin: trl_probe.BackendPin | None = None
+    trainer = None
     try:
         if not torch.cuda.is_available():
             raise RuntimeError("torch sees no GPU")
@@ -353,36 +429,40 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
 
         snap = resolve_pinned(cfg.model_repo, cfg.model_revision, SNAPSHOT_FILES)
         palette = load_palette(cfg.palette_path(), verify=False)
-        prompts = prompt_module()
+        prompts = prompt_module(cfg.prompt)
         rows = build_rows(cfg, palette, prompts)
+        copy = copy_penalty(cfg, palette, prompts)
         tok = AutoTokenizer.from_pretrained(snap)
         tok.padding_side = tok.truncation_side = "left"     # as TRL loads it; no prompt is cut (checked next)
         lengths = [_prompt_tokens(tok, r["prompt"]) for r in rows]
         _check_lengths(lengths, kw)
         eos = _eos_ids(tok, GenerationConfig.from_pretrained(snap))
-        template = getattr(prompts, "template_sha256", None)
         man.update(snapshot=snap, eos_token_ids=sorted(eos),
                    palette={"path": cfg.palette, "id": palette.id, "sha256": palette.sha256},
-                   prompt={"version": getattr(prompts, "PROMPT_VERSION", None),
-                           "template_sha256": template() if callable(template) else None, "rows": len(rows),
+                   prompt={**prompt_record(cfg, prompts, rows),
                            "tokens": {"min": min(lengths), "mean": round(sum(lengths) / len(lengths), 1),
-                                      "max": max(lengths)}})
+                                      "max": max(lengths)}},
+                   copy_penalty=None if copy is None else copy.summary())
         _write_json(summary_dir / "run.json", man)
 
         args = GRPOConfig(output_dir=str(run_dir), **named, **kw)
         model = AutoModelForCausalLM.from_pretrained(snap, dtype=torch.bfloat16)
         model.config.use_cache = False                      # gradient checkpointing; vLLM generates
-        pin = scorer_pin_path(run_dir, resume_from, scorer_pin)
-        man["scorer_pin"] = str(pin)
+        spin = scorer_pin_path(run_dir, resume_from, scorer_pin)
+        man["scorer_pin"] = str(spin)
         reward = make_reward(cfg.palette_path(), summary_dir / "rewards.jsonl",
                              max_completion_length=kw["max_completion_length"], eos_token_ids=eos,
-                             start_step=start_step, scorer_pin=pin)
+                             start_step=start_step, scorer_pin=spin, copy=copy, language=cfg.structured_outputs)
         steps = StepLog(summary_dir / "steps.jsonl", reward_stats=reward.stats)
         lora = LoraConfig(r=cfg.lora["r"], lora_alpha=cfg.lora["alpha"], lora_dropout=cfg.lora["dropout"],
                           target_modules=cfg.lora["target_modules"], bias="none", task_type="CAUSAL_LM")
+        if cfg.structured_outputs is not None:              # the engine TRL builds asks for xgrammar, as junk's does
+            pin = trl_probe.BackendPin.for_vllm(STRUCTURED_BACKEND)
         trainer = GRPOTrainer(model=model, reward_funcs=[reward], args=args,
                               train_dataset=datasets.Dataset.from_list(rows), processing_class=tok,
                               peft_config=lora, callbacks=[_callback(TrainerCallback, steps)])
+        if pin is not None:
+            man["structured_outputs"]["backend"] = trl_probe.engine_record(trainer, pin)
         try:
             trainable, total = trainer.model.get_nb_trainable_parameters()
             man["params"] = {"trainable": int(trainable), "total": int(total)}
@@ -397,6 +477,14 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
         man.update(status="failed", error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-8000:])
         raise
     finally:
+        if pin is not None:
+            backend = (man.get("structured_outputs") or {}).get("backend")
+            if trainer is not None and (backend is None or backend.get("engine") is None):
+                man["structured_outputs"]["backend"] = {**trl_probe.engine_record(trainer, pin),
+                                                        "read": "after training (no engine on the trainer at init)"}
+            elif backend is not None:               # the pin's own record goes on counting LLM() calls
+                backend.update(calls=pin.record.get("calls"), pin_accepted=pin.record.get("pin_accepted"))
+            pin.restore()
         if steps is not None and steps.t_begin is not None:
             man["startup_s"] = round(steps.t_begin - T_PROCESS, 1)
         man["wall_s"] = round(time.time() - T_PROCESS, 1)

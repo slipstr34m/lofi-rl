@@ -14,37 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from helpers_rl import TRL_LIKE_SOURCE as TRL_LIKE
 from lofi_rl.rl import trl_probe as tp
-
-TRL_LIKE = '''
-import torch
-
-
-class GRPOTrainer:
-    def _generate_and_score_completions(self, inputs):
-        device = self.accelerator.device
-        mode = "train" if self.model.training else "eval"
-        out = self._generate(prompts)
-        prompt_ids_list, completion_ids_list, sampling_per_token_logps_list = out
-        completion_mask = pad([torch.ones(len(ids)) for ids in completion_ids_list], padding_value=0)
-        sampling_per_token_logps = pad([torch.tensor(lp) for lp in sampling_per_token_logps_list], padding_value=0.0)
-        if self.mask_truncated_completions:
-            is_truncated = torch.tensor([ids[-1] not in eos_and_pad for ids in completion_ids_list])
-            completion_mask = completion_mask * (~is_truncated).unsqueeze(1).int()
-        with torch.no_grad():
-            if self.use_vllm and self.vllm_importance_sampling_correction:
-                old_per_token_logps, _ = self._get_per_token_logps_and_entropies(self.model, ids, attention_mask)
-            else:
-                old_per_token_logps = None
-        if self.use_vllm and self.vllm_importance_sampling_correction:
-            delta = torch.abs(old_per_token_logps - sampling_per_token_logps)
-            mask = completion_mask.bool() if not self.tools else (completion_mask * tool_mask).bool()
-            delta = delta[mask]
-            mean_delta = torch.mean(delta) if delta.numel() > 0 else torch.tensor(0.0, device=device)
-            self._metrics[mode]["sampling/sampling_logp_difference/mean"].append(
-                self.accelerator.gather(mean_delta).mean().item()
-            )
-'''
 
 
 def _variant(old: str, new: str) -> str:
