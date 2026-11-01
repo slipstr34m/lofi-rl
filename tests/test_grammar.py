@@ -3,12 +3,17 @@
 - Acceptance: `re.fullmatch` takes the canonical text, without `sax:`, of every gate-passing fixture, of the 9 shootout
   reference loops, and of the 98 passing completions of the base-model test v0 (runs/junk-13632676, which is pulled,
   never committed: those tests skip where it is not on disk).
+- Line ends: the whitespace layouts v0 wrote (two spaces before each newline, an empty line before A, no newline
+  after B), which the parser reads silently: no repair and the same AST as the canonical text. Each v0 passing
+  completion's canonical text, written back in that completion's own layout, is accepted, and so is every layout
+  any of the 500 wrote, on the example.
 - Rejection: each v0 failure mode (a per-bar edit given two grids, grids of 13, 14 or 20 cells, an unknown chord or
   name, a missing required statement), every v0 G1 completion in the parser's own normalized form, and the
-  canonical-form rules. The G6 cases a regex cannot see pass through to the parser.
-- Soundness: a seeded random walk over the regex's own parse tree (its groups, alternations and repeats) builds 600
-  strings; every one parses with none of the gates the regex guarantees (G1, G3, G4, G5) and no repair but the phrase
-  ones.
+  canonical-form rules, among them the line-end layouts past the bounds. The G6 cases a regex cannot see pass
+  through to the parser.
+- Soundness: a seeded random walk over the regex's own parse tree (its groups, alternations and repeats) builds 1,500
+  strings; every one parses with none of the gates the regex guarantees (G1, G3, G4, G5), no repair but the phrase
+  ones, and exactly as its canonical layout does (the line ends change nothing).
 - Dialect: vLLM 0.32's structured-outputs backends (xgrammar by default) take no lookaround, backreference, lazy
   quantifier or named group. The walk's reader parses only a small common dialect and refuses everything else.
 """
@@ -39,7 +44,11 @@ PASSING_FIXTURES = ["example.ls", "example_leniency.ls", "leniency_lower_x.ls", 
                     "span1_dotted.ls"]
 V0 = Path("runs") / "junk-13632676" / "summary"
 V0_COUNTS = {"rows": 500, "pass": 98, "G1": 389}         # runs/junk-13632676/summary/junk.json (D-019's outcome)
-WALK_SEED, WALK_N = 596, 600
+# v0's whitespace layouts, measured on all 500 completions.jsonl texts: every line ends "  \n", 37 texts hold one empty
+# line, always right before A, and every text stops right after its last item (no tab, CR, leading or doubled space)
+V0_LAYOUTS = {"line ends '  ', no empty line, end ''": 463, "line ends '  ', an empty line before A, end ''": 37}
+V0_PASSING_LAYOUTS = {"line ends '  ', no empty line, end ''": 97, "line ends '  ', an empty line before A, end ''": 1}
+WALK_SEED, WALK_N = 596, 1500
 PHRASE_REPAIRS = {"misplaced_bar", "pad_phrase", "trunc_phrase"}
 A_LINE = "A: q5 e6 e5 q3 e2 e1 | h3 er e4 e5 e6 | h.5 er e4 | q3 q2 hr"
 B_LINE = "B: q1' e7 e1' q5 q3 | er e3 e4 eb5 h5 | qr e4 e3 q2 q1 | h.6 qr"
@@ -91,6 +100,83 @@ def swap_lines(text: str, p: str, q: str) -> str:
     i, j = (next(k for k, line in enumerate(lines) if line.startswith(x)) for x in (p, q))
     lines[i], lines[j] = lines[j], lines[i]
     return "".join(lines)
+
+
+# ------------------------------------------------------------------------------------------- whitespace layouts
+_KEY = re.compile(r"\s*(@\s*0*([0-9]+)\s*)?([A-Za-z]+)\s*[:=]")
+
+
+def statement_key(line: str) -> str:
+    """The statement a line holds, as the parser keys it (`kick`, `@4 hat`, `A`): lane aliases resolved, case folded,
+    leading zeros dropped. A line with no head keys as its own stripped text."""
+    m = _KEY.match(line)
+    if m is None:
+        return line.strip()
+    word = LANE_ALIASES.get(m.group(3).lower(), m.group(3).lower())
+    word = word.upper() if word in ("a", "b") else word
+    return f"@{m.group(2)} {word}" if m.group(1) else word
+
+
+def layout(text: str) -> dict:
+    """A text's whitespace layout, which the parser drops: the spaces before each statement's newline (by statement,
+    and the commonest of them), the blank lines right before each statement (their own spaces), and what follows the
+    text's last non-space character."""
+    eol: dict[str, str] = {}
+    blank: dict[str, list[str]] = {}
+    pending: list[str] = []
+    lines = text.split("\n")
+    for k, line in enumerate(lines):
+        last = k == len(lines) - 1
+        if not line.strip():
+            if not last:
+                pending.append(line)
+            continue
+        key = statement_key(line)
+        if pending:
+            blank.setdefault(key, []).extend(pending)
+            pending = []
+        if not last:
+            eol.setdefault(key, line[len(line.rstrip()):])
+    common = Counter(eol.values()).most_common(1)[0][0] if eol else ""
+    return {"eol": eol, "eol_common": common, "blank": blank, "end": text[len(text.rstrip()):]}
+
+
+def describe(lay: dict) -> str:
+    ends = ", ".join(repr(e) for e in sorted(set(lay["eol"].values())))
+    blanks = ", ".join(f"{'an empty' if b == [''] else repr(b)} line before {k}" for k, b in sorted(lay["blank"].items()))
+    return f"line ends {ends}, {blanks or 'no empty line'}, end {lay['end']!r}"
+
+
+def relayout(canonical_text: str, lay: dict) -> str:
+    """A canonical text written in a layout: each line's own line end (by statement, else the layout's commonest), its
+    blank lines before it, and the layout's end after the last line."""
+    lines = canonical_text.splitlines()
+    out = []
+    for k, line in enumerate(lines):
+        key = statement_key(line)
+        out.extend(b + "\n" for b in lay["blank"].get(key, ()))
+        out.append(line + (lay["end"] if k == len(lines) - 1 else lay["eol"].get(key, lay["eol_common"]) + "\n"))
+    missing = set(lay["blank"]) - {statement_key(line) for line in lines}
+    assert not missing, f"blank lines before statements the canonical text does not have: {missing}"
+    return "".join(out)
+
+
+def without_layout(text: str) -> str:
+    """The canonical layout of an accepted text: no spaces before a newline, no empty line, one final newline."""
+    lines = [line.rstrip(" ") for line in text.split("\n")]
+    return "".join(line + "\n" for line in lines if line)
+
+
+def silent(text: str, reference: str, pal, mode: str | None = None) -> bool:
+    """The parser reads `text` exactly as `reference`: the same gate and AST, the same repairs (line numbers aside, as
+    a blank line shifts them)."""
+    a, b = (parse(t, vocab=pal.vocab(), mode=mode) for t in (text, reference))
+    same_gate = (a.gate.code, _LINE_NO.sub("", a.gate.detail)) == (b.gate.code, _LINE_NO.sub("", b.gate.detail))
+    reps = [Counter((r.code, r.before, r.after, r.penalized) for r in res.repairs) for res in (a, b)]
+    return same_gate and a.ast == b.ast and reps[0] == reps[1]
+
+
+_LINE_NO = re.compile(r"^line [0-9]+: ")
 
 
 # ------------------------------------------------------------------------------------------- the dialect
@@ -328,9 +414,18 @@ def test_the_gate_passing_fixtures_are_the_six_this_file_names(pal):
     assert passing == PASSING_FIXTURES
 
 
+def v0_layouts(text: str) -> list[str]:
+    """A canonical text in v0's two layouts: two spaces before every newline and none after B, and the same with an
+    empty line before A."""
+    plain = text[:-1].replace("\n", "  \n")
+    return [plain, swap(plain, "  \nA: ", "  \n\nA: ")]
+
+
 @pytest.mark.parametrize("name", PASSING_FIXTURES)
 def test_accepts_the_canonical_text_of_every_gate_passing_fixture(name, pal, full):
-    assert full(canonical((FIX / name).read_text(), pal))
+    text = canonical((FIX / name).read_text(), pal)
+    assert full(text)
+    assert all(full(t) for t in v0_layouts(text)), "and in v0's layouts"
 
 
 def _shootout_moods() -> dict[str, str]:
@@ -343,7 +438,9 @@ def test_there_are_nine_shootout_loops():
 
 @pytest.mark.parametrize("name", sorted(_shootout_moods()))
 def test_accepts_the_canonical_text_of_every_shootout_loop(name, pal, full):
-    assert full(canonical((SHOOTOUT / f"{name}.ls").read_text(), pal, mode=_shootout_moods()[name]))
+    text = canonical((SHOOTOUT / f"{name}.ls").read_text(), pal, mode=_shootout_moods()[name])
+    assert full(text)
+    assert all(full(t) for t in v0_layouts(text)), "and in v0's layouts"
 
 
 def _v0_dir() -> Path:
@@ -382,6 +479,65 @@ def test_accepts_the_canonical_text_of_all_98_passing_v0_completions(v0, pal, fu
         assert res.gate.ok, (i, res.gate)
         texts[i] = canon(replace(res.ast, sax=None))
     assert [i for i, t in texts.items() if not full(t)] == []
+
+
+def test_accepts_every_v0_passing_completion_in_its_own_whitespace_layout(v0, pal, full):
+    """F1: v0's canonical content, written back with the line ends, blank lines and end of the completion it came
+    from, is in the language, and the parser reads it as the canonical text (no repair, the same AST)."""
+    rows, scored = v0
+    layouts = Counter()
+    for i in sorted(i for i, s in scored.items() if s["ok"]):
+        r = rows[i]
+        mode = r["brief"]["mood"]
+        canon_text = canonical(r["text"], pal, mode=mode)
+        lay = layout(r["text"])
+        layouts[describe(lay)] += 1
+        text = relayout(canon_text, lay)
+        assert full(text), (i, describe(lay), text)
+        res = parse(text, vocab=pal.vocab(), mode=mode)
+        assert res.gate.ok and not res.repairs, (i, res.gate, res.repairs)
+        assert res.ast == parse(canon_text, vocab=pal.vocab(), mode=mode).ast, i
+    assert layouts == V0_PASSING_LAYOUTS
+
+
+def test_accepts_every_whitespace_layout_any_v0_completion_wrote_on_the_example(v0, pal, base, full):
+    """All 500 completions, the 389 G1 ones included: each one's layout, applied to the in-prompt example."""
+    rows, _ = v0
+    layouts: dict[str, dict] = {}
+    counts = Counter()
+    for r in rows.values():
+        lay = layout(r["text"])
+        assert "\t" not in r["text"] and "\r" not in r["text"], r["i"]
+        counts[describe(lay)] += 1
+        layouts.setdefault(describe(lay), lay)
+    assert counts == V0_LAYOUTS
+    for name, lay in layouts.items():
+        text = relayout(base, lay)
+        assert full(text), name
+        assert silent(text, base, pal), name
+
+
+LAYOUTS = {                     # accepted line-end layouts: each one parses as the canonical text does
+    "one trailing space": lambda b: swap(b, "drums: jazz\n", "drums: jazz \n"),
+    "no final newline": lambda b: b[:-1],
+    "two spaces before every newline": lambda b: b.replace("\n", "  \n"),
+    "v0: two spaces before every newline, none after B": lambda b: b[:-1].replace("\n", "  \n"),
+    "v0: the same, with an empty line before A": lambda b: swap(b[:-1].replace("\n", "  \n"), "  \nA: ", "  \n\nA: "),
+    "an empty line before A": lambda b: swap(b, "\nA: ", "\n\nA: "),
+    "two spaces before B's newline": lambda b: b[:-1] + "  \n",
+    "two spaces after a one-grid lane": lambda b: swap(b, "kick: x......x..x..... x......x.x....x.\n",
+                                                        "kick: x......x..x.....  \n"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(LAYOUTS))
+def test_accepts_the_line_end_layouts_the_parser_reads_silently(name, base, full, pal):
+    text = LAYOUTS[name](base)
+    assert text != base and full(text)
+    res = parse(text, vocab=pal.vocab())
+    assert res.gate.ok and not res.repairs
+    assert res.ast == parse(without_layout(text), vocab=pal.vocab()).ast
+    assert canon(res.ast) == without_layout(text), "read exactly as written, line ends aside"
 
 
 def normalized(text: str) -> str:
@@ -483,10 +639,16 @@ NOT_CANONICAL = {
     "three grids": lambda b: swap(b, "x-----.x-x------\n", "x-----.x-x------ x-------..x-x---\n"),
     "double space": lambda b: swap(b, "keys: rhodes", "keys:  rhodes"),
     "tab": lambda b: swap(b, "keys: rhodes", "keys:\trhodes"),
-    "trailing space": lambda b: swap(b, "drums: jazz\n", "drums: jazz \n"),
+    "three trailing spaces": lambda b: swap(b, "drums: jazz\n", "drums: jazz   \n"),
+    "a trailing tab": lambda b: swap(b, "drums: jazz\n", "drums: jazz\t\n"),
+    "spaces after B with no newline": lambda b: b[:-1] + "  ",
     "comment": lambda b: swap(b, "drums: jazz\n", "drums: jazz # dusty\n"),
     "blank line": lambda b: swap(b, "drums: jazz\n", "drums: jazz\n\n"),
-    "no final newline": lambda b: b[:-1],
+    "an empty line before B": lambda b: swap(b, "\nB: ", "\n\nB: "),
+    "two empty lines before A": lambda b: swap(b, "\nA: ", "\n\n\nA: "),
+    "a line of spaces before A": lambda b: swap(b, "\nA: ", "\n  \nA: "),
+    "an empty line first": lambda b: "\n" + b,
+    "a leading space": lambda b: swap(b, "\nkick:", "\n kick:"),
     "two final newlines": lambda b: b + "\n",
     "CRLF": lambda b: b.replace("\n", "\r\n"),
     "code fence": lambda b: "```\n" + b + "```\n",
@@ -605,16 +767,21 @@ def test_a_name_that_cannot_be_one_token_is_refused():
 # ------------------------------------------------------------------------------------------- soundness
 def test_every_string_of_a_random_walk_over_the_regex_parses_with_no_guaranteed_gate(pal, rx, full):
     samples = walk_sample(rx)
-    assert len(samples) == WALK_N >= 500 and len(set(samples)) == WALK_N
-    codes = Counter()
+    assert len(samples) == WALK_N >= 1500 and len(set(samples)) == WALK_N
+    codes, shapes = Counter(), Counter()
     for k, s in enumerate(samples):
         assert full(s), (k, s)
         res = parse(s, vocab=pal.vocab())
         assert res.gate.code not in grammar.GUARANTEED, (k, res.gate, s)
         assert res.gate.code in (None, "G6"), (k, res.gate, s)
         assert {r.code for r in res.repairs} <= PHRASE_REPAIRS, (k, res.repairs)
+        plain = without_layout(s)
+        assert silent(s, plain, pal), (k, "the line ends change the reading", s)
         codes[res.gate.code] += 1
+        shapes.update({"trailing spaces": " \n" in s, "an empty line before A": "\n\nA: " in s,
+                       "no newline after B": not s.endswith("\n"), "canonical layout": s == plain})
     assert codes[None] > 0 and codes["G6"] > 0, codes
+    assert all(shapes[k] > 0 for k in ("trailing spaces", "an empty line before A", "no newline after B")), shapes
 
 
 def test_the_gate_table_covers_every_gate():

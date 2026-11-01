@@ -4,9 +4,14 @@
     regex = loopscript_regex(palette)   # vLLM: SamplingParams(structured_outputs=StructuredOutputsParams(regex=regex))
     regex_sha256(palette)               # its identity: junk-rate's generate.json and junk.json, the GRPO run.json
 
-The regex matches canonical LoopScript as `dsl.canon` prints it (docs/DSL.md §8), without the optional `sax:` line:
-- the statements in canonical order, one per line, single spaces, a final newline: vamp, keys, comp, bass, drums,
+The regex matches canonical LoopScript as `dsl.canon` prints it (docs/DSL.md §8), without the optional `sax:` line,
+in the line-end layouts the base model writes and the parser reads silently (no repair, the same AST):
+- the statements in canonical order, one per line, single spaces between tokens: vamp, keys, comp, bass, drums,
   kick, snare or rim, then hat, ohat and shaker if present, the per-bar edits, A and B;
+- line ends: up to two spaces before each newline, one empty line allowed right before A, and B's newline optional,
+  so EOS can come right after B's last item. v0 ended 8,062 of its 8,099 lines with two spaces (Qwen3 token 2303 is
+  "  \\n"), its 37 other newlines are an empty line before A, and all 500 completions stop right after B's last item
+  (runs/junk-13632676; docs/GRAMMAR.md §3.3). Canonical text (bare newlines, a final one) is still in the language;
 - every grid exactly 16 cells from its lane's own alphabet (drums `X x g .`, comp and bass also `-`);
 - base lanes with 1 or 2 grids, `bass: lock`, and per-bar edits with exactly one grid, in canonical edit order (by
   bar, then comp, bass, kick, snare, rim, hat, ohat, shaker), each (bar, lane) at most once;
@@ -50,13 +55,18 @@ MAX_BAR_MARKS = PHRASE_STEPS // STEPS - 1           # 3: the bar lines inside a 
 MAX_RUN_ITEMS = PHRASE_STEPS            # 64: a 64-step phrase holds at most 64 items, each at least 1 step
 OPTIONAL_LANES = tuple(lane for lane in LANES if lane != "kick" and lane not in BACKBEAT)   # hat ohat shaker
 NEWLINE = "\\n"
+MAX_TRAILING_SPACES = 2                 # v0's line end is "  \n" (8,062 of 8,099 lines); the parser drops them silently
+EOL = f" {{0,{MAX_TRAILING_SPACES}}}{NEWLINE}"      # a statement's line end: up to two spaces, then the newline
+BLANK_BEFORE_A = f"({NEWLINE})?"        # one empty line, before A only: where v0 wrote all 37 of its blank lines
+LAST_EOL = f"({EOL})?"                  # B's line end is optional: v0 stops right after B's last item (all 500)
 _META = frozenset("\\.^$*+?()[]{}|")
 if LANES[:3] != ("kick",) + BACKBEAT:   # the backbeat alternation sits where canonical text prints snare or rim
     raise RuntimeError(f"lofi_rl.grammar expects the lanes kick, snare, rim first, not {LANES}")
 
 GUARANTEED: Mapping[str, str] = MappingProxyType({
-    "G1": "every token comes from a closed list or a cell or item alphabet, one statement per line; the random walk "
-          "in tests/test_grammar.py parses 600 accepted strings with no G1",
+    "G1": "every token comes from a closed list or a cell or item alphabet, one statement per line, with line ends "
+          "the parser drops silently; the random walk in tests/test_grammar.py parses 1,500 accepted strings with no "
+          "G1",
     "G3": "vamp, keys, comp, bass, drums, kick, snare or rim, A and B are not optional in the regex",
     "G4": "numerals, qualities, keys names, voicings and kits are the palette's resolved lists",
     "G5": "no free word: tempo, key, effect and bed words, note names and absolute chords cannot be written",
@@ -73,24 +83,24 @@ NOT_GUARANTEED: Mapping[str, str] = MappingProxyType({
 
 
 def loopscript_regex(palette: Any) -> str:
-    """The regex for a palette (or a dsl Vocab): canonical LoopScript without `sax:`. Deterministic: same lists,
-    same text, same sha."""
+    """The regex for a palette (or a dsl Vocab): canonical LoopScript without `sax:`, with the line ends EOL,
+    BLANK_BEFORE_A and LAST_EOL allow. Deterministic: same lists, same text, same sha."""
     c = components(palette)
     dlane = f"{c['dgrid']}( {c['dgrid']})?"
     slane = f"{c['sgrid']}( {c['sgrid']})?"
     lines = [
-        f"vamp: {c['chord']} {c['chord']} span {c['span']}{NEWLINE}",
-        f"keys: {c['keys']} {c['voicing']}{NEWLINE}",
-        f"comp: {slane}{NEWLINE}",
-        f"bass: (lock|{slane}){NEWLINE}",
-        f"drums: {c['kit']}{NEWLINE}",
-        f"kick: {dlane}{NEWLINE}",
-        f"{_alt(BACKBEAT)}: {dlane}{NEWLINE}",
-        *(f"({lane}: {dlane}{NEWLINE})?" for lane in OPTIONAL_LANES),
-        *(f"(@{bar} {target}: {c['dgrid'] if target in LANES else c['sgrid']}{NEWLINE})?"
+        f"vamp: {c['chord']} {c['chord']} span {c['span']}{EOL}",
+        f"keys: {c['keys']} {c['voicing']}{EOL}",
+        f"comp: {slane}{EOL}",
+        f"bass: (lock|{slane}){EOL}",
+        f"drums: {c['kit']}{EOL}",
+        f"kick: {dlane}{EOL}",
+        f"{_alt(BACKBEAT)}: {dlane}{EOL}",
+        *(f"({lane}: {dlane}{EOL})?" for lane in OPTIONAL_LANES),
+        *(f"(@{bar} {target}: {c['dgrid'] if target in LANES else c['sgrid']}{EOL})?"
           for bar in range(1, BARS + 1) for target in EDIT_TARGETS),
-        f"A: {c['phrase']}{NEWLINE}",
-        f"B: {c['phrase']}{NEWLINE}",
+        f"{BLANK_BEFORE_A}A: {c['phrase']}{EOL}",
+        f"B: {c['phrase']}{LAST_EOL}",
     ]
     return "".join(lines)
 

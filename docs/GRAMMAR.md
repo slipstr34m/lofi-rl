@@ -7,7 +7,7 @@ outcome applies it. This file describes the one regex that does it.
 
 - **Code:** `src/lofi_rl/grammar.py`, standard library plus `lofi_rl.dsl`, so it imports in the policy env, the scorer
   env and on the laptop.
-- **Tests:** `tests/test_grammar.py` covers acceptance, rejection, a random walk and the dialect (§6). Also
+- **Tests:** `tests/test_grammar.py` covers acceptance, line ends, rejection, a random walk and the dialect (§6). Also
   `tests/test_junk.py`, `tests/test_junk_job.py` and `tests/test_rl_train.py` for the two places it is used.
 - **Spec:** `docs/DSL.md` §3 (grammar), §7 (gates) and §8 (canonical text).
 - **Sound claims:** none.
@@ -45,35 +45,42 @@ regex_sha256(palette)               # sha256 of the regex text (UTF-8): the iden
 
 | palette | palette sha256 | regex characters | regex sha256 |
 |---|---|---|---|
-| `palettes/dev_gu.yaml` | `b2e4a340…` | 2,931 | `bc3381e8c5dddcd16c9c8fff00976f5555c0b559af355e80c932b6ef63afbded` |
+| `palettes/dev_gu.yaml` | `b2e4a340…` | 3,395 | `1412f11f9ebdc520b50c263eda14be12829951357c17f43496ab2ddf5235e64e` |
 
 - **The source:** `loopscript_regex(load_palette("palettes/dev_gu.yaml", verify=False))` on the laptop, 2026-10-31.
   The constrained dry run (`python -m lofi_rl.rl.train --config configs/grpo_smoke_constrained.yaml --dry-run`)
   reports the same sha256 and length.
+- **Superseded:** the first build, 2,931 characters with sha256 `bc3381e8…`, took only bare newlines and a final
+  one. The line ends of §3.3 replaced it the same day. No run had used it: the constrained base-model test is still
+  to come (CHANGELOG, 2026-10-31).
 - **When it changes:** the regex follows the palette's lists, so `palettes/lofi_rain_v1.yaml` will have its own sha.
   Any change to the lists or to `grammar.py` changes it too.
 
 ## 3. What the regex enforces
 
-It matches canonical LoopScript as `dsl.canon` prints it (DSL.md §8), without the optional `sax:` line (DSL.md §4).
-The skeleton, with the components of §3.1:
+It matches canonical LoopScript as `dsl.canon` prints it (DSL.md §8), without the optional `sax:` line (DSL.md §4),
+in the line-end layouts the base model writes and the parser reads silently (§3.3). The skeleton, with the components
+of §3.1 (`<EOL>` is ` {0,2}\n`, up to two spaces and then the newline):
 
 ```
-vamp: CHORD CHORD span SPAN\n
-keys: KEYS VOICING\n
-comp: SGRID( SGRID)?\n
-bass: (lock|SGRID( SGRID)?)\n
-drums: KIT\n
-kick: DGRID( DGRID)?\n
-(snare|rim): DGRID( DGRID)?\n
-(hat: DGRID( DGRID)?\n)?(ohat: DGRID( DGRID)?\n)?(shaker: DGRID( DGRID)?\n)?
-(@1 comp: SGRID\n)?(@1 bass: SGRID\n)?(@1 kick: DGRID\n)? … (@8 ohat: DGRID\n)?(@8 shaker: DGRID\n)?
-A: PHRASE\n
-B: PHRASE\n
+vamp: CHORD CHORD span SPAN<EOL>
+keys: KEYS VOICING<EOL>
+comp: SGRID( SGRID)?<EOL>
+bass: (lock|SGRID( SGRID)?)<EOL>
+drums: KIT<EOL>
+kick: DGRID( DGRID)?<EOL>
+(snare|rim): DGRID( DGRID)?<EOL>
+(hat: DGRID( DGRID)?<EOL>)?(ohat: DGRID( DGRID)?<EOL>)?(shaker: DGRID( DGRID)?<EOL>)?
+(@1 comp: SGRID<EOL>)?(@1 bass: SGRID<EOL>)?(@1 kick: DGRID<EOL>)? … (@8 shaker: DGRID<EOL>)?
+(\n)?A: PHRASE<EOL>
+B: PHRASE(<EOL>)?
 ```
 
-- **Statements** come in canonical order, one per line, with single spaces and a final newline. The order is vamp,
-  keys, comp, bass, drums, kick, the backbeat lane, hat, ohat, shaker, the edits, then A and B.
+- **Statements** come in canonical order, one per line, with single spaces between tokens. The order is vamp, keys,
+  comp, bass, drums, kick, the backbeat lane, hat, ohat, shaker, the edits, then A and B.
+- **Line ends** (§3.3): up to two spaces before each newline, one empty line allowed right before `A:`, and B's line
+  end optional, so the model can stop right after B's last item. Canonical text, with bare newlines and a final one,
+  is in the language too.
 - **Required statements:** vamp, keys, comp, bass, drums, kick, exactly one of snare or rim, A and B are not optional.
   Canonical text never holds both a snare and a rim base, because the parser drops the second.
 - **Edits.** There are 64 optional slots, one per (bar, lane), in canonical edit order: by bar, then comp, bass, kick,
@@ -103,15 +110,21 @@ B: PHRASE\n
 | ITEM | `(s\|e\|e\.\|q\|q\.\|h\|h\.\|w\|w\.)(r\|(b\|#)?[1-7]('\|''\|,\|,,)?)` |
 | RUN | `ITEM( ITEM){0,63}` |
 | PHRASE | `RUN( \| RUN){0,3}` |
+| EOL | ` {0,2}\n` (`grammar.EOL`), after every statement but B |
+| the empty line | `(\n)?` (`grammar.BLANK_BEFORE_A`), right before `A:` |
+| B's line end | `( {0,2}\n)?` (`grammar.LAST_EOL`) |
 
-`grammar.components(palette)` returns these patterns, and `loopscript_regex` is assembled from them.
+`grammar.components(palette)` returns the first ten patterns, `loopscript_regex` is assembled from them, and the
+three line ends are module constants.
 
 ### 3.2 What the parser takes and the regex does not
 
 Everything below is leniency or a repair in the parser (DSL.md §6). Canonical text never contains it, so the model
 cannot write it either:
 - **Text around the loop:** prose, fences and comments.
-- **Spacing:** tabs and extra spaces, blank lines, CRLF line ends, and `=` for `:`.
+- **Spacing:** tabs; extra spaces between tokens or at a line's start; three or more spaces before a newline, or any
+  after B with no newline; blank lines other than one empty line before `A:` (after B too); CRLF line ends; and `=`
+  for `:`. The line ends the regex does take are in §3.3.
 - **Spelling:** case-folded heads and names, lane and name aliases, quality respellings, lowercase or bare numerals,
   and a missing `span`.
 - **Edit bars:** leading zeros.
@@ -128,12 +141,78 @@ Two narrowings are new:
 The bar-mark and run bounds are exact for canonical text: a 64-step phrase has 3 inner bar lines, and at most 64
 items.
 
+### 3.3 Line ends (review finding F1)
+
+**What v0 writes.** These counts are over all 500 completions in `runs/junk-13632676/summary/completions.jsonl`,
+measured on the laptop on 2026-10-31.
+
+| whitespace | v0 |
+|---|---|
+| two spaces before the newline (Qwen3 token 2303 is `"  \n"`) | 8,062 of the 8,099 newlines, on every kind of statement, in all 500 completions |
+| an empty line | the other 37 newlines, always right before `A:` (25 after an `@N bass` edit, 12 after an `@N comp`); one is in a passing completion |
+| the end of the text | none of the 500 ends with a newline or a space. Each stops right after its last item: 498 on B with `stop`, and two cut by `length` (one on B, one on A) |
+| tabs, CR, other whitespace, leading spaces, two spaces inside a line | none |
+| the head's colon | all 8,562 heads are written `head: ` |
+
+So v0 has two layouts. 463 completions end every line with two spaces and stop right after their last item; the
+other 37 do the same with an empty line before A.
+
+**Why it mattered.** The first build took only `\n` and needed a final newline.
+- At every line end the model's top token, `"  \n"`, was masked.
+- At the ends of A and B, and after a one-grid base lane, the tokens left included `" "` and ones that start
+  another item or a second grid, so some of that token's probability could go to lengthening the phrase or the
+  lane.
+- At the end of B, EOS was refused.
+
+**The fix.** The parser drops trailing spaces, empty lines and a missing final newline without a repair, and the AST
+is the canonical text's (§6). So the regex now takes:
+- up to two spaces before every newline (`EOL`);
+- one empty line right before A (`BLANK_BEFORE_A`);
+- B's line end, or none (`LAST_EOL`), so EOS is allowed right after B's last item.
+
+The bounds are v0's. The regex refuses what v0 never wrote: three spaces or a tab before a newline, spaces after B
+with no newline, an empty line anywhere else or two in a row, a line of spaces, leading or doubled spaces, and CRLF.
+
+**First refusals.** Each of v0's 500 completions, as written, walked character by character through an NFA of each
+regex (built independently of `grammar.py` and of the test suite's reader):
+
+| regex | first refused at whitespace | first refused at content |
+|---|---|---|
+| first build (`bc3381e8`) | 452, all at line 1's two trailing spaces (all 98 passes among them) | 48, all on line 1: 45 a third vamp chord where `span` goes, 3 a word outside the lists |
+| now (`1412f11f`) | **0** | 500 (below) |
+
+Where the 500 are first refused now:
+- **Grid lengths, 352:** comp grids over 16 cells (140), `@N ohat` under 16 (93), `@N hat` under 16 (54), comp under
+  16 (16), `@N rim` under 16 (15), and 34 more on other lanes.
+- **A second grid on an edit, or a third on a base lane, 95:** `@N bass` 47, `@N hat` 41, comp 5, `@N rim` 2.
+- **The vamp, 48:** the same 48 as before.
+- **A rim base after a snare base, 5.**
+
+The 98 passes are now first refused at: a 15-cell `@N ohat` (81), a comp grid over 16 cells (10), a short `@N hat`
+(4), a short snare grid (2) and both backbeat bases (1). The parser repairs each of these (`pad_grid`, `trunc_grid`,
+`snare_and_rim`); under the regex the grids must be written at 16 cells, and only one backbeat base. None of the 500
+raw texts is in the language, as none was in the first build's.
+
+**Tokens allowed.** These come from the Qwen3 BPE: `tokenizer.json` of the cached `mlx-community/Qwen3-4B-4bit`.
+Re-encoding v0's texts with it gives vLLM's own token count for 496 of the 500 (EOS aside), and the 8,062 line ends
+encode as 8,025 tokens 2303 plus the 37 tokens 18611 (`"  
+
+"`) of the empty lines. Each token is walked through the
+regex from that point of the in-prompt example.
+
+| where | first build | now |
+|---|---|---|
+| the end of A (after `hr`) | 17, EOS refused: `\n`, `" "`, and 15 that start another item (`" e"`, `" h"`, `" q"`, `" s"`, `" w"`, `" eb"`, `" er"`, `" hb"`, `" hr"`, `" qb"`, `" qr"`, `" sb"`, `" sr"`, `" wb"`, `" wr"`) | 20, EOS refused: those 17, plus `" \n"` (715), `"  "` (256) and `"  \n"` (2303) |
+| the end of B | the same 17, EOS refused | the same 20, **EOS allowed** |
+| after a one-grid base lane (kick) | 22: `\n`, `" "`, and 20 that start a second grid (`" ."`, `" X"`, `" g"`, `" x"`, … `" ................"`) | 25: those 22, plus 715, 256 and 2303 |
+| after the last edit, before A | 1: `\n` | 8: `\n`, `" "`, 715, 256, 2303, `"\n\n"` (271), `" \n\n"` (4710), `"  \n\n"` (18611) |
+
 ## 4. Gate table
 
 | gate | guaranteed by the regex | what stays with the parser |
 |---|---|---|
-| G1 parse | **yes** | Every token comes from a closed list or an alphabet, one statement per line (§6, the walk) |
-| G2 truncation | no | `max_tokens` can still cut a completion; the longest accepted string is 5,627 characters |
+| G1 parse | **yes** | Every token comes from a closed list or an alphabet, one statement per line, and the line ends are ones the parser drops silently (§6, the walk) |
+| G2 truncation | no | `max_tokens` can still cut a completion; the longest accepted string is 5,780 characters |
 | G3 missing | **yes** | The required statements are not optional |
 | G4 vocabulary | **yes** | Numerals, qualities, keys, voicings and kits are the palette's resolved lists |
 | G5 forbidden | **yes** | No free word: tempo, key, effect and bed words, note names and absolute chords cannot be written |
@@ -144,7 +223,8 @@ items.
 - **The source of the table:** `grammar.GUARANTEED` and `grammar.NOT_GUARANTEED`, which the random walk checks.
 - **Repairs.** On accepted text, the parser can log only `misplaced_bar` (free), `pad_phrase` and `trunc_phrase`
   (0.02 each). No grid, alias, duplicate, snare-and-rim, span or numeral repair is possible.
-- **G2.** 64 edits and four 64-item runs per phrase make 5,627 characters, from the walk's tree in
+- **G2.** 64 edits and four 64-item runs per phrase, with two spaces before every newline and the empty line
+  before A, make 5,780 characters (5,627 without the line ends), from the walk's tree in
   `tests/test_grammar.py::longest`. LoopScript runs about 2.2 characters per token (`prompt.py`), so that is far past
   512 tokens. v0's completions had a p99 of 406.1 tokens (`junk.json`).
 
@@ -156,7 +236,7 @@ The regex uses only constructs they all read:
 - literals, and the escapes `\n`, `\.` and `\|`;
 - one class with a range, `[1-7]`;
 - plain groups `( )` and alternation `|`;
-- the greedy, bounded quantifiers `?`, `{16}`, `{0,3}` and `{0,63}`.
+- the greedy, bounded quantifiers `?`, `{16}`, `{0,2}` (a space before a newline), `{0,3}` and `{0,63}`.
 
 It has no lookaround, backreference, lazy or possessive quantifier, named or non-capturing group, inline flag,
 anchor, wildcard, negated class or class escape (`\d`, `\w`, `\s`). It also has no unbounded `*` or `+`, so a
@@ -172,6 +252,16 @@ completion cannot run on inside it.
   - the 6 gate-passing fixtures (of 12 in `tests/fixtures/loops`);
   - the 9 shootout loops;
   - all 98 passing v0 completions, canonicalized with `dsl.canon`.
+- **Line ends** (§3.3).
+  - **v0's passes in their own layout.** Each of the 98 canonical texts, written back with the line ends, empty
+    lines and end of the completion it came from, is accepted: 97 in the plain v0 layout and 1 with the empty line
+    before A. Each parses with no repair to its canonical text's AST.
+  - **Every layout v0 wrote.** All 500 completions hold 2 layouts (463 and 37). Each, applied to the in-prompt
+    example, is accepted and parses exactly as the example does.
+  - **8 named layouts:** one trailing space, no final newline, two spaces before every newline, v0's two, an empty
+    line before A, two spaces before B's newline, and two spaces after a one-grid lane. Each is accepted, parses with
+    no repair, and prints back (`canon`) as its canonical layout.
+  - **The fixtures and the shootout loops** are accepted in v0's two layouts too (6 of 6 and 9 of 9).
 - **Rejection.**
   - **v0's G1 completions:** all 389 are rejected in the parser's own normalized form (`dsl.repair.normalize`, with
     `sax:` lines dropped). Each still parses as G1 in that form, so the fault survives normalization.
@@ -180,15 +270,20 @@ completion cannot run on inside it.
     - grids of 12, 13, 14, 15, 17, 20, 21 and 32 cells, on base lanes and edits;
     - unknown, aliased or non-canonical chords and names;
     - each of the 9 required statements missing.
-  - **42 more non-canonical forms**, from a `sax:` line to a misplaced `|`.
+  - **48 more non-canonical forms**, from a `sax:` line to a misplaced `|`. Among them are the line ends past the
+    bounds: three spaces or a tab before a newline, spaces after B with no newline, an empty line after drums, before
+    B, after B or first, two empty lines before A, a line of spaces, a leading space, a double space, a tab, CRLF.
 - **Random walk.**
-  - **The sample:** 600 strings, all distinct, from seed 596. Each is a uniform branch at every alternation and a
+  - **The sample:** 1,500 strings, all distinct, from seed 596. Each is a uniform branch at every alternation and a
     seeded count at every repeat, over the tree `Reader` parses from the regex itself.
-  - **G1–G5:** none of the 600.
-  - **G6:** 591. 548 have a phrase more than 16 steps off 64, 38 a phrase with no note in its 64 steps, and 5 two equal
-    vamp chords.
-  - **Passing:** 9 pass every gate, and all 9 compile (`compile_loop`, brief mid / wistful / 82 BPM / D).
-  - **Repairs:** `misplaced_bar` 115, `pad_phrase` 93, `trunc_phrase` 75, and nothing else.
+  - **G1–G5:** none of the 1,500.
+  - **G6:** 1,482. 1,367 have a phrase more than 16 steps off 64, 107 a phrase with no note in its 64 steps, and 8
+    two equal vamp chords.
+  - **Passing:** 18 pass every gate, and all 18 compile (`compile_loop`, brief mid / wistful / 82 BPM / D).
+  - **Repairs:** `misplaced_bar` 264, `pad_phrase` 193, `trunc_phrase` 168, and nothing else.
+  - **The line ends change nothing.** Each string parses exactly as its canonical layout does: the same gate, AST
+    and repairs, line numbers aside. The walk covers the layouts: all 1,500 have spaces before some newline, 761 the
+    empty line before A, and 755 no newline after B.
 
 ## 7. Open
 
@@ -202,3 +297,6 @@ completion cannot run on inside it.
   - off if the mean |log IS ratio| exceeds 0.05 (UNVERIFIED).
 - **Near-copies.** The in-prompt example is in the regex's language, so constrained decoding does nothing about
   copying it. That is D-019's second cause.
+- **Line ends past v0's.** The bounds of §3.3 are what v0 wrote. A model that wants three spaces before a newline,
+  or an empty line elsewhere, is masked there, though `"\n"` and `"  \n"` stay open at every line end. How often
+  that happens is not measured: a constrained run's completions are all in the language, so they cannot show it.
