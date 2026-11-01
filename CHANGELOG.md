@@ -21,6 +21,28 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-10-31 (22:35 PDT): review fixes on the R2r branch: Shresth's word on the cuts as a tally input, and tests for rules no test held
+
+**What was done** (workflow `wf_5d8416c0-2da`, same branch `worktree-wf_5d8416c0-2da-1`; laptop only, nothing synced)
+- **`--day2-cuts`: Shresth's word on Day 2's cuts** (`61539cf`). On slow Day-1 minutes the cut list cuts `vamps-high`, `latin3` and `final`. With the final cut, the S1 rule names one sax.
+  - **Why the 21:20 plan fails:** dropping `--cut` from that line by hand leaves `sax=sax_mtg_alto`, and the job refuses it ("--leaders sax: 1 ids given, day2 takes [2, 3]"). `scripts/submit.sh` passes ARGS through unchecked, so the refusal would come only once job 2 starts on the cluster.
+  - **The fix:** the tally takes `--day2-cuts none|<cut>+<cut>`, with `--day2-cuts-by "<his words, date>"`. Job 2's line then carries his cuts, the S1 rule keeps the final unless he cuts it, and the band check reads his cuts. The report and `rules.cut` keep the list's cuts and minutes as advice.
+  - **Test:** Day-1 votes in decisions 2-3's shape at 29.1 min (r 1.265). The list's line has 3 cuts and one sax, and with `--cut` dropped by hand the job's `--dry-run` exits 2. With his word (none), the line has `sax=sax_mtg_alto+sax_mtg_tenor`, `--add R2r` and no `--cut`, and the `--dry-run` exits 0. At those minutes his choice means 39.5 min for Day 2 and 68.6 for Days 1–2.
+- **Correction to the 21:20 entry** (its "Needs Shresth's word" and "Next" lines, now corrected in place): the remedy is `--day2-cuts none`, not dropping `--cut`.
+- **Tests for rules no test held** (`88098bd`, `c9ec322`, `92bfd32`, `2bc206b`). The review's 13 mutants (11 in `tally.py`, one each in the draw CLI and the generator) were re-run here against their modules' test files (tally; batch, palettes and job). Each passes every older test there and fails at least one new one (scratch runner, each file restored from git after its run). The tests cover:
+  - CD-44 judged over every R2r round, so one G in the leader's two rounds leaves it its best bass;
+  - R2's votes kept out of the after-Day-2 bass rule;
+  - a counted best only on a clip that played: in R2, a best never played adds R2r, and one heard 1 bar before an undo counts; in R2r, a best never played gives the pooled R2r leader;
+  - R2r's kits: the R1 leader first wherever it sits in R1's order, and a third survivor's note and its pooled R2r leader after Day 2;
+  - the draw CLI run as job 2 writes it, with `--add R2r` (exit 2 without it), and the generator applying the draw's adds (R2r's slots indexed, a broken R2r map refused).
+- **Suite:** 2090 passed, 2 skipped (was 2081 passed, 2 skipped). Tally tests 25 → 33, batch tests +1.
+
+**SU spent:** 0 (laptop only).
+
+**Next:** review and merge the branch. Then, from the main checkout, run the tally on the real logs with `--day2-cuts none --day2-cuts-by "<his words, date>"` and check it against the recount. Submit job 2 once D-020's jobs end and the mirror can be synced.
+
+---
+
 ## 2026-10-31 (21:20 PDT): tally heard rule (1 bar over every attempt) and R2r, the Day-2 bass re-listen (CD-54)
 
 **What was done** (workflow `wf_5d8416c0-2da`, branch `worktree-wf_5d8416c0-2da-1` cut from `4b9cd64`; laptop only, nothing synced)
@@ -37,11 +59,11 @@ Newest entry first. Every number cites the file or command output it was read fr
   - Day 2 (`shootout-900202`): exit 0 in 130.3 s, 93/93 renders (R2r 9), 171 bus-clip pairs at the tool's L exactly, instruments moved 0.00 dB. R2r's bass spread 0.0006–0.0069 LU after matching (1.01–2.19 at the median faders); every Day-2 round 0.0002–0.0093 LU. All 4 batches pass `ui.manifest check`, and the leak guard finds nothing.
 - **Suite:** 2081 passed, 2 skipped (main at `4b9cd64`: 2039; +2 heard, +40 R2r and the cut list).
 
-**Needs Shresth's word, if it happens:** on the real Day-1 votes the cut list reads the audit's minutes (30.7, which include the silent attempt), so the proposal will carry a `--cut` that his "no Day-2 cuts" drops; with R2r, Day 2 is about 31 min at the plan's pace, so its first push (groove + sax) is 17.8 min.
+**Needs Shresth's word, if it happens:** on the real Day-1 votes the cut list reads the audit's minutes (30.7, which include the silent attempt), so the proposal will carry a `--cut` (the final among the cuts) that his "no Day-2 cuts" overrides. *Corrected 22:35:* that takes the tally's `--day2-cuts none`, which keeps the sax final; dropping `--cut` by hand leaves one sax id, which the job refuses. With R2r, Day 2 is about 31 min at the plan's pace, so its first push (groove + sax) is 17.8 min.
 
 **SU spent:** 0 (laptop only).
 
-**Next:** review and merge the branch; run the tally on the real logs from the main checkout and check it against the recount; drop the proposal's `--cut` per his word; submit job 2 once D-020's jobs end and the mirror can be synced.
+**Next:** review and merge the branch; run the tally on the real logs from the main checkout and check it against the recount; give it his word on the cuts as `--day2-cuts none` (*corrected 22:35*: not by dropping the proposal's `--cut`); submit job 2 once D-020's jobs end and the mirror can be synced.
 
 ---
 

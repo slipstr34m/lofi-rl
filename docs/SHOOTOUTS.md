@@ -21,7 +21,8 @@ which freezes on Nov 6 and never changes after (docs/DECISIONS.md D-017).
 - **Since Shresth's confirmation of the Day-1 survivors** (2026-10-31, "Yes, use these"): the tally counts a clip as
   heard once 1 bar has played, over every attempt of its round (D-013 as amended; CD-38, §7.9), and Day 2 can add
   R2r, a 3-round bass re-listen, when R2 leaves the bass undecided (CD-54, §4.2): the Day-1 votes had no best in any
-  R2 round. The whole path ran on the laptop with R2r (§7.7 "End to end, R2r").
+  R2 round. The whole path ran on the laptop with R2r (§7.7 "End to end, R2r"). His "no Day-2 cuts" goes to the
+  tally as `--day2-cuts none` (§2.7, §7.9), which keeps the sax final.
 - **Sound claims:** none. Every candidate, variant and level here is a starting point for Shresth's ear. Claude
   records counts and picks, never descriptions of sound (TASTE.md: "Shootout prunes, votes decide").
 - **Blind by construction.** This file gives every round in symbols (`P1a`, `k2`, `v3`, ...). Which option sits
@@ -1288,8 +1289,10 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   for byte on four seeds). R2r is in the repeat group `drums_bass`, so a Day-3 repeat may show one of its rounds.
   Tests: `tests/test_shootout_plan.py` (the stage, `apply_adds`, ten refusals), `tests/test_shootout_draw.py`
   (the lead order, the kits by rank, the other stages' draws unchanged, the refused adds and kit counts),
-  `tests/test_shootout_palettes.py` (R2r's measuring and clip palettes, each round differing only in its bass),
-  `tests/test_shootout_batch.py` (the groove batch opening with R2r, its hidden fields, the leak guard).
+  `tests/test_shootout_palettes.py` (R2r's measuring and clip palettes, each round differing only in its bass;
+  R2r's slots in the stage index, and an R2r map that is not one to one refused), `tests/test_shootout_batch.py`
+  (the groove batch opening with R2r, its hidden fields, the leak guard; the draw CLI run as job 2 writes it, with
+  `--add R2r` and refused without it).
 
 ### 7.9 Tally tool (laptop)
 - **Interface:** `python -m lofi_rl.shootout.tally --votes data/votes --inbox inbox [--batch <name> ...]` reads the
@@ -1361,7 +1364,12 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     votes in decisions 2 and 3's shape (T, T + B and G in R2) give `--add R2r` on `kit_virtuosity+kit_gu_jazz` with
     `bass_gu_acoustic`, which the draw and the job's `--dry-run` take; a pooled tie a surviving kit takes adds R2r,
     the same tie with a best in every surviving kit's round adds nothing; the after-Day-2 rule on a built groove
-    batch, its pooled fallback and a tie; and the estimate against the draw's own rounds on three seeds. **`--prior` (integration, 2026-10-31):** job 1
+    batch, its pooled fallback and a tie; and the estimate against the draw's own rounds on three seeds. The review
+    (2026-10-31) added the cases above that no test held: a G in one of the leader's two R2r rounds still leaves it
+    its best bass; R2's votes stay out after Day 2; an R2 best on a clip that never played is no best (R2r is
+    added), one heard 1 bar only before an undo counts, and an R2r best that never played leaves its kit the pooled
+    R2r leader; with three R1 survivors R2r plays the leader and the next, and the third takes the pooled R2r leader
+    after Day 2; R2r plays the R1 leader first wherever it sits in R1's order. **`--prior` (integration, 2026-10-31):** job 1
     is the job whose pulled summary built the Day-1 batches: `--runs` (default `runs/`, where `make pull` puts
     `runs/shootout-<job>/summary/`) holds a `batches.json` whose `run` is `shootout-<job id>` and which lists each
     Day-1 batch with exactly its manifest's round ids (random per batch, so a dry run's batches of the same names
@@ -1410,7 +1418,12 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     batches of the same names, or a run that is not `shootout-<job id>`), and the Day-2 flags on every matched bus
     (R3a's `sax_lufs`, R3b's `bass_lufs`, a missing `keys_lufs`); dropping either change fails its test. The heard
     rule and R2r (2026-10-31) added 6 (25 in all): two for the bars of every attempt (above), and R2r's three and the
-    drawn plan's minutes; the 4-bar test now runs at an explicit `heard_min=4`.
+    drawn plan's minutes; the 4-bar test now runs at an explicit `heard_min=4`. Its review added 8 (33 in all):
+    Shresth's word on the cuts (`--day2-cuts none` keeps the final, and the job's `--dry-run` takes the line, which
+    it refuses with `--cut` dropped by hand) and the seven R2 and R2r cases above. Each of the review's 11 mutants of
+    those rules (`_judged`; R2 pooled into R2r; the counted best's four checks; R2r's kit order, reversed or as
+    R1's; the third survivor's note, its place in the after-Day-2 kits, its pooled leader) passes every older tally
+    test and fails at least one new one.
   - **Checked on the real Day-1 batches** (laptop, 2026-10-31; the inbox read-only, synthetic votes in a scratch
     folder, options ranked alphabetically so nothing depends on the draw): 3 batches and 19 rounds read, the S1
     anchor found, no round flagged (per-round spread 0.0012–0.0091 LU, read independently from the hidden
