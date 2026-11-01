@@ -1,4 +1,4 @@
-"""The interim GRPO reward of the smoke (docs/design/taste_pipeline.md §5-6; CLAUDE.md §8; docs/GRPO.md §2).
+"""The GRPO reward (docs/design/taste_pipeline.md §5-6; CLAUDE.md §8; docs/GRPO.md §2; docs/SCORER.md §2, §10).
 
     R = G * sum_k w_k(t) * r_k  -  (P_sax + sum(penalties) + P_group + P_fix)
 
@@ -11,11 +11,16 @@ reward(prompts=..., completions=..., completion_ids=..., **columns) -> list[floa
 - **r_k and w_k(t)**: theory and knobs come from verify.score; the weights come from lofi_rl.rl.curriculum at
   the step t that TRL passes (trainer_state.global_step), else at this function's own call counter, which a
   resumed run starts at the checkpoint's step (start_step).
-- **taste, CE and theme are 0 in the smoke.** TODO(taste_pipeline.md §5, "Scorer server"): the scorer server
-  (lofi_rl.scoring.server, POST /score over a node-local Unix socket, in the scorer env) will supply r_taste
-  (the frozen taste RM), r_ce (Audiobox CE, only if it predicts Shresth's votes), r_theme (CLAP on the music
-  stem against the contrast scenes) and the audio part of the gate (render, PQ floor, P_acc). Until it exists
-  these three terms are 0, and only their curriculum weights are logged.
+- **taste, CE and theme are 0 without a scorer** (the smoke): only their curriculum weights are logged.
+- **With a scorer** (make_reward(..., scorer=...) or $LOFI_SCORER_SOCK; lofi_rl.scoring, docs/SCORER.md): the
+  completions that passed the symbolic gate go to the scorer server in one POST /score, which renders them and
+  returns the audio part:
+      G = G_sym x hard x 1[PQ >= tau_PQ] x clip(P_acc / 0.5, 0.25, 1)          (taste_pipeline.md §5, "Gate")
+  and r_ce, r_theme, r_taste. The weights still come from the curriculum, except that when the server reports
+  CE as not validated the reward applies taste_pipeline.md §5's rule, written beside W0 there as
+  "ce→0, knobs→.20 unless CE validated": w_ce = 0 and w_knobs = 0.20 at every step. Any scorer failure (a non-200,
+  a timeout, a malformed answer) raises, whatever `strict` says: the trainer crashes and resumes from its
+  checkpoint rather than train on a silently partial reward (§5).
 - **Penalties**: verify.score's P_sax and per-loop penalties (bars, len) and P_fix (repairs), plus
   verify.group_penalties over each prompt's group. A group is the completions of one dataset row (the trainer's
   `brief_id` column), or of one prompt text when that column is absent. TRL repeats each row num_generations
@@ -24,7 +29,10 @@ reward(prompts=..., completions=..., completion_ids=..., **columns) -> list[floa
   message, so a verifier bug cannot crash a GPU run; strict=True re-raises instead. The smoke counts them
   (lofi_rl.rl.smoke_check) and fails on any.
 
-Every completion is one JSONL line in log_path with every sub-reward, its weights, the step and the text.
+Every completion is one JSONL line in log_path with every sub-reward, its weights, the step and the text; with a
+scorer also G_sym, the server's item (`audio`), the clip id, the CE rule (`w_rule`) and the server's versions.
+Without a scorer the rewards, the log and the per-step stats are byte-for-byte what they were before the scorer
+hook (tests/test_scoring_reward_hook.py against tests/golden/reward_no_scorer.json).
 Standard library and the project's standard-library modules only, so it imports in the policy env and on the
 laptop (tests/test_rl_imports.py).
 """
@@ -48,11 +56,16 @@ from lofi_rl.brief import Brief
 from lofi_rl.palette import Palette, load_palette
 from lofi_rl.rl import curriculum
 from lofi_rl.rl.curriculum import TERMS
+from lofi_rl.scoring import client as scoring_client
+from lofi_rl.scoring import protocol as scoring_protocol
 
 NAME = "lofi_reward"                         # TRL logs it as rewards/lofi_reward/{mean,std}
 VERIFY_TERMS: tuple[str, ...] = ("theory", "knobs")         # symbolic, from lofi_rl.verify.score
-SERVER_TERMS: tuple[str, ...] = ("taste", "ce", "theme")    # 0 until the scorer server exists (TODO above)
+SERVER_TERMS: tuple[str, ...] = ("taste", "ce", "theme")    # from the scorer server; 0 without one
 ERROR_GATE = "error"
+PQ_GATE = "PQ"                               # the audio gate's PQ floor (taste_pipeline.md §5)
+KNOBS_WITHOUT_CE = 0.20                      # taste_pipeline.md §5, beside W0: "ce→0, knobs→.20 unless CE validated"
+CE_RULE = "ce->0, knobs->0.20: the scorer reports CE not validated (taste_pipeline.md §5, W0)"
 _BRIEF_FIELDS = tuple(f.name for f in dataclasses.fields(Brief))
 
 
@@ -154,7 +167,7 @@ class LofiReward:
 
     def __init__(self, palette: Palette, log_path: Path | str, verify: ModuleType, *,
                  max_completion_length: int | None = None, eos_token_ids: Iterable[int] = (),
-                 start_step: int = 0, strict: bool = False):
+                 start_step: int = 0, strict: bool = False, scorer: Any = None, scorer_wait_s: float = 600.0):
         self.__name__ = NAME
         self.palette, self.verify, self.strict = palette, verify, strict
         self.log_path = Path(log_path)
@@ -162,6 +175,7 @@ class LofiReward:
         self.eos_token_ids = frozenset(int(t) for t in eos_token_ids)
         self.start_step, self.calls = int(start_step), 0
         self.stats: dict[int, dict[str, Any]] = {}
+        self.scorer, self.scorer_wait_s, self._scorer_ready = scorer, float(scorer_wait_s), False
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     # -------------------------------------------------------------------------------------- inputs
@@ -199,6 +213,9 @@ class LofiReward:
             raise ValueError(f"{len(prompts)} prompts for {n} completions")
         step, source = self._step(kwargs)
         w = curriculum.weights(step)
+        w_rule = None
+        if self.scorer is not None:
+            w, w_rule = self._scorer_weights(w)
         briefs = [decode_brief(b) for b in self._column(kwargs, "brief", n, required=True)]
         brief_ids = self._column(kwargs, "brief_id", n, required=False)
         ids = list(completion_ids) if completion_ids is not None else [None] * n
@@ -247,11 +264,18 @@ class LofiReward:
 
         records = [self._record(i, step, source, w, group[i], keys[group[i]], brief_ids[i], briefs[i], ids[i],
                                 trunc[i], texts[i], scores[i], p_group[i], errors[i]) for i in range(n)]
+        audio = None
+        if self.scorer is not None:     # after the symbolic records, so a scorer error leaves no partial log
+            audio = self._audio(step, texts, briefs, brief_ids, records)
+            records = [self._with_audio(r, audio["items"].get(i), w, w_rule, audio["versions"])
+                       for i, r in enumerate(records)]
         rewards = [float(r["reward"]) for r in records]
         with self.log_path.open("a", encoding="utf-8") as f:
             for r in records:
                 f.write(json.dumps(r, ensure_ascii=False, default=str) + "\n")
         st = self._summary(step, source, n, len(members), w, records, rewards, trunc, errors)
+        if audio is not None:
+            st["audio"] = self._audio_summary(records, audio, w_rule)
         st["t_ms"] = round(1000 * (time.perf_counter() - t0), 2)
         st["hook_errors"] = self._hooks(kwargs, st, records)
         self.stats[step] = st
@@ -297,9 +321,73 @@ class LofiReward:
         rec["text"] = text
         return rec
 
+    # -------------------------------------------------------------------------------------- the scorer
+    def _scorer_weights(self, w: dict[str, float]) -> tuple[dict[str, float], str | None]:
+        """The curriculum's weights, with §5's CE rule when the server reports CE as not validated."""
+        if not self._scorer_ready:
+            self.scorer.wait_healthy(self.scorer_wait_s)
+            self._scorer_ready = True
+        if self.scorer.ce_validated:
+            return w, None
+        return {**w, "ce": 0.0, "knobs": KNOBS_WITHOUT_CE}, CE_RULE
+
+    def _audio(self, step: int, texts: list[str], briefs: list[Brief], brief_ids: list[Any],
+               records: list[dict]) -> dict[str, Any]:
+        """One POST /score for the completions that passed the symbolic gate; raises on any scorer failure."""
+        sent = [i for i, r in enumerate(records) if r["gate_ok"]]
+        out: dict[str, Any] = {"sent": len(sent), "items": {}, "versions": dict(self.scorer.pinned or {}),
+                               "terms": self.scorer.terms, "batch": None, "scorer_ms": 0.0}
+        if not sent:
+            return out
+        t = time.perf_counter()
+        resp = self.scorer.score([scoring_protocol.item_dict(i, texts[i], briefs[i], brief_ids[i]) for i in sent],
+                                 palette_sha256=self.palette.sha256, step=step)
+        out.update(items={it["i"]: it for it in resp["items"]}, batch=resp["batch"], terms=dict(resp["terms"]),
+                   versions={k: resp[k] for k in scoring_protocol.VERSION_KEYS},
+                   scorer_ms=round(1000 * (time.perf_counter() - t), 2))
+        return out
+
+    @staticmethod
+    def _with_audio(rec: dict, item: Mapping[str, Any] | None, w: Mapping[str, float], w_rule: str | None,
+                    versions: Mapping[str, str]) -> dict:
+        """A symbolic record with the server's audio part merged in (module docstring)."""
+        out = {k: v for k, v in rec.items() if k not in ("text_sha256", "text")}
+        g_sym = int(rec["G"])
+        r = dict(rec["r"])
+        if item is None:                # not sent: the symbolic gate failed, so G is already 0
+            G, gate = 0.0, rec["gate"]
+        else:
+            r.update({k: float(item["r"][k]) for k in SERVER_TERMS})
+            G = float(g_sym * item["G"])
+            gate = rec["gate"] or item["gate"] or (PQ_GATE if item["diag"].get("pq_factor") == 0 else None)
+        positive = G * sum(w[k] * r[k] for k in TERMS) if G else 0.0
+        out.update(G=G, G_sym=g_sym, gate_ok=G > 0, gate=None if G > 0 else (gate or "unknown"), r=r,
+                   positive=positive, reward=positive - rec["penalty"], w_rule=w_rule,
+                   clip_id=None if item is None else item["clip_id"], audio=None if item is None else dict(item),
+                   scorer=dict(versions), text_sha256=rec["text_sha256"], text=rec["text"])
+        return out
+
+    @staticmethod
+    def _audio_summary(records: list[dict], audio: Mapping[str, Any], w_rule: str | None) -> dict[str, Any]:
+        sent = [r["audio"] for r in records if r.get("audio") is not None]
+        ok = [r for r in records if r["gate_ok"]]
+        sig = {k: _mean([a["sig"][k] for a in sent if a["sig"].get(k) is not None]) for k in scoring_protocol.SIG_KEYS}
+        diag = {k: _mean([a["diag"][k] for a in sent if a["diag"].get(k) is not None]) for k in ("p_acc", "rm_std")}
+        p_acc = [a["diag"]["p_acc"] for a in sent if a["diag"].get("p_acc") is not None]
+        diag["p_acc_lt_half"] = _mean([1.0 if p < 0.5 else 0.0 for p in p_acc])     # §7: "rate of P_acc < 0.5"
+        return {"sent": audio["sent"], "hard_rate": _mean([float(a["hard"]) for a in sent]),
+                "G_mean": _mean([float(r["G"]) for r in records]),
+                "r_mean": {k: _mean([r["r"][k] for r in ok]) for k in SERVER_TERMS}, "sig_mean": sig,
+                "diag_mean": diag, "p_acc_below_half": sum(1 for p in p_acc if p < 0.5),
+                "gates": dict(Counter(a["gate"] for a in sent if a["gate"] is not None)),
+                "pq_fail": sum(1 for a in sent if a["hard"] and a["diag"].get("pq_factor") == 0),
+                "render_errors": sum(1 for a in sent if a["gate"] in ("render-error", "render-timeout")),
+                "batch": audio["batch"], "scorer_ms": audio["scorer_ms"], "versions": audio["versions"],
+                "terms": audio["terms"], "w_rule": w_rule}
+
     @staticmethod
     def _summary(step, source, n, groups, w, records, rewards, trunc, errors) -> dict[str, Any]:
-        ok = [r for r in records if r["G"] == 1]
+        ok = [r for r in records if r["gate_ok"]]       # G == 1 without a scorer; G > 0 with one
         pen_names = sorted({k for r in records for k in r["penalties"]})
         return {
             "step": step, "step_source": source, "n": n, "groups": groups,
@@ -330,28 +418,55 @@ class LofiReward:
                     if st["r_mean"][k] is not None:
                         log_metric(f"lofi/r_{k}", st["r_mean"][k])
                 log_metric("lofi/p_group", st["p_group_mean"])
+                if "audio" in st:               # with a scorer: taste_pipeline.md §5's hack/* signatures
+                    a = st["audio"]
+                    if a["G_mean"] is not None:
+                        log_metric("lofi/G_mean", a["G_mean"])
+                    for k, v in {**a["sig_mean"], **a["diag_mean"]}.items():
+                        if v is not None:
+                            log_metric(f"hack/{k}", v)
             except Exception as e:  # noqa: BLE001
                 errs.append(f"log_metric: {type(e).__name__}: {e}")
         if callable(log_extra):
             try:
                 log_extra("lofi_gate", [r["gate"] or "ok" for r in records])
+                if "audio" in st:
+                    log_extra("clip_id", [r["clip_id"] or "" for r in records])
             except Exception as e:  # noqa: BLE001
                 errs.append(f"log_extra: {type(e).__name__}: {e}")
         return errs
 
 
+def resolve_scorer(scorer: Any = None, environ: Mapping[str, str] | None = None) -> Any:
+    """The scorer a reward uses: None reads $LOFI_SCORER_SOCK (unset or empty: no scorer); False is no scorer;
+    a str or Path is a socket path; anything else is used as a client (ScorerClient or a stand-in with
+    wait_healthy, ce_validated, terms, pinned and score)."""
+    if scorer is None:
+        return scoring_client.from_env(environ)
+    if scorer is False:
+        return None
+    if isinstance(scorer, (str, Path)):
+        return scoring_client.ScorerClient(scorer)
+    return scorer
+
+
 def make_reward(palette_path: Path | str | Palette, log_path: Path | str, *, verify: ModuleType | None = None,
                 max_completion_length: int | None = None, eos_token_ids: Iterable[int] = (),
-                start_step: int = 0, strict: bool = False) -> LofiReward:
+                start_step: int = 0, strict: bool = False, scorer: Any = None,
+                scorer_wait_s: float = 600.0) -> LofiReward:
     """The TRL reward function: (prompts, completions, **kwargs) -> list[float] (module docstring).
 
     palette_path: the palette the loops are scored against (loaded with verify=False: the reward is symbolic and
     reads no sound file). log_path: the per-completion JSONL, appended to. The keyword-only extras are optional:
     `verify` replaces lofi_rl.verify (tests); max_completion_length and eos_token_ids let the reward see a
     completion cut at the token limit (gate G2); start_step is the step of the first call when TRL passes no
-    trainer_state (a resumed run starts at its checkpoint's step); strict re-raises verifier errors."""
+    trainer_state (a resumed run starts at its checkpoint's step); strict re-raises verifier errors.
+    `scorer` (resolve_scorer: default $LOFI_SCORER_SOCK) adds the scorer server's audio part; the first call
+    waits up to scorer_wait_s for its /health. The GRPO config has no scorer field yet (lofi_rl.rl.config refuses
+    unknown keys), so until it does a run turns the scorer on with the environment variable."""
     if verify is None:
         verify = importlib.import_module("lofi_rl.verify")
     palette = palette_path if isinstance(palette_path, Palette) else load_palette(palette_path, verify=False)
     return LofiReward(palette, log_path, verify, max_completion_length=max_completion_length,
-                      eos_token_ids=eos_token_ids, start_step=start_step, strict=strict)
+                      eos_token_ids=eos_token_ids, start_step=start_step, strict=strict,
+                      scorer=resolve_scorer(scorer), scorer_wait_s=scorer_wait_s)
