@@ -6,7 +6,6 @@ one-second noise file standing in for the converted rain) and on fake renders; t
 renders the real thing. Sound claims: none."""
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 from pathlib import Path
@@ -15,7 +14,6 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 import soundfile as sf
-import yaml
 
 from helpers_shootout import FILE_KITS, PLAN_PATH, ROOT, fake_renders, kit_archive, synthetic_base, synthetic_levels
 from lofi_rl.palette import load_palette
