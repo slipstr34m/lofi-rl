@@ -14,8 +14,20 @@ Newest entry first. Every number cites the file or command output it was read fr
   - constrained decoding built on `wt/constrained` and reviewed; its line-end and backend-record fixes are being built;
   - GRPO smoke 13632679 queued on an L40S.
 - **Waiting on Shresth:**
-  - whether Claude may re-register a changed job type of 500 SU or less (CLAUDE.md rule 6 reserves "any changed type" for him); the constrained base-model test needs `jobs/junk_rate.sbatch` re-registered;
+  - the Day-1 ear check (`inbox/2026-11-03/`, about 23 min);
   - `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords), due by Nov 4 morning.
+
+---
+
+## 2026-10-31 (17:22 PDT): registry rule amended: Claude re-registers changed job types of 500 SU or less
+
+**What was done**
+- **Asked:** "May I re-register changed job types of 500 SU or less myself?" Shresth: "Yes, up to 500 SU".
+- **Recorded in:** CLAUDE.md §4 and §11 rule 6, and D-003 (amended).
+- **Still needs his yes in chat:** any type over 500 SU, new or changed, and any run over its estimate.
+- **First use:** `jobs/junk_rate.sbatch`, once the constrained-decoding branch lands. Each re-registration is logged here.
+
+**SU spent:** 0.
 
 ---
 

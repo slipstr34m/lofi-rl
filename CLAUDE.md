@@ -81,8 +81,8 @@ Rules:
 - **SU budget.** Target **1,000,000 SU**, hard stop **1,200,000**, in `config/budget.yaml`. The guard counts used + reserved + projected SU and fails closed. Past the target it needs `PAST_TARGET_OK=<date of Shresth's OK>`. After each job, log the actual SU in the CHANGELOG (`sacct -j <id> --format=JobID,Elapsed,AllocTRES`, or `python3 scripts/session_report.py`). This is the class's shared allocation: be frugal, and say so at the Nakano meeting.
 - **Job-type registry** (`jobs/APPROVED.yaml`).
   - The guard refuses (exit 4, `NEEDS_APPROVAL`) any job type that is unregistered, has changed since approval (sha of its `#SBATCH` and non-comment lines), or is projected above its `max_su`.
-  - Claude registers types whose max is ≤ 500 SU itself (`make approve JOB=... MAX=... BY=Claude`).
-  - Larger types need Shresth's yes in chat, once (`BY=Shresth`). Reruns within the approved estimate never ask again.
+  - Claude registers types whose max is ≤ 500 SU itself (`make approve JOB=... MAX=... BY=Claude`), new or changed (Shresth, 2026-10-31: "Yes, up to 500 SU"). Each re-registration goes in the CHANGELOG.
+  - Larger types need Shresth's yes in chat, once (`BY=Shresth`), and again whenever they change. Reruns within the approved estimate never ask again.
 - **Polling.** `make status`, `scripts/watch_job.sh <id>` in the background, or `tail -n 50` of the log. Check, report, move on; no foreground sleep loops.
 
 ## 5. Environment (built on compute nodes, never on the login node)
@@ -176,6 +176,6 @@ Final pre-registered claims:
 3. No palette change after the freeze. Ever (Shresth, 2026-10-30).
 4. No claims about how anything sounds; queue clips.
 5. No metric without the file path it was read from.
-6. Every job type is registered in `jobs/APPROVED.yaml`. Ask Shresth first for anything over 500 SU, any changed type, and any run over its estimate.
+6. Every job type is registered in `jobs/APPROVED.yaml`. Ask Shresth first for any type over 500 SU, new or changed, and any run over its estimate. A new or changed type of 500 SU or less Claude registers itself (Shresth, 2026-10-31).
 7. If ssh prompts for Duo or hangs: stop and ask.
 8. No non-commercial asset is ever committed (fetch-only); votes live only in `data/votes/` and its private backups.
