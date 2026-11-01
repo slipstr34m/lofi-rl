@@ -1,7 +1,7 @@
 """The GRPO trainer (docs/design/taste_pipeline.md §6; docs/GRPO.md §3-4).
 
     python -m lofi_rl.rl.train --config configs/grpo_smoke.yaml [--resume-from <ckpt>] [--dry-run]
-        [--run-dir DIR] [--summary-dir DIR] [--gpu-profile a100-80gb|48gb]
+        [--run-dir DIR] [--summary-dir DIR] [--gpu-profile a100-80gb|48gb] [--scorer-pin FILE]
 
 A training run (policy env, one GPU) builds TRL 1.17.1's GRPOTrainer with:
 - Qwen3-4B-Instruct-2507 at its pinned snapshot in the offline HF cache (kit.hf_cache.resolve_pinned), bf16;
@@ -14,14 +14,18 @@ A training run (policy env, one GPU) builds TRL 1.17.1's GRPOTrainer with:
   <summary>/rewards.jsonl, and a callback that writes one line per optimizer step to <summary>/steps.jsonl
   (TRL's metrics: reward mean and std, completion lengths, KL; and the reward's sub-reward means);
 - checkpoints every save_steps in --run-dir; --resume-from continues from one (its global step restarts the
-  curriculum at the right weights even if TRL passes no trainer_state).
+  curriculum at the right weights even if TRL passes no trainer_state);
+- with a scorer ($LOFI_SCORER_SOCK), the run's scorer pin (scorer_pin_path): the versions and live terms its first
+  link's scorer reported, which every later link must find again (lofi_rl.scoring.client.read_pin).
 <summary>/run.json records the settings, versions, GPU, prompt token lengths, dropped optional fields and the
 outcome. Before the GPU work starts the run checks that every prompt fits max_prompt_length and the vLLM
 context, so nothing is silently cut.
 
 --dry-run (laptop or cluster) validates the config, builds the prompts and prints the resolved settings of
 every profile as JSON, and scores tests/fixtures/loops/example.ls through the reward when lofi_rl.verify
-exists. It never imports torch, TRL, vLLM, transformers, PEFT or datasets (tests/test_rl_train.py).
+exists: the symbolic reward, with the scorer off whatever $LOFI_SCORER_SOCK says (the report records whether it
+is set; the scorer is never contacted). It never imports torch, TRL, vLLM, transformers, PEFT or datasets
+(tests/test_rl_train.py).
 """
 from __future__ import annotations
 
@@ -34,6 +38,7 @@ import importlib.util
 import json
 import os
 import platform
+import shutil
 import signal
 import socket
 import sys
@@ -51,6 +56,7 @@ from lofi_rl.rl import curriculum
 from lofi_rl.rl.config import (ConfigError, RunConfig, detect_profile, fit_fields, load_config, resolve,
                                structured_summary)
 from lofi_rl.rl.reward import SERVER_TERMS, make_reward
+from lofi_rl.scoring.client import ENV_SOCK
 
 T_PROCESS = time.time()
 ROOT = Path(__file__).resolve().parents[3]
@@ -58,6 +64,7 @@ SNAPSHOT_FILES = ("config.json", "generation_config.json", "tokenizer.json", "to
 EXAMPLE = ROOT / "tests" / "fixtures" / "loops" / "example.ls"
 STACK = ("torch", "transformers", "trl", "peft", "datasets", "vllm")      # the policy env's training stack
 ROLES = ("system", "user", "assistant")
+SCORER_PIN = "scorer_pin.json"
 _HARD_EXIT = False
 
 
@@ -98,6 +105,24 @@ def build_rows(cfg: RunConfig, palette: Palette, prompts: Any) -> list[dict[str,
     return rows
 
 
+def scorer_pin_path(run_dir: Path | str, resume_from: Path | str | None = None,
+                    explicit: Path | str | None = None) -> Path:
+    """The run's scorer pin (lofi_rl.rl.reward's scorer_pin): `explicit` (--scorer-pin: one path for every link of
+    a chain), else <run-dir>/scorer_pin.json. A resumed link without one first copies the pin of the run it resumes
+    from (<resume-from>/../scorer_pin.json), so with per-link run dirs (docs/GRPO.md: <run>/a, <run>/b) every link
+    still pins what the first one pinned, and never the per-link summary dir. Nothing is read or written here
+    without a pin to inherit; the reward writes the first one."""
+    if explicit is not None:
+        return Path(explicit)
+    pin = Path(run_dir) / SCORER_PIN
+    if resume_from is not None and not pin.exists():
+        prev = Path(resume_from).parent / SCORER_PIN
+        if prev.is_file() and prev.resolve() != pin.resolve():
+            pin.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(prev, pin)
+    return pin
+
+
 def checkpoint_step(ckpt: Path | str) -> int:
     """The global step a checkpoint was saved at, from its trainer_state.json."""
     p = Path(ckpt) / "trainer_state.json"
@@ -112,14 +137,16 @@ def checkpoint_step(ckpt: Path | str) -> int:
 
 # ------------------------------------------------------------------------------------------ dry run
 def _reward_check(cfg: RunConfig, row: Mapping[str, Any]) -> dict[str, Any] | str:
-    """Score tests/fixtures/loops/example.ls under the first row's brief, through the real reward path."""
+    """Score tests/fixtures/loops/example.ls under the first row's brief, through the real reward path. The
+    symbolic path only: scorer=False, so an exported $LOFI_SCORER_SOCK never makes the quick check before any GPU
+    work wait for a scorer (dry_run records whether it is set)."""
     verify = _verify_module()
     if verify is None:
         return "skipped: lofi_rl.verify is not importable here (another builder's module)"
     if not EXAMPLE.is_file():
         return f"skipped: {EXAMPLE} is missing"
     with tempfile.TemporaryDirectory() as d:
-        reward = make_reward(cfg.palette_path(), Path(d) / "rewards.jsonl", verify=verify, strict=True)
+        reward = make_reward(cfg.palette_path(), Path(d) / "rewards.jsonl", verify=verify, strict=True, scorer=False)
         out = reward(prompts=[row["prompt"]], completions=[[{"role": "assistant", "content": EXAMPLE.read_text()}]],
                      brief=[row["brief"]], brief_id=[row["brief_id"]])
         rec = json.loads((Path(d) / "rewards.jsonl").read_text().splitlines()[0])
@@ -160,7 +187,8 @@ def dry_run(cfg: RunConfig, out: IO[str] | None = None, prompts: Any = None) -> 
         "unverified_trl_fields": sorted({k for p in profiles.values() for k in p["trainer"]}),
         "resume_from_step": cfg.resume_step,
         "reward": {"w0": dict(curriculum.W0), "w1": dict(curriculum.W1), "ramp_steps": curriculum.RAMP_STEPS,
-                   "zero_in_smoke": list(SERVER_TERMS)},
+                   "zero_in_smoke": list(SERVER_TERMS),
+                   "scorer": {"env": ENV_SOCK, "sock": os.environ.get(ENV_SOCK) or None, "contacted": False}},
         "reward_check": _reward_check(cfg, rows[0]),
     }
     print(json.dumps(report, indent=1, ensure_ascii=False, default=str), file=out or sys.stdout)
@@ -288,7 +316,7 @@ def _eos_ids(tok: Any, gen_cfg: Any) -> frozenset[int]:
 
 
 def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path | None = None,
-          profile: str | None = None) -> int:
+          profile: str | None = None, scorer_pin: Path | None = None) -> int:
     """One GRPO launch on one GPU (module docstring). Needs the policy env."""
     import datasets
     import torch
@@ -344,9 +372,11 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
         args = GRPOConfig(output_dir=str(run_dir), **named, **kw)
         model = AutoModelForCausalLM.from_pretrained(snap, dtype=torch.bfloat16)
         model.config.use_cache = False                      # gradient checkpointing; vLLM generates
+        pin = scorer_pin_path(run_dir, resume_from, scorer_pin)
+        man["scorer_pin"] = str(pin)
         reward = make_reward(cfg.palette_path(), summary_dir / "rewards.jsonl",
                              max_completion_length=kw["max_completion_length"], eos_token_ids=eos,
-                             start_step=start_step)
+                             start_step=start_step, scorer_pin=pin)
         steps = StepLog(summary_dir / "steps.jsonl", reward_stats=reward.stats)
         lora = LoraConfig(r=cfg.lora["r"], lora_alpha=cfg.lora["alpha"], lora_dropout=cfg.lora["dropout"],
                           target_modules=cfg.lora["target_modules"], bias="none", task_type="CAUSAL_LM")
@@ -384,6 +414,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--summary-dir", type=Path, help="run.json, steps.jsonl, rewards.jsonl (default <run-dir>/summary)")
     ap.add_argument("--gpu-profile", help="a profile of the config (default: chosen by the GPU's memory)")
     ap.add_argument("--dry-run", action="store_true", help="validate, build the prompts, print the settings; no torch")
+    ap.add_argument("--scorer-pin", type=Path, help="the scorer pin every link of the run shares (default "
+                    "<run-dir>/scorer_pin.json, inherited from the run --resume-from names)")
     a = ap.parse_args(argv)
     try:
         cfg = load_config(a.config)
@@ -407,7 +439,7 @@ def main(argv: list[str] | None = None) -> int:
         faulthandler.register(signal.SIGTERM, all_threads=True, chain=True)   # `timeout` shows where it hung
         _HARD_EXIT = True
         return train(cfg, run_dir=run_dir, summary_dir=a.summary_dir or run_dir / "summary",
-                     resume_from=a.resume_from, profile=a.gpu_profile)
+                     resume_from=a.resume_from, profile=a.gpu_profile, scorer_pin=a.scorer_pin)
     except ConfigError as e:
         print(f"train: {e}", file=sys.stderr)
         return 2

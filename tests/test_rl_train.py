@@ -213,6 +213,25 @@ def test_dry_run_prints_the_resolved_settings_and_scores_a_fixture(monkeypatch, 
     assert out["reward_check"]["reward"] == pytest.approx(.5 * .5 + .15 * .5)
 
 
+def test_dry_run_never_contacts_a_scorer_named_by_the_environment(monkeypatch):
+    # An exported $LOFI_SCORER_SOCK turns the scorer on for a run, not for the dry run's symbolic check: with the
+    # old default the check waited up to 600 s for /health of a socket that does not exist.
+    import time
+    from lofi_rl.scoring.client import ENV_SOCK, ScorerClient
+    monkeypatch.setenv(ENV_SOCK, "/nonexistent/x.sock")
+    monkeypatch.setitem(sys.modules, "lofi_rl.prompt", fake_prompt())
+    monkeypatch.setitem(sys.modules, "lofi_rl.verify", fake_verify())
+
+    def contacted(self, *a, **k):
+        raise AssertionError(f"the dry run contacted the scorer at {self.sock}")
+    monkeypatch.setattr(ScorerClient, "wait_healthy", contacted)
+    t = time.monotonic()
+    report = train.dry_run(rc.load_config(SMOKE), out=io.StringIO())
+    assert time.monotonic() - t < 30
+    assert report["reward_check"]["reward"] == pytest.approx(.5 * .5 + .15 * .5)
+    assert report["reward"]["scorer"] == {"env": ENV_SOCK, "sock": "/nonexistent/x.sock", "contacted": False}
+
+
 def test_dry_run_runs_with_torch_trl_and_vllm_blocked():
     block = "import sys\n" + "".join(f"sys.modules[{m!r}] = None\n" for m in HEAVY)
     code = (block + CHILD_FAKES + "from lofi_rl.rl import train\n"
@@ -252,6 +271,23 @@ def test_the_step_log_writes_one_line_per_optimizer_step_with_trl_and_reward_met
     assert rows[0]["step_s"] == 25.0 and rows[1]["step_s"] == 27.0
     assert rows[0]["trl"]["kl"] == 0.0 and rows[1]["lofi"] == {"reward_mean": .2, "gate_rate": .75}
     assert rows[2]["trl"]["train_runtime"] == 53.0
+
+
+def test_every_link_of_a_run_shares_one_scorer_pin(tmp_path):
+    # docs/GRPO.md's layout: <run>/a, then <run>/b resumed from <run>/a/checkpoint-5, then <run>/c from b's.
+    run = tmp_path / "run"
+    a = train.scorer_pin_path(run / "a")
+    assert a == run / "a" / "scorer_pin.json" and not a.exists(), "nothing is written before a scorer pins"
+    a.parent.mkdir(parents=True)
+    a.write_text('{"pinned": "by a"}')
+    b = train.scorer_pin_path(run / "b", resume_from=run / "a" / "checkpoint-5")
+    assert b == run / "b" / "scorer_pin.json" and b.read_text() == a.read_text(), "inherited from a"
+    c = train.scorer_pin_path(run / "c", resume_from=run / "b" / "checkpoint-10")
+    assert c.read_text() == a.read_text(), "and passed on"
+    c.write_text('{"pinned": "by c"}')
+    assert train.scorer_pin_path(run / "c", resume_from=run / "b" / "checkpoint-10").read_text() == '{"pinned": "by c"}'
+    assert train.scorer_pin_path(run / "d", explicit=run / "pin.json") == run / "pin.json"
+    assert not train.scorer_pin_path(tmp_path / "x", resume_from=tmp_path / "nowhere" / "checkpoint-1").exists()
 
 
 def test_resume_reads_the_global_step_of_the_checkpoint(tmp_path):

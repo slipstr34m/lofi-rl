@@ -6,7 +6,9 @@
   runs with HOME set to a new empty directory, and no render starts while /etc/fluidsynth.conf holds commands;
 - FluidSynth plays what the MIDI asks for or the render fails: a non-zero exit, an error in its log, or a
   preset it substituted for one the SoundFont lacks raises FluidSynthError. These are faults of the machine or
-  the palette, never a loop's gate.
+  the palette, never a loop's gate;
+- a render that has not finished after TIMEOUT_S is killed and raises FluidSynthError, so a FluidSynth stalled on a
+  slow SoundFont read never outlives the scorer's batch deadline (scoring.render_pool.RENDER_TIMEOUT_S, 150 s).
 """
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ from pathlib import Path
 
 PINNED = "2.6.1"   # 2.6.0 changed tuning, the default reverb and interpolation: both machines pin 2.6.1
 GAIN = 0.2         # FluidSynth's default; float output never clips, and loudness is normalized downstream
+TIMEOUT_S = 120.0  # one stem's render (about 1 s on the laptop): under the scorer's 150 s batch deadline
 SYSTEM_CONFIG = Path("/etc/fluidsynth.conf")    # sourced on every start; HOME cannot hide it
 # Log lines that mean the render is not what the MIDI asked for. A missing preset with no stand-in leaves
 # its channel silent instead, which the callers' silence checks catch.
@@ -75,9 +78,10 @@ def config_commands(path: Path) -> list[str]:
     return [s for s in (line.strip() for line in text.splitlines()) if s and not s.startswith("#")]
 
 
-def render_midi(sf2: Path, midi: Path, out_wav: Path, sr: int = 44100, gain: float = GAIN) -> Path:
+def render_midi(sf2: Path, midi: Path, out_wav: Path, sr: int = 44100, gain: float = GAIN,
+                timeout_s: float = TIMEOUT_S) -> Path:
     """Render `midi` with `sf2` to a float32 WAV at `sr`. Raises unless FluidSynth is the pinned version, and
-    FluidSynthError unless it ran clean in an empty home."""
+    FluidSynthError unless it ran clean in an empty home within `timeout_s` (past it, the process is killed)."""
     exe = fluidsynth_bin()
     check_version(exe)
     commands = config_commands(SYSTEM_CONFIG)
@@ -87,8 +91,12 @@ def render_midi(sf2: Path, midi: Path, out_wav: Path, sr: int = 44100, gain: flo
     cmd = [exe, "-q", "-n", "-i", "-R", "0", "-C", "0", "-g", f"{gain}", "-r", f"{sr}",
            "-o", "synth.cpu-cores=1", "-T", "wav", "-O", "float", "-F", str(out_wav), str(sf2), str(midi)]
     with tempfile.TemporaryDirectory(prefix="lofi-fluid-home-") as home:
-        proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace",
-                              env=dict(os.environ, HOME=home))
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace",
+                                  env=dict(os.environ, HOME=home), timeout=timeout_s)
+        except subprocess.TimeoutExpired:           # subprocess.run has killed FluidSynth by now
+            raise FluidSynthError(f"FluidSynth did not finish {Path(midi).name} within {timeout_s:g} s: "
+                                  f"killed") from None
     log = f"{proc.stdout}\n{proc.stderr}".strip()
     if proc.returncode != 0:
         raise FluidSynthError(f"FluidSynth exited {proc.returncode} on {Path(midi).name}: {log[-600:]}")

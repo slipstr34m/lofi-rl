@@ -21,6 +21,29 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-10-31 (22:10 PDT): scorer server merged; its smoke job registered
+
+**What was done**
+- **Merged the scorer branch** (`worktree-wf_e7f4b866-15c-1`, from `96bd121`). git merged `docs/GRPO.md`, `src/lofi_rl/rl/train.py` and `tests/test_rl_train.py` with no conflicts, and the merged `train.py` was read: it keeps the grammar wiring from `b56fbf6` and adds the scorer pin. Workflow `wf_e7f4b866-15c` had 7 agents: a builder, three reviewers, a judge, a fixer and a verifier.
+  - **What it builds:** `lofi_rl.scoring` (protocol, Unix-socket client and server, render pool, MERT/CLAP/Audiobox features, CLAP theme, calibrations, the RM interface with PAR), `docs/SCORER.md` and `jobs/scorer_smoke.sbatch`. The symbolic reward stays in `rl/reward.py`. The server scores only completions that passed the symbolic gate, and G = G_sym × the server's audio G.
+  - **Review:** 18 findings, 16 kept and fixed, 0 left unfixed. Among them: a render canary at start, so a broken FluidSynth fails the start instead of every batch; a per-run scorer pin, which includes the calibrations and the live terms; the dry run never contacts a scorer; and exit 2 for bad calibration files.
+  - **Verifier:** every check passed except one. That check flagged edits to `train.py`, which the brief had put off-limits while the grammar branch was changing it. The edits are the fixes for two kept findings: the dry run's `scorer=False` and the run pin. The grammar branch is now merged, so they stand.
+  - **No-scorer parity:** the verifier's fixed batch (60 completions) gives byte-identical rewards and `rewards.jsonl` before and after the merge (sha256 `56c45469…`).
+- **Added `tests/conftest.py`:** an autouse fixture removes `$LOFI_SCORER_SOCK` for every test, so a developer's exported variable cannot send test rewards to a live scorer (the builder's open question). With the variable exported to a bogus path, the suite gives 2209 passed, 2 skipped.
+- **Registered `jobs/scorer_smoke.sbatch`** (new type, ≤ 500 SU, so Claude registers it): sha `eaf0423e7072e564`, max 480 SU, by Claude. Its worst case is 8 CPU + 8 (32 GB) + 8 (1 L40S) = 24 SU/min × 20 min.
+- **Audiobox pin checked** on the login node (read-only `cat`): `$HF_HOME/hub/models--facebook--audiobox-aesthetics/refs/main` is `9b1dd8e5df9af7216e836a98974fe3b82c56ded6`, the pin in `lofi_rl.smoke.AUDIOBOX`, and its snapshot exists. So the real scorer's fail-closed check passes.
+- **Not done yet:**
+  - the scorer smoke run itself (after D-020's jobs end, since nothing may be synced until then);
+  - a scorer block in the GRPO configs;
+  - calibrations (tau_PQ, theme med/MAD, the CE check), which need votes;
+  - the real RM and refs.json (`lofi_rl.taste`).
+
+  Until calibrations exist, PQ, theme and CE are off, and the reward applies §5's CE rule (knobs at 0.20).
+
+**SU spent:** 0.
+
+---
+
 ## 2026-10-31 (20:20 PDT): Day-2 tooling merged; heard-rule port and bass re-listen being built
 
 **What was done**

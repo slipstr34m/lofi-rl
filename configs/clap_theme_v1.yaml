@@ -1,0 +1,49 @@
+# CLAP theme prompts (docs/design/taste_pipeline.md §5, "CLAP theme"; docs/SCORER.md §5.2; read by
+# src/lofi_rl/scoring/theme.py, which refuses unknown keys and any count but 8 positives and 5 scenes x 4).
+#
+#   m = mean cos(e, positive) - max over scenes k of mean cos(e, contrast_k)
+#   r_theme = sigmoid((m - med) / (1.4826 MAD)), med and MAD over the pool (calib theme.json, keyed to this file's sha256)
+#
+# e is the CLAP music embedding of the music-only stem (before the rain bed): the normalized mean of its four
+# 2-bar windows. The positives are these 8 city-at-night prompts plus the brief's scene. The contrast scenes are
+# the other lo-fi scenes of docs/TASTE.md ("Claude's defaults": sunny morning, beach, forest, cafe afternoon,
+# snowy cabin), 4 prompts each. Every prompt is a plain scene description: no genre, instrument or mood words, so
+# the margin measures the scene the music evokes. Changing a prompt changes this file's sha256, which voids the
+# theme calibration until it is recomputed on the pool.
+version: clap_theme_v1
+include_brief_scene: true
+positive:
+  - a city at night
+  - a quiet city street late at night
+  - rain on a city street at night
+  - city lights reflected on wet pavement at night
+  - looking out of an apartment window at the city at night
+  - a late night drive through the city
+  - neon signs over an empty street at night
+  - the city skyline from a rooftop at night
+contrast:
+  sunny morning:
+    - a bright sunny morning
+    - morning sunlight through a kitchen window
+    - a sunny morning in a green park
+    - waking up on a clear sunny morning
+  beach:
+    - a sunny beach by the sea
+    - waves rolling onto the sand at the beach
+    - a summer afternoon at the beach
+    - palm trees on a tropical beach
+  forest:
+    - a quiet forest
+    - walking along a path through a green forest
+    - sunlight through the trees in a forest
+    - birds in the trees of a deep forest
+  cafe afternoon:
+    - a cafe in the afternoon
+    - an afternoon in a busy coffee shop
+    - sitting at a table in a cafe on a sunny afternoon
+    - people talking over coffee in a cafe in the afternoon
+  snowy cabin:
+    - a cabin in the snowy mountains
+    - snow falling around a wooden cabin
+    - a fireplace inside a snowy cabin
+    - a warm cabin on a snowy winter day

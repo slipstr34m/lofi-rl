@@ -6,9 +6,10 @@ t is the optimizer step whose rollouts are being scored (TRL's trainer_state.glo
 0 for the first step). Theory falls linearly from 0.50 to 0.10 over steps 0-30 and taste rises from 0.20 to
 0.60; knobs stay at 0.15 (CLAUDE.md §8: "knobs fixed at 0.15"). CE and theme keep §5's 0.05 and 0.10.
 
-In the GRPO smoke the taste, CE and theme terms are 0, because nothing supplies them yet (lofi_rl.rl.reward):
-only their weights are logged. §5 also says "ce -> 0, knobs -> .20 unless CE validated"; that choice belongs
-to the scorer-server reward, after the CE check on Shresth's votes, and is not made here.
+In the GRPO smoke the taste, CE and theme terms are 0, because no scorer server supplies them there
+(lofi_rl.rl.reward): only their weights are logged. §5 also says "ce -> 0, knobs -> .20 unless CE validated";
+that choice belongs to the scorer-server reward, after the CE check on Shresth's votes, and is not made here:
+lofi_rl.rl.reward applies it when a scorer reports CE as not validated (docs/SCORER.md §10).
 """
 from __future__ import annotations
 
