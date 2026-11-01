@@ -163,6 +163,27 @@ S2a (warmth) and S2b (timing):
 
 **Audit files** (private): `data/votes/audit/{b1104-1-groove,b1104-2-sax,b1104-3-keys,b1104-4-vamps,shootouts}.json` and `day2-report.md`, from the tally at main `7a0dfd0`. An independent recount over the raw logs gives the same figures for every stage, for R2r per kit and for V per mood.
 
+## Kept drafts (keep3): voted 2026-11-01 (batch b1101-keep3; job 13656049)
+
+The palette's gate item 2: Shresth kept 10 of the 30 drafted loops (docs/DRAFTS.md; taste_pipeline.md §8). That is one per brief, from the three personas' drafts of that brief, rendered with `palettes/draft_day2.yaml`. No round was marked "none acceptable", so there are no redrafts.
+
+| Brief | Energy, mood | Kept |
+|---|---|---|
+| d01 | low, melancholy | `drafts/v1/d01_chords.ls` |
+| d02 | low, wistful | `drafts/v1/d02_chords.ls` |
+| d03 | low, hopeful | `drafts/v1/d03_chords.ls` |
+| d04 | mid, melancholy | `drafts/v1/d04_horn.ls` |
+| d05 | mid, wistful | `drafts/v1/d05_groove.ls` |
+| d06 | mid, hopeful | `drafts/v1/d06_horn.ls` |
+| d07 | high, melancholy | `drafts/v1/d07_chords.ls` |
+| d08 | high, wistful | `drafts/v1/d08_horn.ls` |
+| d09 | high, hopeful | `drafts/v1/d09_chords.ls` |
+| d10 | low, wistful | `drafts/v1/d10_groove.ls` |
+
+- **Kept per persona** (descriptive): chords 5, horn 3, groove 2.
+- **Labels** (taste_pipeline §8, for the RM in Phase 2): every kept loop is at least Fine, and beats each of its round's rejects. In round d08 one reject never played, so under D-013 as amended that one pair is dropped.
+- **Audit file** (private): `data/votes/b1101-keep3.jsonl`, backed up as votes commit `085f8d2`.
+
 ## How to approve
 Add one line of your own, exactly in this form:
 

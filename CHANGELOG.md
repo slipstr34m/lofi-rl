@@ -26,6 +26,20 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (13:45 PST): Shresth kept 10 of the 30 drafts; no redrafts
+
+**What was done**
+- **`b1101-keep3` voted:** 10 of 10 rounds, 13:2x–13:37 PST, ui `2beeee4ab4b4`. No round was marked "none acceptable", so no brief needs a redraft. Votes backed up as commit `085f8d2` (private repo and `$REMOTE_KEEP/votes/`).
+- **Kept:** d01, d02, d03, d07 and d09 from the chords persona; d04, d06 and d08 from horn; d05 and d10 from groove (counted from the vote log against the hidden manifest). So chords 5, horn 3, groove 2.
+- **How long the kept drafts played** (merged over attempts): 2–8 bars. In d08, one reject never played, so its pair with the kept loop drops out of the RM labels (D-013 as amended).
+- **`gates/GATE_palette.md`** records the kept 10: gate item 2 of the palette freeze.
+- **Labels for Phase 2** (taste_pipeline §8): kept ≥ Fine, and each kept loop beats its round's played rejects.
+- **Next:** Day 3 (served from 2026-11-03). Then the palette is assembled from the survivors, their levels and the rain pick, the kept 10 are checked against it, and Shresth signs off.
+
+**SU spent:** 0.
+
+---
+
 ## 2026-11-01 (14:20 PST): keep3 batch and Day 3 rendered on the cluster; the v2 no-grammar measurement and GRPO prep under way
 
 **What was done**
