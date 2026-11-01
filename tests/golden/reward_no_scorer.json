@@ -1,0 +1,187 @@
+{
+ "log": "{\"step\": 3, \"step_source\": \"trainer_state\", \"call\": 0, \"i\": 0, \"group\": 0, \"group_key\": \"596:0\", \"brief_id\": \"596:0\", \"brief\": {\"energy\": \"mid\", \"mood\": \"wistful\", \"bpm\": 82, \"tonic\": 2, \"scene\": \"city at night\"}, \"n_tokens\": 2, \"truncated\": false, \"w\": {\"theory\": 0.46, \"taste\": 0.24000000000000002, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": true, \"gate\": null, \"G\": 1, \"r\": {\"theory\": 0.8, \"taste\": 0.0, \"knobs\": 0.6, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.8, \"sax\": 0.8}, \"knob_parts\": {\"energy\": 0.6, \"mood\": 0.6}, \"p_sax\": 0.05, \"penalties\": {\"bars\": 0.1, \"len\": 0.02}, \"p_group\": 0.0, \"p_fix\": 0.04, \"repairs\": 2, \"positive\": 0.4580000000000001, \"penalty\": 0.21000000000000002, \"reward\": 0.24800000000000005, \"digest\": \"b306d0998ae1f34c\", \"text_sha256\": \"b306d0998ae1f34c5e77d8da462faf0eb4e6007ac239074161925bd2f511a552\", \"text\": \"theory=0.8 knobs=0.6 p_sax=0.05 bars=0.1 len=0.02 p_fix=0.04 repairs=2\"}\n{\"step\": 3, \"step_source\": \"trainer_state\", \"call\": 0, \"i\": 1, \"group\": 0, \"group_key\": \"596:0\", \"brief_id\": \"596:0\", \"brief\": {\"energy\": \"mid\", \"mood\": \"wistful\", \"bpm\": 82, \"tonic\": 2, \"scene\": \"city at night\"}, \"n_tokens\": 2, \"truncated\": false, \"w\": {\"theory\": 0.46, \"taste\": 0.24000000000000002, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": true, \"gate\": null, \"G\": 1, \"r\": {\"theory\": 0.8, \"taste\": 0.0, \"knobs\": 0.6, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.8, \"sax\": 0.8}, \"knob_parts\": {\"energy\": 0.6, \"mood\": 0.6}, \"p_sax\": 0.05, \"penalties\": {\"bars\": 0.1, \"len\": 0.02}, \"p_group\": 0.3, \"p_fix\": 0.04, \"repairs\": 2, \"positive\": 0.4580000000000001, \"penalty\": 0.51, \"reward\": -0.051999999999999935, \"digest\": \"b306d0998ae1f34c\", \"text_sha256\": \"b306d0998ae1f34c5e77d8da462faf0eb4e6007ac239074161925bd2f511a552\", \"text\": \"theory=0.8 knobs=0.6 p_sax=0.05 bars=0.1 len=0.02 p_fix=0.04 repairs=2\"}\n{\"step\": 3, \"step_source\": \"trainer_state\", \"call\": 0, \"i\": 2, \"group\": 0, \"group_key\": \"596:0\", \"brief_id\": \"596:0\", \"brief\": {\"energy\": \"mid\", \"mood\": \"wistful\", \"bpm\": 82, \"tonic\": 2, \"scene\": \"city at night\"}, \"n_tokens\": 2, \"truncated\": false, \"w\": {\"theory\": 0.46, \"taste\": 0.24000000000000002, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": false, \"gate\": \"G4\", \"G\": 0, \"r\": {\"theory\": 0.5, \"taste\": 0.0, \"knobs\": 0.5, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.5, \"sax\": 0.5}, \"knob_parts\": {\"energy\": 0.5, \"mood\": 0.5}, \"p_sax\": 0.0, \"penalties\": {\"bars\": 0.1, \"len\": 0.0}, \"p_group\": 0.0, \"p_fix\": 0.02, \"repairs\": 0, \"positive\": 0.0, \"penalty\": 0.12000000000000001, \"reward\": -0.12000000000000001, \"digest\": null, \"text_sha256\": \"14ead223cfefe67060849e6f0f253f9902f99a5627e39f255c2b0eaddc3c0222\", \"text\": \"gate=G4 p_fix=0.02 bars=0.1\"}\n{\"step\": 3, \"step_source\": \"trainer_state\", \"call\": 0, \"i\": 3, \"group\": 0, \"group_key\": \"596:0\", \"brief_id\": \"596:0\", \"brief\": {\"energy\": \"mid\", \"mood\": \"wistful\", \"bpm\": 82, \"tonic\": 2, \"scene\": \"city at night\"}, \"n_tokens\": 2, \"truncated\": false, \"w\": {\"theory\": 0.46, \"taste\": 0.24000000000000002, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": true, \"gate\": null, \"G\": 1, \"r\": {\"theory\": 1.0, \"taste\": 0.0, \"knobs\": 0.0, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 1.0, \"sax\": 1.0}, \"knob_parts\": {\"energy\": 0.0, \"mood\": 0.0}, \"p_sax\": 0.0, \"penalties\": {\"bars\": 0.0, \"len\": 0.0}, \"p_group\": 0.0, \"p_fix\": 0.0, \"repairs\": 0, \"positive\": 0.46, \"penalty\": 0.0, \"reward\": 0.46, \"digest\": \"b0f39377c8a98da0\", \"text_sha256\": \"b0f39377c8a98da0c270ba8c4c0078d33a19b4f50701ae7a108a7e5414f3840c\", \"text\": \"theory=1 knobs=0 | b\"}\n{\"step\": 3, \"step_source\": \"trainer_state\", \"call\": 0, \"i\": 4, \"group\": 1, \"group_key\": \"596:1\", \"brief_id\": \"596:1\", \"brief\": {\"energy\": \"low\", \"mood\": \"hopeful\", \"bpm\": 75, \"tonic\": 9, \"scene\": \"city at night\"}, \"n_tokens\": 2, \"truncated\": false, \"w\": {\"theory\": 0.46, \"taste\": 0.24000000000000002, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": true, \"gate\": null, \"G\": 1, \"r\": {\"theory\": 0.2, \"taste\": 0.0, \"knobs\": 0.9, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.2, \"sax\": 0.2}, \"knob_parts\": {\"energy\": 0.9, \"mood\": 0.9}, \"p_sax\": 0.1, \"penalties\": {\"bars\": 0.0, \"len\": 0.0}, \"p_group\": 0.0, \"p_fix\": 0.0, \"repairs\": 0, \"positive\": 0.22700000000000004, \"penalty\": 0.1, \"reward\": 0.12700000000000003, \"digest\": \"bfc3185c0146a82f\", \"text_sha256\": \"bfc3185c0146a82ffd953b6f8fce10c560ae8b5bb957d2972f9d92473ec32444\", \"text\": \"theory=0.2 knobs=0.9 p_sax=0.1 | c\"}\n{\"step\": 3, \"step_source\": \"trainer_state\", \"call\": 0, \"i\": 5, \"group\": 1, \"group_key\": \"596:1\", \"brief_id\": \"596:1\", \"brief\": {\"energy\": \"low\", \"mood\": \"hopeful\", \"bpm\": 75, \"tonic\": 9, \"scene\": \"city at night\"}, \"n_tokens\": 8, \"truncated\": true, \"w\": {\"theory\": 0.46, \"taste\": 0.24000000000000002, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": false, \"gate\": \"G2\", \"G\": 0, \"r\": {\"theory\": 0.8, \"taste\": 0.0, \"knobs\": 0.6, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.8, \"sax\": 0.8}, \"knob_parts\": {\"energy\": 0.6, \"mood\": 0.6}, \"p_sax\": 0.0, \"penalties\": {\"bars\": 0.0, \"len\": 0.0}, \"p_group\": 0.0, \"p_fix\": 0.0, \"repairs\": 0, \"positive\": 0.0, \"penalty\": 0.0, \"reward\": 0.0, \"digest\": null, \"raw_gate\": null, \"text_sha256\": \"52b414d8726e5701071a8ac1e06e873541040837b18833e721bda4efd7b57189\", \"text\": \"theory=0.8 knobs=0.6 p_sax=0.05 bars=0.1 len=0.02 p_fix=0.04 repairs=2 | cut\"}\n{\"step\": 3, \"step_source\": \"trainer_state\", \"call\": 0, \"i\": 6, \"group\": 1, \"group_key\": \"596:1\", \"brief_id\": \"596:1\", \"brief\": {\"energy\": \"low\", \"mood\": \"hopeful\", \"bpm\": 75, \"tonic\": 9, \"scene\": \"city at night\"}, \"n_tokens\": 3, \"truncated\": false, \"w\": {\"theory\": 0.46, \"taste\": 0.24000000000000002, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": false, \"gate\": \"error\", \"G\": 0, \"r\": {\"theory\": 0.0, \"taste\": 0.0, \"knobs\": 0.0, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {}, \"knob_parts\": {}, \"p_sax\": 0.0, \"penalties\": {}, \"p_group\": 0.0, \"p_fix\": 0.0, \"repairs\": 0, \"positive\": 0.0, \"penalty\": 0.0, \"reward\": 0.0, \"digest\": null, \"error\": \"ValueError: fake verifier failure\", \"text_sha256\": \"e49b5c7a9e738d485bc77b54d9906a928859295bcd805a4600efcb51f1588e9e\", \"text\": \"raise\"}\n{\"step\": 3, \"step_source\": \"trainer_state\", \"call\": 0, \"i\": 7, \"group\": 1, \"group_key\": \"596:1\", \"brief_id\": \"596:1\", \"brief\": {\"energy\": \"low\", \"mood\": \"hopeful\", \"bpm\": 75, \"tonic\": 9, \"scene\": \"city at night\"}, \"n_tokens\": 3, \"truncated\": false, \"w\": {\"theory\": 0.46, \"taste\": 0.24000000000000002, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": false, \"gate\": \"error\", \"G\": 0, \"r\": {\"theory\": 0.0, \"taste\": 0.0, \"knobs\": 0.0, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {}, \"knob_parts\": {}, \"p_sax\": 0.0, \"penalties\": {}, \"p_group\": 0.0, \"p_fix\": 0.0, \"repairs\": 0, \"positive\": 0.0, \"penalty\": 0.0, \"reward\": 0.0, \"digest\": null, \"error\": \"ValueError: verify.score returned theory=nan, which is not finite\", \"text_sha256\": \"4a50270280acf765fee469a04ea35ec419c4f4ccb17dae1a43b999de8f12757a\", \"text\": \"theory=nan\"}\n{\"step\": 1, \"step_source\": \"counter\", \"call\": 1, \"i\": 0, \"group\": 0, \"group_key\": \"p:eb2a84c2dfec8223\", \"brief_id\": null, \"brief\": {\"energy\": \"mid\", \"mood\": \"wistful\", \"bpm\": 82, \"tonic\": 2, \"scene\": \"city at night\"}, \"n_tokens\": null, \"truncated\": null, \"w\": {\"theory\": 0.4866666666666667, \"taste\": 0.21333333333333335, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": true, \"gate\": null, \"G\": 1, \"r\": {\"theory\": 0.5, \"taste\": 0.0, \"knobs\": 0.5, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.5, \"sax\": 0.5}, \"knob_parts\": {\"energy\": 0.5, \"mood\": 0.5}, \"p_sax\": 0.0, \"penalties\": {\"bars\": 0.0, \"len\": 0.0}, \"p_group\": 0.0, \"p_fix\": 0.0, \"repairs\": 0, \"positive\": 0.31833333333333336, \"penalty\": 0.0, \"reward\": 0.31833333333333336, \"digest\": \"c66e4c4a027743e1\", \"text_sha256\": \"c66e4c4a027743e18f0c6bf947d28163aea77c3729397106b97983268e947cca\", \"text\": \"x | 1\"}\n{\"step\": 1, \"step_source\": \"counter\", \"call\": 1, \"i\": 1, \"group\": 0, \"group_key\": \"p:eb2a84c2dfec8223\", \"brief_id\": null, \"brief\": {\"energy\": \"mid\", \"mood\": \"wistful\", \"bpm\": 82, \"tonic\": 2, \"scene\": \"city at night\"}, \"n_tokens\": null, \"truncated\": null, \"w\": {\"theory\": 0.4866666666666667, \"taste\": 0.21333333333333335, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": true, \"gate\": null, \"G\": 1, \"r\": {\"theory\": 0.5, \"taste\": 0.0, \"knobs\": 0.5, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.5, \"sax\": 0.5}, \"knob_parts\": {\"energy\": 0.5, \"mood\": 0.5}, \"p_sax\": 0.0, \"penalties\": {\"bars\": 0.0, \"len\": 0.0}, \"p_group\": 0.3, \"p_fix\": 0.0, \"repairs\": 0, \"positive\": 0.31833333333333336, \"penalty\": 0.3, \"reward\": 0.018333333333333368, \"digest\": \"c66e4c4a027743e1\", \"text_sha256\": \"c66e4c4a027743e18f0c6bf947d28163aea77c3729397106b97983268e947cca\", \"text\": \"x | 1\"}\n{\"step\": 1, \"step_source\": \"counter\", \"call\": 1, \"i\": 2, \"group\": 1, \"group_key\": \"p:6786d08aad2f242c\", \"brief_id\": null, \"brief\": {\"energy\": \"low\", \"mood\": \"hopeful\", \"bpm\": 75, \"tonic\": 9, \"scene\": \"city at night\"}, \"n_tokens\": null, \"truncated\": null, \"w\": {\"theory\": 0.4866666666666667, \"taste\": 0.21333333333333335, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": true, \"gate\": null, \"G\": 1, \"r\": {\"theory\": 0.5, \"taste\": 0.0, \"knobs\": 0.5, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.5, \"sax\": 0.5}, \"knob_parts\": {\"energy\": 0.5, \"mood\": 0.5}, \"p_sax\": 0.0, \"penalties\": {\"bars\": 0.0, \"len\": 0.0}, \"p_group\": 0.0, \"p_fix\": 0.0, \"repairs\": 0, \"positive\": 0.31833333333333336, \"penalty\": 0.0, \"reward\": 0.31833333333333336, \"digest\": \"79b67ff4940b5cda\", \"text_sha256\": \"79b67ff4940b5cda75b9311dd781d8fa8d40065973fb794a63d2e5c9cc3267a0\", \"text\": \"x | 2\"}\n{\"step\": 1, \"step_source\": \"counter\", \"call\": 1, \"i\": 3, \"group\": 1, \"group_key\": \"p:6786d08aad2f242c\", \"brief_id\": null, \"brief\": {\"energy\": \"low\", \"mood\": \"hopeful\", \"bpm\": 75, \"tonic\": 9, \"scene\": \"city at night\"}, \"n_tokens\": null, \"truncated\": null, \"w\": {\"theory\": 0.4866666666666667, \"taste\": 0.21333333333333335, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": true, \"gate\": null, \"G\": 1, \"r\": {\"theory\": 0.7, \"taste\": 0.0, \"knobs\": 0.7, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.7, \"sax\": 0.7}, \"knob_parts\": {\"energy\": 0.7, \"mood\": 0.7}, \"p_sax\": 0.0, \"penalties\": {\"bars\": 0.0, \"len\": 0.05}, \"p_group\": 0.0, \"p_fix\": 0.0, \"repairs\": 0, \"positive\": 0.44566666666666666, \"penalty\": 0.05, \"reward\": 0.39566666666666667, \"digest\": \"ccb2b456a777400a\", \"text_sha256\": \"ccb2b456a777400a6541470493f27106512e3623715639bb6cd2fba50e315c3b\", \"text\": \"theory=0.7 knobs=0.7 len=0.05\"}\n{\"step\": 31, \"step_source\": \"global_step\", \"call\": 2, \"i\": 0, \"group\": 0, \"group_key\": \"596:9\", \"brief_id\": \"596:9\", \"brief\": {\"energy\": \"mid\", \"mood\": \"wistful\", \"bpm\": 82, \"tonic\": 2, \"scene\": \"city at night\"}, \"n_tokens\": 2, \"truncated\": false, \"w\": {\"theory\": 0.1, \"taste\": 0.6, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": true, \"gate\": null, \"G\": 1, \"r\": {\"theory\": 0.8, \"taste\": 0.0, \"knobs\": 0.6, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.8, \"sax\": 0.8}, \"knob_parts\": {\"energy\": 0.6, \"mood\": 0.6}, \"p_sax\": 0.05, \"penalties\": {\"bars\": 0.1, \"len\": 0.02}, \"p_group\": 0.0, \"p_fix\": 0.04, \"repairs\": 2, \"positive\": 0.17, \"penalty\": 0.21000000000000002, \"reward\": -0.04000000000000001, \"digest\": \"b306d0998ae1f34c\", \"text_sha256\": \"b306d0998ae1f34c5e77d8da462faf0eb4e6007ac239074161925bd2f511a552\", \"text\": \"theory=0.8 knobs=0.6 p_sax=0.05 bars=0.1 len=0.02 p_fix=0.04 repairs=2\"}\n{\"step\": 31, \"step_source\": \"global_step\", \"call\": 2, \"i\": 1, \"group\": 0, \"group_key\": \"596:9\", \"brief_id\": \"596:9\", \"brief\": {\"energy\": \"mid\", \"mood\": \"wistful\", \"bpm\": 82, \"tonic\": 2, \"scene\": \"city at night\"}, \"n_tokens\": 2, \"truncated\": false, \"w\": {\"theory\": 0.1, \"taste\": 0.6, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": false, \"gate\": \"G2\", \"G\": 0, \"r\": {\"theory\": 0.5, \"taste\": 0.0, \"knobs\": 0.5, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.5, \"sax\": 0.5}, \"knob_parts\": {\"energy\": 0.5, \"mood\": 0.5}, \"p_sax\": 0.0, \"penalties\": {\"bars\": 0.0, \"len\": 0.0}, \"p_group\": 0.0, \"p_fix\": 0.02, \"repairs\": 0, \"positive\": 0.0, \"penalty\": 0.02, \"reward\": -0.02, \"digest\": null, \"text_sha256\": \"440a46db5326db84be1d3ce05a6137115dc1bef238ac5c6aec63186a042ceb6b\", \"text\": \"gate=G2 p_fix=0.02\"}\n{\"step\": 31, \"step_source\": \"global_step\", \"call\": 2, \"i\": 2, \"group\": 0, \"group_key\": \"596:9\", \"brief_id\": \"596:9\", \"brief\": {\"energy\": \"mid\", \"mood\": \"wistful\", \"bpm\": 82, \"tonic\": 2, \"scene\": \"city at night\"}, \"n_tokens\": 2, \"truncated\": false, \"w\": {\"theory\": 0.1, \"taste\": 0.6, \"knobs\": 0.15, \"ce\": 0.05, \"theme\": 0.1}, \"gate_ok\": true, \"gate\": null, \"G\": 1, \"r\": {\"theory\": 0.9, \"taste\": 0.0, \"knobs\": 0.9, \"ce\": 0.0, \"theme\": 0.0}, \"theory_parts\": {\"groove\": 0.9, \"sax\": 0.9}, \"knob_parts\": {\"energy\": 0.9, \"mood\": 0.9}, \"p_sax\": 0.0, \"penalties\": {\"bars\": 0.0, \"len\": 0.0}, \"p_group\": 0.0, \"p_fix\": 0.0, \"repairs\": 0, \"positive\": 0.22500000000000003, \"penalty\": 0.0, \"reward\": 0.22500000000000003, \"digest\": \"bb56b6d073c80bdf\", \"text_sha256\": \"bb56b6d073c80bdfedc416fd61a02d5620042977d63da229f2eda24d8eab6420\", \"text\": \"theory=0.9 knobs=0.9 | z\"}\n",
+ "metrics": [
+  [
+   "lofi/reward",
+   0.055000000000000014
+  ],
+  [
+   "lofi/G",
+   0.6666666666666666
+  ],
+  [
+   "lofi/r_theory",
+   0.8500000000000001
+  ],
+  [
+   "lofi/r_taste",
+   0.0
+  ],
+  [
+   "lofi/r_knobs",
+   0.75
+  ],
+  [
+   "lofi/r_ce",
+   0.0
+  ],
+  [
+   "lofi/r_theme",
+   0.0
+  ],
+  [
+   "lofi/p_group",
+   0.0
+  ],
+  [
+   "lofi_gate",
+   [
+    "ok",
+    "G2",
+    "ok"
+   ]
+  ]
+ ],
+ "rewards": [
+  [
+   "0.24800000000000005",
+   "-0.051999999999999935",
+   "-0.12000000000000001",
+   "0.46",
+   "0.12700000000000003",
+   "0.0",
+   "0.0",
+   "0.0"
+  ],
+  [
+   "0.31833333333333336",
+   "0.018333333333333368",
+   "0.31833333333333336",
+   "0.39566666666666667"
+  ],
+  [
+   "-0.04000000000000001",
+   "-0.02",
+   "0.22500000000000003"
+  ]
+ ],
+ "stats": {
+  "1": {
+   "errors": 0,
+   "gate_counts": {},
+   "gate_rate": 1.0,
+   "groups": 2,
+   "hook_errors": [],
+   "n": 4,
+   "n_tokens_mean": null,
+   "p_fix_mean": 0.0,
+   "p_group_mean": 0.075,
+   "p_sax_mean": 0.0,
+   "penalties_mean": {
+    "bars": 0.0,
+    "len": 0.0125
+   },
+   "r_mean": {
+    "ce": 0.0,
+    "knobs": 0.55,
+    "taste": 0.0,
+    "theme": 0.0,
+    "theory": 0.55
+   },
+   "reward_max": 0.39566666666666667,
+   "reward_mean": 0.2626666666666667,
+   "reward_min": 0.018333333333333368,
+   "reward_std": 0.1445556409599201,
+   "step": 1,
+   "step_source": "counter",
+   "truncated": 0,
+   "w": {
+    "ce": 0.05,
+    "knobs": 0.15,
+    "taste": 0.21333333333333335,
+    "theme": 0.1,
+    "theory": 0.4866666666666667
+   }
+  },
+  "3": {
+   "errors": 2,
+   "gate_counts": {
+    "G2": 1,
+    "G4": 1,
+    "error": 2
+   },
+   "gate_rate": 0.5,
+   "groups": 2,
+   "hook_errors": [],
+   "n": 8,
+   "n_tokens_mean": 3.0,
+   "p_fix_mean": 0.0125,
+   "p_group_mean": 0.0375,
+   "p_sax_mean": 0.025,
+   "penalties_mean": {
+    "bars": 0.037500000000000006,
+    "len": 0.005
+   },
+   "r_mean": {
+    "ce": 0.0,
+    "knobs": 0.525,
+    "taste": 0.0,
+    "theme": 0.0,
+    "theory": 0.7000000000000001
+   },
+   "reward_max": 0.46,
+   "reward_mean": 0.08287500000000002,
+   "reward_min": -0.12000000000000001,
+   "reward_std": 0.17726776180400092,
+   "step": 3,
+   "step_source": "trainer_state",
+   "truncated": 1,
+   "w": {
+    "ce": 0.05,
+    "knobs": 0.15,
+    "taste": 0.24000000000000002,
+    "theme": 0.1,
+    "theory": 0.46
+   }
+  },
+  "31": {
+   "errors": 0,
+   "gate_counts": {
+    "G2": 1
+   },
+   "gate_rate": 0.6666666666666666,
+   "groups": 1,
+   "hook_errors": [],
+   "n": 3,
+   "n_tokens_mean": 2.0,
+   "p_fix_mean": 0.02,
+   "p_group_mean": 0.0,
+   "p_sax_mean": 0.016666666666666666,
+   "penalties_mean": {
+    "bars": 0.03333333333333333,
+    "len": 0.006666666666666667
+   },
+   "r_mean": {
+    "ce": 0.0,
+    "knobs": 0.75,
+    "taste": 0.0,
+    "theme": 0.0,
+    "theory": 0.8500000000000001
+   },
+   "reward_max": 0.22500000000000003,
+   "reward_mean": 0.055000000000000014,
+   "reward_min": -0.04000000000000001,
+   "reward_std": 0.12048513047951881,
+   "step": 31,
+   "step_source": "global_step",
+   "truncated": 0,
+   "w": {
+    "ce": 0.05,
+    "knobs": 0.15,
+    "taste": 0.6,
+    "theme": 0.1,
+    "theory": 0.1
+   }
+  }
+ }
+}
