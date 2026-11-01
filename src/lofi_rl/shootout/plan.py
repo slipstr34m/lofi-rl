@@ -8,8 +8,9 @@ the level anchors, the repeat groups) must resolve, and a tile may hold only a s
 Every reader takes the same Plan: the palette generator (§7.8) and the level tool (§7.1) read the candidates, the
 stages' options and the day's band; the job-time draw (§2.3) reads each stage's draw groups (`Stage.groups`, one per
 draw: K1's family pairs, S1's two registers, the vamps' one per mood, a ranks stage's leaders), the band slots
-(`Day.band_slots`, `Day.leaders`), the batches, the repeat groups and the S2 re-run. `apply_cuts` gives the plan with
-§2.7's cuts applied, and `substitute` rewrites a loop's statement lines (§5 Substitutions).
+(`Day.band_slots`, `Day.leaders`), the batches, the repeat groups and the S2 re-run. A Day-2 stage's `match` (CD-53)
+names the buses each of its clips takes its own fader on. `apply_cuts` gives the plan with §2.7's cuts applied, and
+`substitute` rewrites a loop's statement lines (§5 Substitutions).
 
     from lofi_rl.shootout.plan import apply_cuts, load_plan
     plan = apply_cuts(load_plan(), ["latin3"])
@@ -36,6 +37,7 @@ from lofi_rl.ui.manifest import BATCH_RE
 
 PLAN = ROOT / "shootouts" / "plan.yaml"
 BUSES = ("keys", "drums", "bass", "sax")                 # the instrument buses a candidate plays
+MIX_ORDER = ("sax", "keys", "bass", "drums")             # render/mix.py's summing order: a stage's `match` buses
 STAGE_BUSES = BUSES + ("bed", "keys+bass")               # what a round's hidden `bus_lufs` reads (§2.2)
 DRAW_RULES = ("any", "family_pairs", "registers", "central", "ranks")
 DAYS = ("day1", "day2", "day3")                          # the job's --stage names of days 1-3
@@ -169,6 +171,8 @@ class Stage:
     sax_muted: bool = False
     repeat_group: str | None = None
     groups: tuple[Group, ...] = ()
+    match: tuple[str, ...] = ()              # CD-53: the buses each clip takes its own fader on, in MIX_ORDER
+    match_loops: bool = False                # CD-53: each option's palette is also measured on the 9 loops (§3 step 1)
 
     @property
     def anchor(self) -> bool:
@@ -630,7 +634,7 @@ def _stages(node: Any, loop_names: Mapping[str, str], loops: Mapping[str, Loop],
         w = f"stages.{sid}"
         _str(sid, f"{w} id", _STAGE)
         m = _map(raw, w, ("day", "bus", "fills", "category", "symbols", "slots"),
-                 ("what", "options", "draw", "groups", "ranks", "sub", "tie", "default", "band", "sax_muted"))
+                 ("what", "options", "draw", "groups", "ranks", "sub", "tie", "default", "band", "sax_muted", "match"))
         symbols = _strs(m["symbols"], f"{w}.symbols")
         bus = _str(m["bus"], f"{w}.bus")
         if bus not in STAGE_BUSES:
@@ -733,6 +737,7 @@ def _stages(node: Any, loop_names: Mapping[str, str], loops: Mapping[str, Loop],
             band[slot] = None if opt is None else _str(opt, f"{w}.band.{slot}")
         if not isinstance(m.get("sax_muted", False), bool):
             raise _fail(f"{w}.sax_muted", "expected true or false")
+        match, match_loops = _match(m.get("match"), f"{w}.match", bus, fills, bool(m.get("sax_muted", False)))
         groups: list[Group] = []
         if group_specs:
             covered = [x for spec in group_specs for x in spec[0]]
@@ -750,7 +755,8 @@ def _stages(node: Any, loop_names: Mapping[str, str], loops: Mapping[str, Loop],
             groups = _groups_of(draw, symbols, options, tie, candidates)
         out[sid] = Stage(sid, _int(m["day"], f"{w}.day", 1, 3), _str(m["category"], f"{w}.category"), symbols,
                          options, draw, tuple(slots), bus, str(m.get("what", "")), MappingProxyType(sub), ranks, tie,
-                         fills, default, MappingProxyType(band), bool(m.get("sax_muted", False)), None, tuple(groups))
+                         fills, default, MappingProxyType(band), bool(m.get("sax_muted", False)), None, tuple(groups),
+                         match, match_loops)
     for st in list(out.values()):
         if st.ranks is not None:
             of = out.get(st.ranks["of"])
@@ -773,6 +779,31 @@ def _stages(node: Any, loop_names: Mapping[str, str], loops: Mapping[str, Loop],
                         raise _fail(f"stages.{st.id}.{slot.id}", f"{sym!r} is not a symbol of exactly one draw group "
                                                                  f"({len(hits)} match)")
     return out
+
+
+def _match(node: Any, where: str, bus: str, fills: str | None, sax_muted: bool) -> tuple[tuple[str, ...], bool]:
+    """A stage's `match` (CD-53): the buses each of its clips takes its own fader on, in render/mix.py's order, and
+    whether each option's palette is also measured on the 9 reference loops (`loops`, §3 step 1). The buses hold the
+    stage's own `bus` (both of `keys+bass`) and an instrument stage's slot; a muted sax is never matched, and the
+    rain is not matched at all (§3 "Not matched": the level is the candidate)."""
+    if node is None:
+        return (), False
+    m = _map(node, where, ("buses",), ("loops",))
+    buses = _strs(m["buses"], f"{where}.buses")
+    bad = [b for b in buses if b not in BUSES]
+    if bad:
+        raise _fail(f"{where}.buses", f"{bad} are not instrument buses {list(BUSES)}")
+    need = {"keys", "bass"} if bus == "keys+bass" else {bus}
+    if bus == "bed" or not need <= set(buses):
+        raise _fail(where, f"the buses must hold the stage's bus {bus} (and the rain is never matched)")
+    if fills in SLOT_BUS and SLOT_BUS[fills] not in buses:
+        raise _fail(where, f"a stage that fills {fills} matches its bus {SLOT_BUS[fills]}")
+    if sax_muted and "sax" in buses:
+        raise _fail(where, "a muted sax has no loudness to match")
+    loops = m.get("loops", False)
+    if not isinstance(loops, bool):
+        raise _fail(f"{where}.loops", "expected true or false")
+    return tuple(b for b in MIX_ORDER if b in buses), loops
 
 
 def _central_pin(draw: Mapping[str, Any]) -> Mapping[str, tuple[str, ...]]:

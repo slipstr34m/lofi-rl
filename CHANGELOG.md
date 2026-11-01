@@ -99,6 +99,47 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-10-31 (19:35 PDT): Day-2 tooling integrated on `wt/day2-int` and run end to end on the laptop; two integration defects fixed
+
+**What was done** (branch `wt/day2-int`, cut from main at `f87ef24`; not pushed, not merged)
+- **Merged** `wt/tally` (`49bcd90`) and then `wt/day2` (`a73a317`), both `--no-ff`. Two conflicts, both resolved by keeping both sides: this file (the two entries, newest first) and the SHOOTOUTS.md status line.
+- **The tally tool** (SHOOTOUTS.md §7.9; its builder left this file to the merge): `python -m lofi_rl.shootout.tally` reads the vote logs and the hidden manifests and recounts per §8: heard-filtered BW (CD-38), anchor rounds dropped, half weight for a micro-session that missed its anchor (D-013), CD-44, and the CD-39 ties. It applies the Day-1 rules and the later ones, and writes job 2's ARGS. Private outputs only (`data/votes/audit/` by default). 17 tests.
+- **Integration defects, fixed with tests** (`f74cc3e`):
+  - **Job 2's `--prior` was missing** from the tally's `make submit` line. `jobs/shootout.sbatch` gives the Day-2 form as `--leaders ... --prior <job1>`, and §3 has job 2 compare its drift keys with job 1's. The tally now finds job 1 in the pulled summaries (`--runs`, default `runs/`): the `batches.json` whose `run` is `shootout-<job>` and which lists every Day-1 batch with its manifest's round ids. If none is found, the line has no `--prior` and a blocking item asks for it. On the real Day-1 batches (read-only: their public round ids and `runs/*/summary/batches.json`), it finds 13635646 for all three. SHOOTOUTS.md §7.7's Day-2 form now names `--prior <job1>`, as the job script does.
+  - **The tally checked only `bus_lufs`**, so the other buses CD-53 matches went unchecked: R3a's sax, keys and bass, and R3b's keys and bass (`<bus>_lufs`). It now checks every matched bus at its stage's limit (0.5 LU for the timing variants), and a missing level is a flag.
+  - **Tests:** 2 new, so the tally has 19. Undoing either change fails its test.
+- **End to end** (laptop, scratch folders; the real banks and kits under a scratch `LOFI_ASSETS` of symlinks; synthetic votes only, `data/votes` never opened; SHOOTOUTS.md §7.7 "End to end"):
+  1. **Day-1 dry run** (scratch seed): exit 0 in 97.3 s (levels 48.3, render 47.4). 67/67 renders at −14.099 … −13.996 LUFS, true peak ≤ −1.479 dBTP. 3 batches: 6 rounds/24 clips, 6/18, and 7/28 with the anchor. Per-round spread 0.0017–0.0091 LU.
+  2. **Synthetic votes** through the rating page's own `Ledger`, in its event format:
+     - set A: 49 events, 19 standing votes; one T, one B, one G; 2 marks on clips heard under 4 bars; 12 early picks; the anchor missed, taken back, then caught;
+     - set B: the anchor missed, so its micro-session counts half; ties at K1's third place and behind the S1 leader;
+     - set C: A's picks, answered more slowly.
+  3. **Tally**, exit 0 on all three sets. Each line carries `--prior 900001`, the scratch Day-1 run:
+     - A: 3 keys, 2 saxes, no cut (23.6 min, r 1.026);
+     - B: 4 keys and 3 saxes, `--cut vamps-high+latin3` (27.6 min, r 1.200);
+     - C: 1 sax, all three cuts (29.1 min, r 1.265).
+  4. **Day-2 dry runs** on those lines, every stage exit 0:
+     - A: 136.8 s, 84 renders; B: 127.0 s, 68 renders; C: 95.5 s, 57 renders;
+     - all 209 renders at −14.095 … −13.949 LUFS, true peak ≤ −1.420 dBTP. Each read the tool's L before every matched fader exactly (407 bus-clip pairs);
+     - the re-measured instruments moved 0.00 dB from the Day-1 run, and S\* stayed the same;
+     - per-round spread after matching: A 0.0001–0.0088 LU, B 0.0006–0.0093, C 0.0006–0.0088. At the median faders, the largest were 3.72, 2.54 and 1.85 LU.
+  5. **Batch checks:** `ui.manifest check` passed on all 12 Day-2 batches, and the leak guard found nothing.
+- **Beyond the five steps:** synthetic Day-2 votes on A's and B's batches, then the tally over all seven batches.
+  - Every later rule ran on the Day-2 manifests, and no round was flagged on any matched bus.
+  - One case is the spec's to decide: with the `latin3` cut, R3b has 2 rounds. A single G then leaves every humanize option all-bad in half its rounds (CD-44), so the tally raises a blocking `RuleGap`.
+- **Suite:** 1756 passed, 1 skipped (main at `f87ef24`: 1717; +17 tally, +20 Day 2, +2 integration).
+- **`jobs/shootout.sbatch`** is unchanged: sha `12f706e7f61efe72` (`scripts/approve_job.py`), as registered, and `--check` reports nothing stale.
+
+**Failed approaches and why:** the first search for set B's ties picked by a fixed order of preference. No order of the 720 gives a three-way tie in S1, so set B's S1 picks were searched round by round instead.
+
+**Needs Shresth's word, if it happens:** what a G does to a 2-round stage after the `latin3` cut (above).
+
+**SU spent:** 0 (laptop only).
+
+**Next:** merge `wt/day2-int` into main. Main has moved since `f87ef24` (`b56fbf6`, `96bd121`), and only this file overlaps. Once Shresth finishes Day 1, run the tally from the main checkout and submit the line it gives.
+
+---
+
 ## 2026-10-31 (19:25 PDT): constrained decoding and prompt v2 merged; junk-rate re-registered; D-020 pre-registered; drums-and-bass batch voted
 
 **What was done**
@@ -161,6 +202,38 @@ Newest entry first. Every number cites the file or command output it was read fr
 1. Merge the constrained-decoding fixes and prompt v2 when workflow `wf_c6a65cc9-b90` lands. Re-register `jobs/junk_rate.sbatch` (≤ 500 SU), pre-register D-020, and run the base-model test on both prompt arms with the grammar on.
 2. Before run 1: add that copy penalty to the reward. It is scored against the seed pool and every example the prompt version can show: v1's one, or all 9 of `prompt_v2.reference_texts` for v2, as prompt_v2's docstring requires (corrected 2026-10-31 per D-020's amendment). Then re-run the smoke with the grammar (TRL's `vllm_structured_outputs_regex`).
 3. Build the scorer server, which supplies taste, CE, theme and the audio part of the gate.
+
+---
+
+## 2026-10-31 (18:58 PDT): job 2 (Day 2) built and dry-run on the laptop; every Day-2 clip matched on every bus its round varies (CD-53)
+
+**What was done** (branch `wt/day2`, not merged)
+- **What Day 2 lacked:** the palette generator and the levels tool exited 2 for `--stage day2`; the vamp palettes (§7.3) did not exist; and CD-52 matched only stages whose option fills an instrument slot, so S2a, S2b, R3a, R3b and the vamps would have played at the band's median faders, and K2's spread texts would have been extra cases of the rootless runs.
+- **Built:**
+  - `plan.yaml` `match` per Day-2 stage (R3a sax, keys, bass, drums; R3b keys, bass, drums; S1f, S2a, S2b sax; K2 keys; vamps keys and bass), `loops: true` for K2 and S2a;
+  - the generator's Day 2: measuring runs of every instrument the draw plays, one measuring palette per stage palette a matched clip plays, stage palettes with the option as an instrument or as its plan variant's palette paths, clip palettes with their own fader on every matched bus;
+  - the levels tool's Day 2: every instrument measured again (each with its move from job 1), then every matched clip on its own palette and text at its instruments' Day-1 trims, the 9-loop values of K2's spread and S2a's variants, and each round's spread before and after;
+  - the vamp palettes: −200 dB after the sax trim slot, and 16 loudness iterations;
+  - multi-bus levels in the render check and the hidden manifests (`<bus>_fader_db`, `<bus>_lufs`, `<bus>_lu`); the job passes the draw to the measure stage from day 2 on.
+- **Spreads before the fix** (each round's clips at the band's median faders, the levels tool's `rounds.before_lu`; a scratch meter on job 1's t and F gave the same values to the 0.001 LU it printed): S2a 1.56–2.43 LU, R3b 0.53–1.04, vamps 1.52–9.85 (bass), S1f 0.12–1.27, K2 0.34–0.40, S2b 0.026–0.055, R3a 0.0006–0.026.
+- **After** (hidden manifests, every matched bus): every Day-2 round 0.0002–0.0088 LU; worst clip 0.0050 LU off its target.
+- **Day-2 dry runs** (laptop, simulated leaders `keys=vcsl_upright_knight+jrhodes3d+fp_fsbs_jazz_guitar/kit=kit_swirly/bass=bass_vsco2_pizz/sax=sax_mtg_tenor+sax_mtg_alto`, the largest |t| per slot in job 1's levels.json, never votes; `--prior 13635646`; SHOOTOUTS.md §7.7):
+  - batches `b1104-1-groove` 5 rounds, 17 clips, 5.6 min; `b1104-2-sax` 10 (with the anchor), 26, 8.8; `b1104-3-keys` 2, 6, 1.9; `b1104-4-vamps` 9, 36, 11.6; each passes `ui.manifest check`, and `public_leaks` finds nothing;
+  - 84 of 84 renders at −14.097 … −13.939 LUFS, true peak at most −1.420 dBTP; each reads the tool's L at every matched fader exactly (162 pairs);
+  - the 11 instruments' trims and median faders equal job 1's (moves 0.00 dB);
+  - stages 136.3 / 131.3 / 134.2 / 124.7 s (levels 65.8–71.7, render 57.3–62.9); peak memory 3.30 GB;
+  - four runs gave the same bytes in 724 of 731 files; the rest differ only in paths, the sha256s of files that hold them, and wall times.
+- **Day 1 unchanged:** Day-1 dry runs of this code and of main's on one seed give the same bytes in 580 of 587 files and the same values in the rest.
+- **SU estimate for job 2** (§7.7, Day 1's arithmetic): 4.7–14.3 min, 56–171 SU, inside the 20-min walltime and the 240-SU cap; job 1's own ratio gives 2.7–3.4 min, 32–41 SU. `jobs/shootout.sbatch` is unchanged.
+- **Suite:** 1737 passed, 1 skipped (20 new tests).
+
+**Failed approaches and why:** the first Day-2 dry run stopped at the render stage: 3 of 36 vamp clips ended 0.15–0.26 LU short of −14 LUFS (G7) at dev_gu's 4 loudness iterations. With no sax the master gain reached 18.9–30.0 dB, and the limiter took 10.0–17.2 dB off the peaks of the five vamp clips checked; the vamp palettes now take 16 iterations (the parser's largest), which every vamp clip met in 3–8.
+
+**Needs ear check (when job 2 runs):** the vamp batch plays with that much limiting; the numbers are measurements only.
+
+**SU spent:** 0 (laptop only).
+
+**Next:** merge `wt/day2`; once Shresth finishes Day 1, tally and propose the leaders, `make sync`, then `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders <proposal> --prior 13635646'`.
 
 ---
 

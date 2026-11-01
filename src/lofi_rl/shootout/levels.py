@@ -2,7 +2,7 @@
 yet: the trims and faders it writes are carried by the palette generator as CD-51 says.
 
     python -m lofi_rl.shootout.levels --plan shootouts/plan.yaml --loops shootouts/loops \\
-        --palettes <run>/summary/palettes/measure --stage day1 [--draw <run>/summary/draw.json] \\
+        --palettes <run>/summary/palettes/measure --stage day1|day2 [--draw <run>/summary/draw.json] \\
         [--prior <levels.json>] --out <run>/summary/levels.json [--workers 8]
 
 For every instrument variant i of the stage and every loop l of `--loops` (its briefs.yaml; the 9 reference loops):
@@ -39,6 +39,15 @@ Drift keys (§3): the mirror stamp (<repo>/.sync-stamp), the base palette's sha2
 and each variant's source and kit-map sha256. With --prior, equal keys reuse the prior values; any difference
 re-measures every variant, and the prior keys, values and the moves are recorded (a move above 0.1 dB is listed).
 
+Day 2 on (CD-53; `--draw` required): the variants are every instrument the draw plays, measured as above (the stamp
+changes at every sync and the runs differ from job 1's, so with job 1's levels.json as --prior they are always
+measured again, each with its move from job 1 recorded; a prior of another day is never reused). Then every stage
+palette a matched clip plays (the measuring index's `configs`) is measured on each case its clips play, plus the 9
+reference loops for a `loops` stage (K2 in spread voicing, S2a), on each bus its stage matches, with that bus's
+instrument's trim: L, the clip's own fader (`clip_fader`), the loudness after it, and the loudness at the band's
+median fader. `configs` holds them; `rounds` holds every drawn round's spread on each matched bus at the median faders
+(`before_lu`) and at the clips' own (`after_lu`).
+
 Exit codes: 0; 2 for a bad argument; 3 when the inputs are refused (a missing variant, a failed gate, drift in a
 measuring palette, a draw of another plan or with a clip on a loop `--loops` does not hold). Sound claims: none.
 """
@@ -68,7 +77,7 @@ from lofi_rl.palette import ROOT, Palette, PaletteError, Plugin, parse_palette, 
 from lofi_rl.render.loudness import lufs
 from lofi_rl.render.mix import bus_chain, process
 from lofi_rl.render.sampler import KitShots, kit_shots, mix_hits
-from lofi_rl.shootout.plan import PlanError, load_plan, read_briefs
+from lofi_rl.shootout.plan import SLOT_BUS, PlanError, load_plan, read_briefs, substitute
 
 SCHEMA = "lofi-rl/shootout-levels/1"
 MEASURE_SCHEMA = "lofi-rl/shootout-measure/1"
@@ -78,7 +87,7 @@ CYCLES = 2                                  # two cycles through the chains, kee
 BUSES = ("sax", "keys", "bass", "drums")
 TRIM_BUSES = ("sax", "keys", "bass")
 STAGES = ("day1", "day2", "day3")
-BUILT = ("day1",)
+BUILT = ("day1", "day2")
 MOVE_DB = 0.1                               # a trim or fader that moves more is listed (§3, drift)
 INPUT_LIFT_DB = 40.0                        # P is read this far up, then taken off: see input_lufs
 CLIP_FIX_LU = 0.005                         # a clip's fader is corrected until it measures this close (half 0.01 dB)
@@ -353,7 +362,7 @@ def draw_cases(path: Path | str, plan_sha256: str, stage: str, cases: Sequence[C
     palettes = doc.get("palettes") or {}
     for rid, entry in sorted((doc.get("renders") or {}).items()):
         want = (palettes.get(entry.get("palette")) or {}).get("level")
-        if not want:
+        if not want or "buses" in want:             # a Day-2 clip is measured on its own palette (config_cases)
             continue
         vid, case, bus, loop = want["variant"], want["case"], want["bus"], entry["loop"]
         if (variants.get(vid) or {}).get("bus") != bus:
@@ -383,6 +392,172 @@ def draw_cases(path: Path | str, plan_sha256: str, stage: str, cases: Sequence[C
     return DrawCases(MappingProxyType({v: tuple(xs) for v, xs in by_variant.items()}), MappingProxyType(extra),
                      MappingProxyType({c: tuple(v) for c, v in on.items()}),
                      {"file": str(path), "sha256": hashlib.sha256(data).hexdigest()})
+
+
+def config_cases(draw_doc: Mapping, configs: Mapping[str, Mapping], cases: Sequence[Case]) -> dict[str, list[Case]]:
+    """Day 2 on (CD-53): the cases each stage palette (`configs`, from the measuring index) is measured on. Every
+    clip of the draw whose palette names a Day-2 `level` (its buses and its case) adds its own text on its base;
+    a `loops` config adds the 9 reference loops with its stage's literal substitution (K2's `keys: ep spread`).
+    Case names are those of the draw: the loop, or `<loop>.<variant>` for a changed text (`spread`, `sour`, a vamp
+    id). LevelsError for a clip on a palette the index does not measure, on a loop `cases` does not hold, with
+    another brief, or for one case name with two texts."""
+    by_name = {c.name: c for c in cases}
+    out: dict[str, dict[str, Case]] = {k: {} for k in configs}
+    palettes = draw_doc.get("palettes") or {}
+    for rid, entry in sorted((draw_doc.get("renders") or {}).items()):
+        spec = palettes.get(entry.get("palette")) or {}
+        level = spec.get("level") or {}
+        if "buses" not in level:
+            continue
+        base, loop = spec.get("base"), entry["loop"]
+        if base not in configs:
+            raise LevelsError(f"--draw: clip {rid} plays stage palette {base}, which the measuring index does not "
+                              f"measure")
+        if list(level["buses"]) != list(configs[base]["buses"]):
+            raise LevelsError(f"--draw: clip {rid} matches {level['buses']}, its palette {base} "
+                              f"{configs[base]['buses']}")
+        if loop not in by_name:
+            raise LevelsError(f"--draw: clip {rid} plays {loop}, which --loops does not hold, so its faders cannot "
+                              f"be measured")
+        if entry.get("brief") != _brief_doc(by_name[loop].brief):
+            raise LevelsError(f"--draw: clip {rid} has brief {entry.get('brief')}, not {loop}'s")
+        want = loop if entry["variant"] == "base" else f"{loop}.{entry['variant']}"
+        if level["case"] != want:
+            raise LevelsError(f"--draw: clip {rid}'s case {level['case']!r} is not {want!r}")
+        x = Case(want, entry["text"], by_name[loop].brief, loop, entry["variant"])
+        if out[base].setdefault(want, x) != x:
+            raise LevelsError(f"--draw: case {want} of {base} is drawn with two different texts")
+    for key, cfg in configs.items():
+        if not cfg.get("loops"):
+            continue
+        sub = dict(cfg.get("sub") or {})
+        variant = sub["keys"].split()[-1] if "keys" in sub else "base"
+        for c in cases:
+            name = c.name if variant == "base" else f"{c.name}.{variant}"
+            x = Case(name, substitute(c.text, **sub) if sub else c.text, c.brief, c.name, variant)
+            if out[key].setdefault(name, x) != x:
+                raise LevelsError(f"{key}: case {name} is drawn with another text than its loop's substitution")
+    return {k: [v[n] for n in sorted(v)] for k, v in out.items()}
+
+
+def loop_case_names(cfg: Mapping, cases: Sequence[Case]) -> list[str]:
+    """A `loops` config's 9 reference-loop case names: the loop's name, or `<loop>.spread` under K2's substitution."""
+    sub = dict(cfg.get("sub") or {})
+    variant = sub["keys"].split()[-1] if "keys" in sub else "base"
+    return [c.name if variant == "base" else f"{c.name}.{variant}" for c in cases]
+
+
+def measure_configs(configs: Mapping[str, Mapping], measure_dir: Path, cases_of: Mapping[str, Sequence[Case]],
+                    cases: Sequence[Case], P: Mapping[str, Mapping[str, float]], t_all: Mapping[str, float],
+                    F_all: Mapping[str, float], s_star: float, targets: Mapping[str, float], lv, bench: "Bench",
+                    ex: ThreadPoolExecutor, root: Path) -> dict:
+    """Day 2 on (CD-53): every stage palette a matched clip plays, measured on each of its cases on each bus it
+    matches, with that bus's instrument's trim (measured above: an option never gets a trim of its own, since the
+    frozen palette holds one trim per instrument, CD-28): L, the clip's own fader (`clip_fader`), the loudness after
+    it, and the loudness at the band's median fader (`median_lufs`, what the clip would play without its own). A
+    `loops` config also gets §3 steps 3-6 on the 9 reference loops: its median fader F (the frozen palette's spread
+    and sax-variant values), the linear-range and median checks, and its input's median shift from its
+    instrument's (`input_shift_db`, information)."""
+    out = {}
+    for key, cfg in configs.items():
+        pal = load_run_palette(Path(measure_dir) / cfg["file"], cfg["sha256"], root)
+        cs = list(cases_of[key])
+        buses = list(cfg["buses"])
+        inst = {b: cfg["instruments"][b] for b in buses}
+        missing = sorted(b for b, i in inst.items() if i not in t_all)
+        if missing:
+            raise LevelsError(f"{key}: its {missing} instruments were not measured, so they have no trim")
+        run = Run(f"config:{key}", cfg["file"], cfg["sha256"], pal, MappingProxyType(dict(cfg["instruments"])),
+                  tuple(buses))
+        run = replace(run, compiled=MappingProxyType({c.name: compiled_case(pal, c) for c in cs}))
+        nine = set(loop_case_names(cfg, cases)) if cfg.get("loops") else set()
+        bench.prepare(run, cs, buses)
+        jobs = [(b, c, t_all[inst[b]]) for b in buses for c in cs]
+        jobs += [(b, c, t_all[inst[b]] - lv.linear_drop_db) for b in buses for c in cs if c.name in nine]
+        levels = list(ex.map(lambda j: bench.chain_lufs(run, j[1], j[0], j[2], keep=j[2] == t_all[inst[j[0]]]),
+                             jobs))
+        L: dict[str, dict[str, float]] = {b: {} for b in buses}
+        L_low: dict[str, dict[str, float]] = {b: {} for b in buses}
+        for (b, c, trim), level in zip(jobs, levels):
+            (L if trim == t_all[inst[b]] else L_low)[b][c.name] = level
+        pairs = [(b, c) for b in buses for c in cs]
+        med = list(ex.map(lambda j: bench.post_lufs(run, j[1], j[0], F_all[inst[j[0]]]), pairs))
+        done = list(ex.map(lambda j: clip_fader(L[j[0]][j[1].name], s_star + targets[j[0]],
+                                                lambda f, j=j: bench.post_lufs(run, j[1], j[0], f)), pairs))
+        P_in = {b: {c.name: bench.input_lufs(run, c, b) for c in cs if c.name in nine} for b in buses} if nine else {}
+        rec = {}
+        for b in buses:
+            target = s_star + targets[b]
+            cases_rec = {}
+            for (bb, c), m, clip in zip(pairs, med, done):
+                if bb == b:
+                    cases_rec[c.name] = {**clip, "lu": clip["lufs"] - s_star, "instrument": inst[b],
+                                         "t": t_all[inst[b]], "median_F": F_all[inst[b]], "median_lufs": m,
+                                         "median_off_lu": m - target}
+            entry = {"instrument": inst[b], "t": t_all[inst[b]], "median_F": F_all[inst[b]], "target_lufs": target,
+                     "cases": cases_rec, "checks": {"clips": clip_check({b: cases_rec}, lv.clip_tol_lu)[b]}}
+            if nine:
+                L9 = {n: L[b][n] for n in sorted(nine)}
+                F9 = round(target - _median(L9, f"{key}:{b}"), 2)
+                by = {c.name: c for c in cs}
+                post9 = dict(zip(sorted(nine), ex.map(lambda n: bench.post_lufs(run, by[n], b, F9), sorted(nine))))
+                entry["loops"] = {
+                    "P": P_in[b], "L": L9, "L_low": {n: L_low[b][n] for n in sorted(nine)}, "F": F9,
+                    "input_shift_db": _median(P_in[b], key) - _median(P[inst[b]], inst[b]),
+                    "checks": {"linear": linear_check(L9, {n: L_low[b][n] for n in L9}, lv.linear_drop_db,
+                                                      lv.linear_tol_db),
+                               "post_fader": post_check({b: post9}, {b: L9}, {b: F9}, {b: target},
+                                                        lv.median_tol_lu)[b]}}
+            rec[b] = entry
+        out[key] = {"stage": cfg["stage"], "option": cfg["option"], "file": cfg["file"], "sha256": cfg["sha256"],
+                    "instruments": dict(cfg["instruments"]), "settings": list(cfg["settings"]),
+                    "sax_muted": cfg["sax_muted"], "loops": bool(cfg.get("loops")), "buses": rec,
+                    "cases": {c.name: {"loop": c.loop, "variant": c.variant, "n": run.compiled[c.name].n,
+                                       "text_sha256": hashlib.sha256(c.text.encode("utf-8")).hexdigest()} for c in cs},
+                    "digests": {c.name: run.compiled[c.name].digest() for c in cs}}
+        bench.release(run)
+    return out
+
+
+def config_flags(configs: Mapping[str, Mapping]) -> list[str]:
+    """`<config>:<bus>` for every matched bus whose clips or 9-loop checks fail."""
+    out = []
+    for key, cfg in configs.items():
+        for b, entry in cfg["buses"].items():
+            checks = [entry["checks"]["clips"]] + list((entry.get("loops") or {}).get("checks", {}).values())
+            if not all(c["ok"] for c in checks):
+                out.append(f"{key}:{b}")
+    return sorted(out)
+
+
+def round_spreads(draw_doc: Mapping, configs: Mapping[str, Mapping]) -> list[dict]:
+    """Each drawn round's spread on every bus its clips match (§3 step 8): the largest minus the smallest loudness
+    after the fader, at the band's median faders (`before_lu`, what the clips would play without their own) and at
+    each clip's own (`after_lu`), with the clips' cases and options."""
+    palettes, out = draw_doc.get("palettes") or {}, []
+    for b in draw_doc.get("batches") or []:
+        for r in b["rounds"]:
+            rows = []
+            for c in r["clips"]:
+                entry = draw_doc["renders"][c["render"]]
+                spec = palettes.get(entry["palette"]) or {}
+                level = spec.get("level") or {}
+                if "buses" not in level:
+                    break
+                rows.append((configs[spec["base"]], level))
+            if len(rows) != len(r["clips"]) or not rows:
+                continue
+            per_bus = {}
+            for bus in rows[0][1]["buses"]:
+                recs = [cfg["buses"][bus]["cases"][lvl["case"]] for cfg, lvl in rows]
+                before = [x["median_lufs"] for x in recs]
+                after = [x["lufs"] for x in recs]
+                per_bus[bus] = {"before_lu": max(before) - min(before), "after_lu": max(after) - min(after)}
+            out.append({"batch": b["name"], "stage": r["stage"], "slot": r["slot"], "kind": r["kind"],
+                        "loop": r["loop"], "options": [c["option"] for c in r["clips"]], "buses": per_bus,
+                        "before_lu": max(v["before_lu"] for v in per_bus.values()),
+                        "after_lu": max(v["after_lu"] for v in per_bus.values())})
+    return out
 
 
 # ------------------------------------------------------------------------------------------ benches
@@ -483,7 +658,7 @@ def run_levels(plan_path: Path | str, loops_dir: Path | str, measure_dir: Path |
     the reference loops, and with `draw` every other text a drawn clip plays. Returns the levels document (see the
     module docstring)."""
     if stage not in BUILT:
-        raise LevelsError(f"stage {stage}: only {', '.join(BUILT)} is built (job 1)")
+        raise LevelsError(f"stage {stage}: only {', '.join(BUILT)} is built (jobs 1 and 2)")
     plan = load_plan(plan_path, root=root)
     measure_dir = Path(measure_dir)
     index_bytes = (measure_dir / "index.json").read_bytes()
@@ -493,13 +668,27 @@ def run_levels(plan_path: Path | str, loops_dir: Path | str, measure_dir: Path |
     lv = plan.levels
     variants = index["variants"]
     day = STAGES.index(stage) + 1
-    wanted = [o for st in plan.stages_of(day) for o in st.options if o not in index.get("without", [])]
+    draw_doc = None
+    if day == 1:
+        wanted = [o for st in plan.stages_of(day) for o in st.options if o not in index.get("without", [])]
+        what = f"a day-{day} option"
+    else:                           # Day 2 on (CD-53): every instrument the draw plays, and each palette it matches
+        if draw is None:
+            raise LevelsError(f"stage {stage}: the level tool needs the job's draw (--draw): its clips and band")
+        draw_bytes = Path(draw).read_bytes()
+        if (index.get("draw") or {}).get("sha256") != hashlib.sha256(draw_bytes).hexdigest():
+            raise LevelsError(f"{measure_dir}/index.json was made from another draw than {draw}")
+        draw_doc = json.loads(draw_bytes)
+        wanted = sorted(set(lv.anchors.values()) | {spec["band"][s] for spec in draw_doc["palettes"].values()
+                                                     for s in SLOT_BUS if spec["band"].get(s)})
+        what = f"an instrument the day-{day} draw plays"
     for o in wanted:
         if o not in variants:
-            raise LevelsError(f"{measure_dir}/index.json does not measure {o}, a day-{day} option")
+            raise LevelsError(f"{measure_dir}/index.json does not measure {o}, {what}")
     for vid, v in variants.items():
         if v["flags"].get("voicing") != "rootless" or v["flags"].get("sax_warm") or not v["flags"].get("sax_expr"):
-            raise LevelsError(f"{vid}: Day-2 variant flags {v['flags']} are built for job 2")
+            raise LevelsError(f"{vid}: flags {v['flags']} are not an instrument's own; a Day-2 option is measured on "
+                              f"the stage palette its clips play (CD-53)")
     runs = []
     for r in index["runs"]:
         runs.append(Run(r["run"], r["file"], r["sha256"], load_run_palette(measure_dir / r["file"], r["sha256"], root),
@@ -561,7 +750,7 @@ def run_levels(plan_path: Path | str, loops_dir: Path | str, measure_dir: Path |
         changed = changed_keys(prior_doc.get("drift", {}), drift)
         doc["prior"] = {"file": str(prior), "sha256": hashlib.sha256(prior_bytes).hexdigest(),
                         "drift": prior_doc.get("drift"), "changed": changed}
-        if not changed:
+        if not changed and prior_doc.get("stage") == stage and draw_doc is None:   # Day 2 always measures its clips
             doc.update(variants=prior_doc["variants"], S_star=prior_doc["S_star"], flags=prior_doc["flags"],
                        reused=True)
             return doc
@@ -605,6 +794,12 @@ def run_levels(plan_path: Path | str, loops_dir: Path | str, measure_dir: Path |
             for b, vid in new:
                 t_all[vid], F_all[vid] = t[vid], F[vid]
             bench.release(run)
+        if draw_doc is not None:        # Day 2 on: each matched clip on its own palette and text (CD-53)
+            configs = index.get("configs") or {}
+            cases_of = config_cases(draw_doc, configs, cases)
+            doc["configs"] = measure_configs(configs, measure_dir, cases_of, cases, P, t_all, F_all, s_star, targets,
+                                             lv, bench, ex, root)
+            doc["rounds"] = round_spreads(draw_doc, doc["configs"])
     checks = post_check(post, L, F_all, {v: s_star + targets[bus_of[v]] for v in post}, lv.median_tol_lu)
     clip_checks = clip_check(clips, lv.clip_tol_lu)
     out = {}
@@ -622,7 +817,8 @@ def run_levels(plan_path: Path | str, loops_dir: Path | str, measure_dir: Path |
                 doc["moved"].append(vid)
         out[vid] = rec
     doc.update(variants=out, S_star=s_star,
-               flags=sorted(vid for vid, r in out.items() if not all(c["ok"] for c in r["checks"].values())))
+               flags=sorted(vid for vid, r in out.items() if not all(c["ok"] for c in r["checks"].values()))
+               + config_flags(doc.get("configs") or {}))
     return doc
 
 
@@ -641,7 +837,7 @@ def main(argv: list[str] | None = None, *, bench: Bench | None = None) -> int:
     p.add_argument("--cache", type=Path, default=None, help="one-shot cache (default $LOFI_CACHE or ~/.cache/lofi-rl)")
     a = p.parse_args(argv)
     if a.stage not in BUILT:
-        p.error(f"--stage {a.stage}: only {', '.join(BUILT)} is built so far (job 1)")
+        p.error(f"--stage {a.stage}: only {', '.join(BUILT)} is built so far (jobs 1 and 2)")
     for name, path in (("--plan", a.plan), ("--loops", a.loops / "briefs.yaml"),
                        ("--palettes", a.palettes / "index.json"), ("--draw", a.draw), ("--prior", a.prior)):
         if path is not None and not path.is_file():
@@ -667,6 +863,18 @@ def main(argv: list[str] | None = None, *, bench: Bench | None = None) -> int:
               f" off {clips['worst_off_lu']:.4f} {'ok' if clips['ok'] else 'FLAG'}")
     for name, x in doc["extra_cases"].items():
         print(f"drawn case {name}: measured for {', '.join(x['variants'])}")
+    for key, cfg in (doc.get("configs") or {}).items():
+        for b, e in cfg["buses"].items():
+            own = [c["F"] for c in e["cases"].values()]
+            nine = e.get("loops")
+            print(f"config {key:28s} {b:5s} {e['instrument']:20s} t {e['t']:+7.2f}  median F {e['median_F']:+7.2f}"
+                  f"  clips {len(own)} F {min(own):+.2f}..{max(own):+.2f} off {e['checks']['clips']['worst_off_lu']:.4f}"
+                  + (f"  9 loops F {nine['F']:+.2f} drop {nine['checks']['linear']['median_drop_db']:.2f}"
+                     f" input {nine['input_shift_db']:+.2f} dB" if nine else ""))
+    for r in doc.get("rounds") or []:
+        print(f"round {r['stage']:4s} {r['slot']:7s} {r['kind']:6s} {r['loop']:20s} spread before {r['before_lu']:.4f}"
+              f" after {r['after_lu']:.4f} LU (" + ", ".join(f"{b} {v['before_lu']:.3f}/{v['after_lu']:.4f}"
+                                                         for b, v in r["buses"].items()) + ")")
     for vid in doc["moved"]:
         print(f"moved > {MOVE_DB} dB: {vid} {doc['variants'][vid]['moved_db']}")
     print(f"wrote {a.out}" + (f"; flagged: {', '.join(doc['flags'])}" if doc["flags"] else ""))

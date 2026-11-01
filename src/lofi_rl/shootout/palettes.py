@@ -1,6 +1,6 @@
 """The shootout palette generator (docs/SHOOTOUTS.md §7.8; §3 "How the values are carried", CD-51).
 
-    python -m lofi_rl.shootout.palettes --plan shootouts/plan.yaml --stage day1 --levels none|<levels.json>
+    python -m lofi_rl.shootout.palettes --plan shootouts/plan.yaml --stage day1|day2 --levels none|<levels.json>
         [--draw <draw.json>] [--base <base.yaml>] [--without <option>,...] --out <run>/summary/palettes/
 
 Every palette is the committed base (`shootouts/palettes/base.yaml`) with one instrument per bus under the loops'
@@ -34,8 +34,20 @@ Kits from the §7.4 importer are read from $LOFI_ASSETS (the base's assets_root)
 `archive.path` and the importer's printed `lanes:` and `choke:` blocks saved at `archive.blocks`. The tar's sha256 is
 checked against the plan's pin when the plan has one, and written into every palette as a fetch-mode source.
 
+Day 2 (job 2; CD-53) takes the job's draw for both runs, since its band is the Day-1 leaders (§8) and its cuts are the
+job's:
+- `--levels none --draw`: the measuring runs of every instrument the draw plays (the four level anchors in m1, then
+  one new instrument per bus, as on Day 1: §3 "Drift between jobs" measures them again), and in measure/configs/
+  every stage palette a matched clip plays, at trims and faders 0, with its option's settings; measure/index.json
+  lists them under `configs` with the buses their stage matches.
+- `--levels <levels.json> --draw`: each stage palette (the band's t and median F on every bus; an instrument stage's
+  option on its bus; a swing, humanize, sax-variant or timing option as the dotted palette paths its plan variant
+  sets; the vamps' sax muted by `mute_sax`), then each clip's own palette: its stage palette with the fader of every
+  bus its stage matches set to the levels file's configs[base].buses[bus].cases[case].F. A clip the levels file did
+  not measure, measured on another instrument, or more than clip_tol_lu off on a bus is refused.
+
 Every source file is hashed once and every SoundFont preset checked before anything is written; a generation that
-fails writes nothing. Only Day 1 (job 1) is built: Day 2 needs the Day-1 leaders, Day 3 the rain file.
+fails writes nothing. Days 1 and 2 are built; Day 3 needs the Day-2 picks and the rain file.
 Exit codes: 0, 2 for a bad argument (a missing file, an unbuilt day), 3 when the inputs are refused.
 """
 from __future__ import annotations
@@ -55,7 +67,7 @@ import yaml
 
 from lofi_rl.dsl.vocab import LANES
 from lofi_rl.palette import LAYERS, ROOT, PaletteError, parse_palette, sf2_presets
-from lofi_rl.shootout.plan import Plan, PlanError, load_plan
+from lofi_rl.shootout.plan import Plan, PlanError, apply_cuts, load_plan
 
 INDEX_SCHEMA = "lofi-rl/shootout-palettes/1"
 MEASURE_SCHEMA = "lofi-rl/shootout-measure/1"
@@ -63,8 +75,15 @@ LEVELS_SCHEMA = "lofi-rl/shootout-levels/1"
 BUSES = ("sax", "keys", "bass", "drums")          # render/mix.py's summing order
 TRIM_BUSES = ("sax", "keys", "bass")              # chains that start with the trim slot
 STAGES = {"day1": 1, "day2": 2, "day3": 3}
-BUILT = ("day1",)
+BUILT = ("day1", "day2")
 DAY1_FLAGS = {"voicing": "rootless", "sax_warm": False, "sax_expr": True}   # §4 "Fixed in every round"
+SETTING_SLOTS = ("swing", "humanize", "sax_variant", "timing")   # band slots whose option sets palette values
+MUTE_DB = -200.0                                  # §7.3: the vamp rounds' sax, silent while its stem still renders
+# §7.3: with the sax muted the master gain rose to 18.9-30.0 dB in the Day-2 dry runs (2026-10-31) and the limiter
+# took 10.0-17.2 dB off the peaks of the five vamp clips checked, so the loudness loop (a secant step clamped at 4 dB
+# per LU) took up to 8 iterations, where dev_gu's 4 left 3 of 36 vamp clips 0.15-0.26 LU short of -14 LUFS (G7). The
+# vamp palettes allow the parser's largest count; a render that converges in 4 is unchanged.
+MUTED_LOUDNESS_ITERS = 16
 
 
 # libyaml when the PyYAML build has it: tests/test_shootout_palettes.py checks that it writes the same bytes as the
@@ -136,7 +155,8 @@ class Instrument:
 class Inputs:
     """The plan, the base palette and every candidate of a day, resolved and checked once."""
 
-    def __init__(self, plan: Plan, base_path: Path, day: int, without: Sequence[str], root: Path):
+    def __init__(self, plan: Plan, base_path: Path, day: int, without: Sequence[str], root: Path,
+                 draw: Mapping | None = None):
         self.plan, self.day, self.root = plan, day, root
         self.base_path = Path(base_path)
         data = self.base_path.read_bytes()
@@ -158,17 +178,29 @@ class Inputs:
                 raise GenerateError(f"base palette {self.base_path}: mix.buses.{bus} must start with its trim slot "
                                     f"[Gain, {{gain_db: 0.0}}] (CD-51)")
         self.stages = plan.stages_of(day)
-        options = {o for st in self.stages for o in st.options}
-        protected = set(plan.days[day].band.values()) | set(plan.levels.anchors.values())
-        for o in without:
-            if o not in options:
-                raise GenerateError(f"--without {o}: not an option of day {day}")
-            if o in protected:
-                raise GenerateError(f"--without {o}: the band and the level anchors cannot be left out")
-        self.without = tuple(o for st in self.stages for o in st.options if o in set(without))
-        self.options = {st.id: tuple(o for o in st.options if o not in self.without) for st in self.stages}
+        if day == 1:
+            options = {o for st in self.stages for o in st.options}
+            protected = set(plan.days[day].band.values()) | set(plan.levels.anchors.values())
+            for o in without:
+                if o not in options:
+                    raise GenerateError(f"--without {o}: not an option of day {day}")
+                if o in protected:
+                    raise GenerateError(f"--without {o}: the band and the level anchors cannot be left out")
+            self.without = tuple(o for st in self.stages for o in st.options if o in set(without))
+            self.options = {st.id: tuple(o for o in st.options if o not in self.without) for st in self.stages}
+            plays = [o for st in self.stages for o in self.options[st.id]]
+        else:                       # Day 2 on: the band and the ranks stages' options are the job's leaders (§8)
+            if draw is None:
+                raise GenerateError(f"day {day}: the palettes need the job's draw (--draw), which names the band")
+            if without:
+                raise GenerateError("--without: only Day 1 leaves options out")
+            self.without = ()
+            leaders = {k: tuple(v) for k, v in (draw.get("leaders") or {}).items()}
+            self.options = {st.id: tuple(leaders.get(st.groups[0].leaders, ())) if st.groups[0].leaders
+                            else tuple(st.options) for st in self.stages}
+            plays = day_instruments(plan, draw)
         self.extra_sources: dict[str, dict] = {}
-        self.instruments = {o: self._instrument(o) for st in self.stages for o in self.options[st.id]}
+        self.instruments = {o: self._instrument(o) for o in plays}
         self._check_files()
 
     # ---------------------------------------------------------------------------------------------
@@ -283,8 +315,19 @@ class Inputs:
 
     # ------------------------------------------------------------------------------------- palettes
     def palette_doc(self, pid: str, band: Mapping[str, str], trims: Mapping[str, float],
-                    faders: Mapping[str, float]) -> dict:
-        """The base with `band` (bus -> instrument id) under the loops' names, each bus's trim and fader."""
+                    faders: Mapping[str, float], settings: Sequence[str] = (), sax_muted: bool = False) -> dict:
+        """The base with `band` (bus -> instrument id) under the loops' names, each bus's trim and fader; then each
+        plan variant of `settings` (Day 2 on: the band's swing, humanize, sax variant and timing) sets its dotted
+        palette paths, and `sax_muted` puts §7.3's -200 dB Gain right after the sax chain's trim slot (`mute_sax`,
+        the vamps)."""
+        doc = self._doc(pid, band, trims, faders)
+        for vid in settings:
+            for path, value in self.plan.variants[vid].set.items():
+                _set_path(doc, path, value)
+        return mute_sax(doc) if sax_muted else doc
+
+    def _doc(self, pid: str, band: Mapping[str, str], trims: Mapping[str, float],
+             faders: Mapping[str, float]) -> dict:
         doc = copy.deepcopy(self.base_doc)
         doc["id"] = pid
         doc["sources"].update(copy.deepcopy(self.extra_sources))
@@ -322,12 +365,20 @@ class Inputs:
 # --------------------------------------------------------------------------------------- measuring
 def measuring_runs(inputs: Inputs) -> list[dict]:
     """§3 step 1: run m1 is the four level anchors; run r > 1 takes the (r-1)-th not-yet-measured variant of each
-    bus, or the anchor where the bus has run out. `measure` lists the buses whose variant is new in that run."""
+    bus, or the anchor where the bus has run out. `measure` lists the buses whose variant is new in that run. Day 1
+    measures its stages' options; Day 2 on, every instrument the day plays (`day_instruments`, CD-53), so the band's
+    trims and median faders are measured again as §3 "Drift between jobs" asks."""
     anchors = inputs.plan.levels.anchors
     per_bus = {bus: [] for bus in BUSES}
-    for st in inputs.stages:
-        if st.bus in per_bus:
-            per_bus[st.bus] += [o for o in inputs.options[st.id] if o != anchors[st.bus] and o not in per_bus[st.bus]]
+    if inputs.day == 1:
+        for st in inputs.stages:
+            if st.bus in per_bus:
+                per_bus[st.bus] += [o for o in inputs.options[st.id]
+                                    if o != anchors[st.bus] and o not in per_bus[st.bus]]
+    else:
+        for o, inst in inputs.instruments.items():
+            if o != anchors[inst.bus]:
+                per_bus[inst.bus].append(o)
     rows = [dict(anchors)]
     for col in zip_longest(*(per_bus[b] for b in BUSES)):
         rows.append({b: (v if v is not None else anchors[b]) for b, v in zip(BUSES, col)})
@@ -340,7 +391,8 @@ def measuring_runs(inputs: Inputs) -> list[dict]:
     return runs
 
 
-def write_measuring(inputs: Inputs, out: Path, stage: str, plan_path: Path) -> Generated:
+def write_measuring(inputs: Inputs, out: Path, stage: str, plan_path: Path, draw: Mapping | None = None,
+                    draw_path: Path | None = None) -> Generated:
     zero = {b: 0.0 for b in BUSES}
     files, runs = {}, []
     for run in measuring_runs(inputs):
@@ -364,8 +416,217 @@ def write_measuring(inputs: Inputs, out: Path, stage: str, plan_path: Path) -> G
              "base_sha256": inputs.base_sha256, "without": list(inputs.without),
              "anchors": dict(inputs.plan.levels.anchors), "sources": inputs.sources_index(),
              "variants": variants, "runs": runs}
+    if draw is not None:            # Day 2 on (CD-53): each stage palette a matched clip plays, at trims and faders 0
+        configs = {}
+        for key, b in day_bases(inputs, draw).items():
+            if not b["buses"]:
+                continue
+            rel = Path("measure") / "configs" / f"{key}.yaml"
+            data = inputs.dump(inputs.palette_doc(f"measure_{stage}_{key}", b["instruments"], zero, zero,
+                                                  b["settings"], b["sax_muted"]), rel.as_posix())
+            files[rel] = data
+            configs[key] = {"file": rel.relative_to("measure").as_posix(), "id": f"measure_{stage}_{key}",
+                            "sha256": sha256_bytes(data), "stage": b["stage"], "option": b["option"],
+                            "instruments": b["instruments"], "settings": list(b["settings"]),
+                            "sax_muted": b["sax_muted"], "buses": list(b["buses"]), "loops": b["loops"],
+                            "sub": b["sub"]}
+        index.update(draw={"file": label(draw_path, inputs.root), "sha256": file_sha256(draw_path)},
+                     configs=configs)
     files[Path("measure") / "index.json"] = (json.dumps(index, indent=1, sort_keys=False) + "\n").encode("utf-8")
     return Generated(index, write_all(out, files))
+
+
+# --------------------------------------------------------------------------------------- Day 2 on (CD-53)
+def mute_sax(doc: dict) -> dict:
+    """§7.3, the vamp palettes: a -200 dB `Gain` right after the sax chain's trim slot, so the sax bus is silent
+    while its stem still renders (every other stem is unchanged), and the loudness loop's MUTED_LOUDNESS_ITERS.
+    Changes `doc` in place and returns it."""
+    chain = doc["mix"]["buses"]["sax"]
+    if not chain or chain[0][0] != "Gain":
+        raise GenerateError("the sax chain must start with its trim slot [Gain, {gain_db: trim}] (CD-51)")
+    chain.insert(1, ["Gain", {"gain_db": MUTE_DB}])
+    doc["loudness"]["iters"] = MUTED_LOUDNESS_ITERS
+    return doc
+
+
+def _set_path(doc: dict, dotted: str, value: Any) -> None:
+    """Set one dotted palette path of a plan variant (`groove.swing`, `mix.sax_warm`, `sax_expr.timing`)."""
+    node, keys = doc, dotted.split(".")
+    for k in keys[:-1]:
+        if not isinstance(node.get(k), dict):
+            raise GenerateError(f"variant path {dotted}: the base palette has no mapping {k}")
+        node = node[k]
+    if keys[-1] not in node:
+        raise GenerateError(f"variant path {dotted}: the base palette has no {keys[-1]}")
+    node[keys[-1]] = copy.deepcopy(value)
+
+
+def day_instruments(plan: Plan, draw: Mapping) -> list[str]:
+    """Every instrument a day's draw plays (each palette's keys, kit, bass and sax) and the four level anchors, in
+    the plan's candidate order: what Day 2 measures again (§3 "Drift between jobs")."""
+    names = set(plan.levels.anchors.values())
+    for spec in (draw.get("palettes") or {}).values():
+        band = spec.get("band") or {}
+        names |= {band[slot] for slot in SLOT_BUS if band.get(slot)}
+    unknown = sorted(names - set(plan.candidates))
+    if unknown:
+        raise GenerateError(f"draw: {unknown} are not candidates of the plan")
+    return [c for c in plan.candidates if c in names]
+
+
+def day_bases(inputs: Inputs, draw: Mapping) -> dict[str, dict]:
+    """Each stage palette of a Day-2 draw: a matched clip's `base` (CD-53), or a palette the draw asks for itself.
+    {key: stage, option, instruments (bus -> id), settings (the band's plan variants that set palette values), whether
+    the sax is muted, the stage's `match` buses, `loops` and its literal substitutions (`sub`)}."""
+    out: dict[str, dict] = {}
+    for key, spec in sorted((draw.get("palettes") or {}).items()):
+        level = spec.get("level") or {}
+        if level and "buses" not in level:
+            raise GenerateError(f"draw: palette {key} names a Day-1 level {level}; a day-{inputs.day} stage matches "
+                                f"its buses on its own palette (CD-53)")
+        name = spec.get("base") if level else key
+        st = inputs.plan.stages.get(spec.get("stage"))
+        if st is None or st.day != inputs.day:
+            raise GenerateError(f"draw: palette {key} belongs to stage {spec.get('stage')}, not one of day "
+                                f"{inputs.day}'s")
+        band = spec.get("band") or {}
+        if band.get("bed") is not None or band.get("rain") not in (None, "rain_none"):
+            raise GenerateError(f"draw: palette {key} plays a bed; the rain comes on day 3")
+        entry = {"stage": st.id, "option": spec.get("option"),
+                 "instruments": {bus: band.get(slot) for slot, bus in SLOT_BUS.items()},
+                 "settings": [band[s] for s in SETTING_SLOTS if band.get(s)], "sax_muted": bool(spec.get("sax_muted")),
+                 "buses": list(st.match), "loops": st.match_loops,
+                 "sub": {h: v for h, v in st.sub.items() if v != "option"}}
+        missing = [bus for bus, inst in entry["instruments"].items() if inst not in inputs.instruments]
+        if missing:
+            raise GenerateError(f"draw: palette {key} plays no known instrument on {missing}")
+        if out.setdefault(name, entry) != entry:
+            raise GenerateError(f"draw: the clips of stage palette {name} name two different bands")
+        if level and list(level["buses"]) != entry["buses"]:
+            raise GenerateError(f"draw: palette {key} matches {level['buses']}, but stage {st.id} matches "
+                                f"{entry['buses']}")
+    return out
+
+
+def clip_palette_day2(inputs: Inputs, levels: Mapping, base: Mapping, key: str, level: Mapping
+                      ) -> tuple[Path, bytes, dict]:
+    """One Day-2 clip's own palette (CD-53): its stage palette `base` (an index entry) with the fader of every bus of
+    `level["buses"]` set to the levels file's configs[base].buses[bus].cases[case].F, every other value as `base`.
+    GenerateError when the levels file has no such clip, measured it on another instrument, or the clip sits more
+    than clip_tol_lu from S* + T on a bus."""
+    cfg = (levels.get("configs") or {}).get(base["id"])
+    if cfg is None:
+        raise GenerateError(f"the levels file did not measure stage palette {base['id']} (the level tool measures every "
+                            f"palette a matched clip plays, CD-53)")
+    tol, s_star = (levels.get("tolerances") or {}).get("clip_tol_lu"), levels.get("S_star")
+    if not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in (tol, s_star)):
+        raise GenerateError("the levels file gives no clip_tol_lu or S_star")
+    faders, buses = dict(base["fader_db"]), {}
+    for bus in level["buses"]:
+        rec = (((cfg.get("buses") or {}).get(bus) or {}).get("cases") or {}).get(level["case"])
+        if rec is None:
+            raise GenerateError(f"the levels file has no {bus} fader for {base['id']} on {level['case']}")
+        if rec.get("instrument") != base["instruments"][bus]:
+            raise GenerateError(f"{base['id']} on {level['case']}: the levels file measured {rec.get('instrument')} on "
+                                f"{bus}, but the palette plays {base['instruments'][bus]}")
+        if abs(rec["off_lu"]) > tol:
+            raise GenerateError(f"{base['id']} on {level['case']} sits {rec['off_lu']:+.3f} LU from S* + T on {bus} "
+                                f"after matching, more than its clip_tol_lu of {tol} LU (§3 step 6c)")
+        faders[bus] = float(rec["F"])
+        buses[bus] = {"instrument": rec["instrument"], "L": rec["L"], "F": faders[bus], "lufs": rec["lufs"],
+                      "lu": rec["lufs"] - s_star, "target_lufs": rec["target_lufs"], "off_lu": rec["off_lu"],
+                      "tol_lu": tol}
+    rel = Path(f"{key}.yaml")
+    trims = dict(base["trim_db"])
+    data = inputs.dump(inputs.palette_doc(key, base["instruments"], trims, faders, base["settings"],
+                                          base["sax_muted"]), str(rel))
+    entry = {"stage": base["stage"], "option": base["option"], "kit": None, "file": rel.as_posix(), "id": key,
+             "sha256": sha256_bytes(data), "instruments": dict(base["instruments"]), "trim_db": trims,
+             "fader_db": faders, "settings": list(base["settings"]), "sax_muted": base["sax_muted"],
+             "base": base["id"], "level": {"case": level["case"], "buses": buses}}
+    return rel, data, entry
+
+
+def write_stage_day2(inputs: Inputs, out: Path, stage: str, plan_path: Path, levels_path: Path,
+                     draw_path: Path) -> Generated:
+    """Day 2 on: each stage palette the draw's clips play (the band's t and median F on every bus, the stage's option
+    as an instrument or as palette settings, the vamps' sax muted), then every clip's own palette (CD-53)."""
+    levels = read_levels(levels_path, inputs, stage)
+    draw = read_draw(draw_path, inputs, stage)
+    lv = levels["variants"]
+    bases = day_bases(inputs, draw)
+    files, palettes, by_id = {}, [], {}
+    for key, b in bases.items():
+        inst = b["instruments"]
+        trims = {bus: float(lv[inst[bus]]["t"]) for bus in BUSES}
+        faders = {bus: float(lv[inst[bus]]["F"]) for bus in BUSES}
+        rel = Path(f"{key}.yaml")
+        data = inputs.dump(inputs.palette_doc(key, inst, trims, faders, b["settings"], b["sax_muted"]), str(rel))
+        files[rel] = data
+        entry = {"stage": b["stage"], "option": b["option"], "kit": None, "file": rel.as_posix(), "id": key,
+                 "sha256": sha256_bytes(data), "instruments": dict(inst), "trim_db": trims, "fader_db": faders,
+                 "settings": list(b["settings"]), "sax_muted": b["sax_muted"]}
+        palettes.append(entry)
+        by_id[key] = entry
+    for key, spec in sorted(draw["palettes"].items()):
+        if not spec.get("level"):
+            continue
+        base = by_id[spec["base"]]
+        loop, _, variant = str(spec["level"]["case"]).partition(".")
+        try:
+            lid = inputs.plan.loop_named(loop).id
+        except PlanError as err:
+            raise GenerateError(f"draw: clip palette {key}: {err}") from err
+        want = "_".join([base["id"], lid.lower()] + ([variant] if variant else []))
+        if key != want:
+            raise GenerateError(f"draw: clip palette {key} must be named {want}, from its base and its case "
+                                f"{spec['level']['case']} (lofi_rl.shootout.draw)")
+        rel, data, entry = clip_palette_day2(inputs, levels, base, key, spec["level"])
+        files[rel] = data
+        palettes.append(entry)
+    check_draw_palettes_day2(draw, palettes)
+    index = {"schema": INDEX_SCHEMA, "stage": stage, "plan": label(plan_path, inputs.root),
+             "plan_sha256": inputs.plan.sha256, "base": label(inputs.base_path, inputs.root),
+             "base_sha256": inputs.base_sha256,
+             "levels": {"file": label(levels_path, inputs.root), "sha256": file_sha256(levels_path)},
+             "draw": {"file": label(draw_path, inputs.root), "sha256": file_sha256(draw_path)},
+             "without": [], "band": dict(draw.get("band") or {}), "sources": inputs.sources_index(),
+             "palettes": palettes, "slots": _slots(inputs)}
+    files[Path("index.json")] = (json.dumps(index, indent=1) + "\n").encode("utf-8")
+    return Generated(index, write_all(out, files))
+
+
+def check_draw_palettes_day2(draw: Mapping, palettes: Sequence[Mapping]) -> None:
+    """Every palette the draw asks for is written under its key and plays the draw's band: its instruments, its
+    settings (the swing, humanize, sax variant and timing it names) and its sax mute."""
+    by_id = {p["id"]: p for p in palettes}
+    for key, spec in sorted(draw["palettes"].items()):
+        p = by_id.get(key)
+        if p is None:
+            raise GenerateError(f"draw: palette {key} is not one of the {len(by_id)} palettes written")
+        band = spec.get("band") or {}
+        want = {slot: p["instruments"][bus] for slot, bus in SLOT_BUS.items()}
+        off = sorted(slot for slot in want if band.get(slot) != want[slot])
+        if off or [band[s] for s in SETTING_SLOTS if band.get(s)] != p["settings"]:
+            raise GenerateError(f"draw: palette {key} asks for band {band}, but palette {key} plays "
+                                f"{p['instruments']} with {p['settings']}")
+        if bool(spec.get("sax_muted")) != p["sax_muted"]:
+            raise GenerateError(f"draw: palette {key}: the sax mute differs from the palette written")
+
+
+def _slots(inputs: Inputs) -> list[dict]:
+    briefs = inputs.plan.briefs()
+    slots = []
+    for st in inputs.stages:
+        for s in st.slots:
+            loop = inputs.plan.loop_names[s.loop]
+            b = briefs[loop]
+            slots.append({"stage": st.id, "id": s.id, "loop": s.loop, "loop_file": loop,
+                          "brief": {"mood": b.mood, "energy": b.energy, "bpm": b.bpm, "tonic": b.tonic,
+                                    "scene": b.scene},
+                          "tiles": list(s.tiles), "kit": s.kit, "sub": dict(st.sub),
+                          "text_sha256": sha256_bytes(inputs.plan.loop_text(s.loop).encode("utf-8"))})
+    return slots
 
 
 # --------------------------------------------------------------------------------------- stage palettes
@@ -480,17 +741,7 @@ def write_stage(inputs: Inputs, out: Path, stage: str, plan_path: Path, levels_p
             rel, data, entry = clip_palette(inputs, levels, base, key, spec["level"])
             files[rel] = data
             palettes.append(entry)
-    briefs = inputs.plan.briefs()
-    slots = []
-    for st in inputs.stages:
-        for s in st.slots:
-            loop = inputs.plan.loop_names[s.loop]
-            b = briefs[loop]
-            slots.append({"stage": st.id, "id": s.id, "loop": s.loop, "loop_file": loop,
-                          "brief": {"mood": b.mood, "energy": b.energy, "bpm": b.bpm, "tonic": b.tonic,
-                                    "scene": b.scene},
-                          "tiles": list(s.tiles), "kit": s.kit, "sub": dict(st.sub),
-                          "text_sha256": sha256_bytes(inputs.plan.loop_text(s.loop).encode("utf-8"))})
+    slots = _slots(inputs)
     index = {"schema": INDEX_SCHEMA, "stage": stage, "plan": label(plan_path, inputs.root),
              "plan_sha256": inputs.plan.sha256, "base": label(inputs.base_path, inputs.root),
              "base_sha256": inputs.base_sha256,
@@ -534,13 +785,22 @@ def read_draw(path: Path, inputs: Inputs, stage: str) -> dict:
         if not isinstance(groups, list) or len(groups) != len(st.groups):
             raise GenerateError(f"draw {st.id}: expected one map per draw group ({len(st.groups)})")
         got: dict[str, str] = {}
+        values: list[str] = []
         for g, m in zip(st.groups, groups):
-            if not isinstance(m, dict) or sorted(m) != sorted(g.symbols):
-                raise GenerateError(f"draw {st.id}: a group must map exactly the symbols {list(g.symbols)}")
+            # a ranks group (K2, the S1 final) maps as many of its symbols as the job named leaders (§4.1, §4.4)
+            symbols = g.symbols[:len(inputs.options[st.id])] if g.leaders else g.symbols
+            if not isinstance(m, dict) or sorted(m) != sorted(symbols):
+                raise GenerateError(f"draw {st.id}: a group must map exactly the symbols {list(symbols)}")
+            for o, pinned in g.pin.items():           # a vamp group's central rule (CD-16)
+                sym = next((s for s, v in m.items() if v == o), None)
+                if sym not in pinned:
+                    raise GenerateError(f"draw {st.id}: {o} must sit on {list(pinned)}, not {sym} (CD-16)")
             got.update(m)
-        if sorted(got.values()) != sorted(inputs.options[st.id]):
+            values += list(m.values())
+        if sorted(values) != sorted(inputs.options[st.id]):
             raise GenerateError(f"draw {st.id}: must map onto the options {list(inputs.options[st.id])} one to one")
-        check_rule(inputs.plan, st, got)
+        if st.draw is not None:
+            check_rule(inputs.plan, st, got)
     if not isinstance(doc.get("palettes"), dict):
         raise GenerateError(f"draw {path}: no `palettes` table")
     return doc
@@ -611,18 +871,42 @@ def generate(plan_path: Path | str, out: Path | str, *, stage: str = "day1", lev
     if stage not in STAGES:
         raise GenerateError(f"stage {stage!r} is not one of {list(STAGES)}")
     if stage not in BUILT:
-        raise GenerateError(f"stage {stage}: only {', '.join(BUILT)} is built (job 1); {stage} needs "
-                            f"{'the Day-1 leaders' if stage == 'day2' else 'the Day-2 picks and the rain file'}")
+        raise GenerateError(f"stage {stage}: only {', '.join(BUILT)} is built (jobs 1 and 2); {stage} needs the "
+                            f"Day-2 picks and the rain file")
     try:
         plan = load_plan(plan_path, root=root)
     except PlanError as err:
         raise GenerateError(str(err)) from err
-    inputs = Inputs(plan, Path(base) if base else root / plan.base, STAGES[stage], tuple(without), root)
+    day = STAGES[stage]
+    if day == 1:
+        inputs = Inputs(plan, Path(base) if base else root / plan.base, day, tuple(without), root)
+        if levels is None:
+            if draw is not None:
+                raise GenerateError("--draw goes with the stage palettes (--levels <file>), not the measuring ones")
+            return write_measuring(inputs, Path(out), stage, Path(plan_path))
+        return write_stage(inputs, Path(out), stage, Path(plan_path), Path(levels), Path(draw) if draw else None)
+    # Day 2 on: the band, the leaders and the cuts are the job's, so both runs read its draw (CD-53)
+    if draw is None:
+        raise GenerateError(f"stage {stage}: the palettes need the job's draw (--draw): it names the band, the "
+                            f"Day-1 leaders")
+    doc = _read_json(Path(draw), "draw")
+    if not isinstance(doc, dict) or doc.get("schema") != DRAW_SCHEMA or doc.get("stage") != stage:
+        raise GenerateError(f"draw {draw}: expected a {DRAW_SCHEMA} draw of {stage}")
+    try:
+        plan = apply_cuts(plan, list((doc.get("plan") or {}).get("cuts") or []))
+    except PlanError as err:
+        raise GenerateError(f"draw {draw}: {err}") from err
+    inputs = Inputs(plan, Path(base) if base else root / plan.base, day, tuple(without), root, draw=doc)
     if levels is None:
-        if draw is not None:
-            raise GenerateError("--draw goes with the stage palettes (--levels <file>), not the measuring ones")
-        return write_measuring(inputs, Path(out), stage, Path(plan_path))
-    return write_stage(inputs, Path(out), stage, Path(plan_path), Path(levels), Path(draw) if draw else None)
+        return write_measuring(inputs, Path(out), stage, Path(plan_path), doc, Path(draw))
+    return write_stage_day2(inputs, Path(out), stage, Path(plan_path), Path(levels), Path(draw))
+
+
+def _read_json(path: Path, what: str) -> Any:
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as err:
+        raise GenerateError(f"{what} {path}: {err}") from err
 
 
 # --------------------------------------------------------------------------------------------- CLI
@@ -639,7 +923,7 @@ def main(argv: list[str] | None = None) -> int:
     if not a.plan.is_file():
         p.error(f"--plan {a.plan} is not a file")
     if a.stage not in BUILT:
-        p.error(f"--stage {a.stage}: only {', '.join(BUILT)} is built so far (job 1)")
+        p.error(f"--stage {a.stage}: only {', '.join(BUILT)} is built so far (jobs 1 and 2)")
     levels = None if a.levels == "none" else Path(a.levels)
     for name, path in (("--levels", levels), ("--draw", a.draw), ("--base", a.base)):
         if path is not None and not path.is_file():
@@ -654,14 +938,18 @@ def main(argv: list[str] | None = None) -> int:
         for r in got.index["runs"]:
             print(f"{r['run']} {r['sha256'][:12]} measures " + ", ".join(f"{b}={r['instruments'][b]}"
                                                                          for b in r["measure"]))
-        print(f"wrote {len(got.index['runs'])} measuring palettes to {Path(a.out) / 'measure'}")
+        for key, c in (got.index.get("configs") or {}).items():
+            print(f"configs/{key} {c['sha256'][:12]} matches " + ", ".join(c["buses"])
+                  + (" (and the 9 loops)" if c["loops"] else ""))
+        print(f"wrote {len(got.index['runs']) + len(got.index.get('configs') or {})} measuring palettes to "
+              f"{Path(a.out) / 'measure'}")
     else:
         for e in got.index["palettes"]:
             print(f"{e['file']} {e['sha256'][:12]} " + " ".join(f"{b}:t={e['trim_db'][b]:+.2f},F={e['fader_db'][b]:+.2f}"
                                                                 for b in BUSES))
         own = sum(1 for e in got.index["palettes"] if e.get("level"))
         print(f"wrote {len(got.index['palettes'])} palettes to {a.out}"
-              + (f", every one the draw asks for ({own} clips' own, CD-52)" if a.draw else ""))
+              + (f", every one the draw asks for ({own} clips' own, CD-52, CD-53)" if a.draw else ""))
     if got.index["without"]:
         print("left out: " + ", ".join(got.index["without"]))
     return 0

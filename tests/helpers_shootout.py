@@ -139,6 +139,38 @@ def synthetic_levels(index_path: Path, base: Path, out: Path) -> Path:
     return out
 
 
+def synthetic_levels_day2(index_path: Path, base: Path, draw_doc: dict, out: Path) -> Path:
+    """A Day-2 levels file shaped like the level tool's (CD-53) from a Day-2 measuring index and its draw: made-up
+    trims and median faders for every instrument the draw plays (as synthetic_levels), and for every stage palette a
+    matched clip plays a made-up own fader on each bus it matches, on every case the tool would measure (the draw's
+    clips, and the 9 loops of a `loops` config: lofi_rl.shootout.levels.config_cases)."""
+    from lofi_rl.shootout.levels import config_cases, read_cases
+    synthetic_levels(index_path, base, out)
+    doc = json.loads(out.read_text())
+    doc["stage"] = "day2"
+    index = json.loads(index_path.read_text())
+    cases_of = config_cases(draw_doc, index["configs"], read_cases(ROOT / "shootouts" / "loops"))
+    configs = {}
+    for k, (key, cfg) in enumerate(sorted(index["configs"].items())):
+        buses = {}
+        for bus in cfg["buses"]:
+            inst = cfg["instruments"][bus]
+            target = S_STAR + TARGET_LU[bus]
+            recs = {}
+            for j, c in enumerate(cases_of[key]):
+                L, off = round(-31.0 - 0.13 * k + 0.37 * j, 2), round(0.001 * ((k + j) % 7 - 3), 3)
+                recs[c.name] = {"L": L, "F": round(target - L, 2), "lufs": target + off, "target_lufs": target,
+                                "off_lu": off, "lu": target + off - S_STAR, "tried": 1, "instrument": inst,
+                                "t": doc["variants"][inst]["t"], "median_F": doc["variants"][inst]["F"],
+                                "median_lufs": target + 0.5 * ((j % 3) - 1), "median_off_lu": 0.5 * ((j % 3) - 1)}
+            buses[bus] = {"instrument": inst, "t": doc["variants"][inst]["t"], "median_F": doc["variants"][inst]["F"],
+                          "target_lufs": target, "cases": recs}
+        configs[key] = {"stage": cfg["stage"], "option": cfg["option"], "buses": buses}
+    doc["configs"] = configs
+    out.write_text(json.dumps(doc, indent=1))
+    return out
+
+
 def loops_subset(folder: Path, names: tuple[str, ...], src: Path = ROOT / "shootouts" / "loops") -> Path:
     """A loops folder holding some of the reference loops and their briefs."""
     folder.mkdir(parents=True, exist_ok=True)
@@ -167,9 +199,16 @@ def _sha(text: str) -> str:
 def fake_level(doc: dict, entry: dict) -> dict | None:
     """The level record a real render of a level-matched clip carries (lofi_rl.shootout.render.with_level), made up to
     agree with fake_render's buses (-20 LUFS before a 0 dB fader); None when the clip's palette names no `level`."""
-    want = ((doc.get("palettes") or {}).get(entry["palette"]) or {}).get("level")
+    spec = (doc.get("palettes") or {}).get(entry["palette"]) or {}
+    want = spec.get("level")
     if not want:
         return None
+    if "buses" in want:                      # Day 2 on (CD-53): one record per matched bus
+        slot = {"keys": "keys", "drums": "kit", "bass": "bass", "sax": "sax"}
+        return {"case": want["case"], "ok": True, "buses": {
+            b: {"instrument": spec["band"][slot[b]], "L": -20.0, "F": 0.0, "lufs": -20.0, "lu": TARGET_LU[b],
+                "target_lufs": -20.0, "off_lu": 0.0, "tol_lu": 0.1, "render_lufs": -20.0, "agree_lu": 0.0}
+            for b in want["buses"]}}
     return {**want, "L": -20.0, "F": 0.0, "lufs": -20.0, "lu": TARGET_LU[want["bus"]], "target_lufs": -20.0,
             "off_lu": 0.0, "tol_lu": 0.1, "render_lufs": -20.0, "agree_lu": 0.0, "ok": True}
 

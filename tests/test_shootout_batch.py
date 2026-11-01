@@ -121,6 +121,34 @@ def test_hidden_manifests_say_what_each_clip_really_is(days):
     assert batches["run"] == "shootout-101" and batches["stage"] == "day1" and batches["seed"] == doc["seed"]
 
 
+def test_day2_hidden_manifests_record_every_matched_buss_own_fader_and_loudness(days):
+    # CD-53: a Day-2 clip takes its own fader on every bus its round's varied thing moves; the hidden manifest keeps
+    # the stage's bus as fader_db / bus_lufs / bus_lu (the vamps': the keys) and every other matched bus as
+    # <bus>_fader_db / <bus>_lufs / <bus>_lu, all plain values, as the level tool measured them after each fader.
+    run, doc, folders = days["day2"]
+    seen = set()
+    for d in folders:
+        m, h = load_batch(d)
+        for r in m.rounds:
+            for c in r.clips:
+                info = h.rounds[r.id].clips[c.id]
+                rec = json.loads((run / "renders" / info["render"] / "record.json").read_text())
+                st = PLAN.stages[info["stage"]]
+                first = "keys" if st.bus == "keys+bass" else st.bus
+                lb = rec["level"]["buses"]
+                assert sorted(lb) == sorted(st.match) and rec["level"]["case"] == \
+                    doc["palettes"][doc["renders"][info["render"]]["palette"]]["level"]["case"]
+                assert (info["fader_db"], info["bus_lufs"], info["bus_lu"]) == \
+                    (rec["buses"][first]["fader_db"], lb[first]["lufs"], lb[first]["lu"])
+                others = [b for b in st.match if b != first]
+                for b in others:
+                    assert (info[f"{b}_fader_db"], info[f"{b}_lufs"], info[f"{b}_lu"]) == \
+                        (rec["buses"][b]["fader_db"], lb[b]["lufs"], lb[b]["lu"]), (info["stage"], b)
+                assert not {k for k in info if k.endswith("_fader_db")} - {f"{b}_fader_db" for b in others}
+                seen.add(info["stage"])
+    assert seen == {"R3a", "R3b", "S1f", "S2a", "S2b", "K2", "V"}
+
+
 def test_one_seed_builds_byte_identical_batches(tmp_path):
     outs = []
     for name in ("a", "b"):

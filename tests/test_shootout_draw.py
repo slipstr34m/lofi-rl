@@ -189,27 +189,36 @@ MATCHED = ("keys", "kit", "bass", "sax")       # band slots whose option is an i
 
 
 def test_every_clip_of_an_instrument_stage_plays_its_own_palette_named_for_its_loop(draws):
-    # CD-52: a clip's varied-bus fader comes from its candidate's loudness on the round's own loop, so each render
-    # of a stage whose option is an instrument plays its own palette: the stage palette `base` (the band), whose
-    # bus fader `level` names (the bus, the option, and the case it is measured on: the loop, or loop.<variant>
-    # for a changed text such as an anchor's sour copy). Other stages keep one palette per option.
+    # CD-52 (Day 1): a clip's varied-bus fader comes from its candidate's loudness on the round's own loop, so each
+    # render of a stage whose option is an instrument plays its own palette: the stage palette `base` (the band),
+    # whose bus fader `level` names (the bus, the option, and the case it is measured on: the loop, or
+    # loop.<variant> for a changed text such as an anchor's sour copy). CD-53 (Day 2 on): every clip of a stage that
+    # names `match` plays its own palette too, its level naming those buses and its case (the vamps' texts by their
+    # vamp). Other stages (Day 3's rain) keep one palette per option.
     for (day, s), doc in draws.items():
         seen = []
         for rid, ren in doc["renders"].items():
             spec = doc["palettes"][ren["palette"]]
             st = PLAN.stages[ren["stage"]]
-            if st.fills in MATCHED:
-                lp = PLAN.loop_named(ren["loop"])
-                case = ren["loop"] if ren["variant"] == "base" else f"{ren['loop']}.{ren['variant']}"
+            lp = PLAN.loop_named(ren["loop"])
+            case = ren["loop"] if ren["variant"] == "base" else f"{ren['loop']}.{ren['variant']}"
+            tail = [lp.id.lower()] + ([] if ren["variant"] == "base" else [ren["variant"]])
+            if st.match:
+                assert day == "day2" and spec["level"] == {"buses": list(st.match), "case": case}, (day, rid)
+                assert ren["palette"] == "_".join([spec["base"], *tail]), (day, rid)
+                if st.fills is None:                            # the vamps: one text per vamp
+                    assert ren["variant"] == ren["option"] and spec["base"] == "v"
+                seen.append(ren["palette"])
+            elif st.fills in MATCHED:
+                assert day == "day1"
                 assert spec["level"] == {"bus": st.bus, "variant": ren["option"], "case": case}, (day, rid)
-                tail = [lp.id.lower()] + ([] if ren["variant"] == "base" else [ren["variant"]])
                 assert ren["palette"] == "_".join([spec["base"], *tail]), (day, rid)
                 assert spec["band"][st.fills] == ren["option"]
                 seen.append(ren["palette"])
             else:
                 assert "level" not in spec and "base" not in spec, (day, rid)
         assert len(seen) == len(set(seen)), (day, s, "one palette per clip")
-        assert bool(seen) == (day != "day3")
+        assert (len(seen) == len(doc["renders"])) == (day != "day3") and bool(seen) == (day != "day3")
 
 
 def test_palettes_carry_the_day_band_and_stage_texts_their_substitution(draws):
@@ -219,9 +228,13 @@ def test_palettes_carry_the_day_band_and_stage_texts_their_substitution(draws):
         fixed = {k: v for k, v in dev.items() if k != p["fills"] and not (p["stage"] == "R2" and k == "kit")}
         assert {k: p["band"][k] for k in fixed} == fixed, key
     lead = {"keys": "gu_tine_ep", "kit": "kit_swirly", "bass": "bass_fp_finger_yr", "sax": "sax_mtg_tenor"}
-    r3a = d2["palettes"]["r3a_swing_58"]["band"]
-    assert {k: r3a[k] for k in lead} == lead and r3a["swing"] == "swing_58" and r3a["humanize"] == "humanize_off"
-    assert d2["palettes"]["v"]["sax_muted"] and set(_opts(_rounds(d2, "S1f")[0])) == {"sax_mtg_tenor", "sax_gu_alto"}
+    r3a = d2["palettes"]["r3a_swing_58_l9"]
+    assert r3a["base"] == "r3a_swing_58" and {k: r3a["band"][k] for k in lead} == lead
+    assert r3a["band"]["swing"] == "swing_58" and r3a["band"]["humanize"] == "humanize_off"
+    vamps = {k: p for k, p in d2["palettes"].items() if p["stage"] == "V"}
+    assert len(vamps) == 36 and all(p["sax_muted"] and p["base"] == "v" for p in vamps.values())
+    assert not any(p["sax_muted"] for k, p in d2["palettes"].items() if p["stage"] != "V")
+    assert set(_opts(_rounds(d2, "S1f")[0])) == {"sax_mtg_tenor", "sax_gu_alto"}
     assert {o for r in _rounds(d2, "K2") for o in _opts(r)} == {"gu_tine_ep", "fp_fm_ep1", "gu_organ"}
     for rid, ren in d2["renders"].items():
         base = PLAN.loop_named(ren["loop"]).text

@@ -6,11 +6,18 @@ call for). They prune each sound choice to its survivors; the survivors go into 
 which freezes on Nov 6 and never changes after (docs/DECISIONS.md D-017).
 
 - **Status (2026-10-31, revised after two reviews):** the job-1 tooling of §7.11 is built and integrated on one
-  plan (§7.1–§7.8, below). A laptop dry run of job 1 rendered all 67 Day-1 clips and built the three Day-1 batches
-  (§7.7, "Dry run"); those laptop clips are not canonical (LESSONS 38) and none is queued for listening. Since
-  CD-52 each clip takes its own fader on the bus its round varies, and every Day-1 round's candidates sit within
-  0.01 LU of each other on its loop in the dry run (§3 step 8). No cluster shootout job has run. The 9 reference
-  loops in `shootouts/loops/` exist and pass the gates (§5).
+  plan (§7.1–§7.8, below). Job 1 (`lofi-shootout` 13635646, 25.8 SU; CHANGELOG 2026-10-31 17:45) rendered Day 1
+  on the cluster into `inbox/2026-11-03/`. Since CD-52 each clip takes its own fader on the bus its round varies,
+  and every Day-1 round's candidates sit within 0.01 LU of each other on its loop: the tally reads 0.0012–0.0091 LU
+  from those batches' hidden manifests (§3 step 8, §7.9). **Job 2 is built:** the tally tool that proposes its
+  `--leaders` from the Day-1 votes (§7.9, branch `wt/tally`) and its stages (branch `wt/day2`: the Day-2
+  generator, levels, vamp palettes and per-clip matching on every bus a round varies, CD-53), merged on
+  `wt/day2-int`. Four laptop dry runs with simulated leaders passed every stage, built b1104-1 to b1104-4 and put
+  every Day-2 round within 0.0088 LU (§3 step 8, §7.7 "Dry run, Day 2"). On `wt/day2-int` the whole path then ran
+  end to end on the laptop (§7.7 "End to end"): a Day-1 dry run, synthetic votes, the tally's job-2 ARGS (now with
+  `--prior`), and Day-2 dry runs of three proposals, every Day-2 round within 0.0093 LU. Laptop clips are not
+  canonical (LESSONS 38); none is queued for listening. The 9 reference loops in `shootouts/loops/` exist and pass
+  the gates (§5).
 - **Sound claims:** none. Every candidate, variant and level here is a starting point for Shresth's ear. Claude
   records counts and picks, never descriptions of sound (TASTE.md: "Shootout prunes, votes decide").
 - **Blind by construction.** This file gives every round in symbols (`P1a`, `k2`, `v3`, ...). Which option sits
@@ -62,7 +69,8 @@ pattern field and the model writes every pattern [CD-46; §11 question 3].
 - A round is **one loop text and one brief**, with **2–4 clips that differ in one thing only**: the candidate (a
   source, a variant, a vamp line or a level). Everything else is byte-identical: loop text (apart from the line
   under test), brief, palette (apart from the candidate's block, its trim and its fader), the other buses' trims
-  and faders. A test enforces this (§7.8). Anchors (§2.5) are the one exception, by design.
+  and faders. From Day 2 on, the faders of every other bus the candidate moves differ too, each clip's own (§3,
+  CD-53). A test enforces this (§7.8). Anchors (§2.5) are the one exception, by design.
 - Shootout mode (R): best with `Q W E R`, worst with `Z X C V`, `T` no clear best, `B` no clear worst, `G` all bad.
   No reason tags. The page shows only the scene, "city at night".
 - Each batch's `note` names its category, never an option (R), for example "Which keys do you like best?".
@@ -82,6 +90,9 @@ pattern field and the model writes every pattern [CD-46; §11 question 3].
   own fader on the bus its round varies, CD-52), `bus_lufs` (post-fader loudness of the candidate's bus, as the level
   tool measured it after that fader; keys and bass in vamp rounds), `bus_lu` (the same relative to S\*, §3; clips of
   instrument stages), `sax_range` (lowest and highest MIDI note of the lead), `render` (render id) and `pcm_sha256`.
+  From Day 2 on [CD-53] `fader_db`, `bus_lufs` and `bus_lu` name the stage's bus (a vamp round's keys), and every
+  other bus the clip matches adds `<bus>_fader_db`, `<bus>_lufs` and `<bus>_lu` (R3a: sax, keys and bass besides the
+  drums; R3b: keys and bass; the vamps: bass), all as the level tool measured them after each clip's own fader.
 
 ### 2.3 Blinding (the draw)
 The repo is public (T·Assets), so nothing committed may say which option is on which tile, or which round is a
@@ -225,6 +236,30 @@ level tool already measures every (candidate, loop) pair on the 9 reference loop
 they do not hold, an anchor's sour copy, joins its measure plan (§7.1). The hidden manifest records each clip's
 fader and its measured loudness (§2.2, §6).
 
+**Day 2 on: every bus a round varies** [CD-53, a Claude's default extending CD-52, 2026-10-31]. CD-52 matched only a
+stage whose option fills the keys, kit, bass or sax slot, so the S2a warmth and expression variants, the S2b timings,
+the R3 swings and humanizes and the vamps would have played at the band's median faders, and K2's spread texts would
+have been matched as extra cases of the rootless runs. From Day 2 on each stage names the buses its varied thing moves
+(plan.yaml `match`): R3a the sax, keys, bass and drums (swing moves every timing lane, CD-12), R3b the keys, bass and
+drums (humanize never moves the sax), S1f, S2a and S2b the sax, K2 the keys, the vamps the keys and the bass. Every
+clip of such a stage takes its own fader on each of those buses, measured on its own stage palette and its own text
+(steps 3 and 5, corrected the same way) and checked by step 6c, so every round's clips sit at the same loudness on
+every bus that differs between them. *Why:* measured at the band's median faders on the rounds' own loops (the Day-2
+laptop dry runs with simulated leaders, §7.7), the rounds spread S2a 1.56–2.43 LU, R3b 0.53–1.04 LU, the vamps
+1.52–9.85 LU (their bass; keys up to 1.72), S1f 0.12–1.27, K2 0.34–0.40, S2b 0.026–0.055 and R3a 0.0006–0.026 LU,
+and the spreads follow the leaders (the vamps' 9.85 LU is the VSCO 2 pizz bass, whose loudness follows the vamp's
+roots), so every Day-2 round is matched whatever the tally picks. The rest of §3 stands:
+- **No option takes a trim of its own.** Each bus keeps its instrument's Day-1 trim t and median F, which the
+  frozen palette takes; the frozen palette holds one trim per instrument, so a spread voicing or a sax variant meets
+  the chain at the level the model's loops will (CD-28). The spread voicing moved the K2 three's inputs by −0.48 to
+  +0.19 dB from rootless in the dry run, expression off moved the sax input by −1.77 dB, warmth by 0.
+- **The 9-loop values** of step 1's Day-2 variants (K2's three in spread voicing; the S1 leader with warm on and with
+  expression off) are measured too (`match.loops`), each palette's median F and checks (a) and (b): CD-28's spread
+  fader, and the sax variant's fader should S2a change it.
+- **Job 2 measures every instrument it plays again** (the four level anchors first): "Drift between jobs" below
+  re-measures on any drift-key difference, and the mirror stamp changes at every sync. In the dry runs every one of
+  the 11 instruments' t and median F equalled job 1's (moves 0.00 dB) and S\* sat 6.5 × 10⁻⁹ LU from job 1's.
+
 **Why a trim before the chain.** During review (2026-10-31) the GU Jazz kit's one-shots peaked at −22.8 dBFS (hard
 kick) and −21.8 (hard snare), while Virtuosity's kick-mic kick peaked at −1.7 dBFS and Swirly's kicks and snares
 reached −0.2 and −0.1. Untrimmed, the file kits would reach the drum compressor (threshold −16 dB) about 20 dB
@@ -237,7 +272,8 @@ level-independent up to about +14 dB, but at +21 dB the drum chain took 1.7 dB m
    basses, 6 saxes; Day 2: the K2 three in spread voicing, the S1 leader with warm on and with expression off) and
    each of the 9 reference loops ℓ with its own brief, build *i*'s bus input with trim 0 (RENDER.md §2 stages 2–3:
    the FluidSynth stem or the drum sampler). One run measures one variant of each bus at once: 8 runs per loop on
-   Day 1, 3 on Day 2.
+   Day 1. Day 2 [CD-53] measures again every instrument it plays (4 runs in the dry run: the anchors and 7 others),
+   and each Day-2 variant on the stage palette its clips play, at its instrument's trim (§3 "Day 2 on").
 2. **Trim.** P(*i*, ℓ) is the integrated loudness of *i*'s bus input over the kept cycle. t(*i*) = median over ℓ of
    P(*g*, ℓ) minus median over ℓ of P(*i*, ℓ), where *g* is the GU instrument of *i*'s bus: GU Tine EP 4 (keys),
    GU Jazz kit 32 (drums), GU Acoustic Bass 32 (bass), GU Tenor 66 (sax). GU instruments get t = 0.
@@ -281,13 +317,36 @@ level-independent up to about +14 dB, but at +21 dB the drum chain took 1.7 dB m
      L before their own fader exactly (difference 0). No variant is flagged; `kit_virtuosity`'s L1 clip takes
      21.65 dB (its median F is 15.26) and sits 0.0031 LU from its target. The trims and median faders are those of
      the median-fader run, and its 26 stage palettes are byte for byte the same.
+   - **Measured on Day 2** [CD-53] (laptop dry runs with §7.7's simulated leaders, the candidates of each slot with
+     the largest |t| in job 1's levels.json; 2026-10-31; §7.7 "Dry run, Day 2"): the tool measured 201 own faders (the 162
+     bus-clip pairs of the 84 clips and 39 more of the 9-loop values), 189 in one measurement and 12 with one
+     correction, the worst 0.0050 LU from S\* + T. Each round's spread on every bus it matches, at the band's median
+     faders → at the clips' own (levels.json `rounds`; the hidden manifests give the same after-values):
+
+     | Stage | Rounds | Before (LU) | After (LU) |
+     |---|---|---|---|
+     | K2 | 2 | 0.34–0.40 (keys) | 0.0025–0.0063 |
+     | R3a | 2 | 0.0006–0.026 (drums 0.026, keys 0.013, bass and sax 0.000) | 0.0006–0.0056 |
+     | R3b | 3 | 0.53–1.04 (keys 0.24–1.04, bass 0.50–0.84, drums 0.08–0.16) | 0.0061–0.0088 |
+     | S1f | 3 + the anchor | 0.12–1.27 | 0.0002–0.0058 |
+     | S2a | 3 | 1.56–2.43 | 0.0012–0.0081 |
+     | S2b | 3 | 0.026–0.055 | 0.0015–0.0057 |
+     | V | 9 | 1.52–9.85 (bass 1.25–9.85, keys 0.34–1.72) | 0.0049–0.0082 |
+
+     Every Day-2 round is within 0.0088 LU after matching (R3b.1 on L3, the bass), inside step 6c's 0.2 LU; all 84
+     renders read the tool's L before every matched fader exactly (162 bus-clip pairs, difference 0). Under CD-52 as
+     built K2 and S1f would have been matched too (their clips fill an instrument slot), with the same values; every
+     other Day-2 stage would have played its "before" column.
 
 **Not matched:**
 - **Variants that move notes in time** (swing, humanize, sax lag and swung timing) keep the instrument's trim and
   fader [CD-26]. Their bus loudness is recorded per clip; a spread above 0.5 LU across a round's clips is flagged.
+  *Amended by CD-53:* they keep the instrument's trim, but each clip takes its own fader on every bus its round
+  varies (R3b spread up to 1.04 LU at the median faders).
 - **Vamps** keep the band's trims and faders; the harmony is the candidate [CD-27]. A vamp changes the keys and bass
   notes, so each clip's keys and bass bus loudness is recorded and a spread above 1.0 LU across a round's clips is
-  flagged.
+  flagged. *Amended by CD-53:* each vamp clip takes its own keys and bass faders (the bass spread up to 9.85 LU at
+  the median faders), so the harmony is heard at one loudness.
 - **Rain:** the level is the candidate.
 
 **How the values are carried** [CD-51]. Each shootout palette holds one instrument per bus, so no palette code is
@@ -658,7 +717,8 @@ Contents, not order: the order inside each batch is drawn (§2.3).
 - **In the inbox:** `manifest.json` (public, RATING.md v1: `mode: shootout`, `scene: "city at night"` and `bpm`
   per round, `bars: 8`, `sr: 44100`, `note`, `est_min`, opaque round and clip ids, each FLAC's sha256),
   `manifest.hidden.json` (§2.2 fields: per clip its own fader, `fader_db`, and its bus's measured loudness,
-  `bus_lufs` and `bus_lu`, CD-52) and one FLAC per clip appearance. A repeat round gets new opaque ids for the same
+  `bus_lufs` and `bus_lu`, CD-52; from Day 2 on also `<bus>_fader_db`, `<bus>_lufs` and `<bus>_lu` for every other
+  bus the clip matches, CD-53) and one FLAC per clip appearance. A repeat round gets new opaque ids for the same
   renders (R: "a clip shown twice gets two ids"). Nothing else.
 - **On the cluster only:** `$REMOTE_SCR/runs/shootout-<job>/renders/<render id>/` (render WAV, music WAV, render
   manifest, FLAC) and `.../summary/` (`levels.json`, `draw.json`, `leaders.json`, the generated palettes,
@@ -742,6 +802,21 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     file kits left out until §7.4 lands): every linear-range and post-fader check passes. A render of a generated
     palette reports the tool's L on every bus exactly (`-m cluster`). With the two §7.4 kits and per-clip faders,
     the Day-1 dry runs' numbers are in §3 step 8 and §7.7.
+- **Built for Day 2 (2026-10-31, branch `wt/day2`; CD-53):** `--stage day2` needs `--draw`, and the measuring index
+  must name that draw's sha256. The variants are every instrument the draw plays (the anchors and each palette's
+  keys, kit, bass and sax), measured exactly as on Day 1, so `--prior` (job 1's levels.json) records each one's prior
+  t and F and its move; a prior of another day is never reused, and on Day 2 its drift keys always differ (the
+  stamp, and runs that hold other instruments). Then `measure_configs` measures every stage palette a matched clip
+  plays (the index's `configs`, written by the generator at trims and faders 0) on each case its clips play
+  (`config_cases`: the loop, `<loop>.spread`, `<loop>.sour` or `<loop>.<vamp>`, one text per name), plus the 9 loops
+  for a `match.loops` stage, on each bus its stage matches, with that bus's instrument's trim: L, the clip's own
+  fader by `clip_fader`, the loudness after it, and the loudness at the band's median fader. levels.json gains
+  `configs` (per palette and bus: the instrument, t, its median F, every case's record and, for `loops`, P, L, L_low,
+  F, `input_shift_db` and checks (a) and (b)) and `rounds` (every drawn round's spread per matched bus, `before_lu`
+  at the median faders and `after_lu` at the clips' own); a matched bus whose clips or 9-loop checks fail is flagged
+  as `<palette>:<bus>`. Tests: `tests/test_shootout_levels.py` (a hash-valued bench: the instruments measured again,
+  every drawn case on its own palette, the 9-loop values, the round spreads, the case names, the refusals, the moves
+  from a Day-1 prior). The Day-1 path is unchanged: a Day-1 dry run on one seed gives the same levels values (§7.7).
 
 ### 7.2 One-time 48 → 44.1 kHz conversion, and the rain excerpt picker
 - **For:** the Virtuosity one-shots (720 files, 48 kHz 24-bit: A) via the importer, and the rain file. The sampler
@@ -771,6 +846,17 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
 - **Acceptance tests:** a vamp palette loads with `verify=True`; its render passes G7 at −14 ± 0.1 LUFS with
   `buses.sax.lufs` null; the keys, bass and drums stem hashes equal the unmuted palette's; two renders are
   identical.
+- **Built (2026-10-31, branch `wt/day2`):** `palettes.mute_sax` puts the −200 dB `Gain` right after the sax chain's
+  trim slot (the trim slot stays first, where the level tool and the render record read the trim) on the vamps'
+  stage palette and its 36 clip palettes, and raises that palette's `loudness.iters` from dev_gu's 4 to 16, the
+  parser's largest. *Why the iterations:* with no sax the master gain was 18.9–30.0 dB in the Day-2 dry runs (14.9–18.1
+  on every other Day-2 stage), and on the five vamp clips checked the limiter took 10.0–17.2 dB off the peaks, so the
+  loudness loop's secant step (clamped at 4 dB per LU) needed up to 8 iterations; at dev_gu's 4, 3 of the 36 vamp
+  clips stopped 0.15–0.26 LU short of −14 LUFS (G7) in the first dry run. A render that converges in 4 is unchanged.
+  Tests: `tests/test_shootout_vamp_palette.py` (the mute's place and the iterations; with FluidSynth, the GU band's
+  base on a short loop: verify passes, G7 at −14 ± 0.1 LUFS, `buses.sax.lufs` null, every stem hash the unmuted
+  palette's, two renders identical). In the dry runs all 36 vamp renders passed G7 with a null sax bus, in 3–8
+  loudness iterations. How heavy limiting sounds is for Shresth's ear, not a claim here.
 
 ### 7.4 One-shot kit importer
 - **Interface:** `python -m lofi_rl.convert.kit shootouts/kits/<kit>.yaml --big assets/big --out assets/big/derived/kits/<kit>.tar`
@@ -874,6 +960,12 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   bases. Other stages keep one palette per option. The builder refuses a clip whose palette names a `level` and
   whose record carries none for that case, or one whose level check failed (§7.7), and writes each clip's own
   `fader_db`, its measured `bus_lufs` and `bus_lu` into the hidden manifest (§2.2).
+- **Day 2 on (CD-53, 2026-10-31):** every clip of a stage that names `match` plays its own palette, named as above
+  (`r3a_swing_58_l9`, `k2_<keys>_l3_spread`, `s2a_sax_warm_on_l4_sour`), and a vamp's text is named by its vamp
+  (render variant and case `<loop>.<vamp>`, palette `v_<loop id>_<vamp>`); its `level` is `{buses, case}`. Day 2
+  asks for 84 palettes, one per render, on 19 bases. The builder checks the record's level case, its buses and its
+  `ok`, and writes the stage's bus as `fader_db`, `bus_lufs`, `bus_lu` and every other matched bus as
+  `<bus>_fader_db`, `<bus>_lufs`, `<bus>_lu` (§2.2). Test: `tests/test_shootout_batch.py` (the Day-2 fields).
 
 ### 7.7 Cluster job type `lofi-shootout`
 - **Script:** `jobs/shootout.sbatch`, job name `lofi-shootout`, partition `main`, 8 CPU, 16 GB, 20 min (was 30;
@@ -881,9 +973,11 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   scripts/job_env.sh` (so `LOFI_ASSETS` and `LOFI_CACHE` are set). Header cost line: 8 CPU + 4 (16 GB) =
   12 SU/min, **at most 240 SU**. Claude registers it (`make approve JOB=jobs/shootout.sbatch MAX=240 BY=Claude`;
   ≤ 500 SU).
-- **Submitted only by** `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id>'`.
+- **Submitted only by** `make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id> --prior <job1>'`.
   Day 2 takes the K1 top 3 as keys (4 on a tie at third place, §4.1) and the S1 top 2 as sax (3 on a tie, §4.4),
-  leader first, and one kit and one bass; with the `final` cut, sax takes one id. Day 3 takes one id per slot,
+  leader first, and one kit and one bass; with the `final` cut, sax takes one id. `--prior <job1>` names job 1, whose
+  drift keys and trims and faders job 2 compares with its own (§3, "Drift between jobs"; `jobs/shootout.sbatch`
+  states the same form); the tally writes the whole line (§7.9). Day 3 takes one id per slot,
   `ARGS='--stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>'`, and also names `swing`, `humanize`,
   `sax_variant` and `timing` when a Day-2 pick is not the plan's default (`swing_55`, `humanize_off`, `sax_plain`,
   `timing_grid`). `ARGS` reach the script as arguments, so they need no comma-safe `--export`; they hold no spaces.
@@ -892,7 +986,8 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   the leaders as the draw does (slots, ids and counts, after the cuts), so a wrong form exits 2, under `--dry-run`
   too; then it writes all of it into `summary/leaders.json`. `scripts/submit.sh` refuses a dirty or unsynced tree
   (exit 3; `ALLOW_DIRTY=1` would ship other workflows' edits), so each job waits for a clean, synced tree.
-- **Stages** (`python -m lofi_rl.shootout.job`): the draw (§7.6) → generator `--levels none` (§7.8) → levels
+- **Stages** (`python -m lofi_rl.shootout.job`): the draw (§7.6) → generator `--levels none` (§7.8; from day 2 on
+  with the draw, CD-53) → levels
   (§7.1) with the draw, so every clip's own fader is measured, the anchor's sour copy included [CD-52] → generator
   with the levels and the draw (a palette per clip) → clip renders, 8 at a time with 1 worker each → FLACs →
   batches (§7.6) → `SHOOTOUT_OK`. Every palette source is hashed once per stage process, not once per palette. Any
@@ -905,11 +1000,15 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   | Run | Measuring runs (stage level) | Clip renders | Wall at 8 in parallel, + 2 min | Expected SU (12/min) |
   |---|---|---|---|---|
   | day1 (Nov 2) | 72 (8 per loop) | 67 | 3.9–10.9 min (from the dry runs below; first estimate 3.0–4.1) | 46–131 |
-  | day2 (Nov 3) | 27 (3 per loop) | 84 | 2.9–3.8 min | 34–45 |
+  | day2 (Nov 3) | 36 (4 per loop) and 201 own faders on 19 palettes (CD-53) | 84 | 4.7–14.3 min (from the Day-2 dry runs below; first estimate 2.9–3.8) | 56–171 |
   | day3 (Nov 5) | re-measures only on drift | 26 (+18 for an S2 re-run) | 2.2–2.5 min | 27–30 (+2–4) |
 
-  About 107–206 SU expected for the three runs (days 2 and 3 still on the first basis); at most 720 SU (3 × 240)
-  if each used its full walltime; a re-run costs about one day2 run. **First basis:** the cluster render check took
+  Job 1 used 25.8 SU (13635646: 128.6 s of stages, `runs/shootout-13635646/summary/stages.json`, against 86.4–98.7 s
+  on the laptop, 1.30–1.49 times). Day 2 on that observed ratio would take 2.7–3.4 min of stages, about 32–41 SU; the
+  table keeps the Day-1 arithmetic. About 109–227 SU for the three runs (job 1 as used, day 3 still on the first
+  basis); at most 720 SU (3 × 240) if each used its full walltime; a re-run costs about one day2 run. Day 2's
+  slowest case, 14.3 min, is inside the 20-min walltime (1.4 times) and its 171 SU inside the 240-SU cap, so
+  `jobs/shootout.sbatch` is unchanged. **First basis:** the cluster render check took
   2.86–3.66 s per fixture on EPYC and 4.94–5.95 s on Xeon 4116 (CLI, 4 workers, 82 BPM, start-up included;
   `runs/render-check-{13630298,13630299,13630300,13630522}/summary/fixtures.json`); × 1.35 for 1 worker (RENDER.md
   §7: 1.54 against 1.14 s) and × 1.08 for 76 BPM gives 4.2–8.7 s a render; 94 % efficiency at 8 workers
@@ -949,6 +1048,73 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   against 163 with median faders. On the cluster (× 1.3–2.7 a render, × 2 if the 8 CPUs are 4 cores' hyperthreads,
   + 2 min of start-up) Day 1 comes to about 3.9–10.9 min, 46–131 SU, inside the 20-min walltime, which is 1.8 times
   the slowest.
+- **Dry run, Day 2** [CD-53] (2026-10-31, the same laptop, branch `wt/day2`; job 1's run copied into a scratch runs
+  folder; `python -m lofi_rl.shootout.job --stage day2 --leaders keys=vcsl_upright_knight+jrhodes3d+fp_fsbs_jazz_guitar/kit=kit_swirly/bass=bass_vsco2_pizz/sax=sax_mtg_tenor+sax_mtg_alto
+  --prior 13635646 --jobs 8` with a scratch seed, the real banks and kits under a scratch `LOFI_ASSETS`). The
+  leaders are simulated, never read from votes: per slot the candidates with the largest |t| in job 1's levels.json
+  (the quietest and loudest banks, the levels' hardest cases), one tenor and one alto. The first run stopped at the
+  render stage: 3 of the 36 vamp clips missed G7 by 0.15–0.26 LU in dev_gu's 4 loudness iterations (§7.3, "Built").
+  With the vamp palettes' 16, four runs, each into its own scratch runs folder and inbox, passed every stage. The
+  draw gave 4 batches, 26 rounds and 84 renders on 84 clip palettes over 19 stage palettes, with 1 gate-passing sour
+  copy (the anchor imitates S1f.2 on L6). The levels tool measured the 11 instruments the draw plays in 4 runs (each
+  t and median F equal to job 1's, moves 0.00 dB; S\* 6.5 × 10⁻⁹ LU from job 1's) and 201 own faders on the 19
+  palettes (§3 step 8); the generator wrote 103 palettes (19 stage palettes, 84 clips' own) and 23 measuring ones.
+  All 84 renders passed G1–G7 at −14.097 … −13.939 LUFS, true peak at most −1.420 dBTP, each reading the tool's L
+  before every matched fader exactly (162 bus-clip pairs), the 36 vamp clips with a null sax bus. Each batch passed
+  `python -m lofi_rl.ui.manifest check`, and `batch.public_leaks` found nothing in any public manifest:
+
+  | Batch | Rounds | Clips | est_min |
+  |---|---|---|---|
+  | `b1104-1-groove` | 5 (R3a 2, R3b 3) | 17 | 5.6 |
+  | `b1104-2-sax` | 10 (S1f 3, S2a 3, S2b 3, the anchor) | 26 | 8.8 |
+  | `b1104-3-keys` | 2 (K2) | 6 | 1.9 |
+  | `b1104-4-vamps` | 9 (V) | 36 | 11.6 |
+
+  The four runs gave the same bytes in 724 of their 731 files: the batches (93 files), every palette (126 YAMLs),
+  every render file (504, the WAVs included) and batches.json. Of the rest, draw.json and leaders.json differ only
+  in the folder paths they name, levels.json and the two palette indexes only in the sha256s of files that name those
+  paths (`draw.sha256`, `levels.sha256`, `measure.index_sha256`), and renders.json and stages.json only in wall times.
+  Day-1 dry runs of this code and of main's (76c1490) on one scratch seed gave the same bytes in 580 of their 587
+  files and the same values in the rest (those record the plan's sha256, which `match` changed, the sha256s of files
+  that hold it, paths and wall times), so every Day-1 value stays as it was.
+
+  | Stage | draw | measure | levels | palettes | render (84) | build | all |
+  |---|---|---|---|---|---|---|---|
+  | seconds, run 1 / 2 / 3 / 4 | 0.1 / 0.1 / 0.1 / 0.1 | 0.5 / 0.5 / 0.4 / 0.5 | 71.7 / 70.0 / 71.4 / 65.8 | 0.7 / 0.6 / 0.7 / 0.7 | 62.9 / 59.8 / 61.2 / 57.3 | 0.4 / 0.3 / 0.4 / 0.3 | 136.3 / 131.3 / 134.2 / 124.7 |
+
+  A render took 2.92–7.94 s (median 5.54) in run 1, 3.29–7.82 s (5.31) in run 2, 3.16–8.11 s (5.43) in run 3 and
+  2.86–7.72 s (4.91) in run 4 (the committed code; runs 1–3 differ from it only in log text and a refactor). Rerun
+  alone on run 3's inputs, the levels stage peaked at 3.30 GB (3,296,821,248 bytes) and the render stage at 3.07 GB,
+  inside the job's 16 GB. On the cluster (the Day-1 arithmetic: × 1.3–2.7 a render, × 2 if the 8 CPUs are 4 cores'
+  hyperthreads, + 2 min) Day 2 comes to about 4.7–14.3 min, 56–171 SU, inside the 20-min walltime (1.4 times the
+  slowest) and the 240-SU cap; job 1's own ratio (1.30–1.49) gives 2.7–3.4 min, about 32–41 SU.
+- **End to end** (2026-10-31, branch `wt/day2-int`, the laptop; scratch runs, inboxes and vote folders, the real
+  banks and kits under a scratch `LOFI_ASSETS`; votes synthetic, `data/votes` never read):
+  1. **Day 1:** `--stage day1 --jobs 8` with a scratch seed (run `shootout-900001`): every stage exit 0 in 97.3 s
+     (levels 48.3, render 47.4); 67 of 67 renders at −14.099 … −13.996 LUFS, true peak at most −1.479 dBTP; the 3
+     batches (6 rounds and 24 clips, 6 and 18, 7 with the anchor and 28), per-round spread 0.0017–0.0091 LU.
+  2. **Votes,** written by the rating page's own `Ledger` on a fake clock with the page's events (session starts,
+     round starts, an Esc, an undo): set A, 19 standing votes in 49 events, with a T (the R2 round of the R1
+     leader's kit), a B (S1), a G (K1), 2 marks on clips heard under 4 bars, 12 early picks, and the anchor missed,
+     taken back and caught; set B, the anchor missed (its micro-session's votes at half weight), a full tie across
+     K1's third place and a four-way tie behind the S1 leader; set C, A's picks with slower answers.
+  3. **Tally** (exit 0): A 3 keys, 1 kit, 1 bass, 2 saxes, no cut (23.6 min, r 1.026); B 4 keys (a seeded draw
+     among three tied at third), 3 saxes (a three-source final), `--cut vamps-high+latin3` (27.6 min, r 1.200);
+     C one sax with all three cuts (29.1 min, r 1.265). Each line carries `--prior 900001`, found from the run's
+     summary (§7.9).
+  4. **Day 2** with each line, `--prior` the scratch Day-1 run: A exit 0 in 136.8 s, 84 renders, batches of 5/17,
+     10/27 (with the anchor), 2/6 and 9/36 rounds/clips; B 127.0 s, 68 renders, 4/14, 8/24, 2/8 (four keys a round)
+     and 6/24; C 95.5 s, 57 renders, 4/14, 5/15, 2/6 and 6/24. All 209 renders at −14.095 … −13.949 LUFS, true peak
+     at most −1.420 dBTP, each reading the tool's L before every matched fader exactly (407 bus-clip pairs); every
+     instrument measured again moved 0.00 dB from the Day-1 run, S\* unchanged. Spread per round after matching:
+     A 0.0001–0.0088 LU, B 0.0006–0.0093, C 0.0006–0.0088 (at the median faders up to 3.72, 2.54 and 1.85 LU).
+  5. **Checks:** `python -m lofi_rl.ui.manifest check` passed on all 12 Day-2 batches, and the leak guard
+     (`batch.public_leaks`, and `load_batch`'s own check) found nothing.
+
+  Beyond the five steps: synthetic Day-2 votes on A's and B's batches, then the tally over all seven batches. Every
+  later rule ran on the Day-2 manifests (K2's four keys, the three-source final), and no round was flagged on any
+  matched bus. One case is the spec's to decide: with `latin3`, R3b has 2 rounds, so a single G puts every humanize
+  option all-bad in half its rounds (CD-44), and the tally raises a `RuleGap` for Shresth.
 
 ### 7.8 Shootout plan and palette generator
 - **Plan:** `shootouts/plan.yaml` transcribes §4 and §6 in symbols: candidates (source, preset, register, family,
@@ -997,6 +1163,21 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   - **Measuring palettes** (`--levels none`): `measure/m1.yaml` … `m8.yaml` and `measure/index.json`.
   - **YAML** is written by libyaml when PyYAML has it; a test checks that it gives the same bytes as the
     pure-Python dumper. Two runs give identical bytes.
+- **Built for Day 2 (2026-10-31, branch `wt/day2`; CD-53):** `--stage day2` takes the job's `--draw` in both runs
+  (the band is its leaders, the cuts are its own; the job's measure stage passes it from day 2 on). The measuring
+  run writes the runs of every instrument the draw plays (`day_instruments`: the anchors in m1, then one new
+  instrument per bus) and, in `measure/configs/`, every stage palette a matched clip plays at trims and faders 0
+  (`day_bases`), listed under the index's `configs` with their stage's `match`. The stage run writes each stage
+  palette with the band's t and median F on every bus, the option on its bus (S1f's sax, K2's keys) or as the dotted
+  paths its plan variant sets (`groove.swing`, `groove.humanize`, `mix.sax_warm`, `sax_expr.enabled`,
+  `sax_expr.timing`), the vamps' sax muted (§7.3), and every clip palette with its own fader on each matched bus
+  (`clip_palette_day2`); the index entry's `level` is `{case, buses: {bus: instrument, L, F, lufs, lu, target,
+  miss, tolerance}}`. A Day-2 draw's maps are checked per draw group (the ranks stages map as many symbols as the
+  job named leaders; the vamps' central pins). Day 2 writes 103 palettes (19 stage palettes, 84 clips' own) and 23
+  measuring ones in the dry run. Tests (`tests/test_shootout_palettes.py`): the measuring runs and configs, every
+  stage and clip palette's trims and faders, within each drawn round only the option, its trim and the matched
+  faders differ (a vamp round: only the keys and bass faders, and the `vamp:` line), and the refusals (no draw, a
+  clip the levels file did not measure, measured on another instrument or off its target, a cut final).
 - **One plan for every tool (2026-10-31).** The level side and the batch side each wrote a plan; they are now one
   `plan.yaml` and one loader, with `substitute` and `apply_cuts`. Where the two read this doc differently, the plan
   follows the doc: the vamps are one stage `V` (§6 "V ×9", §2.5's one vamps group, CD-24's one warm-up round) with a
@@ -1015,6 +1196,87 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
 - **Acceptance tests:** on a synthetic batch its counts equal the audit's, anchor rounds excepted; a best or worst
   mark on a clip heard under 4 bars is left out; repeats are scored for agreement and left out of the counts; a
   missed anchor halves its micro-session's weight.
+- **Built (2026-10-31, branch `wt/tally`):** `src/lofi_rl/shootout/tally.py` and `tests/test_shootout_tally.py`. As
+  built: `python -m lofi_rl.shootout.tally --votes <dir> --inbox <dir> [--batch <name> ...] [--out <dir>] [--report
+  <file.md>] [--plan shootouts/plan.yaml] [--config configs/rating.yaml] [--levels <levels.json> ...] [--runs
+  runs]` (`--runs` added at integration: the pulled job summaries, for job 2's `--prior`). `--out`
+  defaults to `<votes>/audit/`; inside the repo `--out` and `--report` are written only under `data/`, never in the
+  inbox (exit 2 otherwise), since a tally is as private as the votes until Shresth confirms it (§1 step 2).
+  - **What it writes.** `<out>/<batch>.json`: the batch's status (`no_votes`, `partial`, `complete`), the audit's
+    own aggregate, its flags and every standing vote as the recount read it (options by tile, picks, weight).
+    `<out>/shootouts.json`: per stage the recount table, the escape hatches, the anchor rounds dropped, the votes at
+    half weight and the marks left out; the K1 + K2 and S1 + final pools; the micro-sessions with anchors; the
+    pooled repeat agreement with §2.5's caveat; position of best; the flags and each stage's largest spread; the
+    drift moves of `--levels`; each stage's first vote date (job 3's `--repeats`); the rules' outcomes; job 2's
+    proposal; and everything that needs Shresth's word. `--report` writes it as markdown for
+    `gates/GATE_palette.md`: per stage a table of option, shown, heard, best, worst, BW, net and all-bad rounds,
+    per option only (never per tile, so it gives no draw away); a flagged round is named only once its batch has
+    every vote; and nothing says which rounds come back or when (RATING.md: he is never told), so the first vote
+    dates stay in the JSON and §2.5's caveat appears only once repeats have votes. A batch with no votes is
+    reported as such, never as zeros.
+  - **Rules as functions**, each applied once every round of its stage's batches has a vote: after Day 1
+    `keys_to_k2` (CD-41), `kits_after_r1` (CD-42), `bass_pairings` (CD-43), `sax_to_final` (CD-18, with D-012's
+    no-free-sax check) and `day2_cut` (CD-50); after Day 2 `keys_survivors` (CD-40), `sax_final` (with the S2
+    re-run note), `warmth` (with the `sax_expr_off` question), `timing`, `swing` (advisory, always put to
+    Shresth), `humanize` and `vamp_ranks` (CD-45's borrowed-chord condition); after Day 3 `rain_excerpt` and
+    `rain_level` (a `rain_none` lead goes to Shresth). S2a and S2b rounds in a Day-3 batch are tallied apart, as
+    the S2 re-run.
+  - **Job 2's proposal:** `keys=<K2, the K1 leader first>/kit=<the R1 leader>/bass=<its R2 pairing>/sax=<the
+    finalists, the S1 leader first>` (one sax id with the `final` cut), `--prior <job 1>` and `--cut` from the cut
+    list. The tool stops unless `draw.parse_leaders` reads the string back and `draw.day_band` builds the Day-2 band
+    from it after the cuts; the report gives the `make submit` line. **`--prior` (integration, 2026-10-31):** job 1
+    is the job whose pulled summary built the Day-1 batches: `--runs` (default `runs/`, where `make pull` puts
+    `runs/shootout-<job>/summary/`) holds a `batches.json` whose `run` is `shootout-<job id>` and which lists each
+    Day-1 batch with exactly its manifest's round ids (random per batch, so a dry run's batches of the same names
+    never match). With none found the leaders still stand, but the line carries no `--prior` and a blocking item
+    asks for it, since job 2 compares its drift keys with job 1's (§3).
+  - **Raised** (`RuleGap`, naming the section; the tally records it, blocks what depends on it and puts it to
+    Shresth): after CD-44, fewer than 3 keys left for K2, fewer than 2 kits, or fewer than 2 saxes for the final;
+    no option left on a single-winner choice; a kit without exactly one R2 round; keys survivors fully tied across
+    the line of the top 2 (unless all of them fit as the third with BW above 0) or for the third place, or fewer
+    than 2 of them; every finalist all-bad. The spec gives no rule for these.
+  - **Choices the spec left open:** BW = (best − worst) / heard, its three terms over heard appearances and
+    weighted, in exact fractions; `shown` counts every appearance in a design round; an option never heard has no
+    BW and ranks last. A micro-session missed its anchor when it caught fewer than half of its anchors (with one
+    anchor, when it did not catch it), read with `ui.audit.anchor_caught` over every log in `--votes`; all its votes
+    count half, in every term. G marks every clip of its round, heard or not, and a worst given with G still counts;
+    CD-44 compares weighted all-bad rounds with weighted rounds. A full tie without the default leaves a palette
+    value at its default meanwhile (swing, humanize, warmth, timing, rain); where the leader must be one of the
+    options (the K1, R1, pooled R2 and S1 leaders, the keys leader over K1 + K2) a seeded draw names a provisional
+    one. Every seeded draw is keyed by the sha256 of the stage's standing design-round vote ids (`draw.Rng`), so it
+    is fixed once the votes exist and the private logs reproduce it. S1's places: two fully tied for one place go to
+    a seeded draw; three or more fully tied at the line give a three-source final, a seeded draw filling it when
+    more are tied than places are left. An all-bad key is not sent to K2; with one kit out, the other two stay.
+    D-012's check reads the S1 leader before CD-44 removes anything, and "most rounds" as more than half. The cut
+    list's limits are 30 and 55 minutes, on the audits' `time.minutes`. CD-45's tie is a BW equal to another vamp's
+    of its mood. `sax_expr_off` "has the top BW" when it shares it. Flags: over 1.0 LU for the instrument stages and
+    S2a's warmth variants, over 0.5 LU for R3a, R3b and S2b, over 1.0 LU on keys or bass for the vamps, none for
+    rain; from Day 2 on on every bus a stage matches (CD-53: `bus_lufs` for its own bus, `<bus>_lufs` for R3a's sax,
+    keys and bass and R3b's keys and bass), each at its stage's limit (integration, 2026-10-31); a level missing
+    where one is checked is a flag too. The rules wait for every round of their batches, and
+    job 2's proposal for every round of the Day-1 batches, because the anchor in the last batch can halve a
+    micro-session that began in an earlier one. The S2 re-run note compares the final's winner with the S1 leader
+    this tally proposes (job 2's own is in its `summary/leaders.json`). The recount's audit-style counts must equal
+    `ui.audit.aggregate`'s per option, or the tool stops.
+  - **Not built:** Day 3's `--leaders` (it needs job 2's `leaders.json`, which the inbox does not hold; the report
+    lists the Day-2 picks it is made of) and Day 3's cut (plan.yaml gives no saving for `w1-two` or `w2-two`).
+  - **Tests** (17, on batches the real draw and batch builder make from fake renders, every vote written by the
+    rating page's own `Ledger` on a fake clock): the four acceptance tests above; a retracted vote; the Day-2
+    proposal waiting for the anchor, and a late missed anchor halving the groove votes of its micro-session; the
+    leaders string through `parse_leaders`, `day_band`, the draw and the job's own `--dry-run` check; the cut list
+    and the `final` cut's one sax; ties at third place and the S1 places; the all-bad rule on keys and on kits (a
+    `RuleGap` that blocks the proposal); a batch with no votes and a partial one; keys survivors, the sax final, the
+    variant, vamp and rain rules; Day-2 and Day-3 votes through every later rule; level flags on the instrument,
+    timing and vamp limits; the CLI's files and its refusal of a public path. Seven mutations of the recount
+    (heard filter, half weight, repeats, anchors, the tie at third, CD-44, G) each fail the test meant for it.
+    Integration added 2 (19 in all): job 2's `--prior` found from the pulled summaries (and not from a dry run's
+    batches of the same names, or a run that is not `shootout-<job id>`), and the Day-2 flags on every matched bus
+    (R3a's `sax_lufs`, R3b's `bass_lufs`, a missing `keys_lufs`); dropping either change fails its test.
+  - **Checked on the real Day-1 batches** (laptop, 2026-10-31; the inbox read-only, synthetic votes in a scratch
+    folder, options ranked alphabetically so nothing depends on the draw): 3 batches and 19 rounds read, the S1
+    anchor found, no round flagged (per-round spread 0.0012–0.0091 LU, read independently from the hidden
+    manifests too), and a proposal of 3 keys, 1 kit, 1 bass and 2 saxes that `draw.day_band` accepts and the job's
+    `--dry-run` check passes (exit 0).
 
 ### 7.10 Only if Shresth asks for them
 - **Per-mood chord list** (if bVI and bVII should leave the hopeful mood only, §11 question 2): a palette field
@@ -1087,7 +1349,8 @@ few to flag a single shootout. Position-of-best counts are pooled by clip count 
   [CD-10]; **swing advisory** around Shresth's 55 % [CD-13].
 - **Levels.** Per-instrument trims and faders matched on the reference loops replace instrument.md §4's
   `bus_gain_db` calibration on the hand loops [CD-25, CD-29], each shootout clip takes its own fader on its round's
-  loop [CD-52], and the chains are not tuned on the hand loops before the freeze (§3, drift).
+  loop [CD-52], from Day 2 on every bus its round varies [CD-53], and the chains are not tuned on the hand loops
+  before the freeze (§3, drift).
 - **Rain** comes on Nov 6, with the file asked for by Nov 5 noon (P§7 has Shresth download it on Nov 6).
 - **Borrowed chords:** P§3's rule is reported, not applied; removal needs Shresth's words [CD-45], since the
   palette's chord list is shared by every mood.
@@ -1132,8 +1395,8 @@ Each is overridable by Shresth; the reason is one line.
 | CD-23 | Anchors are extra rounds with a sour copy (every sax note's accidental raised by one) | one mechanical rule breaks every loop the same way and keeps every design round whole |
 | CD-24 | A repeat never shows the first-served round of a stage | that round is the stage's warm-up |
 | CD-25 | Level matching with trims before the chains and faders after, anchored on the GU instruments | no candidate wins by loudness, and each meets its compressor as the dev instrument does |
-| CD-26 | Timing variants keep the instrument's trim and fader; spreads above 0.5 LU flagged | they move notes in time, not in level |
-| CD-27 | Vamp clips not level-matched; keys and bass loudness recorded, spreads above 1.0 LU flagged | the harmony is the candidate; matching would change the band between clips |
+| CD-26 | Timing variants keep the instrument's trim and fader; spreads above 0.5 LU flagged (the fader amended by CD-53) | they move notes in time, not in level |
+| CD-27 | Vamp clips not level-matched; keys and bass loudness recorded, spreads above 1.0 LU flagged (amended by CD-53) | the harmony is the candidate; matching would change the band between clips |
 | CD-28 | A keys instrument's frozen fader is the mean of its rootless and spread values | the frozen palette has one fader per instrument, and the model picks the voicing |
 | CD-29 | The faders he heard go into the frozen palette; a kept-10 bus off target by 1.0 LU goes to Shresth | recalibrating on the kept 10 would change the mix he voted on |
 | CD-30 | A borrowed lane's level copies the GU kit's shaker-to-snare difference | a lane recorded apart from the kit has no recorded balance with it |
@@ -1159,6 +1422,7 @@ Each is overridable by Shresth; the reason is one line.
 | CD-50 | The cut list's order | it cuts a stage's third loop before any second one, and the S1 final last |
 | CD-51 | Shootout palettes carry trims as a chain-head `Gain` or lane `db` and faders in `bus_gain_db` | no palette code is needed before the freeze, while other workflows edit `palette.py` and `pipeline.py` |
 | CD-52 | Each shootout clip's fader on the bus its round varies comes from its candidate's measured loudness on the round's own loop (0.1 LU per clip); the frozen palette keeps the median fader (amends §3, 2026-10-31) | matching the median over the 9 loops left 10 of the 18 Day-1 design rounds and the anchor over 1.0 LU apart on their own loop (up to 4.20 LU, R1.3 on L8), and a candidate must never win by being louder |
+| CD-53 | From Day 2 on each clip takes its own fader on every bus its round's varied thing moves (plan.yaml `match`), measured on its own palette and text at its instruments' Day-1 trims; job 2 measures every instrument it plays again; the vamp palettes take 16 loudness iterations (amends §3, CD-26, CD-27 and §7.3, 2026-10-31) | at the median faders the Day-2 rounds spread up to 2.43 LU (S2a), 1.04 (R3b) and 9.85 (the vamps' bass) in the dry run, and the spreads follow the leaders; one trim per instrument is what the frozen palette holds; with no sax, dev_gu's 4 iterations left 3 of 36 vamp clips short of G7 |
 
 ## 11. Waiting on Shresth
 

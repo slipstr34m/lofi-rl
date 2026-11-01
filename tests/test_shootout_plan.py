@@ -648,3 +648,39 @@ def test_a_broken_plan_is_refused(mutate, match):
     mutate(doc)
     with pytest.raises(PlanError, match=match):
         parse_plan(doc, PLAN_FILE, "0" * 64)
+
+
+# ------------------------------------------------------------------------------- CD-53: what each Day-2 clip matches
+def test_every_day2_stage_matches_each_bus_its_varied_thing_moves(plan):
+    # CD-53 (SHOOTOUTS.md section 3): each Day-2 clip takes its own fader on every bus its round's varied thing
+    # moves, in render/mix.py's order. Swing moves every timing lane, the sax included (CD-12); humanize the drum
+    # lanes, bass and keys, never the sax (COMPILER.md 3.6); a vamp the keys and the bass (its sax is muted); the
+    # instrument stages and the sax variants their own bus. K2 and S2a also measure each option's palette on the 9
+    # loops (section 3 step 1: the spread voicing, warm on and expression off). Day 1 keeps CD-52 (no `match`), and
+    # the rain is not matched (the level is the candidate).
+    want = {"R3a": ("sax", "keys", "bass", "drums"), "R3b": ("keys", "bass", "drums"), "S1f": ("sax",),
+            "S2a": ("sax",), "S2b": ("sax",), "K2": ("keys",), "V": ("keys", "bass")}
+    assert {sid: st.match for sid, st in plan.stages.items() if st.match} == want
+    assert {sid for sid, st in plan.stages.items() if st.match_loops} == {"K2", "S2a"}
+    assert all(st.day == 2 for st in plan.stages.values() if st.match)
+    assert all(not st.match for st in plan.stages.values() if st.day != 2)
+    humanized = set(load_palette(ROOT / plan.base, verify=False).groove.humanize_lanes)
+    assert {"bass", "keys"} <= humanized and "sax" not in humanized and humanized - {"bass", "keys"}
+    # a cut keeps what the stages it keeps match
+    assert apply_cuts(plan, ["latin3", "vamps-high"]).stages["R3b"].match == want["R3b"]
+
+
+@pytest.mark.parametrize("mutate,match", [
+    (lambda d: d["stages"]["S2a"].update(match={"buses": ["keys"]}), "stage's bus sax"),
+    (lambda d: d["stages"]["V"].update(match={"buses": ["keys"]}), "keys\\+bass"),
+    (lambda d: d["stages"]["V"].update(match={"buses": ["keys", "bass", "sax"]}), "muted sax"),
+    (lambda d: d["stages"]["K2"].update(match={"buses": ["keys", "rain"]}), "not instrument buses"),
+    (lambda d: d["stages"]["K2"].update(match={"buses": ["keys"], "loops": "yes"}), "true or false"),
+    (lambda d: d["stages"]["K2"].update(match={"keys": True}), "missing buses"),
+    (lambda d: d["stages"]["W2"].update(match={"buses": ["keys"]}), "rain is never matched"),
+])
+def test_a_broken_match_is_refused(mutate, match):
+    doc = copy.deepcopy(RAW)
+    mutate(doc)
+    with pytest.raises(PlanError, match=match):
+        parse_plan(doc, PLAN_FILE, "0" * 64)
