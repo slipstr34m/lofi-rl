@@ -30,6 +30,7 @@ MODE=scorer source scripts/job_env.sh
 RUN="$REMOTE_SCR/runs/scorer-smoke-${SLURM_JOB_ID:-local}"
 OUT="$RUN/summary"
 SOCKS="${TMPDIR:-/tmp}/lofi-scorer-${SLURM_JOB_ID:-local}"
+[ "${#SOCKS}" -le 90 ] || SOCKS="/tmp/lofi-scorer-${SLURM_JOB_ID:-local}"   # a socket path has at most 107 bytes
 mkdir -p "$OUT" "$RUN/cache_a" "$RUN/cache_b" "$SOCKS"
 chmod 700 "$SOCKS"
 export TOKENIZERS_PARALLELISM=false
@@ -73,11 +74,12 @@ timeout -k 10s "${T}s" "$PY" -m lofi_rl.scoring.smoke pass --sock "$SOCKS/c.sock
   --out "$OUT/pass_c.json" --wait-s "$((T - 30))" || FAIL=1
 stop c
 
-du -sh "$RUN/cache_a" "$RUN/cache_b" 2>/dev/null || true
+timeout 60s du -sh "$RUN/cache_a" "$RUN/cache_b" 2>/dev/null || true
 T=$(left 10 180)
 timeout -k 10s "${T}s" "$PY" -m lofi_rl.scoring.smoke verdict --run "$RUN" --out "$OUT/scorer_smoke.json" \
   --pass "a=$OUT/pass_a.json" --pass "b=$OUT/pass_b.json" --pass "c=$OUT/pass_c.json" \
   --cache "a=$RUN/cache_a" --cache "b=$RUN/cache_b" "${RCS[@]}" \
   --sock "a=$SOCKS/a.sock" --sock "b=$SOCKS/b.sock" --sock "c=$SOCKS/c.sock" \
   --gpu-log "$OUT/nvidia_smi_a.txt" || FAIL=1
+rmdir "$SOCKS" 2>/dev/null || true
 if [ "$FAIL" != 0 ]; then echo "scorer smoke: a step failed (see $OUT)"; exit 1; fi
