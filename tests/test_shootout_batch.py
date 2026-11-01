@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from helpers_shootout import fake_level, fake_renders
-from lofi_rl.shootout.batch import BuildError, build, hidden_names, main, public_leaks
+from lofi_rl.shootout.batch import BuildError, build, check_folders, hidden_names, main, public_leaks
 from lofi_rl.shootout.draw import draw, load_prior, parse_leaders, write_draw
 from lofi_rl.shootout.plan import load_plan
 from lofi_rl.ui.manifest import HIDDEN_NAME, PUBLIC_NAME, _words, load_batch
@@ -355,3 +355,30 @@ def test_the_cli_draws_and_then_builds(tmp_path, capsys):
     assert "needs --leaders" in capsys.readouterr().err
     assert main(["build", "--plan", str(PLAN.path), "--stage", "day2", "--renders", str(run / "renders"),
                  "--out", str(tmp_path / "inbox2")]) == 2
+
+
+def test_a_day2_build_with_r2r_opens_the_groove_batch_with_the_bass_re_listen(tmp_path):
+    """CD-54: R2r's rounds come first in the groove batch's manifests; each of its clips names its kit and keeps its
+    own bass fader and loudness as fader_db / bus_lufs / bus_lu (its stage's bus, CD-53); no hidden value shows in
+    the public manifest, and every folder passes ui.manifest check."""
+    leaders = parse_leaders("keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/"
+                            "bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor")
+    run, doc, folders = run_day(tmp_path, "shootout-104", "day2", 14, leaders=leaders, adds=["R2r"])
+    groove = next(f for f in folders if f.name == "b1104-1-groove")
+    m, h = load_batch(groove)
+    assert h.category == "bass, swing, humanize" and len(m.rounds) == 8
+    first = [h.rounds[r.id] for r in m.rounds[:3]]
+    assert all(next(iter(hr.clips.values()))["stage"] == "R2r" for hr in first)
+    for r in m.rounds[:3]:
+        for c in r.clips:
+            info = h.rounds[r.id].clips[c.id]
+            rec = json.loads((run / "renders" / info["render"] / "record.json").read_text())
+            assert info["kit"] in ("kit_virtuosity", "kit_gu_jazz") and info["option"].startswith("bass_")
+            assert (info["fader_db"], info["bus_lufs"], info["bus_lu"]) == (
+                rec["buses"]["bass"]["fader_db"], rec["level"]["buses"]["bass"]["lufs"],
+                rec["level"]["buses"]["bass"]["lu"])
+            assert not any(k.endswith("_fader_db") for k in info)
+    for f in folders:                             # section 7.6 test 7, as test_no_hidden_value_appears... reads it
+        hid = json.loads((f / HIDDEN_NAME).read_text())
+        assert public_leaks(json.loads((f / PUBLIC_NAME).read_text()), hid, _names(hid)) == [], f.name
+    assert [rc for rc, _ in check_folders(folders)] == [0] * len(folders)      # as the build ran it, once more

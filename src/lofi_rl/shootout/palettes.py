@@ -67,7 +67,7 @@ import yaml
 
 from lofi_rl.dsl.vocab import LANES
 from lofi_rl.palette import LAYERS, ROOT, PaletteError, parse_palette, sf2_presets
-from lofi_rl.shootout.plan import Plan, PlanError, apply_cuts, load_plan
+from lofi_rl.shootout.plan import Plan, PlanError, apply_adds, apply_cuts, load_plan
 
 INDEX_SCHEMA = "lofi-rl/shootout-palettes/1"
 MEASURE_SCHEMA = "lofi-rl/shootout-measure/1"
@@ -624,7 +624,8 @@ def _slots(inputs: Inputs) -> list[dict]:
             slots.append({"stage": st.id, "id": s.id, "loop": s.loop, "loop_file": loop,
                           "brief": {"mood": b.mood, "energy": b.energy, "bpm": b.bpm, "tonic": b.tonic,
                                     "scene": b.scene},
-                          "tiles": list(s.tiles), "kit": s.kit, "sub": dict(st.sub),
+                          "tiles": list(s.tiles), "kit": s.kit, **({"kit_rank": s.kit_rank} if s.kit_rank else {}),
+                          "sub": dict(st.sub),
                           "text_sha256": sha256_bytes(inputs.plan.loop_text(s.loop).encode("utf-8"))})
     return slots
 
@@ -892,8 +893,9 @@ def generate(plan_path: Path | str, out: Path | str, *, stage: str = "day1", lev
     doc = _read_json(Path(draw), "draw")
     if not isinstance(doc, dict) or doc.get("schema") != DRAW_SCHEMA or doc.get("stage") != stage:
         raise GenerateError(f"draw {draw}: expected a {DRAW_SCHEMA} draw of {stage}")
-    try:
-        plan = apply_cuts(plan, list((doc.get("plan") or {}).get("cuts") or []))
+    try:                            # the job's adds (R2r, CD-54) and cuts, as the draw recorded them
+        made = doc.get("plan") or {}
+        plan = apply_cuts(apply_adds(plan, list(made.get("adds") or [])), list(made.get("cuts") or []))
     except PlanError as err:
         raise GenerateError(f"draw {draw}: {err}") from err
     inputs = Inputs(plan, Path(base) if base else root / plan.base, day, tuple(without), root, draw=doc)

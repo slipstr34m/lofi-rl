@@ -16,9 +16,15 @@ What is drawn, per day:
 3. on day 3 the split of the pool (W1, W2, the S2 re-run, the anchor, the repeats) into the two mix batches of
    about equal planned length;
 4. the order of the rounds in each batch [CD-22]: no two consecutive rounds on one loop, and a design round first.
+   An optional stage the job adds (`--add R2r`, CD-54) opens its batch: its rounds come first, in a drawn order,
+   then the batch's own, in a drawn order, the two parts joined under the same rule.
 
 Every draw uses SplitMix64 (`lofi_rl.prng`) keyed by the seed and a label (stage, batch or group), so one seed
-gives the same draw on every machine and Python version, and adding a stage leaves the others' draws alone.
+gives the same draw on every machine and Python version, and adding a stage leaves the others' draws alone. With
+no `adds` the draw is the one the plan gave before R2r existed: an optional stage changes nothing until it is added.
+
+`day_minutes` is the plan estimate of the rounds a day's draw will play (the tally's cut list reads it, CD-50):
+every design round exactly, and each anchor at the mean of the rounds it may imitate.
 
 The draw also lists what the job must make: `renders` (render id -> loop text, brief, palette key, stage,
 option) and `palettes` (palette key -> the band that palette plays: the generator's input, section 7.8). A clip of a
@@ -44,8 +50,8 @@ from typing import Any
 
 from lofi_rl.prng import GOLDEN, MASK, below, splitmix64
 
-from .plan import (BAND_SLOTS, SLOT_BUS, SLOT_LIST, Batch, Plan, PlanError, Stage, apply_cuts, day_name, day_number,
-                   substitute)
+from .plan import (BAND_SLOTS, SLOT_BUS, SLOT_LIST, Batch, Plan, PlanError, Stage, apply_adds, apply_cuts, day_name,
+                   day_number, substitute)
 from .sour import check_sour, raise_accidentals, sax_voice
 
 SCHEMA = "lofi-rl/shootout-draw/1"
@@ -149,6 +155,7 @@ class _Ctx:
     palettes: dict[str, dict]
     sour: dict[str, dict]
     texts: dict[str, str]
+    leaders: Mapping[str, tuple[str, ...]] = None    # the job's --leaders (R2r's kit_rank reads the kit slot)
 
     def text(self, loop_id: str) -> str:
         if loop_id not in self.texts:
@@ -169,6 +176,37 @@ def est_minutes(rounds: Sequence[Mapping]) -> float:
     return round(sum(round_seconds(len(r["clips"]), r["bpm"]) for r in rounds) / 60.0, 1)
 
 
+def day_minutes(plan: Plan, day: int | str, counts: Mapping[str, int] | None = None, cuts: Sequence[str] = (),
+                adds: Sequence[str] = ()) -> dict:
+    """The plan estimate (taste_pipeline.md section 8, `round_seconds`) of the rounds a day's draw will play, after
+    `adds` and `cuts`, with `counts` ids per leaders slot (a ranks stage's `top` where it is not given: K2 3, the S1
+    final 2): every design round exactly, its clips at its loop's tempo, as `draw` builds it; each anchor at the mean
+    of the design rounds of its batch it may imitate (the draw picks one at job time). Day 3's repeats and S2 re-run
+    are not counted. {"batches": {batch (a split pool by its pool name): {rounds, seconds, minutes}}, "rounds",
+    "seconds", "minutes"}."""
+    n = day_number(day)
+    p = apply_cuts(apply_adds(plan, list(adds)), list(cuts))
+    counts = dict(counts or {})
+    out = {}
+    for b in p.batches_of(n):
+        secs, pool = [], []
+        for sid in b.stages:
+            st = p.stages[sid]
+            g = st.groups[0]
+            count = (counts.get(g.leaders) or (st.ranks or {}).get("top")) if g.leaders else None
+            for slot in st.slots_for(count):
+                s = round_seconds(len(slot.tiles), p.loops[slot.loop].brief.bpm)
+                secs.append(s)
+                if st.anchor:
+                    pool.append(s)
+        total = sum(secs) + (b.anchors * sum(pool) / len(pool) if b.anchors and pool else 0.0)
+        out[b.split or b.names[0]] = {"rounds": len(secs) + b.anchors, "seconds": total,
+                                      "minutes": round(total / 60.0, 1)}
+    total = sum(x["seconds"] for x in out.values())
+    return {"batches": out, "rounds": sum(x["rounds"] for x in out.values()), "seconds": total,
+            "minutes": round(total / 60.0, 1)}
+
+
 def _day_band(plan: Plan, day: str, leaders: Mapping[str, tuple[str, ...]], stages: Sequence[Stage]
               ) -> dict[str, str | None]:
     """The day's fixed band, with the leaders the job named (leader first) in their slots."""
@@ -183,6 +221,8 @@ def _day_band(plan: Plan, day: str, leaders: Mapping[str, tuple[str, ...]], stag
         for g in st.groups:
             if g.leaders:
                 counts.setdefault(g.leaders, set()).update(st.slots_by_count)
+        if st.kit_ranks:                        # R2r plays the job's kit leaders by rank (CD-54)
+            counts.setdefault("kit", set()).add(st.kit_ranks)
     band = spec.band_slots()
     for slot, default in spec.leaders.items():
         ids = leaders.get(slot)
@@ -192,7 +232,12 @@ def _day_band(plan: Plan, day: str, leaders: Mapping[str, tuple[str, ...]], stag
             ids = (default,)
         allowed = counts.get(slot, {1})
         if len(ids) not in allowed:
-            raise DrawError(f"--leaders {slot}: {len(ids)} ids given, {day} takes {sorted(allowed)}")
+            hint = ""
+            if slot == "kit":                   # the kit list goes with an optional stage that plays it
+                for sid in plan.optional_of(day):
+                    if plan.stages[sid].kit_ranks == len(ids):
+                        hint = f" ({len(ids)} kits go with --add {sid}, SHOOTOUTS.md CD-54)"
+            raise DrawError(f"--leaders {slot}: {len(ids)} ids given, {day} takes {sorted(allowed)}{hint}")
         for i in ids:
             if i not in plan.band_options[slot]:
                 raise DrawError(f"--leaders {slot}: {i!r} is not one of the {SLOT_LIST[slot]} candidates")
@@ -200,14 +245,30 @@ def _day_band(plan: Plan, day: str, leaders: Mapping[str, tuple[str, ...]], stag
     return band
 
 
-def day_band(plan: Plan, day: int | str, leaders: Mapping[str, tuple[str, ...]], cuts: Sequence[str] = ()
-             ) -> dict[str, str | None]:
-    """The band `draw` plays on `day` with the job's leaders, after the cuts, checked as `draw` checks it: DrawError
-    for a slot the day does not take or needs, an id that is not a candidate of its slot, or a count the day's
-    stages cannot play (day 2: keys 3 or 4, sax 2 or 3, or 1 with the `final` cut; day 3: one id per slot). The job
-    runs it before any stage (`job.check`), so a --leaders form the draw would refuse exits 2 there."""
-    cut = apply_cuts(plan, list(cuts))
-    return _day_band(cut, day_name(day_number(day)), leaders, cut.stages_of(day))
+def day_band(plan: Plan, day: int | str, leaders: Mapping[str, tuple[str, ...]], cuts: Sequence[str] = (),
+             adds: Sequence[str] = ()) -> dict[str, str | None]:
+    """The band `draw` plays on `day` with the job's leaders, after the adds and the cuts, checked as `draw` checks
+    it: DrawError for a slot the day does not take or needs, an id that is not a candidate of its slot, a count the
+    day's stages cannot play (day 2: keys 3 or 4, sax 2 or 3, or 1 with the `final` cut, kit 1, or 2 with `--add
+    R2r`; day 3: one id per slot), or an add that is not an optional stage of the day. The job runs it before any
+    stage (`job.check`), so a --leaders form the draw would refuse exits 2 there."""
+    n = day_number(day)
+    _check_adds(plan, n, adds)
+    cut = apply_cuts(apply_adds(plan, list(adds)), list(cuts))
+    return _day_band(cut, day_name(n), leaders, cut.stages_of(day))
+
+
+def _check_adds(plan: Plan, n: int, adds: Sequence[str]) -> None:
+    """Every add names an optional stage of day `n`, once (CD-54)."""
+    for a in adds:
+        st = plan.stages.get(a)
+        if st is None or not st.optional:
+            raise DrawError(f"--add {a!r}: not an optional stage of the plan "
+                            f"({sorted(s for s, x in plan.stages.items() if x.optional)})")
+        if st.day != n:
+            raise DrawError(f"--add {a} belongs to {day_name(st.day)}, not {day_name(n)}")
+    if len(set(adds)) != len(adds):
+        raise DrawError(f"--add names a stage twice: {list(adds)}")
 
 
 def _map_group(plan: Plan, stage: Stage, gi: int, leaders: Mapping[str, tuple[str, ...]], rng: Rng
@@ -302,6 +363,8 @@ def _stage_rounds(ctx: _Ctx, stage: Stage, maps: list[dict[str, str]], band: Map
         if slot.kit:                                # R2: the kit the day's kit stage's symbol stands for
             ref = next(sid for sid in other_maps if ctx.plan.stages[sid].fills == "kit")
             kit = next(m[slot.kit] for m in other_maps[ref] if slot.kit in m)
+        elif slot.kit_rank:                         # R2r: the job's kit leader of that rank, the leader first (CD-54)
+            kit = ctx.leaders["kit"][slot.kit_rank - 1]
         clips = [_clip(ctx, stage, slot.loop, maps[stage.group_of(slot.id, sym)][sym], band, kit=kit)
                  for sym in slot.tiles]
         lp = ctx.plan.loops[slot.loop]
@@ -332,8 +395,12 @@ def _ok_order(rounds: Sequence[Mapping]) -> bool:
         a["loop"] != b["loop"] for a, b in zip(rounds, rounds[1:]))
 
 
-def order_rounds(rounds: list[dict], rng: Rng) -> list[dict]:
-    """A random order with a design round first and no two consecutive rounds on one loop [CD-22]."""
+def order_rounds(rounds: list[dict], rng: Rng, lead: Sequence[dict] = ()) -> list[dict]:
+    """A random order with a design round first and no two consecutive rounds on one loop [CD-22]. `lead` (an added
+    stage's rounds, CD-54) opens the batch: its rounds first, in a drawn order, then `rounds`, under the same rule
+    across the join. With no `lead` the stream is used exactly as before R2r existed."""
+    if lead:
+        return _order_led(list(lead), list(rounds), rng)
     for _ in range(ORDER_TRIES):
         cand = rng.shuffle(list(rounds))
         if _ok_order(cand):
@@ -353,6 +420,32 @@ def order_rounds(rounds: list[dict], rng: Rng) -> list[dict]:
     got = dfs([], list(rounds))
     if got is None:
         raise DrawError("no order puts a design round first with no two consecutive rounds on one loop")
+    return got
+
+
+def _order_led(lead: list[dict], rest: list[dict], rng: Rng) -> list[dict]:
+    """`lead` then `rest`, each part in a drawn order, the whole meeting CD-22; an exhaustive search in a random
+    branch order if the random tries find none."""
+    for _ in range(ORDER_TRIES):
+        cand = rng.shuffle(list(lead)) + rng.shuffle(list(rest))
+        if _ok_order(cand):
+            return cand
+
+    def dfs(prefix: list[dict], left: list[dict], later: list[dict]):
+        if not left:
+            return dfs(prefix, later, []) if later else prefix
+        for i in rng.shuffle(list(range(len(left)))):
+            r = left[i]
+            if (not prefix and r["kind"] != "none") or (prefix and prefix[-1]["loop"] == r["loop"]):
+                continue
+            got = dfs(prefix + [r], left[:i] + left[i + 1:], later)
+            if got:
+                return got
+        return None
+    got = dfs([], lead, rest)
+    if got is None:
+        raise DrawError("no order puts the added rounds first, a design round first and no two consecutive rounds on "
+                        "one loop")
     return got
 
 
@@ -432,8 +525,10 @@ def _split(rounds: list[dict], names: Sequence[str], rng: Rng) -> dict[str, list
 
 def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ...]] | None = None,
          priors: Sequence[Prior] = (), repeats: Sequence[str] = (), rerun_s2: str | None = None,
-         cuts: Sequence[str] = ()) -> dict:
-    """The day's draw as draw.json holds it. Raises DrawError (or PlanError) before anything is written."""
+         cuts: Sequence[str] = (), adds: Sequence[str] = ()) -> dict:
+    """The day's draw as draw.json holds it. Raises DrawError (or PlanError) before anything is written. `adds`
+    names the optional stages the job adds (`--add R2r`, CD-54); draw.json's `plan` records them as `adds` (only
+    when there are some, so a draw without them keeps its old form)."""
     leaders = dict(leaders or {})
     n = day_number(day)
     day = day_name(n)
@@ -444,7 +539,8 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
     bad = [s for s in repeats if s not in plan.stages]
     if bad:
         raise DrawError(f"--repeats names {bad}, which are not stages of the plan")
-    plan = apply_cuts(plan, list(cuts))
+    _check_adds(plan, n, adds)
+    plan = apply_cuts(apply_adds(plan, list(adds)), list(cuts))
     if not plan.batches_of(n):
         raise DrawError(f"the plan has no batches for {day}")
     if repeats and n != plan.repeat_day:
@@ -457,7 +553,7 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
     band = _day_band(plan, day, leaders, stages)
     if rerun_s2 and rerun_s2 not in plan.band_options["sax"]:
         raise DrawError(f"--rerun-s2: {rerun_s2!r} is not one of the saxes")
-    ctx = _Ctx(plan, day, seed, band, {}, {}, {}, {})
+    ctx = _Ctx(plan, day, seed, band, {}, {}, {}, {}, leaders)
     maps: dict[str, list[dict[str, str]]] = {}
     by_stage: dict[str, list[dict]] = {}
     band_of: dict[str, dict] = {}
@@ -480,7 +576,9 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
             (name,) = b.names
             rounds = [r for s in b.stages for r in by_stage[s]]
             rounds += _anchors(ctx, b, name, rounds, band_of, seed)
-            batches.append(_batch_doc(b, name, rounds, Rng.keyed(seed, "order", name)))
+            lead = [r for r in rounds if r["kind"] == "none" and r["stage"] in b.lead]   # an added stage first (CD-54)
+            batches.append(_batch_doc(b, name, [r for r in rounds if r not in lead], Rng.keyed(seed, "order", name),
+                                      lead))
             continue
         # a split pool (day 3): its stages, the S2 re-run, the anchor and the repeats, divided by planned length
         name = b.split
@@ -500,9 +598,12 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
             raise DrawError(f"no split of {name} can be ordered")
         batches += docs
     batches.sort(key=lambda d: (d["date"], d["name"]))
+    plan_doc = {"path": str(plan.path), "sha256": plan.sha256, "cuts": list(plan.applied_cuts)}
+    if plan.applied_adds:
+        plan_doc["adds"] = list(plan.applied_adds)
     return {
         "schema": SCHEMA, "v": 1, "stage": day, "seed": f"{seed & MASK:016x}",
-        "plan": {"path": str(plan.path), "sha256": plan.sha256, "cuts": list(plan.applied_cuts)},
+        "plan": plan_doc,
         "leaders": {k: list(v) for k, v in sorted(leaders.items())}, "band": band,
         "repeats": {"stages": list(repeats), "prior": [str(p.run_dir) for p in priors]},
         "rerun_s2": rerun_s2,
@@ -521,8 +622,8 @@ def _anchors(ctx: _Ctx, b: Batch, name: str, rounds: list[dict], band_of: Mappin
             for k in range(b.anchors)]
 
 
-def _batch_doc(b: Batch, name: str, rounds: list[dict], rng: Rng) -> dict:
-    ordered = order_rounds(rounds, rng)
+def _batch_doc(b: Batch, name: str, rounds: list[dict], rng: Rng, lead: Sequence[dict] = ()) -> dict:
+    ordered = order_rounds(rounds, rng, lead)
     return {"name": name, "date": b.date, "day": day_name(b.day), "category": b.category, "note": b.note,
             "est_min": est_minutes(ordered), "rounds": ordered}
 
@@ -537,5 +638,5 @@ def write_draw(doc: Mapping, path: Path | str) -> Path:
     return p
 
 
-__all__ = ["DrawError", "Prior", "Rng", "SCHEMA", "day_band", "draw", "est_minutes", "load_prior", "order_rounds",
-           "parse_leaders", "round_seconds", "write_draw", "PlanError"]
+__all__ = ["DrawError", "Prior", "Rng", "SCHEMA", "day_band", "day_minutes", "draw", "est_minutes", "load_prior",
+           "order_rounds", "parse_leaders", "round_seconds", "write_draw", "PlanError"]

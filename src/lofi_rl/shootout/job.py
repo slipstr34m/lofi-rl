@@ -9,10 +9,15 @@ on `--leaders`, one `<slot>=<id>[+<id>...]` per band slot joined by `/`, leader 
     --stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id>
     --stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>
 
-Day 2's keys take 3 ids (4 on a tie at third place) and its sax 2 (3 on a tie, 1 with the `final` cut); day 3 takes
-one id per slot, and also names `swing`, `humanize`, `sax_variant` and `timing` when a Day-2 pick is not the plan's
-default. Day 3 adds `--prior <job>+<job>`, `--repeats <stage>+...` and, if needed, `--rerun-s2 <sax id>`; a cut
-adds `--cut <name>+<name>`. ARGS hold no spaces, so they need no comma-safe `--export`.
+Day 2's keys take 3 ids (4 on a tie at third place) and its sax 2 (3 on a tie, 1 with the `final` cut); its kit takes
+1 id, or 2 with `--add R2r` (the bass re-listen, CD-54: the surviving kits, leader first; the bass is then the
+default, bass_gu_acoustic, meanwhile):
+
+    --stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>+<id>/bass=bass_gu_acoustic/sax=<id>+<id> --prior <job1> --add R2r
+
+Day 3 takes one id per slot, and also names `swing`, `humanize`, `sax_variant` and `timing` when a Day-2 pick is not
+the plan's default. Day 3 adds `--prior <job>+<job>`, `--repeats <stage>+...` and, if needed, `--rerun-s2 <sax
+id>`; a cut adds `--cut <name>+<name>`. ARGS hold no spaces, so they need no comma-safe `--export`.
 
 1. Everything the job was given goes into `summary/leaders.json` first.
 2. `draw`: `python -m lofi_rl.shootout.batch draw` writes `summary/draw.json` (the maps, the order, the anchors and
@@ -77,6 +82,7 @@ def _args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--repeats", default="", help="stages whose rounds may come back, joined by +")
     p.add_argument("--rerun-s2", default=None)
     p.add_argument("--cut", default="", help="cut-list names joined by +")
+    p.add_argument("--add", default="", help="optional stages joined by + (day 2: R2r, the bass re-listen, CD-54)")
     p.add_argument("--jobs", type=int, default=8, help="renders at a time (one per CPU)")
     p.add_argument("--plan", type=Path, default=PLAN)
     p.add_argument("--loops", type=Path, default=LOOPS)
@@ -100,6 +106,7 @@ def check(a: argparse.Namespace) -> dict:
     prior = a.prior.split("+") if a.prior else []
     repeats = _split(a.repeats, _NAMES, "repeats")
     cut = _split(a.cut, _NAMES, "cut")
+    add = _split(a.add, _NAMES, "add")
     try:
         leaders = parse_leaders(a.leaders)
         plan = load_plan(a.plan)
@@ -114,14 +121,15 @@ def check(a: argparse.Namespace) -> dict:
     unknown = [c for c in cut if c not in cuts]
     if unknown:
         raise JobError(f"--cut: {unknown} are not cuts of the plan ({cuts})")
-    try:                    # the draw's own check of the leaders (slots, ids and counts), on the plan after the cuts
-        day_band(plan, a.stage, leaders, cut)
+    try:                    # the draw's own check of the leaders (slots, ids and counts) and of the adds, on the
+        day_band(plan, a.stage, leaders, cut, add)      # plan after the adds and the cuts
     except (DrawError, PlanError) as err:
         raise JobError(str(err)) from err
     runs = a.runs or a.run.parent
     return {"schema": LEADERS_SCHEMA, "stage": a.stage, "leaders": {k: list(v) for k, v in leaders.items()},
             "prior": prior, "prior_runs": [str(runs / f"shootout-{j}") for j in prior], "repeats": repeats,
-            "rerun_s2": a.rerun_s2, "cut": cut, "jobs": a.jobs, "plan": str(a.plan), "plan_sha256": plan.sha256}
+            "rerun_s2": a.rerun_s2, "cut": cut, "add": add, "jobs": a.jobs, "plan": str(a.plan),
+            "plan_sha256": plan.sha256}
 
 
 def commands(a: argparse.Namespace, doc: dict) -> list[tuple[str, list[str]]]:
@@ -138,6 +146,8 @@ def commands(a: argparse.Namespace, doc: dict) -> list[tuple[str, list[str]]]:
         draw += ["--rerun-s2", a.rerun_s2]
     if doc["cut"]:
         draw += ["--cut", "+".join(doc["cut"])]
+    if doc["add"]:
+        draw += ["--add", "+".join(doc["add"])]
     if a.seed:
         draw += ["--seed", a.seed]
     # the generator writes the measuring palettes into <out>/measure/, where the levels tool reads them; from day 2 on

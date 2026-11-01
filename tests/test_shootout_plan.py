@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import re
 from collections import Counter, defaultdict
+from dataclasses import replace
 from itertools import combinations
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from lofi_rl.dsl import expand, parse
 from lofi_rl.dsl.vocab import LANES
 from lofi_rl.palette import load_palette
 from lofi_rl.shootout.plan import PLAN as PLAN_FILE
-from lofi_rl.shootout.plan import PlanError, apply_cuts, load_plan, parse_plan, substitute
+from lofi_rl.shootout.plan import PlanError, apply_adds, apply_cuts, load_plan, parse_plan, substitute
 from lofi_rl.ui.manifest import BATCH_RE
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +40,7 @@ DOC_SLOTS = {
     "K2.1": ("L3", "u1 u2 u3"), "K2.2": ("L8", "u2 u3 u1"),
     "R1.1": ("L3", "k1 k2 k3"), "R1.2": ("L4", "k2 k3 k1"), "R1.3": ("L8", "k3 k1 k2"),
     "R2.1": ("L6", "b1 b2 b3"), "R2.2": ("L7", "b2 b3 b1"), "R2.3": ("L2", "b3 b1 b2"),
+    "R2r.1": ("L1", "b1 b2 b3"), "R2r.2": ("L5", "b2 b3 b1"), "R2r.3": ("L9", "b3 b1 b2"),
     "R3a.1": ("L9", "w1 w2 w3 w4"), "R3a.2": ("L4", "w4 w3 w2 w1"),
     "R3b.1": ("L3", "n1 n2 n3"), "R3b.2": ("L7", "n2 n3 n1"), "R3b.3": ("L5", "n3 n1 n2"),
     "V.1": ("L1", "v1 v2 v3 v4"), "V.2": ("L2", "v2 v1 v4 v3"), "V.3": ("L3", "v3 v4 v1 v2"),
@@ -54,12 +56,14 @@ DOC_SLOTS = {
     "W2.4": ("L8", "y4 y1 y2 y3"),
 }
 R2_KITS = {"R2.1": "k1", "R2.2": "k2", "R2.3": "k3"}
+# §4.2 R2r (CD-54): the kit of each round is the job's kit leader of that rank: the leader, the other, the leader.
+R2R_RANKS = {"R2r.1": 1, "R2r.2": 2, "R2r.3": 1}
 # The round tables' loop labels ("L5 wistful mid 83") against shootouts/loops/briefs.yaml.
 DOC_LOOPS = {"L1": ("melancholy", "low", 76), "L2": ("melancholy", "mid", 81), "L3": ("melancholy", "high", 87),
              "L4": ("wistful", "low", 78), "L5": ("wistful", "mid", 83), "L6": ("wistful", "high", 89),
              "L7": ("hopeful", "low", 79), "L8": ("hopeful", "mid", 85), "L9": ("hopeful", "high", 90)}
 DAYS = {1: {"K1", "R1", "R2", "S1"},
-        2: {"R3a", "R3b", "S1f", "S2a", "S2b", "K2", "V"},
+        2: {"R3a", "R3b", "S1f", "S2a", "S2b", "K2", "V"},     # and R2r, which joins only with the job's --add
         3: {"W1", "W2"}}
 # §4.1, §4.2, §4.4: option -> (bus, bank, prog, family or register, the source file under assets/big, or gu).
 GU = "gu"
@@ -132,13 +136,16 @@ def test_every_round_slot_is_the_docs():
     assert got == DOC_SLOTS
     assert {s.id: s.kit for s in slots_of("R2")} == R2_KITS, "R2 plays each R1 kit symbol in one round (§4.2)"
     assert all(s.kit is None for st in PLAN.stages.values() if st.id != "R2" for s in st.slots)
+    assert {s.id: s.kit_rank for s in slots_of("R2r")} == R2R_RANKS, "R2r: the leader kit, the other, the leader"
+    assert all(s.kit_rank is None for st in PLAN.stages.values() if st.id != "R2r" for s in st.slots)
 
 
 def test_each_stage_has_its_day_and_the_round_count_is_58_with_the_controls():
-    assert {d: {s.id for s in PLAN.stages.values() if s.day == d} for d in (1, 2, 3)} == DAYS
+    assert {d: {s.id for s in PLAN.stages.values() if s.day == d and not s.optional} for d in (1, 2, 3)} == DAYS
     assert {d: set(PLAN.days[d].stages) for d in (1, 2, 3)} == DAYS
-    design = sum(len(st.slots) for st in PLAN.stages.values())
-    assert design == 50
+    assert {s.id for s in PLAN.stages.values() if s.optional} == {"R2r"} and PLAN.stages["R2r"].day == 2
+    design = sum(len(st.slots) for st in PLAN.stages.values() if not st.optional)
+    assert design == 50 and len(slots_of("R2r")) == 3        # R2r adds 3 when the job adds it (CD-54)
     assert design + PLAN.controls["anchors"]["count"] + PLAN.controls["repeats"]["count"] == 58   # §2.5, §2.7
     assert [len(slots_of(s)) for s in ("K1", "K2", "R1", "R2", "R3a", "R3b", "S1", "S1f", "S2a", "S2b", "W1", "W2")] \
         == [6, 2, 3, 3, 2, 3, 6, 3, 3, 3, 3, 4]
@@ -191,7 +198,7 @@ def test_k1_is_the_tournament_of_section_4_1():
     assert families == {"rhodes": 2, "other_ep": 2, "piano": 2, "guitar_organ": 2}
 
 
-@pytest.mark.parametrize("stage", ["R1", "R2", "R3b", "S2a", "S2b", "W1", "W2"])
+@pytest.mark.parametrize("stage", ["R1", "R2", "R2r", "R3b", "S2a", "S2b", "W1", "W2"])
 def test_latin_squares_put_each_option_on_every_tile_once(stage):
     st = PLAN.stages[stage]
     for sym in st.symbols:
@@ -378,6 +385,7 @@ def test_the_batches_are_section_6s():
     got = [(b.date, b.names, dict(b.rounds), b.anchors, b.category, b.note, (b.est_min_plan, b.est_min_full))
            for b in PLAN.batches]
     assert got == DOC_BATCHES
+    assert {b.names[0]: dict(b.adds) for b in PLAN.batches if b.adds} == {"b1104-1-groove": {"R2r": 3}}   # CD-54
     names = [n for b in PLAN.batches for n in b.names]
     assert names == sorted(names), "batch names sort in serving order (CD-49)"
     for b in PLAN.batches:
@@ -395,7 +403,8 @@ def test_the_batches_are_section_6s():
     assert sorted(b.day for b in PLAN.batches if b.anchors) == [1, 2, 3]
     assert all("sax" in n or "mix" in n for b in PLAN.batches if b.anchors for n in b.names)
     assert PLAN.controls["repeats"]["groups"] == {
-        "keys": ["K1", "K2"], "drums_bass": ["R1", "R2", "R3a", "R3b"], "vamps": ["V"], "sax_sources": ["S1", "S1f"],
+        "keys": ["K1", "K2"], "drums_bass": ["R1", "R2", "R2r", "R3a", "R3b"], "vamps": ["V"],
+        "sax_sources": ["S1", "S1f"],
         "sax_variants": ["S2a", "S2b"]}
 
 
@@ -466,7 +475,8 @@ def names_of(batches) -> list[str]:
 
 
 def test_the_plan_loads_with_every_stage_batch_and_loop(plan):
-    assert set(plan.stages) == {"K1", "R1", "R2", "S1", "R3a", "R3b", "S1f", "S2a", "S2b", "K2", "V", "W1", "W2"}
+    assert set(plan.stages) == {"K1", "R1", "R2", "S1", "R2r", "R3a", "R3b", "S1f", "S2a", "S2b", "K2", "V", "W1",
+                                "W2"}
     assert names_of(plan.batches) == [
         "b1103-1-keys", "b1103-2-groove", "b1103-3-sax", "b1104-1-groove", "b1104-2-sax", "b1104-3-keys",
         "b1104-4-vamps", "b1106-1-mix", "b1106-2-mix"]
@@ -522,7 +532,7 @@ def test_k1_family_sums_and_meetings_through_its_draw_group(plan):
     assert all(meet[t] == 3 for t in twins) and all(n == 1 for p, n in meet.items() if p not in twins)
 
 
-@pytest.mark.parametrize("sid", ["R1", "R2", "R3b", "S2a", "S2b", "W1", "W2"])
+@pytest.mark.parametrize("sid", ["R1", "R2", "R2r", "R3b", "S2a", "S2b", "W1", "W2"])
 def test_latin_squares_by_tile_position(plan, sid):
     st = plan.stages[sid]
     k = len(st.slots[0].tiles)
@@ -585,7 +595,7 @@ def test_consecutive_slot_loops_can_be_ordered_and_batches_sort_in_serving_order
     assert [b.date for b in plan.batches] == sorted(b.date for b in plan.batches)
     homes = Counter()
     for b in plan.batches:
-        for sid in b.stages:
+        for sid in [*b.stages, *b.adds]:                # an optional stage's home is the batch whose adds name it
             homes[(sid, b.split or b.names[0])] += 1
     owners = Counter(sid for sid, _ in homes)
     assert all(n == 1 for n in owners.values()) and set(owners) == set(plan.stages)
@@ -658,7 +668,7 @@ def test_every_day2_stage_matches_each_bus_its_varied_thing_moves(plan):
     # instrument stages and the sax variants their own bus. K2 and S2a also measure each option's palette on the 9
     # loops (section 3 step 1: the spread voicing, warm on and expression off). Day 1 keeps CD-52 (no `match`), and
     # the rain is not matched (the level is the candidate).
-    want = {"R3a": ("sax", "keys", "bass", "drums"), "R3b": ("keys", "bass", "drums"), "S1f": ("sax",),
+    want = {"R2r": ("bass",), "R3a": ("sax", "keys", "bass", "drums"), "R3b": ("keys", "bass", "drums"), "S1f": ("sax",),
             "S2a": ("sax",), "S2b": ("sax",), "K2": ("keys",), "V": ("keys", "bass")}
     assert {sid: st.match for sid, st in plan.stages.items() if st.match} == want
     assert {sid for sid, st in plan.stages.items() if st.match_loops} == {"K2", "S2a"}
@@ -684,3 +694,67 @@ def test_a_broken_match_is_refused(mutate, match):
     mutate(doc)
     with pytest.raises(PlanError, match=match):
         parse_plan(doc, PLAN_FILE, "0" * 64)
+
+
+# ------------------------------------------------------------------------- CD-54: the bass re-listen, R2r
+def test_r2r_is_optional_and_joins_day_2_first_in_the_groove_batch_only_when_added(plan):
+    """CD-54: R2r (3 rounds of the 3 basses, a Latin square on L1, L5, L9, one per mood and energy, none of R2's
+    loops) is in the plan but in no day or batch until apply_adds adds it; it then joins Day 2 and opens the groove
+    batch, whose category names it first. The plan without the add is the plan as it was."""
+    st = plan.stages["R2r"]
+    assert st.optional and st.fills == "bass" and st.bus == "bass" and st.match == ("bass",) and not st.match_loops
+    assert st.options == plan.stages["R2"].options and st.draw == {"rule": "any"} and st.kit_ranks == 2
+    assert {plan.loops[x.loop].brief.mood for x in st.slots} == {"melancholy", "wistful", "hopeful"}
+    assert sorted(plan.loops[x.loop].brief.energy for x in st.slots) == ["high", "low", "mid"]
+    assert not {x.loop for x in st.slots} & {x.loop for x in plan.stages["R2"].slots}
+    assert "R2r" not in plan.days[2].stages and plan.optional_of(2) == ("R2r",) and plan.optional_of(1) == ()
+    assert all("R2r" not in b.rounds and not b.lead for b in plan.batches)
+    added = apply_adds(plan, ["R2r"])
+    assert added.days[2].stages[0] == "R2r" and added.optional_of(2) == () and added.applied_adds == ("R2r",)
+    groove = added.batches_of(2)[0]
+    assert groove.names == ("b1104-1-groove",) and dict(groove.rounds) == {"R2r": 3, "R3a": 2, "R3b": 3}
+    assert groove.lead == ("R2r",) and groove.category == "bass, swing, humanize"
+    assert [b for b in added.batches if b.names != groove.names] == [b for b in plan.batches if b.names != groove.names]
+    cut = apply_cuts(added, ["latin3"])                         # a cut keeps the added stage and its lead
+    assert dict(cut.batches_of(2)[0].rounds) == {"R2r": 3, "R3a": 2, "R3b": 2} and cut.batches_of(2)[0].lead == ("R2r",)
+    assert apply_adds(plan, []) is plan
+    for names, match in ((["R3a"], "not an optional stage"), (["R2r", "R2r"], "twice"), (["nope"], "not an optional")):
+        with pytest.raises(PlanError, match=match):
+            apply_adds(plan, names)
+    with pytest.raises(PlanError, match="twice"):
+        apply_adds(added, ["R2r"])
+
+
+@pytest.mark.parametrize("mutate,match", [
+    (lambda d: d["days"][2]["stages"].append("R2r"), "optional"),
+    (lambda d: d["batches"][3]["rounds"].update(R2r=3), "is optional"),
+    (lambda d: d["batches"][3].pop("adds"), "opens exactly one batch"),
+    (lambda d: d["batches"][3]["adds"].update(R2r=2), "has 3 slots"),
+    (lambda d: d["batches"][3]["adds"].update(R3a=2), "is not optional"),
+    (lambda d: d["stages"]["R2r"].update(optional="yes"), "true or false"),
+    (lambda d: d["stages"]["R2r"].update(day=1), "which day 1 does not take"),
+    (lambda d: d["stages"]["R2r"]["slots"][1].update(kit_rank=3), "without a gap"),
+    (lambda d: d["stages"]["R2r"]["slots"][0].update(kit="k1"), "not both"),
+    (lambda d: d["stages"]["R2"]["slots"][0].update(kit_rank=1) or d["stages"]["R2"]["slots"][0].pop("kit"),
+     "does not take"),
+])
+def test_a_broken_optional_stage_is_refused(mutate, match):
+    doc = copy.deepcopy(RAW)
+    mutate(doc)
+    with pytest.raises(PlanError, match=match):
+        parse_plan(doc, PLAN_FILE, "0" * 64)
+
+
+def test_without_the_add_the_plan_is_the_plan_without_r2r():
+    """An optional stage changes nothing until it is added: the plan parsed with R2r and the plan parsed from the
+    same document with R2r taken out have the same days, batches, stages (R2r aside) and cuts."""
+    doc = copy.deepcopy(RAW)
+    del doc["stages"]["R2r"]
+    doc["batches"][3].pop("adds")
+    doc["controls"]["repeats"]["groups"]["drums_bass"].remove("R2r")
+    bare = parse_plan(doc, PLAN_FILE, "0" * 64)
+    full = parse_plan(copy.deepcopy(RAW), PLAN_FILE, "0" * 64)
+    assert full.days == bare.days and full.cuts == bare.cuts and full.band_options == bare.band_options
+    assert [replace(b, adds={}) for b in full.batches] == list(bare.batches)
+    assert {k: replace(v, repeat_group=None) for k, v in full.stages.items() if k != "R2r"} == \
+        {k: replace(v, repeat_group=None) for k, v in bare.stages.items()}

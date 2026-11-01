@@ -16,7 +16,7 @@ from helpers_shootout import fake_renders
 from lofi_rl.shootout import job
 from lofi_rl.shootout import tally as T
 from lofi_rl.shootout.batch import build
-from lofi_rl.shootout.draw import day_band, draw, load_prior, parse_leaders, write_draw
+from lofi_rl.shootout.draw import day_band, day_minutes, draw, load_prior, parse_leaders, round_seconds, write_draw
 from lofi_rl.shootout.plan import load_plan
 from lofi_rl.ui.audit import agreement, heard_over_attempts, with_merged_heard
 from lofi_rl.ui.manifest import HIDDEN_NAME, load_batch
@@ -372,10 +372,11 @@ def test_job_2s_args_name_the_job_that_built_the_day1_batches_as_prior(inbox, tm
 
 def test_the_cut_list_follows_the_day1_minutes_and_the_final_cut_leaves_one_sax(inbox, tmp_path):
     assert T.day2_cut(PLAN, 19.0)["cuts"] == []
-    assert T.day2_cut(PLAN, 25.3)["cuts"] == ["vamps-high"]                       # r 1.1: 31.1 min on Day 2
+    assert T.day2_cut(PLAN, 25.3)["cuts"] == ["vamps-high"]                       # r 1.1: 31.0 min on Day 2
     assert T.day2_cut(PLAN, 27.6)["cuts"] == ["vamps-high", "latin3"]             # r 1.2: Days 1-2 57.1, then 53.5
     c = T.day2_cut(PLAN, 46.0)                                                    # r 2: nothing fits
-    assert c["cuts"] == ["vamps-high", "latin3", "final"] and not c["fits"] and c["day2_minutes"] == 39.0
+    assert c["cuts"] == ["vamps-high", "latin3", "final"] and not c["fits"] and c["day2_minutes"] == 39.2
+    assert c["day2_plan"] == 28.2 and c["saves_min"] == 8.6        # the drawn plan's rounds, each anchor at its mean
     votes = tmp_path / "votes"
     vote_days(inbox, votes, commit_ms=92000)       # 9.2 + 9.2 + 10.7 = 29.1 min: r 1.265
     doc, _ = tally(inbox, votes)
@@ -716,3 +717,175 @@ def test_repeat_agreement_reads_the_bars_of_every_attempt_of_both_showings(inbox
     merged = {k: with_merged_heard(v, heard_over_attempts(logs[b])) for b in logs for k, v in active_votes(logs[b]).items()}
     assert (row["agree"], row["compared"]) == agreement("shootout", merged[of], merged[rid], 1)
     assert agreement("shootout", active_votes(logs[day1[of]])[of], merged[rid], 1)[1] == 0     # unmerged: no pair
+
+
+# ---------------------------------------------------------------------------- CD-54: the bass re-listen, R2r
+R2R_ORDER = ["gs_wurli_ep200", "gu_tine_ep", "vcsl_upright_knight", "jrhodes3d", "fp_fm_ep1", "fp_upright_kw",
+             "fp_fsbs_jazz_guitar", "gu_organ", "kit_virtuosity", "kit_gu_jazz", "kit_swirly",
+             "bass_vsco2_pizz", "bass_fp_finger_yr", "bass_gu_acoustic",
+             "sax_mtg_alto", "sax_mtg_tenor", "sax_fp_tenor", "sax_weresax_alto", "sax_gu_alto", "sax_gu_tenor"]
+
+
+def r2_choice(how: dict, order=R2R_ORDER):
+    """`prefer(order)` everywhere but R2, whose round on kit k is answered `how[k]`: "T" (no best, worst the least
+    liked), "TB" (no best, no worst), "G" (all bad), or a bass id for the best (worst the least liked)."""
+    base = prefer(order)
+
+    def choose(r, hr):
+        info = {c: hr.clips[c] for c in r.ids}
+        if next(iter(info.values()))["stage"] != "R2":
+            return base(r, hr)
+        kit = next(iter(info.values()))["kit"]
+        p = base(r, hr)
+        what = how.get(kit, "prefer")
+        if what == "T":
+            return {"no_best": True, "worst": p["worst"]}
+        if what == "TB":
+            return {"no_best": True, "no_worst": True}
+        if what == "G":
+            return {"all_bad": True}
+        if what != "prefer":
+            best = next(c for c, i in info.items() if i["option"] == what)
+            worst = next(c for c in reversed(sorted(r.ids, key=lambda c: order.index(info[c]["option"]))) if c != best)
+            return {"best": best, "worst": worst}
+        return p
+    return choose
+
+
+def test_an_undecided_bass_adds_r2r_on_the_surviving_kits_and_keeps_the_default(inbox, tmp_path):
+    """CD-54, decisions 2 and 3 of 2026-10-31 in shape: no R2 round has a best (T in two, G in one), so job 2's
+    ARGS add R2r, the kit slot carries the two surviving kits (R1 leader first) and the bass slot the default; the
+    draw and the job take the line, and the groove batch then opens with R2r's three rounds on those kits."""
+    votes = tmp_path / "votes"
+    vote_days(inbox, votes, choose=r2_choice({"kit_virtuosity": "T", "kit_gu_jazz": "TB", "kit_swirly": "G"}))
+    doc, _ = tally(inbox, votes)
+    p = doc["proposal"]["day2"]
+    leaders = parse_leaders(p["leaders"])
+    assert p["status"] == "ready" and p["add"] == ["R2r"] and not p["blocking"]
+    assert leaders["kit"] == ("kit_virtuosity", "kit_gu_jazz") and leaders["bass"] == ("bass_gu_acoustic",)
+    assert p["args"] == f"--stage day2 --leaders {p['leaders']} --prior {JOB1} --add R2r"
+    rl = doc["rules"]["R2"]["relisten"]
+    assert rl["adds"] and rl["why"][0] == "no R2 round has a best" and rl["rounds_with_a_best"] == []
+    assert rl["rounds"] == {"kit_virtuosity": ["R2r.1", "R2r.3"], "kit_gu_jazz": ["R2r.2"]} and rl["left_out"] == []
+    assert p["check"]["day_band"]["kit"] == "kit_virtuosity" and p["check"]["day_band"]["bass"] == "bass_gu_acoustic"
+    assert doc["rules"]["cut"]["adds"] == ["R2r"] and doc["rules"]["cut"]["day2_plan"] == 31.2
+    assert any(n["stage"] == "R2" and "Day 2 adds R2r" in n["what"] and not n["blocking"] for n in doc["needs_word"])
+    assert not any(n["stage"] == "R2" and "provisional" in n["what"] for n in doc["needs_word"])   # no seeded draw
+    assert len(rl["why"]) == 2 and rl["takers"] == ["kit_gu_jazz", "kit_virtuosity"]      # both cases hold here
+    md = T.report_md(doc)
+    assert "Day 2 adds R2r, the bass re-listen (CD-54)" in md and "--add R2r" in md
+    d = draw(PLAN, "day2", seed=11, leaders=leaders, adds=p["add"])
+    groove = d["batches"][0]
+    assert [r["stage"] for r in groove["rounds"][:3]] == ["R2r"] * 3 and "R2r" not in [
+        r["stage"] for r in groove["rounds"][3:]]
+    assert {r["slot"]: r["clips"][0]["kit"] for r in groove["rounds"][:3]} == {
+        "R2r.1": "kit_virtuosity", "R2r.2": "kit_gu_jazz", "R2r.3": "kit_virtuosity"}
+    run = tmp_path / "runs" / "shootout-13640005"
+    assert job.main(["--run", str(run), "--inbox", str(tmp_path / "inbox2"), *shlex.split(p["args"]),
+                     "--dry-run"]) == 0
+    assert json.loads((run / "summary" / "leaders.json").read_text())["add"] == ["R2r"]
+
+
+def test_a_pooled_r2_tie_without_the_default_adds_r2r_only_when_a_surviving_kit_takes_it(inbox, tmp_path):
+    """CD-54's second case: the R1 leader's round has no best, so it takes the pooled R2 leader, and the pooled
+    leaders tie without the default: R2r. With a best in every surviving kit's own round the same pooled tie
+    decides nothing, so nothing is added and the proposal is as before (one kit, its R2 pairing)."""
+    # R1 under R2R_ORDER: kit_virtuosity leads, kit_gu_jazz second, kit_swirly last with BW -1: dropped
+    tie = r2_choice({"kit_virtuosity": "T", "kit_gu_jazz": "bass_vsco2_pizz", "kit_swirly": "bass_fp_finger_yr"})
+    votes = tmp_path / "votes"
+    vote_days(inbox, votes, choose=tie)
+    doc, _ = tally(inbox, votes)
+    rl = doc["rules"]["R2"]["relisten"]
+    assert doc["rules"]["R1"]["survivors"][:2] == ["kit_virtuosity", "kit_gu_jazz"] and doc["rules"]["R1"]["dropped"]
+    assert rl["adds"] and rl["takers"] == ["kit_virtuosity"] and "tie without the default" in rl["why"][0]
+    assert len(rl["rounds_with_a_best"]) == 2 and doc["proposal"]["day2"]["add"] == ["R2r"]
+    decided = r2_choice({"kit_virtuosity": "bass_fp_finger_yr", "kit_gu_jazz": "bass_vsco2_pizz", "kit_swirly": "T"})
+    votes2 = tmp_path / "votes2"
+    vote_days(inbox, votes2, choose=decided)
+    doc2, _ = tally(inbox, votes2)
+    p2 = doc2["proposal"]["day2"]
+    pooled = doc2["rules"]["R2"]["pooled_leader"]
+    assert pooled["needs_word"] and sorted(pooled["tied"]) == ["bass_fp_finger_yr", "bass_vsco2_pizz"]
+    assert not doc2["rules"]["R2"]["relisten"]["adds"] and p2["add"] == [] and "--add" not in p2["args"]
+    leaders = parse_leaders(p2["leaders"])
+    assert leaders["kit"] == ("kit_virtuosity",) and leaders["bass"] == ("bass_fp_finger_yr",)
+
+
+def test_after_day_2_each_kit_takes_the_best_bass_of_its_own_r2r_rounds(tmp_path):
+    """CD-43 as CD-54 reads it: the leader kit (two R2r rounds) takes the CD-39 leader of its own rounds; the other
+    kit, whose one round has no best, takes the pooled R2r leader; R2's votes are not pooled in. A tie over a kit's
+    own rounds without the default goes to Shresth's word, the default staying meanwhile."""
+    leaders = parse_leaders("keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/"
+                            "bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor")
+    folders = _day(tmp_path, "day2", 0x596D, leaders=leaders, adds=["R2r"])
+    box = {"root": tmp_path / "inbox", "folders": folders}
+    m, h = load_batch(folders["b1104-1-groove"], check_files=False)
+    r2r = {h.rounds[r.id].clips[r.ids[0]]["slot"]: r.id for r in m.rounds
+           if h.rounds[r.id].clips[r.ids[0]]["stage"] == "R2r"}
+    assert [m.rounds[i].id for i in range(3)] == sorted(r2r.values(), key=[r.id for r in m.rounds].index)
+    assert sorted(r2r) == ["R2r.1", "R2r.2", "R2r.3"]
+
+    def answers(plan_of):
+        base = prefer(R2R_ORDER)
+
+        def choose(r, hr):
+            slot = hr.clips[r.ids[0]]["slot"]
+            if slot not in plan_of:
+                return base(r, hr)
+            best, worst = plan_of[slot]
+            opt = {hr.clips[c]["option"]: c for c in r.ids}
+            return ({"no_best": True, "worst": opt[worst]} if best is None
+                    else {"best": opt[best], "worst": opt[worst]})
+        return choose
+
+    votes = tmp_path / "votes"
+    votes.mkdir()
+    vote(folders["b1104-1-groove"], votes, Clock(), answers({
+        "R2r.1": ("bass_fp_finger_yr", "bass_gu_acoustic"), "R2r.3": ("bass_fp_finger_yr", "bass_vsco2_pizz"),
+        "R2r.2": (None, "bass_gu_acoustic")}))
+    doc, _ = T.tally(votes, box["root"], plan=PLAN, batches=["b1104-1-groove"])
+    assert doc["stages"]["R2r"]["status"] == "complete" and doc["stages"]["R2r"]["ready"]
+    r = doc["rules"]["R2r"]
+    pv, pg = r["pairings"]["kit_virtuosity"], r["pairings"]["kit_gu_jazz"]
+    assert (pv["bass"], pv["from"], pv["slots"]) == ("bass_fp_finger_yr", "its own R2r rounds", ["R2r.1", "R2r.3"])
+    assert (pg["bass"], pg["from"]) == ("bass_fp_finger_yr", "the pooled R2r leader") and "no counted best" in pg["why"]
+    assert r["pooled_leader"]["pick"] == "bass_fp_finger_yr" and not r["pooled_leader"]["needs_word"]
+    assert "Basses after R2r (CD-43, CD-54)" in T.report_md(doc)
+    tied = tmp_path / "tied"
+    tied.mkdir()
+    vote(folders["b1104-1-groove"], tied, Clock(), answers({
+        "R2r.1": ("bass_fp_finger_yr", "bass_gu_acoustic"), "R2r.3": ("bass_vsco2_pizz", "bass_gu_acoustic"),
+        "R2r.2": ("bass_vsco2_pizz", "bass_fp_finger_yr")}))
+    doc2, _ = T.tally(tied, box["root"], plan=PLAN, batches=["b1104-1-groove"])
+    pv2 = doc2["rules"]["R2r"]["pairings"]["kit_virtuosity"]
+    assert pv2["pick"]["needs_word"] and sorted(pv2["pick"]["tied"]) == ["bass_fp_finger_yr", "bass_vsco2_pizz"]
+    assert pv2["bass"] == "bass_gu_acoustic"                               # the default meanwhile (CD-39)
+    assert doc2["rules"]["R2r"]["pairings"]["kit_gu_jazz"]["bass"] == "bass_vsco2_pizz"
+    assert any(n["stage"] == "R2r" and "kit_virtuosity" in n["what"] for n in doc2["needs_word"])
+
+
+def test_day2s_minutes_are_the_drawn_plans():
+    """The cut list reads Day 2's minutes from the plan the draw will play (draw.day_minutes): every design round
+    exactly as the draw builds it, each anchor at the mean of the rounds it may imitate; a 4-key K2, a 3-sax final
+    and R2r each make Day 2 longer than section 6's fixed 28.3."""
+    four = parse_leaders("keys=gu_tine_ep+fp_fm_ep1+gu_organ+jrhodes3d/kit=kit_virtuosity+kit_gu_jazz/"
+                         "bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor+sax_gu_alto")
+    for counts, adds in (({}, []), ({"keys": 4, "sax": 3}, []), ({"keys": 4, "sax": 3}, ["R2r"])):
+        est = day_minutes(PLAN, 2, counts, (), adds)
+        lead = {**four, "keys": four["keys"][:counts.get("keys", 3)], "sax": four["sax"][:counts.get("sax", 2)],
+                "kit": four["kit"][:2 if adds else 1]}
+        for seed in (1, 2, 3):
+            d = draw(PLAN, "day2", seed=seed, leaders=lead, adds=adds)
+            for b in d["batches"]:
+                design = sum(round_seconds(len(r["clips"]), r["bpm"]) for r in b["rounds"] if r["kind"] == "none")
+                pool = [round_seconds(len(r["clips"]), r["bpm"]) for r in b["rounds"]
+                        if r["kind"] == "none" and PLAN.stages[r["stage"]].anchor]
+                anchors = sum(r["kind"] == "anchor" for r in b["rounds"])
+                assert est["batches"][b["name"]]["seconds"] == pytest.approx(design + anchors * sum(pool) / len(pool)
+                                                                             if anchors else design)
+                assert est["batches"][b["name"]]["rounds"] == len(b["rounds"])
+    assert day_minutes(PLAN, 2)["minutes"] == 28.2
+    assert day_minutes(PLAN, 2, {"keys": 4})["minutes"] == 28.8 and day_minutes(PLAN, 2, {"sax": 3})["minutes"] == 29.2
+    assert day_minutes(PLAN, 2, adds=["R2r"])["batches"]["b1104-1-groove"]["minutes"] == 8.6
+    assert T.day2_cut(PLAN, 23.0, adds=["R2r"])["cuts"] == ["vamps-high"]     # at the plan's pace R2r passes 30
+    assert T.day2_cut(PLAN, 19.0, adds=["R2r"])["cuts"] == []

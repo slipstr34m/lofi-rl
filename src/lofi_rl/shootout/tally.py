@@ -27,14 +27,16 @@ across its batches (section 8):
   (`<bus>_lufs`, CD-53: R3a's sax, keys and bass, R3b's keys and bass), at its stage's limit; with --levels, every
   trim or fader a job's drift check moved by more than 0.1 dB.
 
-Section 8's rules are the functions `keys_to_k2`, `kits_after_r1`, `bass_pairings`, `sax_to_final` and `day2_cut`
-(after Day 1), `keys_survivors`, `sax_final`, `warmth`, `timing`, `swing`, `humanize` and `vamp_ranks` (after Day
-2), and `rain_excerpt` and `rain_level` (after Day 3), each applied once every round of its stage's batches has a
-vote (an anchor anywhere in them can halve a micro-session that began earlier). After Day 1 they make job 2's
-`--leaders` string (section 7.7), checked with `draw.parse_leaders` and the Day-2 band the draw builds
-(`draw.day_band`, after section 2.7's cuts), and its ARGS add `--cut` and `--prior`: the job whose pulled summary
-(--runs, runs/shootout-<job>/summary/batches.json) built the Day-1 batches, since job 2 compares its drift keys with
-job 1's (section 3). A case the spec does not decide raises `RuleGap`, which names the
+Section 8's rules are the functions `keys_to_k2`, `kits_after_r1`, `bass_pairings`, `relisten_bass` (CD-54),
+`sax_to_final` and `day2_cut` (after Day 1), `keys_survivors`, `sax_final`, `warmth`, `timing`, `swing`, `humanize`,
+`vamp_ranks` and `bass_after_relisten` (after Day 2), and `rain_excerpt` and `rain_level` (after Day 3), each applied
+once every round of its stage's batches has a vote (an anchor anywhere in them can halve a micro-session that began
+earlier). After Day 1 they make job 2's `--leaders` string (section 7.7), checked with `draw.parse_leaders` and the
+Day-2 band the draw builds (`draw.day_band`, after the adds and section 2.7's cuts), and its ARGS add `--prior`: the
+job whose pulled summary (--runs, runs/shootout-<job>/summary/batches.json) built the Day-1 batches, since job 2
+compares its drift keys with job 1's (section 3); `--add R2r` when the bass is undecided (CD-54: the kit slot then
+carries the surviving kits, leader first, and the bass slot the default meanwhile); and `--cut`, from the minutes of
+the Day-2 plan the draw will play with those leaders (`draw.day_minutes`). A case the spec does not decide raises `RuleGap`, which names the
 section; the tally records it and lists it with everything else that needs Shresth's word. A batch with no votes is
 reported as such, never as zeros. A seeded draw (CD-41, CD-18, a provisional leader) is keyed by the stage's
 standing vote ids, so it is fixed once the votes exist and the private logs reproduce it.
@@ -52,7 +54,7 @@ import hashlib
 import json
 import sys
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from fractions import Fraction
 from pathlib import Path
@@ -65,7 +67,7 @@ from lofi_rl.ui.serve import ROOT as REPO
 from lofi_rl.ui.serve import ConfigError, _inside, load_config
 from lofi_rl.ui.votes import active_votes, atomic_write, read_all, read_events
 
-from .draw import DrawError, Rng, day_band, parse_leaders
+from .draw import DrawError, Rng, day_band, day_minutes, parse_leaders
 from .plan import BAND_SLOTS, BUS_SLOT, MIX_ORDER, PLAN, Plan, PlanError, load_plan
 
 SCHEMA = "lofi-rl/shootout-tally/1"
@@ -79,6 +81,7 @@ MOVE_DB = 0.1                 # section 3 "Drift between jobs": a trim or fader 
 DAY2_PUSHES_MIN = 30.0        # section 2.7 cut list: Day 2's two pushes of 15 minutes
 DAYS12_MIN = 55.0             # section 2.7 cut list: P section 7's "about 55 min" for Nov 3-4
 DAY1_STAGES = ("K1", "R1", "R2", "S1")
+RELISTEN = "R2r"              # Day 2's bass re-listen (CD-54): the optional stage the Day-1 proposal adds with --add
 RERUN = " (re-run)"           # a stage of `rerun_s2` heard again on a later day (section 4.4)
 WARMTH = ("sax_plain", "sax_warm_on")                   # section 8 Sax variants: warmth is one of these two
 CONTROL = "sax_expr_off"                                # its control
@@ -349,8 +352,9 @@ def kits_after_r1(rows: Mapping[str, Row], seed: int, *, default: str | None) ->
 def bass_pairings(r2: Sequence[Round], rows: Mapping[str, Row], kits: Sequence[str], seed: int, *,
                   default: str | None) -> dict:
     """Section 8 Basses [CD-43]: each surviving kit takes the best bass of its own R2 round; a round with no counted
-    best (T, G, or a best heard under 4 bars, CD-38) or whose best cannot survive (CD-44) takes the pooled R2 leader,
-    the single-winner choice over every R2 round. Each pairing rests on one round."""
+    best (T, G, or a best on a clip that never played in any attempt, CD-38) or whose best cannot survive (CD-44)
+    takes the pooled R2 leader, the single-winner choice over every R2 round. Each pairing rests on one round. When
+    that leaves the bass undecided, Day 2 adds R2r (`relisten_bass`, CD-54)."""
     pooled = single_winner(rows.values(), default, seed=seed, label="R2 leader", meanwhile="draw")
     pairs = {}
     for kit in kits:
@@ -364,7 +368,7 @@ def bass_pairings(r2: Sequence[Round], rows: Mapping[str, Row], kits: Sequence[s
             pairs[kit] = {"bass": best["option"], "from": "its own R2 round", "slot": rd.slot, "loop": rd.loop}
             continue
         why = ("no vote" if v is None else "no clear best (T)" if v.no_best else "all bad (G)" if v.all_bad
-               else "its best was heard under the minimum bars" if best is not None and not best["heard"]
+               else "its best never played in any attempt" if best is not None and not best["heard"]
                else "its best cannot survive (CD-44)")
         pairs[kit] = {"bass": pooled["pick"], "from": "the pooled R2 leader", "why": why, "slot": rd.slot,
                       "loop": rd.loop}
@@ -427,26 +431,107 @@ def sax_to_final(rows: Mapping[str, Row], s1: Sequence[Round], seed: int, *, def
     return doc
 
 
-def day2_cut(plan: Plan, day1_minutes: float) -> dict:
-    """Section 2.7's cut list [CD-50]: r = the audit's Day-1 minutes / the plan's (23.0). If r x Day 2's plan (28.3)
-    would pass 30 or r x Days 1-2's (51.3) would pass 55, cut in the plan's order until both fit."""
+def day2_cut(plan: Plan, day1_minutes: float, *, counts: Mapping[str, int] | None = None,
+             adds: Sequence[str] = ()) -> dict:
+    """Section 2.7's cut list [CD-50]: r = the audit's Day-1 minutes / the plan's (23.0, the Day-1 batches'
+    est_min). Day 2's plan is the estimate of the rounds the Day-2 draw will play with the proposal's leaders
+    (`counts`: K2's 3 or 4 keys, the final's 2 or 3 saxes) and adds (R2r, CD-54), from `draw.day_minutes`: every
+    design round exactly, each anchor at the mean of the rounds it may imitate (28.2 min with the default counts and
+    no R2r; section 6's fixed batch figures sum to 28.3, with a longer sax-batch anchor). If r x Day 2's plan would
+    pass 30 or r x Days 1-2's would pass 55, cut in the plan's order until both fit, each cut's saving the drop in
+    that estimate (the drawn rounds it removes, and its anchor's change). R2r is never cut: it is not on the list."""
     p1 = round(sum(b.est_min_plan for b in plan.batches if b.day == 1), 1)
-    p2 = round(sum(b.est_min_plan for b in plan.batches if b.day == 2), 1)
     r = day1_minutes / p1 if p1 else 0.0
+    counts = dict(counts or {})
 
-    def fits(saved: float) -> bool:
-        return r * (p2 - saved) <= DAY2_PUSHES_MIN and r * (p1 + p2 - saved) <= DAYS12_MIN
+    def p2(cuts: Sequence[str]) -> float:
+        return day_minutes(plan, 2, counts, cuts, adds)["seconds"] / 60.0
 
-    cuts, saved = [], 0.0
+    def fits(m: float) -> bool:
+        return r * m <= DAY2_PUSHES_MIN and r * (p1 + m) <= DAYS12_MIN
+
+    base = p2([])
+    cuts, m = [], base
     for c in sorted((c for c in plan.cuts if c.day == 2), key=lambda c: c.order):
-        if fits(saved):
+        if fits(m):
             break
         cuts.append(c.id)
-        saved = round(saved + (c.saves_min[0] if c.saves_min else 0.0), 1)
+        m = p2(cuts)
     return {"rule": "section 2.7 cut list (CD-50)", "day1_minutes": round(day1_minutes, 1), "day1_plan": p1,
-            "day2_plan": p2, "r": round(r, 4), "cuts": cuts, "saves_min": saved,
-            "day2_minutes": round(r * (p2 - saved), 1), "days12_minutes": round(r * (p1 + p2 - saved), 1),
-            "fits": fits(saved)}
+            "day2_plan": round(base, 1), "counts": counts, "adds": list(adds), "r": round(r, 4), "cuts": cuts,
+            "saves_min": round(base - m, 1), "day2_minutes": round(r * m, 1), "days12_minutes": round(r * (p1 + m), 1),
+            "fits": fits(m)}
+
+
+def _counted_best(rd: Round) -> dict | None:
+    """The clip a round's standing vote marked best, when that clip played (over every attempt, D-013); else None."""
+    v = rd.vote
+    c = v.clip(v.best) if v is not None else None
+    return c if c is not None and c["heard"] else None
+
+
+def relisten_bass(r2: Sequence[Round], bass: Mapping, kits: Mapping, plan: Plan, *, default: str | None) -> dict:
+    """CD-54 (Shresth, 2026-10-31, "Yes, use these" to the 3-round bass re-listen): after Day 1, Day 2 adds R2r when
+    no R2 round has a counted best, or when a surviving kit takes the pooled R2 leader (CD-43) and the pooled leaders
+    are fully tied without the default (CD-39): the bass is then undecided. The Day-2 band keeps the default bass
+    meanwhile ("the default stays meanwhile", CD-39), and R2r plays the surviving kits by rank, the R1 leader first,
+    as many as its slots name (2: the leader in two rounds, the other in one); a third survivor plays no R2r round.
+    `bass` is bass_pairings' result, `kits` kits_after_r1's. A pooled tie no kit takes decides nothing, so it adds
+    nothing."""
+    st = plan.stages.get(RELISTEN)
+    design = [rd for rd in r2 if rd.kind == "none"]
+    with_best = [rd.slot for rd in design if _counted_best(rd) is not None]
+    why = []
+    if not with_best:
+        why.append("no R2 round has a best")
+    pooled = bass["pooled_leader"]
+    takers = sorted(k for k, x in bass["pairings"].items() if x["from"] == "the pooled R2 leader")
+    if takers and pooled.get("needs_word"):
+        why.append(f"the pooled R2 leaders {pooled['tied']} tie without the default ({default}), and {takers} take the "
+                   "pooled leader")
+    doc: dict[str, Any] = {"rule": "CD-54 (section 8 Basses)", "stage": RELISTEN, "adds": bool(why) and st is not None,
+                           "why": why, "rounds_with_a_best": with_best, "takers": takers, "kits": [], "left_out": [],
+                           "bass": None}
+    if not doc["adds"]:
+        return doc
+    lead = kits["leader"]["pick"]
+    order = [lead] + [k for k in kits["survivors"] if k != lead]
+    doc.update(kits=order[:st.kit_ranks], left_out=order[st.kit_ranks:], bass=default,
+               rounds={k: [x.id for x in st.slots if order[x.kit_rank - 1] == k] for k in order[:st.kit_ranks]})
+    return doc
+
+
+def _judged(row: Row, by: Row) -> Row:
+    """`row` whose all-bad figures (CD-44) are those of `by`: a kit's own R2r rounds are judged over every R2r round."""
+    return replace(row, rounds=by.rounds, all_bad=by.all_bad, all_bad_n=by.all_bad_n)
+
+
+def bass_after_relisten(r2r: Sequence[Round], kits: Sequence[str], *, default: str | None) -> dict:
+    """Section 8 Basses after R2r (CD-43 as CD-54 reads it): each surviving kit takes the best bass of its own R2r
+    rounds, the CD-39 leader over them among the basses that can survive over every R2r round (CD-44); a kit whose R2r
+    rounds have no counted best (T, G, a best on a clip that never played, or one that cannot survive), or that plays
+    none, takes the pooled R2r leader, the CD-39 leader over every R2r round. Ties go to the default if it is among
+    the tied, else to Shresth's word, the default staying meanwhile. R2's votes are not pooled in: R2r decides."""
+    design = [rd for rd in r2r if rd.kind == "none"]
+    pooled_rows = tally_rows(design)
+    pooled = single_winner(pooled_rows.values(), default, seed=0, label="R2r leader", meanwhile="default")
+    pairs = {}
+    for kit in kits:
+        own = [rd for rd in design if rd.kit == kit]
+        entry = {"slots": [rd.slot for rd in own], "loops": [rd.loop for rd in own]}
+        counted = [rd.slot for rd in own
+                   if (c := _counted_best(rd)) is not None and not pooled_rows[c["option"]].out]
+        if not counted:
+            why = ("it plays no R2r round" if not own else "its R2r rounds have no counted best (T, G, a best on a clip "
+                   "that never played, or one that cannot survive)")
+            pairs[kit] = {**entry, "bass": pooled["pick"], "from": "the pooled R2r leader", "why": why, "pick": pooled}
+            continue
+        rows = {o: _judged(x, pooled_rows[o]) for o, x in tally_rows(own).items() if not pooled_rows[o].out}
+        pick = single_winner(rows.values(), default, seed=0, label=f"R2r on {kit}", meanwhile="default")
+        pairs[kit] = {**entry, "bass": pick["pick"], "from": "its own R2r rounds", "best_in": counted, "pick": pick,
+                      "rank": rank_doc(rank(rows.values()))}
+    return {"rule": "section 8 Basses after R2r (CD-43, CD-54)", "rank": rank_doc(rank(pooled_rows.values())),
+            "pooled_leader": pooled, "pairings": pairs}
 
 
 def leaders_string(leaders: Mapping[str, Sequence[str]]) -> str:
@@ -902,8 +987,8 @@ def stage_doc(plan: Plan, sid: str, rounds: Sequence[Round], loaded: Mapping[str
     want = []
     if st is not None:
         rerun_days = {plan.rerun_day} if sid.endswith(RERUN) else {st.day}
-        want = [n for b in plan.batches if b.day in rerun_days and (base in b.rounds or sid.endswith(RERUN))
-                for n in b.names]
+        want = [n for b in plan.batches if b.day in rerun_days
+                and (base in b.rounds or base in b.adds or sid.endswith(RERUN)) for n in b.names]
     missing = [n for n in want if n not in loaded]
     design = [rd for rd in rounds if rd.kind == "none"]
     voted = [rd for rd in design if rd.vote is not None]
@@ -1093,35 +1178,55 @@ def _defaults(plan: Plan) -> dict[str, str]:
 def _day2(plan: Plan, stages: Mapping[str, dict], rows: Mapping[str, dict], by_stage: Mapping[str, list[Round]],
           audits: Mapping[str, dict], batches: Mapping[str, str], rules: dict, needs: list[dict], *,
           built: Mapping[str, Sequence[str]] | None = None, runs: Path | None = None) -> dict:
-    """Day 1's rules and job 2's ARGS (section 7.7): --leaders, the cut list's --cut, and --prior, the job that built
-    the Day-1 batches (`built`), whose drift keys job 2 compares with its own (section 3; jobs/shootout.sbatch's Day-2
-    form), once every round of the Day-1 batches has a vote (the anchor in the last one can halve a micro-session
-    that began in an earlier one, D-013)."""
+    """Day 1's rules and job 2's ARGS (section 7.7): --leaders, --prior, the job that built the Day-1 batches
+    (`built`), whose drift keys job 2 compares with its own (section 3; jobs/shootout.sbatch's Day-2 form), --add R2r
+    when the bass is undecided (CD-54), and the cut list's --cut on the minutes of the Day-2 plan those leaders and
+    adds give, once every round of the Day-1 batches has a vote (the anchor in the last one can halve a
+    micro-session that began in an earlier one, D-013)."""
     status = {s: (stages[s]["status"] if s in stages else "missing") for s in DAY1_STAGES}
     day1 = [n for b in plan.batches if b.day == 1 for n in b.names]
     unfinished = [n for n in day1 if batches.get(n) != "complete"]
     if any(v != "complete" for v in status.values()) or unfinished:
         return {"day2": {"status": "incomplete", "stages": status, "waiting_for": unfinished}}
     dflt = _defaults(plan)
-    cut = day2_cut(plan, sum(audits[n]["time"]["minutes"] for n in day1 if n in audits))
+    keys = _apply(rules, needs, "K1", keys_to_k2, rows["K1"], vote_seed(by_stage["K1"]), default=dflt.get("keys"))
+    kits = _apply(rules, needs, "R1", kits_after_r1, rows["R1"], vote_seed(by_stage["R1"]), default=dflt.get("kit"))
+    bass = relisten = None
+    if kits is not None:
+        bass = _apply(rules, needs, "R2", bass_pairings, by_stage["R2"], rows["R2"], kits["survivors"],
+                      vote_seed(by_stage["R2"]), default=dflt.get("bass"))
+    if bass is not None:                    # CD-54: an undecided bass adds R2r; the default stays meanwhile
+        relisten = bass["relisten"] = relisten_bass(by_stage["R2"], bass, kits, plan, default=dflt.get("bass"))
+    adds = [RELISTEN] if relisten and relisten["adds"] else []
+    counts = {"keys": len(keys["k2"])} if keys else {}
+    try:                                    # the final's size (2 or 3), for the minutes of the plan job 2 draws
+        counts["sax"] = len(sax_to_final(rows["S1"], by_stage["S1"], vote_seed(by_stage["S1"]),
+                                         default=dflt.get("sax"))["sax"])
+    except RuleGap:
+        pass
+    cut = day2_cut(plan, sum(audits[n]["time"]["minutes"] for n in day1 if n in audits), counts=counts, adds=adds)
     rules["cut"] = cut
     if not cut["fits"]:
         needs.append({"stage": "cut", "blocking": False,
                       "what": f"Day 2 does not fit even with every cut (r = {cut['r']}): {cut['day2_minutes']} min "
                               f"for Day 2, {cut['days12_minutes']} for Days 1-2 (section 2.7)"})
-    keys = _apply(rules, needs, "K1", keys_to_k2, rows["K1"], vote_seed(by_stage["K1"]), default=dflt.get("keys"))
-    kits = _apply(rules, needs, "R1", kits_after_r1, rows["R1"], vote_seed(by_stage["R1"]), default=dflt.get("kit"))
-    bass = None
-    if kits is not None:
-        bass = _apply(rules, needs, "R2", bass_pairings, by_stage["R2"], rows["R2"], kits["survivors"],
-                      vote_seed(by_stage["R2"]), default=dflt.get("bass"))
     sax = _apply(rules, needs, "S1", sax_to_final, rows["S1"], by_stage["S1"], vote_seed(by_stage["S1"]),
                  default=dflt.get("sax"), final="final" not in cut["cuts"])
     if keys:
         _note_pick(needs, "K1", "the K1 leader (the Day-2 band's keys)", keys["leader"])
     if kits:
         _note_pick(needs, "R1", "the R1 leader (the Day-2 band's kit)", kits["leader"])
-    if bass and any(p["from"] == "the pooled R2 leader" for p in bass["pairings"].values()):
+    if adds:
+        rounds = "; ".join(f"`{k}` in {'+'.join(relisten['rounds'][k])}" for k in relisten["kits"])
+        needs.append({"stage": "R2", "blocking": False,
+                      "what": f"the bass is undecided ({'; '.join(relisten['why'])}): Day 2 adds R2r, the 3-round bass "
+                              f"re-listen (--add R2r: {rounds}), and the Day-2 band keeps the default bass, "
+                              f"{relisten['bass']}, meanwhile (CD-54); R2r decides it after Day 2 (CD-43)"})
+        if relisten["left_out"]:
+            needs.append({"stage": "R2", "blocking": False,
+                          "what": f"{relisten['left_out']} survive R1 but play no R2r round (it plays "
+                                  f"{len(relisten['kits'])} kits); after Day 2 they take the pooled R2r leader (CD-54)"})
+    elif bass and any(p["from"] == "the pooled R2 leader" for p in bass["pairings"].values()):
         _note_pick(needs, "R2", "the pooled R2 leader", bass["pooled_leader"])
     if sax:
         _note_pick(needs, "S1", "the S1 leader (S2 runs on it)", sax["leader"])
@@ -1133,14 +1238,17 @@ def _day2(plan: Plan, stages: Mapping[str, dict], rows: Mapping[str, dict], by_s
         raised = [rules[k]["raised"] for k in DAY1_STAGES if "raised" in rules.get(k, {})]
         return {"day2": {"status": "blocked", "stages": status, "raised": raised}}
     lead_kit = kits["leader"]["pick"]
-    leaders = {"keys": tuple(keys["k2"]), "kit": (lead_kit,), "bass": (bass["pairings"][lead_kit]["bass"],),
-               "sax": tuple(sax["sax"])}
+    if adds:                                # CD-54: the surviving kits R2r plays, leader first; the default bass
+        kit_ids, bass_ids = tuple(relisten["kits"]), (relisten["bass"],)
+    else:
+        kit_ids, bass_ids = (lead_kit,), (bass["pairings"][lead_kit]["bass"],)
+    leaders = {"keys": tuple(keys["k2"]), "kit": kit_ids, "bass": bass_ids, "sax": tuple(sax["sax"])}
     text = leaders_string(leaders)
     parsed = parse_leaders(text)
     if parsed != leaders:
         raise TallyError(f"the --leaders string {text!r} does not read back as {leaders}")
     try:
-        band = day_band(plan, "day2", parsed, cut["cuts"])
+        band = day_band(plan, "day2", parsed, cut["cuts"], adds)
     except (DrawError, PlanError) as err:
         raise TallyError(f"the proposal {text!r} fails the Day-2 band check: {err}") from err
     built = built or {}
@@ -1158,14 +1266,16 @@ def _day2(plan: Plan, stages: Mapping[str, dict], rows: Mapping[str, dict], by_s
                       "what": f"the Day-1 batches come from {len(jobs)} jobs ({'+'.join(jobs)}); job 2 compares its "
                               "drift keys with the first one's levels.json (section 3)"})
     args = (f"--stage day2 --leaders {text}" + (f" --prior {'+'.join(jobs)}" if jobs else "")
+            + (f" --add {'+'.join(adds)}" if adds else "")
             + (f" --cut {'+'.join(cut['cuts'])}" if cut["cuts"] else ""))       # jobs/shootout.sbatch's order
     blocking = [n["what"] for n in needs if n["blocking"] and n["stage"] in (*DAY1_STAGES, "prior")]
-    return {"day2": {"status": "ready", "stages": status, "leaders": text, "cut": cut["cuts"], "prior": jobs,
-                     "args": args, "blocking": blocking,
+    return {"day2": {"status": "ready", "stages": status, "leaders": text, "cut": cut["cuts"], "add": adds,
+                     "prior": jobs, "args": args, "blocking": blocking,
                      "submit": f"make submit JOB=jobs/shootout.sbatch ARGS='{args}'",
                      "check": {"parse_leaders": {k: list(v) for k, v in parsed.items()}, "day_band": band},
                      "kits": kits["survivors"],
-                     "pairings": {k: p["bass"] for k, p in bass["pairings"].items()}}}
+                     "pairings": {k: p["bass"] for k, p in bass["pairings"].items()},
+                     "relisten": relisten if adds else None}}
 
 
 def _later(plan: Plan, stages: Mapping[str, dict], rows: Mapping[str, dict], by_stage: Mapping[str, list[Round]],
@@ -1216,6 +1326,22 @@ def _later(plan: Plan, stages: Mapping[str, dict], rows: Mapping[str, dict], by_
                    default=dflt.get("humanize"))
         if h:
             _note_pick(needs, "R3b", "humanize", h["pick"])
+    if RELISTEN in done:                    # CD-54: R2r decides each surviving kit's bass (CD-43)
+        # the kits R2r played, in slot order (the leader first), then any other R1 survivor (it plays no R2r round)
+        kits = list(dict.fromkeys(rd.kit for rd in sorted(by_stage[RELISTEN], key=lambda r: r.slot or "")
+                                  if rd.kind == "none" and rd.kit))
+        r1 = rules.get("R1") or {}
+        if r1.get("survivors"):
+            lead = r1["leader"]["pick"]
+            kits += [k for k in [lead, *r1["survivors"]] if k not in kits]
+        b = _apply(rules, needs, RELISTEN, bass_after_relisten, by_stage[RELISTEN], kits, default=dflt.get("bass"))
+        if b:
+            pooled_used = any(p["from"] == "the pooled R2r leader" for p in b["pairings"].values())
+            if pooled_used:
+                _note_pick(needs, RELISTEN, "the pooled R2r leader", b["pooled_leader"])
+            for kit, p in b["pairings"].items():
+                if p["from"] == "its own R2r rounds":
+                    _note_pick(needs, RELISTEN, f"the bass of {kit} over its R2r rounds", p["pick"])
     if "V" in done:
         v = _apply(rules, needs, "V", vamp_ranks, rows["V"], {k: x.mood for k, x in plan.vamps.items()})
         if v and v["borrowed"]["met"]:
@@ -1399,8 +1525,10 @@ def _rules_md(doc: dict) -> list[str]:
         L.append("After Day 1 (job 2):")
         c = R.get("cut")
         if c:
+            add = f", {'+'.join(c['adds'])} included" if c.get("adds") else ""
             L.append(f"- Cut list (CD-50): Day 1 took {_n(c['day1_minutes'])} min against the plan's "
-                     f"{_n(c['day1_plan'])}, r = {c['r']:.3f}; Day 2 {_n(c['day2_minutes'])} min, Days 1-2 "
+                     f"{_n(c['day1_plan'])}, r = {c['r']:.3f}; Day 2's plan {_n(c['day2_plan'])} min (the rounds "
+                     f"job 2 will draw{add}), at r {_n(c['day2_minutes'])} min, Days 1-2 "
                      f"{_n(c['days12_minutes'])}; cuts: {', '.join(c['cuts']) or 'none'}.")
         for key, label in (("K1", "Keys"), ("R1", "Kits"), ("R2", "Basses"), ("S1", "Sax")):
             if key not in R:                             # not run: the rule it needs raised
@@ -1423,10 +1551,18 @@ def _rules_md(doc: dict) -> list[str]:
                 L.append(f"- Kits (CD-42): {', '.join(f'`{x}`' for x in r['survivors'])}{drop}{tie}{out}; leader "
                          f"{_pick_text(r['leader'])}.")
             elif key == "R2":
-                pairs = "; ".join(f"`{k}` takes `{p['bass']}` ({p['from']}{', ' + p['why'] if 'why' in p else ''})"
-                                  for k, p in r["pairings"].items())
-                L.append(f"- Basses (CD-43): {pairs}. Each pairing rests on one round. Pooled R2 leader "
-                         f"{_pick_text(r['pooled_leader'])}.")
+                rl = r.get("relisten") or {}
+                if rl.get("adds"):
+                    on = " and ".join(f"`{k}` ({len(rl['rounds'][k])} round{'s' if len(rl['rounds'][k]) > 1 else ''})"
+                                      for k in rl["kits"])
+                    L.append(f"- Basses (CD-43): undecided ({'; '.join(rl['why'])}). Day 2 adds R2r, the bass "
+                             f"re-listen (CD-54), on {on}; the band keeps `{rl['bass']}` meanwhile, and R2r decides "
+                             "each kit's bass after Day 2.")
+                else:
+                    pairs = "; ".join(f"`{k}` takes `{p['bass']}` ({p['from']}{', ' + p['why'] if 'why' in p else ''})"
+                                      for k, p in r["pairings"].items())
+                    L.append(f"- Basses (CD-43): {pairs}. Each pairing rests on one round. Pooled R2 leader "
+                             f"{_pick_text(r['pooled_leader'])}.")
             else:
                 if not r.get("final", True):
                     L.append(f"- Sax: the final is cut, so S1 alone picks it: {_pick_text(r['leader'])}.")
@@ -1439,7 +1575,9 @@ def _rules_md(doc: dict) -> list[str]:
                 for why in r["no_free_sax"]:
                     L.append(f"- **No free sax passes:** {why} (D-012's fallback is Shresth's call).")
         if p2["status"] == "ready":
-            cut = f" with `--cut {'+'.join(p2['cut'])}`" if p2["cut"] else ""
+            extra = ([f"`--add {'+'.join(p2['add'])}` (CD-54)"] if p2.get("add") else []) + (
+                [f"`--cut {'+'.join(p2['cut'])}`"] if p2["cut"] else [])
+            cut = f" with {' and '.join(extra)}" if extra else ""
             prior = (f"; `--prior {'+'.join(p2['prior'])}`, the job that built the Day-1 batches (its drift keys, "
                      "section 3)" if p2.get("prior") else
                      "; **`--prior` missing:** no pulled summary built the Day-1 batches (see below)")
@@ -1449,8 +1587,8 @@ def _rules_md(doc: dict) -> list[str]:
                   f"band from it: {', '.join(f'{k} `{v}`' for k, v in p2['check']['day_band'].items() if v)}."]
         else:
             L.append(f"- Job 2's --leaders: not made ({p2['status']}).")
-    later = [k for k in ("K2", "S1f", "S2a", "S2a" + RERUN, "S2b", "S2b" + RERUN, "R3a", "R3b", "V", "W1", "W2")
-             if k in R]
+    later = [k for k in ("K2", "S1f", "S2a", "S2a" + RERUN, "S2b", "S2b" + RERUN, RELISTEN, "R3a", "R3b", "V", "W1",
+                         "W2") if k in R]
     if later:
         L += ["", "Later days:"]
     for k in later:
@@ -1468,6 +1606,11 @@ def _rules_md(doc: dict) -> list[str]:
             L.append(f"- Warmth ({k}): {_pick_text(r['pick'])}{ctrl}.")
         elif k.startswith("S2b"):
             L.append(f"- Sax timing ({k}): {_pick_text(r['pick'])}.")
+        elif k == RELISTEN:
+            pairs = "; ".join(f"`{kit}` takes `{p['bass']}` ({p['from']}"
+                              + (f", {p['why']}" if "why" in p else f", by {p['pick']['by']}") + ")"
+                              for kit, p in r["pairings"].items())
+            L.append(f"- Basses after R2r (CD-43, CD-54): {pairs}. Pooled R2r leader {_pick_text(r['pooled_leader'])}.")
         elif k == "R3a":
             L.append(f"- Swing (advisory, CD-13): stays `{r['pick']}`; BW leader {r['bw_leader']}; {r['note']}.")
         elif k == "R3b":

@@ -141,6 +141,9 @@ vamps:
 # every one of them, measured on its own palette and text. loops: true also measures each option's palette on the 9
 # reference loops (§3 step 1: the frozen palette's spread-voicing and sax-variant faders). A Day-1 stage has no
 # match: its clips take their own fader on the stage's bus from the candidate's 9-loop measurement (CD-52).
+# optional: true (CD-54): the stage is in its day only when the job's --add names it; it is then served first in the
+# batch whose `adds` names it. A slot's kit_rank names the n-th kit of the job's --leaders kit= (1 = the leader), on a
+# day with no kit stage (R2's `kit` names an R1 symbol on Day 1).
 stages:
   K1:
     day: 1
@@ -201,6 +204,21 @@ stages:
       - {id: S1.4, loop: L5, tiles: [a1, t2, t3, t1]}
       - {id: S1.5, loop: L9, tiles: [t2, a3, a1, a2]}
       - {id: S1.6, loop: L7, tiles: [a2, t3, t1, t2]}
+  R2r:                                     # the bass re-listen (CD-54): Day 2, only with the job's --add R2r
+    day: 2
+    optional: true
+    bus: bass
+    fills: bass
+    category: bass
+    what: bass re-listen on the round's kit, swing 0.55, no humanize
+    match: {buses: [bass]}                 # CD-53: each clip its own bass fader, on its own palette and text
+    symbols: [b1, b2, b3]
+    options: [bass_vsco2_pizz, bass_fp_finger_yr, bass_gu_acoustic]
+    draw: {rule: any}
+    slots:                                 # one loop per mood and energy, none of R2's (L6, L7, L2); a Latin square
+      - {id: R2r.1, loop: L1, kit_rank: 1, tiles: [b1, b2, b3]}      # the leader kit
+      - {id: R2r.2, loop: L5, kit_rank: 2, tiles: [b2, b3, b1]}      # the other surviving kit
+      - {id: R2r.3, loop: L9, kit_rank: 1, tiles: [b3, b1, b2]}      # the leader kit
   R3a:
     day: 2
     bus: drums
@@ -379,7 +397,9 @@ days:
 # rounds: design rounds per stage; anchors: extra rounds with a sour copy (§2.5). category: the hidden manifest's
 # batch category (its rounds carry their stage's). est_min: plan estimate / full auto-play. Contents only: the order
 # is drawn (§2.4). A row naming two batches shares its rounds between them: `split` names the pool, which the draw
-# divides into batches of about equal planned length, with the 5 repeats (and the S2 re-run, §4.4).
+# divides into batches of about equal planned length, with the 5 repeats (and the S2 re-run, §4.4). adds: an optional
+# stage's rounds (CD-54), in the batch only when the job's --add names the stage; they are served first, in a drawn
+# order, and its category comes first in the batch's. est_min is without them (R2r: 3.0 / 3.5 more).
 batches:
   - {names: [b1103-1-keys], date: 2026-11-03, day: 1, rounds: {K1: 6}, anchors: 0, category: keys,
      note: "Which keys do you like best?", est_min: [7.8, 9.3]}
@@ -387,7 +407,7 @@ batches:
      note: "Which drums and bass do you like best?", est_min: [6.0, 6.9]}
   - {names: [b1103-3-sax], date: 2026-11-03, day: 1, rounds: {S1: 6}, anchors: 1, category: sax,
      note: "Which sax do you like best?", est_min: [9.2, 11.1]}
-  - {names: [b1104-1-groove], date: 2026-11-04, day: 2, rounds: {R3a: 2, R3b: 3}, anchors: 0,
+  - {names: [b1104-1-groove], date: 2026-11-04, day: 2, rounds: {R3a: 2, R3b: 3}, adds: {R2r: 3}, anchors: 0,
      category: "swing, humanize", note: "Which groove do you like best?", est_min: [5.6, 6.5]}
   - {names: [b1104-2-sax], date: 2026-11-04, day: 2, rounds: {S1f: 3, S2a: 3, S2b: 3}, anchors: 1,
      category: "sax, sax_warmth, sax_timing", note: "Which sax do you like best?", est_min: [9.2, 10.5]}
@@ -403,7 +423,7 @@ batches:
 controls:
   repeats:
     count: 5
-    groups: {keys: [K1, K2], drums_bass: [R1, R2, R3a, R3b], vamps: [V], sax_sources: [S1, S1f],
+    groups: {keys: [K1, K2], drums_bass: [R1, R2, R2r, R3a, R3b], vamps: [V], sax_sources: [S1, S1f],
              sax_variants: [S2a, S2b]}
     day: 3
     min_days_after: 2
