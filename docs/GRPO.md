@@ -321,8 +321,8 @@ config reaches the dry run, both launches and both checks, and the log names it.
 
 **What the D-020 settings add to `smoke.json`:**
 - **`in_language`** (constrained): the regex's sha256 and the counts by finish reason (stop, length, other: n,
-  in_language, out_of_language), in total and per launch, with per-step stop counts and the first out-of-language
-  stop completions.
+  in_language, out_of_language), in total and per launch, with per-step stop counts, the first out-of-language
+  stop completions and each launch's `shows_grammar` (below).
 - **`backend`** (constrained): each launch's run.json record of the pin: requested, pin_accepted, backend, source,
   applied, engine. It decides nothing, as in junk.json.
 - **`copy`** (copy_penalty): per launch, the pool files run.json records, P_copy's mean, the completions it
@@ -335,13 +335,14 @@ config reaches the dry run, both launches and both checks, and the log names it.
     `mean(|old_per_token_logps − sampling_per_token_logps|[completion mask])`. The checks are in
     `lofi_rl.rl.trl_probe`: a plain mean of an absolute difference, masked by `completion_mask`, one operand
     vLLM's sampling log-probs, the other computed on `self.model`, aggregated only by gather/mean/item.
-  - **What that check leaves open:** it is TRL's half of D-020's definition. Whether vLLM's reported log-probs
-    (`sampling_per_token_logps`) are the masked sampler's, D-020's π_vLLM under the grammar, is UNVERIFIED (§7).
-    `vllm_logprobs_checked` records each launch's run.json `vllm_logprobs.checked`, which is false in every run
-    today. With the grammar, a rule whose launches are not all true carries that caveat.
   - **Otherwise** `value_source` is `unavailable`, with the verdicts and the reason, and a warning. No value or rule
     is given, though TRL's numbers stay in `steps`. Computing it from what the trainer exposes would mean hooking
     TRL internals no laptop test can check, so this build does not.
+  - **What the `match` check leaves open:** it is TRL's half of D-020's definition. Whether vLLM's reported
+    log-probs (`sampling_per_token_logps`) are the masked sampler's, D-020's π_vLLM under the grammar, is UNVERIFIED
+    (§7). `vllm_logprobs_checked` records each launch's run.json `vllm_logprobs.checked`, which this build always
+    writes as false (`trl_probe.vllm_logprobs_evidence` records vLLM's lines, never a verdict). With the grammar, a
+    rule whose launches are not all true carries that caveat.
   - **Every step of both launches counts:** the resumed steps 6–10 are steps the smoke ran, generated again. Per
     step, `value` is TRL's logged mean and `tokens` its completion tokens from rewards.jsonl (step k's record
     carries reward step k − 1). Truncated completions are left out under `mask_truncated_completions`, as TRL's
