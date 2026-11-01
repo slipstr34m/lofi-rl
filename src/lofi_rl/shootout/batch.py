@@ -29,7 +29,8 @@ is written unless everything is in order: a missing render, a failed gate, a cli
 its loop, a FLAC that changed since it was rendered, a repeat whose render is not the first showing's, a clip whose
 draw palette names a `level` but whose record carries none for that case or failed it, a rain round whose clips do
 not play the same music under their beds (their `pre_limiter_sha256`), an opaque id or note that would leak a hidden
-value, or a batch folder that already exists, stops the build before the first file is written. Batches are staged in `<out>/.staging-*` and moved into place only after every folder passes the check.
+value, or a batch folder that already exists, stops the build before the first file is written. Batches are staged
+in `<out>/.staging-*` and moved into place only after every folder passes the check.
 
 Opaque ids are drawn per batch from the draw's seed (so one seed gives byte-identical batches), and an id that
 would contain any word or real-id stretch the leak check looks for (docs/RATING.md: "Leak check") is drawn again.
