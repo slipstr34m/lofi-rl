@@ -8,19 +8,20 @@ Newest entry first. Every number cites the file or command output it was read fr
   - committed: the rating page, the compiler + renderer, two reviews, voicing rules V2 and V2.1, the SFZ → SF2 converter, the shootout plan (`docs/SHOOTOUTS.md`) and the job-1 shootout tooling with per-clip level matching (CD-52);
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
   - all 14 shootout sources, the rain file and the two imported kits are on the laptop and the cluster;
-  - Day-1 shootout clips rendered on the cluster and in `inbox/2026-11-03/` (3 batches, 19 rounds, 70 clips): **needs ear check** (planned Nov 3; ready now).
+  - Day-1 shootout voted: 19 of 19 rounds, backed up (`bfad896`). Shresth confirmed the survivors and the 1-bar heard rule (D-013 amended). Day 2 is next: the tally tool's merge fix and the bass re-listen, then the render.
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
   - base-model test v0 done: pass_not_copy 4.0 % against a 60 % bar, so grammar-constrained decoding comes first (D-016, D-019);
-  - constrained decoding, its review fixes (F1 line ends, F3 run record) and prompt v2 merged into main (`b56fbf6`). The constrained base-model test is pre-registered as D-020 (two arms: v1 and v2, both with the grammar);
+  - constrained decoding, its review fixes (F1 line ends, F3 run record) and prompt v2 merged into main (`b56fbf6`). The constrained base-model test is pre-registered as D-020 (two arms: v1 and v2, both with the grammar) and amended before either run (`49e2f5a`);
+  - **D-020's two arms are queued** from one sync of `49e2f5a`: `lofi-junk-rate` 13640324 (arm A, v1) and 13640325 (arm B, v2), on gpu A40s, at most 450 SU each. **No `make sync` until both have ended** (D-020's one-mirror rule);
   - scorer server (`lofi_rl.scoring`) being built in workflow `wf_e7f4b866-15c`;
   - GRPO smoke 13632679 passed (`GRPO_SMOKE_OK`: 10 steps, then a resume from step 5; 280.7 SU). 67 of the 71 loops that passed its gates in launch a are near-copies of the prompt's example, so run 1 waits for the grammar, prompt v2 and an example-copy penalty.
 - **Waiting on Shresth:**
-  - Day-1 survivors: how to count picks made before 4 bars, the time cut and the keys-leader tie (all three Day-1 batches are voted);
   - `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords), due by Nov 4 morning.
+- **Before GRPO run 1, also:** jobs import the mirror live, so a sync during a running job changes its code. A multi-day GRPO chain needs a per-job code snapshot (job_env.sh), so that syncs can go on while it runs.
 
 ---
 
-## 2026-10-31 (20:45 PDT): D-020 checked, amended before either run, and the fixes it called for
+## 2026-10-31 (20:05 PDT): D-020 checked, amended before either run, and the fixes it called for
 
 **What was done**
 - **Two independent checkers** reviewed D-020 against D-019, the code and both submissions (workflow `wf_ce8fc507-f15`, 2 agents, read-only). They found:
@@ -39,12 +40,18 @@ Newest entry first. Every number cites the file or command output it was read fr
   - **`junk.py`:** `score_stamp` added to junk.json, and render samples only passing loops that are not near-copies (D020-07). Two render tests now assert that the near-copy is skipped.
   - **`tests/test_grammar.py`:** pins the dev_gu regex (3,395 characters, sha `1412f11f…`).
   - **`jobs/junk_rate.sbatch`:** a comment changed; the job sha is still `4a9d8685231fd573`.
+- **Suite:** 2000 passed, 2 skipped. Committed and pushed as `49e2f5a`.
+- **One sync** of `49e2f5a` (0 deletions; mirror `commit=49e2f5ac06bf dirty=0`). Then the two submissions, each through the guard with registry sha `4a9d8685231fd573` (max 450 SU) and projected 450 SU on gpu A40s:
+  - arm A (v1): `lofi-junk-rate` 13640324;
+  - arm B (v2): `lofi-junk-rate` 13640325.
 
-**SU spent:** 0.
+  Both are PENDING (Priority). No sync until both have ended.
+
+**SU spent:** 0 so far (both jobs pending).
 
 ---
 
-## 2026-10-31 (20:10 PDT): Shresth confirmed the Day-1 survivors and the 1-bar heard rule
+## 2026-10-31 (19:47 PDT): Shresth confirmed the Day-1 survivors and the 1-bar heard rule
 
 **What was done**
 - **Shresth: "Yes, use these"**, to the proposal that a pick counts once its clip has played 1 bar, over every attempt of its round. That proposal also covered the Day-1 survivors it gives, a 3-round bass re-listen in Day 2, no Day-2 cuts, and the rule in the spec for all voting.
@@ -68,7 +75,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
-## 2026-10-31 (19:50 PDT): Day 1 fully voted; preliminary tally; survivors wait for Shresth
+## 2026-10-31 (19:45 PDT): Day 1 fully voted; preliminary tally; survivors wait for Shresth
 
 **What was done**
 - **`b1103-3-sax` voted:** 7 of 7 rounds, including one anchor, which was caught, so every vote keeps full weight. All three Day-1 logs parse line by line.
@@ -92,7 +99,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
-## 2026-10-31 (19:40 PDT): constrained decoding and prompt v2 merged; junk-rate re-registered; D-020 pre-registered; drums-and-bass batch voted
+## 2026-10-31 (19:25 PDT): constrained decoding and prompt v2 merged; junk-rate re-registered; D-020 pre-registered; drums-and-bass batch voted
 
 **What was done**
 - **Merged `wt/constrained` into main** (`b56fbf6`, a no-ff merge; no file had changed on both sides since the merge base `ba26f77`). Workflow `wf_c6a65cc9-b90` had 7 agents: a fixer, three prompt designers, a judge, a builder and an independent verifier.
@@ -127,7 +134,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
-## 2026-10-31 (19:05 PDT): GRPO smoke passed end to end with a resume; its reward mostly paid for copies of the prompt's example
+## 2026-10-31 (19:00 PDT): GRPO smoke passed end to end with a resume; its reward mostly paid for copies of the prompt's example
 
 **What was done**
 - **`lofi-grpo-smoke` 13632679** (mirror `ba26f77`): one L40S on `gpu` (node b18-16), COMPLETED 0:0 in 00:14:02 (`sacct`), `GRPO_SMOKE_OK`. Report: `runs/grpo-smoke-13632679/summary/smoke.json` (`"ok": true`, no failures).
