@@ -21,6 +21,24 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (10:00 PST): Day 3 and the 30 keep3 drafts being built
+
+**What was done**
+- **Workflow `wf_e1ef77b2-265`:** shootout job 3, Day 3, in a worktree from `316f710`. It has a builder, two reviewers, a judge, a fixer and a verifier. The builder first audits what is missing, then builds it.
+  - **Stages:** rain W1 (excerpts at Δ 18) and W2 (none, 30, 24, 18 on e1), five repeats and an anchor.
+  - **Band:** the confirmed Day-2 picks, sax variants included.
+  - **Tally:** a job-3 proposal with an explicit serving date for repeat eligibility.
+- **Workflow `wf_6930ad87-bf9`:** the keep3 drafts, in new files only, so it does not touch the shootout code.
+  - 10 briefs and three personas, with each persona writing 10 loops (taste_pipeline §8).
+  - A validator: gates, knobs, and below 0.6 Jaccard against the prompt examples, the shootout loops and each other.
+  - `palettes/draft_day2.yaml`, built from the Day-2 picks and both levels files.
+  - The `lofi-drafts` job and the keep3 batch builder, then review and verify.
+- **Day 3's serving date:** 2026-11-03 or later. Then every repeat group of §2.5 is eligible: Day-1 rounds come back 3 days later and Day-2 rounds 2 days later (D-013).
+
+**SU spent:** 0.
+
+---
+
 ## 2026-11-01 (09:45 PST): Shresth confirmed the Day-2 results; gate file updated
 
 **What was done**
