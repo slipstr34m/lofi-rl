@@ -58,6 +58,24 @@ def _raw(sock, method, path, body=b"", headers=None):
         conn.close()
 
 
+def _raw_once(sock, request: bytes):
+    """One request written in a single sendall, and the status and JSON body of the answer. http.client writes
+    the headers and the body separately, so a server that answers before reading the body (a 413) and closes can
+    break the second write (BrokenPipeError: a flaky test under load)."""
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(10)
+    try:
+        s.connect(str(sock))
+        s.sendall(request)
+        raw = b""
+        while chunk := s.recv(65536):
+            raw += chunk
+    finally:
+        s.close()
+    head, _, body = raw.partition(b"\r\n\r\n")
+    return int(head.split()[1]), json.loads(body or b"null")
+
+
 # ------------------------------------------------------------------------------------------ endpoints
 def test_health_reports_versions_terms_and_every_missing_calibration(tmp_path):
     with served(tmp_path) as (client, scorer, _):
@@ -131,8 +149,9 @@ def test_malformed_requests_are_400_and_the_client_raises(tmp_path):
         assert err.value.status == 400
         assert _raw(sock, "GET", "/nope")[0] == 404 and _raw(sock, "POST", "/nope")[0] == 404
         assert _raw(sock, "PUT", "/score")[0] == 405
-        status, doc = _raw(sock, "POST", "/score", b"{}", {"Content-Length": str(protocol.MAX_BODY_BYTES + 1)})
-        assert status == 413
+        status, doc = _raw_once(sock, b"POST /score HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n"
+                                      b"Content-Length: %d\r\n\r\n{}" % (protocol.MAX_BODY_BYTES + 1))
+        assert status == 413 and "at most" in doc["error"]
         assert client.health()["ok"], "the server keeps answering"
 
 
