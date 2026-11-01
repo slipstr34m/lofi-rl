@@ -15,7 +15,8 @@ CE no scale; this is the server's choice, docs/SCORER.md §8).
 
 A missing file disables its term and says so (`flags()`, /health, every item's diag). A file that exists but is
 malformed, or was made for another prompt file, stops the server at start: a broken calibration is never read as
-a missing one. Standard library only.
+a missing one. So does a --calib directory that is given but does not exist: a mistyped or purged path would
+otherwise turn every calibration off for a whole run. Standard library only.
 """
 from __future__ import annotations
 
@@ -184,11 +185,15 @@ class Calibration:
 
 
 def load(directory: Path | str | None, *, theme_sha256: str) -> Calibration:
-    """Read the calibration directory. A missing directory or file disables; a bad file raises CalibError."""
+    """Read the calibration directory. None (no --calib) or a missing file disables; a bad file, or a directory
+    that is given but does not exist, raises CalibError."""
     if directory is None:
         return Calibration(None, None, None, None)
     d = Path(directory)
-    if d.exists() and not d.is_dir():
+    if not d.exists():
+        raise CalibError(f"--calib {d} does not exist: a calibration directory that is given must exist (a "
+                         f"mistyped or purged path would turn every calibration off for the whole run)")
+    if not d.is_dir():
         raise CalibError(f"--calib {d} is not a directory")
 
     def present(name: str) -> Path | None:

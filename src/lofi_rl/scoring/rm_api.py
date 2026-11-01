@@ -20,8 +20,9 @@ PAR (taste_pipeline.md §4, "Ensemble and PAR"), exactly:
     r_taste = sigma(mean_m d_m - 1.0 * std_m d_m)
 
 std_m is the population standard deviation over the M members (the design does not say; docs/SCORER.md §8).
-Missing pieces disable what they feed: no RM -> r_taste 0 and P_acc factor 1; an RM without refs.json -> r_taste
-0, P_acc live. A brief_id that refs.json lacks, while taste is live, is a request error (HTTP 422): the trainer
+Missing pieces disable what they feed: no RM (no --rm, or a directory without rm.json) -> r_taste 0 and P_acc
+factor 1; an RM without refs.json -> r_taste 0, P_acc live. An --rm directory that is given but does not exist is
+an error, not "no RM": a mistyped or purged path would train a whole run with taste off. A brief_id that refs.json lacks, while taste is live, is a request error (HTTP 422): the trainer
 crashes rather than train on a reward with its taste term silently off for that brief. Standard library only.
 """
 from __future__ import annotations
@@ -182,11 +183,15 @@ def _factory(spec: Any, path: Path):
 
 
 def load_rm(directory: Path | str | None) -> RMState:
-    """The --rm directory (module docstring): NullRM when it, or its rm.json, is missing; RMError when broken."""
+    """The --rm directory (module docstring): NullRM when none is given or it has no rm.json; RMError when the
+    given directory does not exist or is broken."""
     if directory is None:
         return RMState(None, None, None, "missing", NULL_RM_VER)
     d = Path(directory)
-    if d.exists() and not d.is_dir():
+    if not d.exists():
+        raise RMError(f"--rm {d} does not exist: an RM directory that is given must exist (a mistyped or purged "
+                      f"path would train the whole run with taste off)")
+    if not d.is_dir():
         raise RMError(f"--rm {d} is not a directory")
     if not (d / RM_FILE).is_file():
         return RMState(None, None, str(d), "missing", NULL_RM_VER)

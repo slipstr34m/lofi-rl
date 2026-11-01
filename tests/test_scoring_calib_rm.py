@@ -19,13 +19,18 @@ def _w(d, name, doc):
 
 # ------------------------------------------------------------------------------------------ calibration
 def test_no_directory_or_an_empty_one_disables_everything(tmp_path):
-    for d in (None, tmp_path / "absent", tmp_path):
+    for d in (None, tmp_path):
         c = calib.load(d, theme_sha256=SHA)
         assert (c.pq, c.theme, c.ce, c.ce_validated) == (None, None, None, False)
         f = c.flags()
         assert {k: f[k]["status"] for k in ("pq", "theme", "ce")} == {"pq": "missing", "theme": "missing",
                                                                        "ce": "missing"}
         assert f["pq"]["effect"] == "PQ factor 1" and f["theme"]["effect"] == "r_theme 0"
+
+
+def test_a_calibration_directory_that_is_given_but_absent_is_an_error(tmp_path):
+    with pytest.raises(calib.CalibError, match="does not exist"):
+        calib.load(tmp_path / "absent", theme_sha256=SHA)
 
 
 def test_valid_files_load_with_their_hashes(tmp_path):
@@ -76,11 +81,13 @@ FACTORY = "lofi_rl.scoring.fakes:load_fake_rm"
 
 
 def test_no_rm_directory_or_no_rm_json_is_the_null_rm(tmp_path):
-    for d in (None, tmp_path / "absent", tmp_path):
+    for d in (None, tmp_path):
         s = rm_api.load_rm(d)
         assert (s.model, s.refs, s.status, s.rm_ver, s.taste_live, s.pacc_live) == (None, None, "missing", "null",
                                                                                    False, False)
     assert isinstance(rm_api.NullRM(), rm_api.RewardModel)
+    with pytest.raises(rm_api.RMError, match="does not exist"):
+        rm_api.load_rm(tmp_path / "absent")
 
 
 def test_an_rm_loads_through_its_factory_with_or_without_references(tmp_path):
@@ -126,3 +133,8 @@ def test_the_server_exits_2_on_a_bad_calibration_before_it_binds(tmp_path, capsy
     _w(tmp_path / "rm", "rm.json", {"rm_ver": "x", "members": 3, "factory": "nope"})
     with short_sock_dir() as d:
         assert server.main(["--sock", str(d / "s.sock"), "--backend", "fake", "--rm", str(tmp_path / "rm")]) == 2
+    for flag in ("--calib", "--rm"):                    # a given directory that does not exist: exit 2, not "off"
+        with short_sock_dir() as d:
+            rc = server.main(["--sock", str(d / "s.sock"), "--backend", "fake", flag, str(tmp_path / "absent")])
+            assert rc == 2 and not (d / "s.sock").exists()
+        assert "does not exist" in capsys.readouterr().err

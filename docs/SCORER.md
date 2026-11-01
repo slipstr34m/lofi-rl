@@ -194,6 +194,9 @@ rewarded**; PC and CU are logged as signatures (`sig`, `diag`).
 - **Missing disables, broken stops:** a missing file (or `--calib` not given) turns its term or factor off, and
   `/health` (`calibration.<name>.status: missing` with the effect), `terms`, the response's `disabled` and every
   item's `diag.disabled` say so. A file that exists but is malformed is never read as missing: the server exits 2.
+  So does a `--calib` or `--rm` directory that is given but does not exist: a mistyped or purged path would
+  otherwise run a whole run with every calibration, or taste, off. An existing directory without a file is
+  still "missing" for that file.
 
 ## 6. The RM interface and PAR (`rm_api.py`)
 - **Protocol** (`RewardModel`): `rm_ver`, `members` (M), `utilities(feats) -> [u_1 … u_M]`,
@@ -206,7 +209,8 @@ rewarded**; PC and CU are logged as signatures (`sig`, `diag`).
 - **PAR, exactly as §4:** d_m = u_m(x) − mean of the brief's 4 reference utilities of member m;
   **r_taste = σ(mean_m d_m − 1.0 · std_m d_m)**, std the population standard deviation over members.
   `diag.rm_mean` and `diag.rm_std` are those mean and std.
-- **What is live:** no RM → r_taste 0 and P_acc factor 1; an RM without `refs.json` → r_taste 0 and P_acc live;
+- **What is live:** no RM (no `--rm`, or a directory without `rm.json`; a given directory that does not exist
+  is exit 2) → r_taste 0 and P_acc factor 1; an RM without `refs.json` → r_taste 0 and P_acc live;
   both → both live. A request with a `brief_id` that `refs.json` lacks (or none) while taste is live is a 422,
   checked before anything renders: the trainer crashes rather than train with taste silently off for some
   briefs. A broken `rm.json` or `refs.json` (unknown keys, mismatched versions or member counts, rows that are
