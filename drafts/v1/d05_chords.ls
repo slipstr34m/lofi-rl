@@ -8,7 +8,7 @@ snare: ....x.......x... ....x...g...x.g.
 hat: x.x.xgx.x.x.xgx. x.x.x.x.xgx.x.x.
 @3 comp: x--.x-----x--.x-
 @4 hat: x.x.x.x.xgx.xxx.
-@5 snare: ....x..g....x...
+@5 snare: ....x..x....x...
 @6 comp: x---.x-----.x---
 @7 bass: x-----x--x---x--
 @7 kick: X.....x..x...x..

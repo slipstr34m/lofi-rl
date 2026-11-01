@@ -9,7 +9,7 @@ hat: xgXgxgXgxgXgxgXg
 shaker: ...x...x...x...x
 @3 hat: xgXgxgXgxgXgxxXg
 @4 kick: x..x....x.x.x...
-@5 snare: ....X.g.g...X..g
+@5 snare: ....X.x.g...X..g
 @6 bass: x--x----x-x-x---
 @7 kick: x.....x...x.x.x.
 @8 hat: xgXgxgXgxgXgxgXx

@@ -9,8 +9,9 @@ hat: Xgxxxg.gXgxxxgxg Xgxxxgxgxg.xxgxg
 ohat: ......x......... ..........x.....
 @3 kick: x.x....x..x..x..
 @4 hat: XgxxxgxgXg.xxgXg
-@5 snare: ....X..g...gX..g
+@5 snare: ....X..g...gX..x
 @6 bass: x------x-x---x--
+@6 hat: ................
 @7 kick: x.x....x.x......
 @8 comp: ..x---x---x-----
 A: e5 e7 e1' e7 h5 | q6 e5 e4 q2 qr | q.3 e4 q5 qr | h.6 qr
