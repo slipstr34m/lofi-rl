@@ -86,6 +86,11 @@ supersedes an earlier one. Sources: `docs/TASTE.md` (Shresth's interview), `docs
 - **Display:** the page shows the scene only. RM predictions are never shown while voting.
 - **Hidden controls:** 10% repeats, at least 2 days later with positions reversed; 5% broken anchors. A session that misses its anchors counts at half weight and never enters the held-out set.
 - **Tiers:** Toss = a dealbreaker fired; Fine = not embarrassing; Good = I'd play it while working; Great = can't stop nodding.
+- **Amended 2026-10-31 by Shresth.** He said "Imagine it sounded so bad that I did not even let it play more than 4 bars.", then "Yes, use these" to the proposal that followed.
+  - A clip counts as heard once 1 bar has played, over every attempt of its round: undone votes and abandoned attempts included.
+  - Only pairs with clips that never played are dropped.
+  - This holds in every mode, for the shootouts and the RM votes alike. It comes before the first RM vote.
+  - First use: the Day-1 shootout tally. Before this change, the count kept only the final attempt's bars, so clips heard before an undo or a reload counted as unheard.
 
 ## D-014 (2026-10-30): final evaluation (pre-registered)
 **Decided by:** Shresth.
@@ -149,3 +154,41 @@ no GRPO had run.
   - **Per this entry's rule, syntax failures are the main cause, so grammar-constrained decoding comes first (D-016).** The
     copying is a second, separate cause. If it still sinks pass_not_copy under constraints, the prompt becomes v2,
     re-registered here before its run.
+
+## D-020 (2026-10-31): the base-model test v1, with grammar-constrained decoding, in two prompt arms, pre-registered before either run
+**Decided by:** Claude, under D-019's delegation, following D-019's rule for its outcome.
+- **Why:**
+  - v0 failed mostly on syntax (G1 389 of 500), so D-019's rule puts grammar-constrained decoding first (D-016).
+  - Copying is the second cause: 78 of v0's 98 passes were near-copies of the in-prompt example. Prompt v2 is the fix D-019 named for it.
+  - Both arms run now, from one mirror, so one round trip answers both questions. Arm A measures the grammar alone; arm B adds v2.
+- **Arms:** both `--constrained`, both on palettes/dev_gu.yaml.
+  - **A:** prompt v1 (`lofi_rl.prompt`, template sha256 `7aceb2bc0d7339a7d3c9af7bf0d808ee156d4f7a8684e0393d923940fa5c1e68`, as in D-019).
+  - **B:** prompt v2 (`lofi_rl.prompt_v2`, template sha256 `127e3094fd5a2183fb952059c2221ad018bdef6d062f51a80b14367b8064466e`).
+    - Each brief is shown one complete example: the loop written for the brief's own energy and the next mood (melancholy → wistful → hopeful → melancholy), labelled with that loop's own energy and mood.
+    - mid/melancholy briefs get exactly v1's messages, which makes them a control cell inside arm B.
+- **Grammar:** `lofi_rl.grammar.loopscript_regex(dev_gu)`. On the laptop it is 3,395 characters with sha256 `1412f11f9ebdc520b50c263eda14be12829951357c17f43496ab2ddf5235e64e` (docs/GRAMMAR.md). Each run records:
+  - the sha it built;
+  - the backend: xgrammar is requested, and the record says whether LLM() took the pin and what the engine reports.
+- **Run settings,** D-019's, unchanged:
+  - Qwen3-4B-Instruct-2507 @cdbee75f;
+  - `brief.sample_briefs(2026, 500)`, one completion each;
+  - T 1.0, top_p 1, top_k 0, max_tokens 512;
+  - vLLM in bf16, eager mode.
+- **Jobs:** `make submit JOB=jobs/junk_rate.sbatch ARGS='500 2026 1 v1'` (A) and `ARGS='500 2026 1 v2'` (B). Job type sha `4a9d8685231fd573`, at most 450 SU each.
+- **Gate, unchanged from D-019:** pass_not_copy ≥ 60 % in an arm. A near-copy is character 5-gram Jaccard ≥ 0.8 with the example that row's own prompt showed; for arm A that is v1's one example, as in D-019.
+- **Reported, not gated** (junk.json `copy` and `by_cell`):
+  - quasi-copies (containment ≥ 0.85 in the shown example) and pass_not_quasi_copy;
+  - `copy.any`: J ≥ 0.8 with any of the 9 examples;
+  - the per-cell table, the knob readouts, the verbatim lines and the grid share.
+
+  The judge that chose v2 predicted from a v0 proxy that both arms would fail if quasi-copies counted. Adding them to the bar after that prediction would move it, so they stay out. Copying under the 0.8 line is the job of the reward's copy penalty (taste_pipeline §5: 0 at J 0.6, rising linearly to 0.3 at ≥ 0.8), which is added before GRPO run 1.
+- **Validity:** a constrained arm counts only if every completion that ended by stop is in the regex's language (junk.json `constrained.in_language`, with a matching sha). A stop completion outside it means the engine did not apply the grammar. That arm's numbers are then reported but decide nothing, and it is re-run after a fix.
+- **What follows:**
+  - **Both arms pass:** GRPO run 1 starts from the base model with the arm with the higher pass_not_copy. If the arms' Wilson 95 % CIs overlap, the higher pass_not_quasi_copy decides. If those CIs overlap too, v2 wins, because each brief sees an example at its own energy (knob obedience is a pre-registered claim, CLAUDE.md §9).
+  - **One arm passes:** GRPO run 1 uses that arm.
+  - **Neither passes:** the largest of three counts, taken over both arms together, sets the next step. That step is registered here before its run.
+    - **Passes that are near-copies:** prompt v3. Each brief is shown two examples at its own energy, from the two other moods.
+    - **G6 failures** (the regex does not count phrase lengths): prompt v3 with one more card line, "The items between two | marks add up to 16 steps: h.5 er e4 is 12 + 2 + 2."
+    - **All other failures** (G1–G5, compile, crash): the SFT warm-start, CLAUDE.md §9's next fallback. It is drafted and taken to Shresth before any job.
+  - **Either way:** the official Phase 1 gate still re-runs on the frozen palette (D-017) with the chosen settings, together with the ≥ 30 % "fine" ear check.
+  - **Before GRPO run 1:** a prompt-version key in the GRPO config, the copy penalty, and the backend pin and in-language count on the GRPO path. Today that path records only the regex's builder, field, sha and length.

@@ -11,11 +11,95 @@ Newest entry first. Every number cites the file or command output it was read fr
   - Day-1 shootout clips rendered on the cluster and in `inbox/2026-11-03/` (3 batches, 19 rounds, 70 clips): **needs ear check** (planned Nov 3; ready now).
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
   - base-model test v0 done: pass_not_copy 4.0 % against a 60 % bar, so grammar-constrained decoding comes first (D-016, D-019);
-  - constrained decoding built on `wt/constrained` and reviewed; its line-end and backend-record fixes are being built;
+  - constrained decoding, its review fixes (F1 line ends, F3 run record) and prompt v2 merged into main (`b56fbf6`). The constrained base-model test is pre-registered as D-020 (two arms: v1 and v2, both with the grammar);
+  - scorer server (`lofi_rl.scoring`) being built in workflow `wf_e7f4b866-15c`;
   - GRPO smoke 13632679 passed (`GRPO_SMOKE_OK`: 10 steps, then a resume from step 5; 280.7 SU). 67 of the 71 loops that passed its gates in launch a are near-copies of the prompt's example, so run 1 waits for the grammar, prompt v2 and an example-copy penalty.
 - **Waiting on Shresth:**
-  - the rest of the Day-1 ear check: `b1103-2-groove` and `b1103-3-sax` (`b1103-1-keys` is voted);
+  - Day-1 survivors: how to count picks made before 4 bars, the time cut and the keys-leader tie (all three Day-1 batches are voted);
   - `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords), due by Nov 4 morning.
+
+---
+
+## 2026-10-31 (20:10 PDT): Shresth confirmed the Day-1 survivors and the 1-bar heard rule
+
+**What was done**
+- **Shresth: "Yes, use these"**, to the proposal that a pick counts once its clip has played 1 bar, over every attempt of its round. That proposal also covered the Day-1 survivors it gives, a 3-round bass re-listen in Day 2, no Day-2 cuts, and the rule in the spec for all voting.
+- **Day-1 survivors under that rule** (from the recount, before the tally tool reproduces them):
+  - **Keys to K2:** Wurlitzer (`gs_wurli_ep200`), Tine EP (`gu_tine_ep`) and VCSL upright (`vcsl_upright_knight`), fully tied. Tine EP, the default, leads (CD-39).
+  - **Kits:** `kit_virtuosity` and `kit_gu_jazz`; `kit_swirly` dropped (BW −0.67). Virtuosity leads (2 bests to 1).
+  - **Sax final:** `sax_mtg_alto` (BW +0.75) against `sax_mtg_tenor` (+0.33). MTG alto is the S1 leader.
+  - **Bass:** undecided. No R2 round had a best (T 2, G 1); `bass_gu_acoustic` took the only worst. A 3-round re-listen goes into Day 2, and the default stays for the other Day-2 rounds meanwhile (CD-39).
+- **The rule, applied:**
+  - `configs/rating.yaml` `heard.min_bars` 4 → 1 and `toss_min_bars` 2 → 1, with the same defaults in `ui/serve.py`.
+  - `ui/audit.py` gets `heard_over_attempts` and `with_merged_heard`: heard bars are OR-ed over every attempt of a round, in the batch audit and in repeat agreement.
+  - Recorded in docs/TASTE.md (Vote unit, and the Claude's-defaults line), D-013 (amended) and docs/RATING.md.
+  - 2 new tests; suite 1998 passed, 2 skipped.
+- **Still to do:**
+  - give the tally tool the same merge once its branch lands;
+  - re-run it on the real votes and check it against the recount;
+  - write `gates/GATE_palette.md`;
+  - add the bass re-listen to job 2, then render Day 2.
+
+**SU spent:** 0.
+
+---
+
+## 2026-10-31 (19:50 PDT): Day 1 fully voted; preliminary tally; survivors wait for Shresth
+
+**What was done**
+- **`b1103-3-sax` voted:** 7 of 7 rounds, including one anchor, which was caught, so every vote keeps full weight. All three Day-1 logs parse line by line.
+- **Votes backed up** (`make backup-votes`): private repo commit `bfad896`, and the cluster copy in `$REMOTE_KEEP/votes/`.
+- **Preliminary tally:** the tally tool from `wt/tally` (`49bcd90`), run read-only on the real logs. It is not merged yet; its integration and check are still running in `wf_9a720a66-135`. The output is in the session scratchpad (private).
+  - An independent recount (a scratch script over the logs) matches every shown, heard, best, worst and BW figure, and the 16 marks left out.
+  - **Heard minimum:** only 28 of 70 clip plays reached 4 bars (keys 13 of 24, groove 7 of 18, sax 8 of 28). That left 16 marks out: keys 3, kits 4, bass 1, sax 8.
+  - **The 4-bar count and the raw picks disagree** on which kit drops, on the bass, and on which two saxes reach the final.
+  - **Time cut (CD-50):** the rule read 30.7 min for Day 1 (r 1.335) and would cut all three listed items. 8.1 of those minutes are the groove batch's silent attempt and the reloads around it (0.79 min of undone and 7.28 min of abandoned rounds). Without them Day 1 is 22.7 min (r 0.99), and nothing is cut.
+  - **Waiting on Shresth's word** (SHOOTOUTS.md §1): the survivors, the time cut and the keys-leader tie.
+- **Correction:** the 17:50 report to Shresth said 7 of 24 keys clips played under 4 bars. The logs give 11 (7 never played, 3 played 1 bar, 1 played 2).
+- **Shresth on the 4-bar rule:** "Imagine it sounded so bad that I did not even let it play more than 4 bars."
+  - **Counting bug found** while checking his point: heard bars come only from the kept attempt of a round. A clip heard in an undone or abandoned attempt of the same round counts as unheard on the redo. 6 picked clips in keys and groove had been heard 3–8 bars in an earlier attempt.
+  - **Recount** with heard bars merged over every attempt (scratch script):
+    - at 4 bars, 10 marks are left out (keys 1, kits 1, sax 8);
+    - at 1 bar, 1 of the 29 marks is left out: a sax "worst" on a clip that never played.
+    - Both minimums give the same keys to K2, the same dropped kit and the same last bass. They differ on the sax final's pair and on which keys and kit lead Day 2.
+  - **Proposed to Shresth:** a pick counts once its clip has played 1 bar, over every attempt of its round. It is not applied until he confirms. The tally tool and the audit get the merge fix in any case.
+
+**SU spent:** 0.
+
+---
+
+## 2026-10-31 (19:40 PDT): constrained decoding and prompt v2 merged; junk-rate re-registered; D-020 pre-registered; drums-and-bass batch voted
+
+**What was done**
+- **Merged `wt/constrained` into main** (`b56fbf6`, a no-ff merge; no file had changed on both sides since the merge base `ba26f77`). Workflow `wf_c6a65cc9-b90` had 7 agents: a fixer, three prompt designers, a judge, a builder and an independent verifier.
+  - **F1, line ends:** the regex now accepts v0's layout: up to two spaces before each newline, one empty line before A, and no newline after B, so EOS is allowed there. For palettes/dev_gu.yaml it is 3,395 characters, sha256 `1412f11f…` (recomputed on main after the merge). The verifier's run of v0's 500 texts through it: none is refused at a whitespace position (the old regex refused 452 there); all 500 are refused at content. Its random walk produced 3,014 strings, all of which parse as their canonical layout.
+  - **F3, run record:** with `--constrained`, `LLM()` is asked for the xgrammar backend, and the backend is read back afterwards. score counts completions inside and outside the recorded regex's language, by finish reason. **UNVERIFIED until the run:** whether vLLM 0.32.0's `LLM()` accepts that keyword, and where it stores the backend.
+  - **Prompt v2** (`lofi_rl.prompt_v2`, template sha256 `127e3094…`): each brief is shown the loop written for its own energy and the next mood, labelled with that loop's cell. mid/melancholy gets v1's messages byte for byte, a control cell. It is 1,322–1,408 Qwen3 tokens against v1's 1,389–1,391. v1's template `7aceb2bc…` is unchanged.
+  - **The verifier's one defect** (low): a docstring paragraph added to `src/lofi_rl/prompt.py`. It was reverted in the merge, so the file is byte-identical to main's (0 diff lines).
+  - **Suite on the merged tree:** 1996 passed, 2 skipped.
+- **Re-registered `jobs/junk_rate.sbatch`** (changed type, ≤ 500 SU, so Claude registers it under the 2026-10-31 rule): sha `24005999fe07a14d` → `4a9d8685231fd573`, max 450 SU, by Claude. The change adds the 4th argument PROMPT (v1 or v2). Its `#SBATCH` lines and its cost cap are unchanged.
+- **D-020 pre-registered** (docs/DECISIONS.md) before either run. Arms A (v1) and B (v2) both use the grammar, with D-019's briefs, seed and sampling and its unchanged gate (pass_not_copy ≥ 60 %). Quasi-copies are reported but not gated. It also fixes the validity check (every stop completion must be in the regex's language) and what follows from each outcome. Two independent checkers are reviewing it before submission (workflow `wf_ce8fc507-f15`).
+- **`b1103-2-groove` voted:** 6 of 6 rounds. All three vote logs parse line by line. Backed up with `make backup-votes`: private repo commit `7e52be9`, and the cluster copy in `$REMOTE_KEEP/votes/`. Shresth has started `b1103-3-sax`.
+
+**SU spent:** 0.
+
+---
+
+## 2026-10-31 (19:15 PDT): "no audio" in `make rate` traced to the Mac's sound output; scorer server build started
+
+**What was done**
+- **No audio on the groove batch** (Shresth: "no audio came through"):
+  - **Cause:** the Mac's default output was the MacBook Pro Speakers, and no AirPods were in macOS's device list (`system_profiler SPAudioDataType`; volume 100, not muted per `osascript`). The page's "airpods" device field is the listener's own label (the `configs/rating.yaml` default). It does not route sound anywhere.
+  - **The clips are fine:** the 18 groove FLACs are 44.1 kHz, stereo, 16-bit, RMS −17.3 to −16.2 dBFS, peak −1.5 dBFS. The 24 keys clips that played earlier have the same format (RMS −17.0 to −16.6). Both batches ran the same page build (ui `e91be7a0f2d5` on every event). The session's own events show no output-device change during it.
+  - **No code change.** A possible guard: show the current output device on the page.
+- **Scorer server build started** (workflow `wf_e7f4b866-15c`, a worktree branch from main `96bd121`). It builds `lofi_rl.scoring` per taste_pipeline.md §5:
+  - the audio terms (render, Audiobox, CLAP theme, MERT/CLAP features, an RM interface with PAR) behind a Unix-socket server; the symbolic reward stays in `rl/reward.py`;
+  - a cluster smoke job;
+  - three reviewers, a judge, a fixer and a verifier.
+
+  It does not touch the files the constrained branch is changing.
+
+**SU spent:** 0.
 
 ---
 
@@ -40,11 +124,11 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 **SU spent:** 280.7 (`session_report.py`: 14.0 min × 20 SU/min; registered max 500). Total 870.4.
 
-**Failed approaches:** none in the job. A gap in the interim reward: it has no penalty for copying the in-prompt example. CLAUDE.md §8 penalizes "near-copies of pool items", and the example is not in a pool yet.
+**Failed approaches:** none in the job. A gap in the interim reward: it lacks the copy penalty that `docs/design/taste_pipeline.md` §5 specifies ("MinHash 5-gram Jaccard vs pool and prompt examples": 0 at 0.6, rising linearly to 0.3 at ≥ 0.8).
 
 **Next:**
 1. Merge the constrained-decoding fixes and prompt v2 when workflow `wf_c6a65cc9-b90` lands. Re-register `jobs/junk_rate.sbatch` (≤ 500 SU), pre-register D-020, and run the base-model test on both prompt arms with the grammar on.
-2. Before run 1: treat the in-prompt example as a pool item for P_pool. Then re-run the smoke with the grammar (TRL's `vllm_structured_outputs_regex`).
+2. Before run 1: add that copy penalty to the reward, scored against the example each row's own prompt showed (prompt v2 shows a different one per brief). Then re-run the smoke with the grammar (TRL's `vllm_structured_outputs_regex`).
 3. Build the scorer server, which supplies taste, CE, theme and the audio part of the gate.
 
 ---
