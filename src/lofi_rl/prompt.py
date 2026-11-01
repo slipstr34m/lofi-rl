@@ -29,6 +29,11 @@ than that rule: tests/fixtures/loops/example.ls is 585 characters and 269 Qwen3-
 (runs/smoke-13628361/summary/policy.json), about 2.2 characters per token, so tests/test_prompt.py also caps the
 characters; the junk-rate run records vLLM's exact prompt token count.
 
+Prompt v2 (lofi_rl.prompt_v2) is this template with one line changed, the example's label: each brief is shown one
+of 9 loops, the one written for its energy and the next mood, labelled with that loop's own energy and mood, so
+mid/melancholy briefs get exactly v1's messages. v1 stays the default everywhere (junk-rate's --prompt and the job's
+PROMPT argument, the GRPO trainer); v2 changes nothing in this module's template, its sha or its messages.
+
 Standard library only, so it imports in the policy env, the scorer env and on the laptop.
 """
 from __future__ import annotations
