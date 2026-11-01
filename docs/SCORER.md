@@ -171,8 +171,9 @@ unreachable socket and on a response that fails `check_score_response`.
   still the inode the server created; the render workers are terminated; exit 0. In-flight requests are
   abandoned (daemon threads): the trainer is gone by then.
 - **`/health`:** ok, protocol, backend, versions, terms, disabled, palette (id, sha256, path), calibration
-  flags (§5.4 and the RM, §6), theme config (path, sha256, version), renderer, featurizer (models, device, load
-  time), GPU (cap, peaks), cache counters, pid, uptime.
+  flags (§5.4 and the RM, §6), theme config (path, sha256, version), renderer (name, workers, timeout, the last
+  canary), featurizer (models, device, load time, the library stack, GPU name, machine key), GPU (cap, peaks),
+  cache counters (with the hardware key), pid, uptime.
 - **`/stats`:** counts (requests, items, unique, dup, rendered, render failures by gate), per-stage timings
   (n, sum, mean, max ms: request, parse, render, featurize, mert, clap, audiobox, score), cache counters (memory
   and disk hits, misses, writes, unreadable files), GPU peaks, pool size and rebuilds.
@@ -389,6 +390,10 @@ feat_ver names another renderer than the one it runs (the real featurizer names 
 - Determinism across processes on one GPU (b vs a), the 6 GB cap with all three models, and every timing:
   model loads, renders with 7 workers on 8 CPUs, MERT, CLAP, Audiobox, a whole 32-item batch.
 - §5's sizing (n* ≈ 7 render workers on an L40S) and its "reward 9 s" step estimate.
+- The canary on the cluster's pool (rendered on the laptop in `tests/test_scoring_render.py`), and its cost at
+  each server start.
+- Render workers as process-group leaders under Slurm and `timeout` (`os.setpgrp`, the group kill, the
+  parent-death watch), and `smoke.pid_alive` through `/proc` (the laptop's tests use `ps`).
 
 ## 13. Tests
 
