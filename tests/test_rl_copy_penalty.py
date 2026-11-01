@@ -89,13 +89,22 @@ def test_j_is_junks_copy_measure_on_every_repo_loop_and_edited_copies(pal, versi
     assert seen == {"over", "ramp", "free"}, "the texts reach every part of the ramp"
 
 
+EXAMPLE_LS = ROOT / "tests" / "fixtures" / "loops" / "example.ls"     # v1's example with a `sax:` line
+
+
 def test_a_cut_completion_is_compared_by_its_plain_text_as_junk_compares_a_length_row(pal):
+    # example.ls passes the gates, and its canonical text without sax (its copy form uncut) is not its plain text,
+    # so the two forms differ here as junk's "stop" and "length" rows do
     check, copy = junk.CopyCheck("v2", pal), CopyPenalty.for_prompt("v2", pal)
-    text = prompt_v2.reference_texts(pal)["l8_hopeful_mid"]
+    ex = EXAMPLE_LS.read_text()
     brief = Brief(energy="mid", mood="wistful", bpm=80, tonic=3)
-    s = junk.score_row(_row(0, text, brief, finish="length"), pal, check)
-    got = copy(text, brief, truncated=True)
-    assert round(got.j, 4) == s["copy_any_jaccard"] and copy_form(text, brief.mode, pal, True) == junk.plain_text(text)
+    assert copy_form(ex, brief.mode, pal, True) == junk.plain_text(ex) != copy_form(ex, brief.mode, pal, False)
+    cut = junk.score_row(_row(0, ex, brief, finish="length"), pal, check)
+    stop = junk.score_row(_row(0, ex, brief), pal, check)
+    assert cut["gate"] == "G2" and stop["gate"] is None
+    assert round(copy(ex, brief, truncated=True).j, 4) == cut["copy_any_jaccard"] < 1.0 == copy(ex, brief, truncated=False).j
+    assert stop["copy_any_jaccard"] == 1.0 and copy(ex, brief, truncated=False).nearest == stop["copy_any_source"]
+    text = prompt_v2.reference_texts(pal)["l8_hopeful_mid"]
     assert copy_form(text, brief.mode, pal, False) == text, "a passing loop: its canonical text without sax"
 
 
@@ -180,6 +189,21 @@ def test_a_g2_completion_keeps_p_copy_while_its_parsed_penalties_are_zero(tmp_pa
     assert rec["gate"] == "G2" and rec["truncated"] is True and rec["p_fix"] == rec["p_sax"] == 0.0
     j = CopyPenalty.for_prompt("v1", pal)(text, BRIEF, truncated=True).j
     assert rec["copy_j"] == j and rec["p_copy"] == ramp(j) and rec["penalty"] == pytest.approx(rec["p_copy"])
+
+
+def test_the_reward_compares_a_cut_completion_by_its_plain_text_as_junk_does(tmp_path, pal):
+    # one text, cut at the limit (8 ids, no EOS) and stopped (an EOS), in two groups: the reward hands the cut to
+    # P_copy, so the cut one's J is junk's for a "length" row and the stopped one's is the copy's 1.0
+    reward = _reward(tmp_path, pal, copy=CopyPenalty.for_prompt("v2", pal))
+    ex = EXAMPLE_LS.read_text()
+    brief = Brief(energy="mid", mood="wistful", bpm=80, tonic=3)
+    reward(prompts=[None, None], completions=[ex, ex], brief=[json.dumps(dataclasses.asdict(brief))] * 2,
+           brief_id=["g0", "g1"], completion_ids=[[1] * 8, [1, EOS]])
+    cut, stop = _lines(tmp_path)
+    junk_cut = junk.score_row(_row(0, ex, brief, finish="length"), pal, junk.CopyCheck("v2", pal))["copy_any_jaccard"]
+    assert (cut["truncated"], cut["gate"], stop["truncated"]) == (True, "G2", False)
+    assert round(cut["copy_j"], 4) == junk_cut < 1.0 and stop["copy_j"] == 1.0
+    assert cut["copy_nearest"] == stop["copy_nearest"] == "example"
 
 
 def test_a_verifier_error_scores_zero_with_no_copy_reading(tmp_path, pal):
