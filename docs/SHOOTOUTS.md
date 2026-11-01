@@ -1407,11 +1407,15 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   Days 1 and 2 name no bed, so their palettes are as before (the base still lists every candidate's source and
   nothing else); a Day-1 or Day-2 draw that plays a bed is refused. The index records each rain palette's `bed` and
   the excerpt record's sha256. An S2 re-run's stages (plan.yaml `rerun_s2`) belong to Day 3 too, measured and
-  written as on Day 2. Tests: `tests/test_shootout_day3.py` (the measuring runs with no config, each rain palette's
-  band, faders, settings and bed, the rain source only where a bed plays, every palette loading with `verify=True`,
-  within each rain round only the bed differing, a missing or changed rain file and an unknown excerpt refused, a
-  bed before Day 3 refused, the S2 re-run; the level tool on Day 3; the bed record; the Day-3 batches' hidden fields
-  and five repeats, a rain round with two musics refused, a purged first showing made again and built).
+  written as on Day 2: the draw plays them on the Day-3 band with the other finalist and with the two slots S2
+  varies at their Day-2 values (`sax_plain`, `timing_grid`: plan.yaml `days.2.fixed`), so S2a compares the warmth
+  options at grid timing and S2b the timings at warm off (§4.4, CD-19) whatever the band picked for those slots
+  (2026-11-01 review: the re-run had taken the band's S2a and S2b picks). Tests: `tests/test_shootout_day3.py` (the
+  measuring runs with no config, each rain palette's band, faders, settings and bed, the rain source only where a bed
+  plays, every palette loading with `verify=True`, within each rain round only the bed differing, a missing or
+  changed rain file and an unknown excerpt refused, a bed before Day 3 refused, the S2 re-run and its Day-2 variant
+  slots; the level tool on Day 3; the bed record; the Day-3 batches' hidden fields and five repeats, a rain round
+  with two musics refused, a purged first showing made again and built).
 
 ### 7.9 Tally tool (laptop)
 - **Interface:** `python -m lofi_rl.shootout.tally --votes data/votes --inbox inbox [--batch <name> ...]` reads the

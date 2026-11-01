@@ -561,7 +561,10 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
     band_of: dict[str, dict] = {}
     run_stages = [(st, st.id, band) for st in stages]
     if rerun_s2:
-        rerun_band = {**band, "sax": rerun_s2}
+        # section 4.4: S2 again on the other finalist, with its variant slots at their Day-2 values (warm off and
+        # grid, CD-19), not the Day-3 band's picks, so a clip differs from its round-mates in its own option only
+        fixed = plan.days[plan.stages[plan.rerun_stages[0]].day].fixed
+        rerun_band = {**band, "sax": rerun_s2, "sax_variant": fixed["sax_variant"], "timing": fixed["timing"]}
         run_stages += [(replace(plan.stages[s], day=n), s, rerun_band) for s in plan.rerun_stages]
     for st, sid, b in run_stages:
         if sid in maps:

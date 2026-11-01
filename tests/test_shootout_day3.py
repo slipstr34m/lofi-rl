@@ -193,14 +193,34 @@ def test_a_bed_before_day3_is_refused(env3, tmp_path):
 
 def test_the_s2_rerun_is_measured_and_written_as_on_day2(env3, tmp_path):
     # section 4.4: when the final picks the other finalist, S2a and S2b run again on Day 3 with it, each clip its own
-    # sax fader as on Day 2 (CD-53), beside the rain palettes
+    # sax fader as on Day 2 (CD-53), beside the rain palettes. Its variant slots are Day 2's (plan.yaml days.2.fixed:
+    # sax_plain, timing_grid), not the band's picks: the warmth options at grid timing and the timings at warm off
+    # (section 4.4, CD-19), so a band picking warm on and lag (as here) reaches the rain palettes only
     from helpers_shootout import synthetic_levels_day2
-    doc = draw(PLAN, "day3", seed=0xD3, leaders=parse_leaders(LEADERS3), rerun_s2="sax_mtg_tenor")
+    leaders = parse_leaders(LEADERS3.replace("sax_variant=sax_plain", "sax_variant=sax_warm_on"))
+    assert (leaders["sax_variant"], leaders["timing"]) == (("sax_warm_on",), ("timing_lag",))
+    doc = draw(PLAN, "day3", seed=0xD3, leaders=leaders, rerun_s2="sax_mtg_tenor")
+    day2 = draw(PLAN, "day2", seed=0xD2, leaders=DAY2, adds=["R2r"])
+    fixed = PLAN.days[2].fixed
+    for stage, own, other in (("S2a", "sax_variant", "timing"), ("S2b", "timing", "sax_variant")):
+        bands = [p["band"] for p in doc["palettes"].values() if p["stage"] == stage]
+        assert len(bands) == 9 and {b["sax"] for b in bands} == {"sax_mtg_tenor"}
+        assert {b[other] for b in bands} == {fixed[other]}, stage          # S2a at timing_grid, S2b at sax_plain
+        assert {b[own] for b in bands} == set(PLAN.stages[stage].options), stage
+        was = [p["band"] for p in day2["palettes"].values() if p["stage"] == stage]
+        assert {(b[own], b[other]) for b in bands} == {(b[own], b[other]) for b in was}, "as on Day 2"
+    rain = [p["band"] for p in doc["palettes"].values() if p["stage"] in ("W1", "W2")]
+    assert rain and {(b["sax"], b["sax_variant"], b["timing"]) for b in rain} == \
+        {("sax_mtg_alto", "sax_warm_on", "timing_lag")}
     path = write_draw(doc, tmp_path / "draw.json")
     m = generate(PLAN_PATH, tmp_path / "palettes", stage="day3", levels=None, base=env3["base"], draw=path,
                  rain=env3["rain"])
     assert "sax_mtg_tenor" in m.index["variants"]
-    assert {c["stage"] for c in m.index["configs"].values()} == {"S2a", "S2b"}
+    assert {c["stage"] for c in m.index["configs"].values()} >= {"S2a", "S2b"}
+    for c in m.index["configs"].values():
+        if c["stage"] in ("S2a", "S2b"):
+            assert c["settings"][:2] == ["swing_55", "humanize_off"] and c["option"] in c["settings"]
+            assert ("timing_grid" if c["stage"] == "S2a" else "sax_plain") in c["settings"], c
     lv = synthetic_levels_day2(tmp_path / "palettes" / "measure" / "index.json", env3["base"], doc, tmp_path / "lv.json")
     lv.write_text(json.dumps(dict(json.loads(lv.read_text()), stage="day3")))
     st = generate(PLAN_PATH, tmp_path / "palettes", stage="day3", levels=lv, base=env3["base"], draw=path,
@@ -208,6 +228,16 @@ def test_the_s2_rerun_is_measured_and_written_as_on_day2(env3, tmp_path):
     s2 = [p for p in st.index["palettes"] if p["stage"] in ("S2a", "S2b") and p.get("level")]
     assert len(s2) == 18 and {p["instruments"]["sax"] for p in s2} == {"sax_mtg_tenor"}
     assert all(p.get("bed", None) is None for p in s2)
+    for p in s2:                                   # the palettes written: Day 2's slots, each clip's own option
+        variant, timing = (p["option"], "timing_grid") if p["stage"] == "S2a" else ("sax_plain", p["option"])
+        assert p["settings"] == ["swing_55", "humanize_off", variant, timing], p["id"]
+        d = yaml_load((tmp_path / "palettes" / p["file"]).read_text())
+        assert d["sax_expr"]["timing"] == timing.removeprefix("timing_"), p["id"]
+        assert d["mix"]["sax_warm"] is (variant == "sax_warm_on"), p["id"]
+        assert d["sax_expr"]["enabled"] is (variant != "sax_expr_off"), p["id"]
+    for p in st.index["palettes"]:
+        if p["stage"] in ("W1", "W2"):             # the rain palettes play the band's picks
+            assert p["settings"][2:4] == ["sax_warm_on", "timing_lag"], p["settings"]
 
 
 # ------------------------------------------------------------------------------------- the level tool (7.1)
