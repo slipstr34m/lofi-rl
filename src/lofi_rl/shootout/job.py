@@ -7,7 +7,7 @@ with the ARGS `make submit JOB=jobs/shootout.sbatch ARGS='...'` passes: `--stage
 on `--leaders`, one `<slot>=<id>[+<id>...]` per band slot joined by `/`, leader first:
 
     --stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id>
-    --stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>
+    --stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>/swing=<id>/humanize=<id>/sax_variant=<id>/timing=<id>
 
 Day 2's keys take 3 ids (4 on a tie at third place) and its sax 2 (3 on a tie, 1 with the `final` cut); its kit takes
 1 id, or 2 with `--add R2r` (the bass re-listen, CD-54: the surviving kits, leader first; the bass is then the
@@ -15,9 +15,17 @@ default, bass_gu_acoustic, meanwhile):
 
     --stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>+<id>/bass=bass_gu_acoustic/sax=<id>+<id> --prior <job1> --add R2r
 
-Day 3 takes one id per slot, and also names `swing`, `humanize`, `sax_variant` and `timing` when a Day-2 pick is not
-the plan's default. Day 3 adds `--prior <job>+<job>`, `--repeats <stage>+...` and, if needed, `--rerun-s2 <sax
-id>`; a cut adds `--cut <name>+<name>`. ARGS hold no spaces, so they need no comma-safe `--export`.
+Day 3 plays the Day-2 picks everywhere (SHOOTOUTS.md section 4.5): one id per slot, the kit with its own bass (its
+R2r pairing, CD-54), and every variant slot named, `swing`, `humanize`, `sax_variant` and `timing`, so nothing rides
+on a default (a slot left out would take the plan's: swing_55, humanize_off, sax_plain, timing_grid). Day 3 adds
+`--prior <job1>+<job2>` (the jobs that built the Day-1 and Day-2 batches, whose renders the repeats show again),
+`--repeats <stage>+...` (the stages voted at least 2 days before the serving date, which Claude passes: the tally's
+`--serve-date`) and, if the final picked the other finalist, `--rerun-s2 <sax id>`; a cut adds `--cut <name>+<name>`.
+The tally writes the whole line (section 7.9):
+
+    --stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>/swing=<id>/humanize=<id>/sax_variant=<id>/timing=<id> --prior <job1>+<job2> --repeats <stage>+<stage>
+
+ARGS hold no spaces, so they need no comma-safe `--export`.
 
 1. Everything the job was given goes into `summary/leaders.json` first.
 2. `draw`: `python -m lofi_rl.shootout.batch draw` writes `summary/draw.json` (the maps, the order, the anchors and
