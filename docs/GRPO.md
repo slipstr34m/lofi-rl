@@ -4,19 +4,26 @@ The GRPO trainer, the reward it optimizes until the scorer server exists, and th
 GPU.
 - **Spec:** `docs/design/taste_pipeline.md` §5 (reward architecture) and §6 (GRPO settings, smoke protocol, SU
   estimates); `docs/design/instrument.md` §2 (gates) and §5 (verifiers); `CLAUDE.md` §8.
-- **Code:** `src/lofi_rl/rl/`: `curriculum.py`, `reward.py`, `config.py`, `train.py`, `smoke_check.py`.
-- **Config:** `configs/grpo_smoke.yaml`. **Job:** `jobs/grpo_smoke.sbatch` (`lofi-grpo-smoke`).
-- **Tests:** `tests/test_rl_{reward,train,smoke_check,imports,rehearsal}.py`, with the stand-ins in
-  `tests/helpers_rl.py`. `test_rl_rehearsal.py` runs `train()` twice (10 steps, then a resume from checkpoint-5)
-  against stand-in torch, transformers, TRL, PEFT and datasets modules that call the reward the way GRPOTrainer
-  does. `smoke_check` then judges what those two runs wrote. That tests the wiring; real TRL is the cluster's to test.
-- **Interfaces used:** `lofi_rl.prompt` (`PROMPT_VERSION`, `build_messages`, `template_sha256`) and
-  `lofi_rl.verify` (`score`, `group_penalties`) are written by other builders. The tests use fakes that follow
-  their shared interfaces exactly.
-- **Prompt version:** the trainer builds prompt v1 (`lofi_rl.prompt`). Prompt v2 (`lofi_rl.prompt_v2`, the same
-  interface; it shows each brief the example of its energy and the next mood) is used only by the junk-rate test so
-  far. Switching GRPO to it needs a config key, and first a pool-copy penalty (P_pool) that also covers the 9
-  examples v2 shows (`prompt_v2.reference_texts(palette)`) besides the seed pool.
+- **Code:** `src/lofi_rl/rl/`: `curriculum.py`, `reward.py`, `copy_penalty.py`, `config.py`, `train.py`,
+  `trl_probe.py`, `smoke_check.py`.
+- **Configs:** `configs/grpo_smoke.yaml` (the smoke 13632679 ran), `configs/grpo_smoke_constrained.yaml` (plus the
+  grammar) and `configs/grpo_smoke_v2_grammar.yaml` (D-020's run-1 settings: prompt v2, the grammar, the copy
+  penalty). **Job:** `jobs/grpo_smoke.sbatch` (`lofi-grpo-smoke`), which takes one of them as its argument (§5).
+- **Tests:** `tests/test_rl_{reward,copy_penalty,train,trl_probe,smoke_check,imports,rehearsal}.py` and
+  `tests/test_grpo_smoke_job.py`, with the stand-ins in `tests/helpers_rl.py`. `test_rl_rehearsal.py` runs
+  `train()` twice (10 steps, then a resume from checkpoint-5) against stand-in torch, transformers, TRL, PEFT,
+  datasets and vLLM modules that call the reward the way GRPOTrainer does, on today's smoke and on the v2 grammar
+  smoke. `smoke_check` then judges what those two runs wrote. That tests the wiring; real TRL is the cluster's to
+  test.
+- **Interfaces used:** `lofi_rl.prompt` and `lofi_rl.prompt_v2` (`PROMPT_VERSION`, `build_messages`,
+  `template_sha256`; v2 also `example_id` and `reference_texts`) and `lofi_rl.verify` (`score`, `group_penalties`)
+  are written by other builders. The tests use fakes that follow their shared interfaces exactly, or the real
+  modules.
+- **Prompt version:** the config's `prompt` key, v1 (the default) or v2 (§3). D-020's outcome picks v2 with the
+  grammar for run 1, and its Before-GRPO-run-1 list is built here: the prompt key, the copy penalty (§2), the
+  backend pin and the in-language count (§4, §5), and the IS readout for the grammar lever (§5).
+  `prompt_v2.py`'s docstring still says GRPO builds v1 and that P_pool must exist first; that file is on D-020's
+  frozen path (`docs/prereg/D-020_junk_path.txt`), so this page supersedes that sentence.
 - **Sound claims:** none. Nothing here renders audio.
 
 ## 1. Entry points
@@ -25,9 +32,14 @@ GPU.
 python -m lofi_rl.rl.train --config configs/grpo_smoke.yaml --dry-run          # laptop or cluster: no torch
 python -m lofi_rl.rl.train --config configs/grpo_smoke.yaml [--resume-from <run>/a/checkpoint-5] \
     [--run-dir DIR] [--summary-dir DIR] [--gpu-profile a100-80gb|48gb] [--scorer-pin FILE]   # policy env, one GPU
-python -m lofi_rl.rl.smoke_check --run <run> --stage first|final [--rc a=0 --rc b=0]
-make submit JOB=jobs/grpo_smoke.sbatch                                          # once the job type is registered
+python -m lofi_rl.rl.smoke_check --run <run> --stage first|final [--config CFG] [--rc a=0 --rc b=0]
+make submit JOB=jobs/grpo_smoke.sbatch                                          # today's smoke (configs/grpo_smoke.yaml)
+make submit JOB=jobs/grpo_smoke.sbatch ARGS='configs/grpo_smoke_v2_grammar.yaml'   # D-020's run-1 settings
 ```
+
+- **The job type** changed with its config argument: its sha is `1dded12d386c7fab` (it was `07203168742f7411`), at
+  most 500 SU, so it is re-registered (`make approve JOB=jobs/grpo_smoke.sbatch MAX=500 BY=Claude`) before the next
+  submit; the guard refuses it until then.
 
 - **Exit codes of `train`:** 0 done; 2 a config problem (including a GRPOConfig field TRL lacks, or a prompt too
   long for the limits); 3 no policy env (torch, transformers, TRL, PEFT, datasets or vLLM missing: use `--dry-run`).
@@ -40,7 +52,7 @@ make submit JOB=jobs/grpo_smoke.sbatch                                          
 ## 2. The interim reward (`lofi_rl.rl.reward`)
 
 ```
-R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix)
+R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix + P_copy)
 ```
 
 `make_reward(palette_path, log_path)` returns the reward function TRL calls once per generation batch, as
@@ -53,6 +65,37 @@ R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix)
 | r_taste, r_ce, r_theme | the scorer server (taste RM, Audiobox CE, CLAP theme), taste_pipeline §5 | **0**, weights logged |
 | P_sax, penalties (bars, len), P_fix | `verify.score` | live |
 | P_group | `verify.group_penalties(texts, scores)` over each prompt's group | live |
+| P_copy | `lofi_rl.rl.copy_penalty` (below), only when the config sets `copy_penalty` | v2 grammar smoke only |
+
+- **P_copy** (taste_pipeline §5's copy row; D-020's Before-GRPO-run-1 list).
+  - **The ramp:** 0 at J ≤ 0.6, rising linearly to 0.3 at J ≥ 0.8 (`copy_penalty.ramp`; the endpoints are exact).
+  - **J** is the largest character 5-gram Jaccard of the completion with any reference, by junk.py's measure: its
+    `grams`, `jaccard`, `Reference` and `best_match` are imported, never copied. The completion's copy form is
+    junk.score_row's: a text that passes the parser's gates (dsl.parse under the palette's vocabulary in the brief's
+    mode; a cut completion is G2) is compared by its canonical text without `sax:`, any other by `junk.plain_text`.
+    `tests/test_rl_copy_penalty.py` checks J against junk's own `copy_any_jaccard` (v2) and `copy_jaccard` (v1)
+    on 114 texts: every repo loop and 54 edited copies of the examples.
+  - **The references** are every example the run's prompt version can show, since across its prompts the policy
+    sees all of them: v1 its one (`prompt.example_text`), v2 all 9 of `prompt_v2.reference_texts` (strict). The
+    config's `copy_penalty.pool` adds one reference per `.ls` file (the seed pool, later), in its own copy form
+    with no brief's mode, keyed by its repo path. taste_pipeline §5 names MinHash; this is the exact Jaccard it
+    estimates, compared with every reference (an LSH index is the change to make if a large pool shows in the step
+    time).
+  - **Where it applies:** every scored completion. A failed gate and a G2 keep it, as they keep P_group: it reads
+    the text, not a parse. A verifier error still scores 0, with `p_copy` 0 and no J.
+  - **Opt-in, decided here:** the reward adds P_copy only when built with `copy=` (`train` does it for a config with
+    `copy_penalty`). Without it the record has no `p_copy` field, not even 0.0, and today's smoke keeps its rewards
+    and log byte for byte (`tests/test_scoring_reward_hook.py`'s golden, unchanged).
+- **The in-language count** (a constrained config; D-020's Validity, on the GRPO path). With `language=` (the
+  config's `structured_outputs`) every completion gets `finish` and `in_language`: whether its text fullmatches the
+  decoding regex under Python's `re`.
+  - **The finish reason** comes from the token ids, as G2 does: `length` when the completion hit the limit with no
+    EOS last, `stop` when it ended before the limit or on an EOS, `other` when the ids or the limit are unknown. TRL
+    passes no vLLM finish reason to a reward.
+  - Under a working constraint every `stop` completion is in the language; a `length` one is cut, so it is counted
+    apart.
+- **The shown example:** a prompt-v2 row carries `example_id`, and the log copies it per completion. A v1 row has no
+  such column, so v1's records are unchanged.
 
 - **Weights** (`lofi_rl.rl.curriculum`): w(t) = (1 − s)·W0 + s·W1 with s = min(t, 30)/30.
   - W0 = theory .50, taste .20, knobs .15, CE .05, theme .10; W1 = theory .10, taste .60, knobs .15, CE .05, theme .10.
@@ -79,12 +122,18 @@ R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix)
   - `step`, `step_source`, `call`, `i`, `group`, `group_key`, `brief_id`, `brief`, `n_tokens`, `truncated`;
   - `gate_ok`, `gate`, `G`, `w` and `r` (all five terms), `theory_parts`, `knob_parts`;
   - `p_sax`, `penalties`, `p_group`, `p_fix`, `repairs`, `positive` (= G·Σ w·r), `penalty`, `reward`;
-  - `digest`, `text_sha256`, `text`; plus `raw_gate` (the verifier's view of a cut text) or `error`.
+  - `digest`, `text_sha256`, `text`; plus `raw_gate` (the verifier's view of a cut text) or `error`;
+  - with P_copy: `p_copy`, `copy_j` (the largest J) and `copy_nearest` (its reference: the first on a tie, J 0
+    included, as junk's best_match); with the language count: `finish` and `in_language`; on a v2 row:
+    `example_id`.
 - **Per-step summary.** `reward.stats[step]` holds the means of every term, the gate rate and counts, truncations,
-  errors, the reward's mean, std, min and max, and the call time. The trainer's step log copies it (§4).
+  errors, the reward's mean, std, min and max, and the call time. The trainer's step log copies it (§4). With P_copy
+  it adds `copy` (p_copy_mean, penalized, j_mean, j_max, at_least 0.6 and 0.8, the nearest references of the
+  penalized); with the language count `in_language` (the regex sha256, and n, in_language, out_of_language for
+  stop, length and other, junk.json's shape).
 - **TRL's logging hooks.** taste_pipeline §5 names `log_metric` and `log_extra`. When TRL passes them the reward logs
-  `lofi/reward`, `lofi/G`, `lofi/r_<term>` and `lofi/p_group`. A hook that raises is recorded under `hook_errors`
-  and never stops the reward.
+  `lofi/reward`, `lofi/G`, `lofi/r_<term>` and `lofi/p_group`, plus `lofi/p_copy` and `lofi/stop_out_of_language`
+  when those terms are on. A hook that raises is recorded under `hook_errors` and never stops the reward.
 - **The scorer server** (taste_pipeline §5, "Scorer server") is built: `lofi_rl.scoring`, specified in
   [docs/SCORER.md](SCORER.md). With `$LOFI_SCORER_SOCK` set (or `make_reward(..., scorer=...)`), the reward sends the
   completions that passed the symbolic gate to it in one `POST /score` and takes r_taste, r_ce, r_theme and the
@@ -136,16 +185,46 @@ R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix)
     `vllm_structured_outputs_regex` in every profile.
   - The regex is never in the YAML: writing that field in `trainer` or a profile is refused, and so is listing it in
     `optional_fields`.
-  - The dry run and `run.json` record its builder, field, sha256 and length under `structured_outputs`.
+  - The dry run and `run.json` record its builder, field, sha256 and length under `structured_outputs`, and
+    run.json adds the backend record (§4).
+  - **The field name exists** in TRL 1.17.1's GRPOConfig: `runs/grpo-smoke-13632679/summary/a/run.json` lists
+    `vllm_structured_outputs_regex` (as null) in `grpo_config`. Whether TRL hands it to vLLM is what the in-language
+    count checks.
+- **The prompt version:** the optional top-level `prompt: v1|v2` (default v1, so a config without it is unchanged).
+  It picks the template module every row's messages come from: v1 `lofi_rl.prompt`, v2 `lofi_rl.prompt_v2`. Any
+  other value is refused at load, and the trainer refuses a module whose `PROMPT_VERSION` is another.
+- **The copy penalty:** the optional top-level `copy_penalty: {pool: [...]}` turns P_copy on (§2). `pool` is
+  required inside it: a list of repo-relative (or absolute) `.ls` files or directories of them, `[]` for the
+  prompt's examples only. A missing path, another suffix, an empty directory or a path listed twice is refused at
+  load. The thresholds are taste_pipeline §5's and live in code, never in a config.
+- **`configs/grpo_smoke_v2_grammar.yaml`** is `configs/grpo_smoke.yaml` plus `prompt: v2`,
+  `structured_outputs: loopscript_regex` and `copy_penalty: {pool: []}`, and every other key the smoke's
+  (`tests/test_rl_train.py`). `configs/grpo_smoke.yaml` itself is unchanged: sha256 `d0ed1702…`, the file smoke
+  13632679 ran.
 
 ## 4. The trainer (`lofi_rl.rl.train`)
 
 - **The model.** `kit.hf_cache.resolve_pinned` finds the pinned snapshot in the offline HF cache and fails closed.
   `AutoModelForCausalLM` loads it in bf16, and `GRPOTrainer` gets the model, the tokenizer (left padding and
   truncation, as TRL loads it) and the LoRA config. With PEFT, the KL reference is the adapter-off base.
-- **The dataset.** `brief.sample_briefs(seed 596, count 40)` gives 40 briefs, one row each: `prompt` (from
-  `prompt.build_messages`, checked to be system/user messages ending with the user's), `brief` (JSON, sorted keys)
-  and `brief_id` (`"596:<index>"`). That is 40 rows = 10 steps × 4 prompts.
+- **The dataset.** `brief.sample_briefs(seed 596, count 40)` gives 40 briefs, one row each: `prompt` (from the
+  config's prompt module's `build_messages`, checked to be system/user messages ending with the user's), `brief`
+  (JSON, sorted keys) and `brief_id` (`"596:<index>"`). That is 40 rows = 10 steps × 4 prompts.
+  - **Prompt v2 rows** are v2's per-cell messages, and carry `example_id` (`prompt_v2.example_id`), the example
+    their prompt shows. For the smoke's 40 briefs that is 8 cells (no high/melancholy brief) and 8 of the 9 examples.
+  - **v1 rows** have no new column: their one example is `"example"`.
+- **The backend pin** (a constrained config). Before `GRPOTrainer` is built, `trl_probe.BackendPin` wraps
+  `vllm.LLM.__init__` so the LLM that TRL builds in colocate mode asks for
+  `structured_outputs_config={"backend": "xgrammar"}`, as junk.py's own engine does (`junk.STRUCTURED_BACKEND`).
+  - **No keyword:** a TypeError on the keyword builds the LLM again without it, and `pin_accepted` is false.
+  - **TRL's own choice:** a caller that passes its own `structured_outputs_config` keeps it, recorded as
+    `set_by_caller`.
+  - **The read-back:** after construction `find_engine` walks the trainer's attributes (at most 3 links; never into
+    the model, tokenizer, accelerator or datasets) to the LLM. `junk.read_backend` reads its backend.
+  - **The record:** run.json `structured_outputs.backend` has `requested`, `pin_accepted`, `backend`, `source`,
+    `applied`, `engine` (the path it was found at) and `calls` (LLMs built). If no engine is on the trainer when it
+    is built, the read is made again after training.
+  - The class is restored when the launch ends. None of this raises; an unconstrained config pins nothing.
 - **Before the GPU work** the run:
   - tokenizes every prompt with the chat template and refuses one longer than `max_prompt_length`, or one that
     with `max_completion_length` overflows `vllm_max_model_length`;
@@ -154,6 +233,14 @@ R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix)
   - `run.json`: the settings, verified and dropped TRL fields, `GRPOConfig.to_dict()`, versions, GPU, snapshot,
     palette and prompt identity, prompt token min, mean and max, trainable parameters, `startup_s`, `wall_s`, the
     status and any error with its trace. It is rewritten at each stage, so a crash leaves what happened so far.
+    - **The prompt:** `version`, `module`, `template_sha256` (v1 `7aceb2bc…`, v2 `127e3094…`), and per row
+      `brief_ids`, `example_ids` and `messages_sha256`, with `example_counts`.
+    - **`copy_penalty`:** the rule, its numbers, the reference ids with each prompt example's sha256, and the pool.
+    - **`structured_outputs.backend`:** the pin's record, above.
+    - **`trl_logp_metric`:** where the installed TRL computes `sampling/sampling_logp_difference/mean`, and whether
+      that is D-020's definition (§5).
+    - **`vllm_logprobs`:** evidence only, unchecked: lines of the installed vLLM showing where the grammar bitmask
+      meets the logits and which log-probs the sampler returns.
   - `steps.jsonl`: one `step` record per optimizer step, with `trl` (TRL's logged metrics: reward, reward_std,
     completion lengths, KL, loss, …), `lofi` (the reward's summary of that step's rollouts) and `step_s`. There is
     one `save` record per checkpoint, and a `train_end` record. TRL scores step k's rollouts at global step k and
@@ -164,16 +251,33 @@ R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix)
 - **Teardown.** After a GPU run the process ends with `os._exit`, which skips native teardown (vLLM, NCCL) that can
   hang past the walltime. faulthandler prints every thread's stack on a crash or a SIGTERM from `timeout`.
 - **`--dry-run`** validates the config, builds the 40 prompts and prints JSON:
-  - the resolved settings of every profile, the prompt version, template sha, brief mix, lengths and a preview;
+  - the resolved settings of every profile, the prompt version, module, template sha, every row's example id and
+    messages sha, brief mix, lengths and a preview;
   - the unverified TRL names;
+  - the copy penalty's summary, the language count's regex sha and the backend the run will pin;
+  - `trl_logp_metric`: the installed TRL's metric source, read as text (on the laptop: `not_found`);
   - `tests/fixtures/loops/example.ls` scored through the real reward path, when `lofi_rl.verify` exists: the
-    symbolic reward, with the scorer off even when `$LOFI_SCORER_SOCK` is exported (the report's
-    `reward.scorer` says whether it is set; the scorer is never contacted).
+    symbolic reward, with P_copy and the language count as the config sets them, and the scorer off even when
+    `$LOFI_SCORER_SOCK` is exported (the report's `reward.scorer` says whether it is set; the scorer is never
+    contacted).
+  - **On the laptop, 2026-11-01:**
+    - `configs/grpo_smoke.yaml` reports the reward check smoke 13632679's dry run reported: 0.5784511276657195, the
+      same profiles, prompts and preview (`runs/grpo-smoke-13632679/summary/dry_run.json`).
+    - `configs/grpo_smoke_v2_grammar.yaml` scores example.ls as a copy of `example`: J 1.0, P_copy 0.3, reward
+      0.2784511276657195. example.ls is v1's example with a `sax:` line.
 
   It never imports torch, TRL, vLLM, transformers, PEFT or datasets
   (`tests/test_rl_train.py::test_dry_run_runs_with_torch_trl_and_vllm_blocked`).
 
 ## 5. The smoke (`jobs/grpo_smoke.sbatch`)
+
+**The config** is the job's one optional argument: one of the `configs/grpo_smoke*.yaml` files in the mirror, default
+`configs/grpo_smoke.yaml`. Any other value, or a second word, stops the job (exit 2) before the env is sourced. The
+config reaches the dry run, both launches and both checks, and the log names it.
+- `make submit JOB=jobs/grpo_smoke.sbatch` runs today's smoke, the config smoke 13632679 ran.
+- `make submit JOB=jobs/grpo_smoke.sbatch ARGS='configs/grpo_smoke_v2_grammar.yaml'` runs D-020's run-1
+  settings on the default A100. Smoke 13632679 ran on an L40S at the same 25 min:
+  `OVR='--gres=gpu:l40s:1 --constraint=l40s'` with the same ARGS, still at most 500 SU.
 
 1. `--dry-run` in the policy env checks the config, the prompts and the reward on `example.ls`. If it fails, no GPU
    work starts.
@@ -188,14 +292,56 @@ R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix)
    - launch b resumed from `a/checkpoint-5`, started at step 5, trained exactly steps 6–10 (the resumed step count),
      ended at global step 10 and saved `b/checkpoint-10`;
    - the reward scored 32 completions per step in 4 groups of 8, at curriculum steps 0–9 (a) and 5–9 (b);
-   - there were no reward errors.
+   - there were no reward errors;
+   - with a constrained config, every `stop` completion of both launches is in the regex's language, every
+     completion has an in-language record, and each launch's run.json names the config's regex (sha256);
+   - with `copy_penalty`, every completion has a `p_copy`.
 
    Warnings list a curriculum step that did not come from TRL's `trainer_state`, dropped optional fields, failed
-   logging hooks, and duplicate step records. `smoke.json` also has, for each step, the reward mean and std (ours
-   and TRL's), KL, mean completion length, gate rate, loss and step time, and each launch's startup and wall time.
+   logging hooks, duplicate step records, and an IS readout that is unavailable. `smoke.json` also has, for each
+   step, the reward mean and std (ours and TRL's), KL, mean completion length, gate rate, loss, step time and TRL's
+   `sampling/sampling_logp_difference/mean` (as TRL logged it, read or not), and each launch's startup and wall
+   time. A launch a in-language failure is judged at the final stage, like a reward error, so it never blocks the
+   resume test.
+
+**What the D-020 settings add to `smoke.json`:**
+- **`in_language`** (constrained): the regex's sha256 and the counts by finish reason (stop, length, other: n,
+  in_language, out_of_language), in total and per launch, with per-step stop counts and the first out-of-language
+  stop completions.
+- **`backend`** (constrained): each launch's run.json record of the pin: requested, pin_accepted, backend, source,
+  applied, engine. It decides nothing, as in junk.json.
+- **`copy`** (copy_penalty): per launch, P_copy's mean, the completions it penalized, J ≥ 0.8, the largest J, the
+  nearest references, and how many of the penalized were nearest to the example their own prompt showed.
+- **`is_ratio`**: D-020's IS readout for the grammar lever. D-020 defines it as the mean, over every completion
+  token of every step, of |log π_vLLM(token) − log π_trainer(token)|.
+  - **When TRL's metric is read:** only when every launch's run.json `trl_logp_metric.verdict` is `match`. That is,
+    the installed TRL's source was parsed at run time and its `sampling/sampling_logp_difference/mean` is
+    `mean(|old_per_token_logps − sampling_per_token_logps|[completion mask])`. The checks are in
+    `lofi_rl.rl.trl_probe`: a plain mean of an absolute difference, masked by `completion_mask`, one operand
+    vLLM's sampling log-probs, the other computed on `self.model`, aggregated only by gather/mean/item.
+  - **Otherwise** `value_source` is `unavailable`, with the verdicts and the reason, and a warning. No value or rule
+    is given, though TRL's numbers stay in `steps`. Computing it from what the trainer exposes would mean hooking
+    TRL internals no laptop test can check, so this build does not.
+  - **Every step of both launches counts:** the resumed steps 6–10 are steps the smoke ran, generated again. Per
+    step, `value` is TRL's logged mean and `tokens` its completion tokens from rewards.jsonl (step k's record
+    carries reward step k − 1). Truncated completions are left out under `mask_truncated_completions`, as TRL's
+    mask leaves them out.
+  - **The means:** `mean_of_steps` and `token_weighted_mean`, which is D-020's "over every completion token", are
+    reported, overall and `by_launch`.
+  - **The rule** reads the token-weighted mean when every step has its tokens, else the mean of the steps:
+    `exceeds` is value > 0.05. It is D-020's reading only for the grammar + v2 config (`applies`). `caveats` name
+    steps with truncated completions, whose tokens TRL's value leaves out, and the two means falling on two sides
+    of 0.05.
 
 **Timeouts.** Each launch runs under `timeout -k 30s` with the job's remaining time minus 3 minutes, so the final
 check always runs inside the walltime.
+
+**With the D-020 settings** the walltime and the cost should stay; the smoke measures them.
+- **The grammar** compiles the regex once per launch and masks each decode step. D-020's constrained junk runs
+  generated 2,615.3 and 2,579.9 tok/s, against v0's 2,230.1 (`runs/junk-1364032{4,5}/summary/generate.json`,
+  `runs/junk-13632676/summary/generate.json`).
+- **P_copy and the language check** added 0.43 ms a completion to a reward of about 12 ms, in a laptop run of 20
+  completions.
 
 **Sizing** (the §6 estimates are UNVERIFIED; this smoke measures them):
 
@@ -251,6 +397,28 @@ check always runs inside the walltime.
 13. The import test blocks the ML stack as well as mido, soundfile, scipy and pedalboard, because the laptop has
     none of it.
 
+**The D-020 build (2026-11-01).** These are choices made for the Before-GRPO-run-1 list. They are readings of D-020
+for its smoke, so the merge records them in D-020 before that smoke runs.
+
+14. **Opting in:**
+    - P_copy is opt-in by a config key, `copy_penalty`. Today's v1 smoke config has none, so its rewards stay byte
+      for byte; the v2 grammar smoke sets it.
+    - The in-language count is on for every constrained config.
+    - Neither adds a field, not even a 0, when off.
+15. **What P_copy covers:** every scored completion, a G2 and a failed gate included (it reads the text, like
+    P_group). The pool's files are compared in their own copy form, with no brief's mode.
+16. **The finish reason** comes from the token ids (G2's test), since TRL passes no vLLM finish reason to a reward.
+    `stop` is "ended before the limit or on an EOS".
+17. **A v2 row** carries `example_id`; a v1 row gets no new column, so v1's dataset and log are what they were.
+18. **The backend pin** wraps `vllm.LLM.__init__` for the launch rather than assuming where TRL builds its engine.
+    The engine is then found by walking the trainer, not read from an assumed attribute.
+19. **The IS readout:**
+    - It counts every step of both launches.
+    - It weights the per-step values by completion tokens, truncated ones out as TRL's mask leaves them out.
+    - The 0.05 rule reads the token-weighted mean, which is D-020's "over every completion token".
+    - Without a checked TRL source it is unavailable, never computed from guessed internals.
+    - An unavailable readout is a warning, not a smoke failure: D-020's reading then stays open.
+
 ## 7. Unverified until the cluster smoke (no TRL source on the laptop)
 
 - **GRPOConfig / TrainingArguments names.** These are checked by `fit_fields`, recorded in `run.json`, and also by
@@ -279,3 +447,34 @@ check always runs inside the walltime.
   - checkpoint file names: `trainer_state.json`, `adapter_model.safetensors`, `optimizer.pt`, `scheduler.pt`,
     `rng_state.pth`;
   - `PeftModel.get_nb_trainable_parameters`.
+
+**The D-020 build: UNVERIFIED until the v2 grammar smoke runs.** Each item is recorded by the run, and the smoke
+fails closed where it can.
+- **Recorded, not yet seen working:**
+  - **Where TRL builds its engine:** TRL 1.17.1 builds its colocate engine through `vllm.LLM`, so the pin reaches
+    it. Recorded: `structured_outputs.backend.calls` and `pin_accepted`; `calls` 0 means the pin never ran.
+  - **Where TRL keeps it:** the engine sits on the trainer within 3 attribute links. Recorded: `engine`, null when
+    not found.
+  - **The read-back:** `junk.read_backend`'s paths hold for TRL's engine as they did for junk's. Recorded: `source`;
+    `unknown` when none resolves.
+- **Checked by the in-language count:**
+  - TRL passes `vllm_structured_outputs_regex` into the SamplingParams of every generation;
+  - the text TRL decodes for a reward is the text vLLM's grammar constrained;
+  - a completion shorter than the limit ended on an EOS (so `stop` is vLLM's stop).
+
+  A `stop` completion out of the language fails the smoke.
+- **Read from the installed TRL, and possibly not read at all:** whether TRL 1.17.1's
+  `sampling/sampling_logp_difference/mean` is D-020's definition.
+  - The check reads its source at run time (`trl_logp_metric`) and fails closed: a definition it does not
+    recognise makes the readout unavailable.
+  - The check is on TRL's text. Two things it does not see:
+    - that one value is appended per optimizer step (the smoke's `grpo_config` shows `generation_batch_size` 32 =
+      32 completions per step: `runs/grpo-smoke-13632679/summary/a/run.json`);
+    - that TRL's mask matches the reward's token counts.
+- **Not checked by any step:** which log-probs vLLM 0.32 reports, before or after the grammar bitmask.
+  - D-020's π_vLLM is the masked sampler. TRL's metric shows the mask's effect only if vLLM computes its log-probs
+    from the masked logits.
+  - `vllm_logprobs` records the lines that say so, and TRL's `logprobs_mode` lines are in `trl_logp_metric`, for a
+    reader. Neither decides anything.
+- **The dataset column:** TRL passes the dataset's `example_id` column to the reward as it passes `brief_id`; a v2
+  record without it is visible in rewards.jsonl.
