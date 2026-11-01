@@ -11,5 +11,5 @@ hat: x.g.x...x.g.x... x.g.x...x.g.x.x.
 @6 snare: ....x..g....x...
 @7 comp: x-..x-..........
 @8 kick: x..x......x...g.
-A: q.2 e3 h5 | e4 e3 q2 hr | q6 e5 e6 h2' | q1' e7 e6 hr
-B: q.2 e3 h5 | e4 e3 q2 e1 e7, qr | e1 e2 q4 h6 | q.5 e4 hr
+A: q.2 e3 h5 | q.3 e2 hr | qr e5 e6 h2' | q.1' e6 hr
+B: q.2 e3 h5 | e4 e3 q2 hr | qr q4 h6 | q5 q4 hr

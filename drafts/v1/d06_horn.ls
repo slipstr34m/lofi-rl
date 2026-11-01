@@ -12,5 +12,5 @@ hat: X.x.x.x.X.x.x.x. x.x.x.x.x.x.x.x.
 @6 snare: ....x..g....x...
 @7 hat: X.x.x.x.X.x.x.xx
 @8 comp: x-....x-..x-x-..
-A: q3 e2 e3 h5 | er e6 e5 e6 q1' qr | h.7 e6 e5 | q3 e2 e3 hr
-B: q3 e2 e3 h5 | er e6 e5 e3 q2 qr | q1 e2 e3 h5 | q.6 e5 hr
+A: q3 e2 e3 h5 | qr e6 e5 q1' qr | h.7 qr | q.3 e2 hr
+B: q3 e2 e3 h5 | er e6 e5 q3 q.r | hr h5 | q.6 e5 hr

@@ -13,5 +13,5 @@ shaker: ...g...g...g...g
 @6 bass: x-x-----x-x-x---
 @7 comp: ............x-x-
 @8 ohat: ..............x.
-A: e1 e2 q3 e5 q.6 | h5 e6 e5 qr | e3 e2 e1 e2 q3 qr | q2 h.r
-B: e1 e2 q3 e5 q.6 | h5 e6 e7 qr | h.6 e5 e3 | e2 e3 q5 hr
+A: e1 e2 q3 e5 q.6 | h5 e6 e5 qr | hr q3 qr | q2 h.r
+B: e1 e2 q3 e5 q.6 | h5 e6 e7 qr | h.6 qr | qr q5 hr
