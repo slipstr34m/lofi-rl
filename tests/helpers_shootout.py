@@ -10,12 +10,14 @@ test module.
   the whole document `python -m lofi_rl.convert.kit` prints (its report as comments, then `sources`, `choke` and
   `lanes`).
 - `synthetic_base`: shootouts/palettes/base.yaml with every SoundFont replaced by a tiny_sf2 under `assets`.
-- `synthetic_levels`: a levels file shaped like the level tool's, with made-up trims and faders.
+- `synthetic_levels`: a levels file shaped like the level tool's, with made-up trims and faders, and a made-up clip
+  fader (CD-52) for every variant on every reference loop and on every loop's sour copy.
 - `fake_flac`, `fake_render`, `fake_renders`: what `lofi_rl.shootout.render` writes and the batch builder reads, with
   no audio: `record.json` (the same keys as a real record, `tests/test_shootout_e2e.py` compares them),
   `manifest.json` (n and audio_sha256) and `render.flac`, a FLAC STREAMINFO header with no audio frames. The rating
   page's checks read only that header and the file's sha256, so batches built from them pass
-  `python -m lofi_rl.ui.manifest check`. Never music, never committed.
+  `python -m lofi_rl.ui.manifest check`. A clip whose draw palette names a `level` (CD-52) gets the level record a
+  real render carries (`fake_level`). Never music, never committed.
 """
 from __future__ import annotations
 
@@ -107,17 +109,32 @@ def synthetic_base(tmp: Path, assets: Path) -> Path:
     return base
 
 
+TARGET_LU = {"sax": 0.0, "drums": -1.5, "bass": -3.0, "keys": -6.0}      # base.yaml's mix.bus_target_lu
+S_STAR = -24.0
+
+
 def synthetic_levels(index_path: Path, base: Path, out: Path) -> Path:
-    """A levels file shaped like the level tool's from a measuring index: GU instruments t = 0, others made up."""
+    """A levels file shaped like the level tool's from a measuring index: GU instruments t = 0, others made up, and a
+    clip fader for every variant on every reference loop and every loop's sour copy, a few thousandths of an LU off
+    its target."""
     index = json.loads(index_path.read_text())
+    loops = sorted(yaml.safe_load((ROOT / "shootouts" / "loops" / "briefs.yaml").read_text())["loops"])
+    cases = loops + [f"{x}.sour" for x in loops]
     variants = {}
     for i, (vid, v) in enumerate(sorted(index["variants"].items())):
         gu = v["source"] == "gu"
+        target = S_STAR + TARGET_LU[v["bus"]]
+        clips = {}
+        for j, case in enumerate(cases):
+            L, off = round(-30.0 - 0.25 * i + 0.5 * j, 2), round(0.001 * ((i + j) % 5 - 2), 3)
+            clips[case] = {"L": L, "F": round(target - L, 2), "lufs": target + off, "target_lufs": target,
+                           "off_lu": off, "lu": target + off - S_STAR, "tried": 1}
         variants[vid] = {"bus": v["bus"], "source": v["source"], "source_sha256": v["source_sha256"],
                          "kit_map_sha256": v["kit_map_sha256"], "t": 0.0 if gu else round(-7.5 + 0.37 * i, 2),
-                         "F": round(1.25 + 0.5 * i, 2)}
+                         "F": round(1.25 + 0.5 * i, 2), "T": TARGET_LU[v["bus"]], "clips": clips}
     out.write_text(json.dumps({"schema": "lofi-rl/shootout-levels/1", "stage": "day1",
-                               "base_sha256": hashlib.sha256(base.read_bytes()).hexdigest(),
+                               "base_sha256": hashlib.sha256(base.read_bytes()).hexdigest(), "S_star": S_STAR,
+                               "tolerances": {"median_tol_lu": 0.05, "clip_tol_lu": 0.1},
                                "variants": variants}, indent=1))
     return out
 
@@ -147,8 +164,18 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def fake_level(doc: dict, entry: dict) -> dict | None:
+    """The level record a real render of a level-matched clip carries (lofi_rl.shootout.render.with_level), made up to
+    agree with fake_render's buses (-20 LUFS before a 0 dB fader); None when the clip's palette names no `level`."""
+    want = ((doc.get("palettes") or {}).get(entry["palette"]) or {}).get("level")
+    if not want:
+        return None
+    return {**want, "L": -20.0, "F": 0.0, "lufs": -20.0, "lu": TARGET_LU[want["bus"]], "target_lufs": -20.0,
+            "off_lu": 0.0, "tol_lu": 0.1, "render_lufs": -20.0, "agree_lu": 0.0, "ok": True}
+
+
 def fake_render(renders_dir: Path, rid: str, entry: dict, *, status: str = "ok", n: int | None = None,
-                pcm: str | None = None, clip: str | None = None) -> dict:
+                pcm: str | None = None, clip: str | None = None, level: dict | None = None) -> dict:
     d = Path(renders_dir) / rid
     d.mkdir(parents=True, exist_ok=True)
     n_ok = loop_samples(entry["brief"]["bpm"])
@@ -167,6 +194,7 @@ def fake_render(renders_dir: Path, rid: str, entry: dict, *, status: str = "ok",
         "buses": {b: {"lufs": -20.0, "fader_db": 0.0, "trim_db": 0.0, "post_lufs": -20.0}
                   for b in ("sax", "keys", "bass", "drums")},
         "bed_lufs": None, "sax_range": [51, 72], "expect_pcm_sha256": entry.get("expect_pcm_sha256"),
+        "level": level,
     })
     if status == "ok":
         flac = fake_flac(d / "render.flac", n if n is not None else n_ok, salt=rid)
@@ -184,5 +212,5 @@ def fake_renders(doc: dict, renders_dir: Path, overrides: dict | None = None) ->
         kw = (overrides or {}).get(rid, {})
         if kw is None:
             continue
-        out[rid] = fake_render(renders_dir, rid, entry, **kw)
+        out[rid] = fake_render(renders_dir, rid, entry, **{"level": fake_level(doc, entry), **kw})
     return out

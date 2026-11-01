@@ -259,8 +259,8 @@ class Levels:
     zero_trim_source: str = ""                      # "GU instruments get t = 0"
     linear_drop_db: float = 6.02
     linear_tol_db: float = 0.1
-    median_tol_lu: float = 0.05
-    loop_tol_lu: float = 0.1
+    median_tol_lu: float = 0.05                     # check (b): the median fader, which the frozen palette takes
+    clip_tol_lu: float = 0.1                        # check (c): every shootout clip at its own fader (CD-52)
 
 
 @dataclass(frozen=True)
@@ -928,7 +928,7 @@ def _cuts(node: Any, stages: Mapping[str, Stage]) -> tuple[Cut, ...]:
 
 def _levels(node: Any, candidates: Mapping[str, Candidate]) -> Levels:
     m = _map(node, "levels", ("anchors", "sax_target", "zero_trim_source", "linear_drop_db", "linear_tol_db",
-                              "median_tol_lu", "loop_tol_lu"))
+                              "median_tol_lu", "clip_tol_lu"))
     anchors = _map(m["anchors"], "levels.anchors", BUSES)
     for bus, cid in anchors.items():
         if cid not in candidates or candidates[cid].bus != bus:
@@ -937,7 +937,7 @@ def _levels(node: Any, candidates: Mapping[str, Candidate]) -> Levels:
         raise _fail("levels.sax_target", f"{m['sax_target']!r} is not a sax candidate")
     return Levels(MappingProxyType(dict(anchors)), m["sax_target"], _str(m["zero_trim_source"], "levels.zero_trim_source"),
                   *(_num(m[k], f"levels.{k}") for k in ("linear_drop_db", "linear_tol_db", "median_tol_lu",
-                                                         "loop_tol_lu")))
+                                                         "clip_tol_lu")))
 
 
 # ------------------------------------------------------------------------------------------------ cuts

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from helpers_shootout import fake_renders
+from helpers_shootout import fake_level, fake_renders
 from lofi_rl.shootout.batch import BuildError, build, hidden_names, main, public_leaks
 from lofi_rl.shootout.draw import draw, load_prior, parse_leaders, write_draw
 from lofi_rl.shootout.plan import load_plan
@@ -109,8 +109,12 @@ def test_hidden_manifests_say_what_each_clip_really_is(days):
                 assert info["clip"] == rec["clip"] and info["pcm_sha256"] == rec["pcm_sha256"]
                 assert info["option"] == rec["option"] and info["loop"] == hr.brief_id == rec["loop"]
                 assert info["palette"] == rec["palette"]["label"] and info["sax_range"] == "51-72"
-                assert {"what", "stage", "slot", "trim_db", "fader_db", "bus_lufs", "render"} <= set(info)
+                assert {"what", "stage", "slot", "trim_db", "fader_db", "bus_lufs", "bus_lu", "render"} <= set(info)
                 assert c.sha256 == rec["flac_sha256"]
+                # CD-52 (section 6): each clip's own fader and its bus's loudness as the level tool measured it
+                lvl = rec["level"]
+                assert info["fader_db"] == rec["buses"][rec["bus"]]["fader_db"] == lvl["F"]
+                assert (info["bus_lufs"], info["bus_lu"]) == (lvl["lufs"], lvl["lu"])
             entry = next(x for x in batches["batches"][d.name]["rounds"] if x["id"] == r.id)
             assert [x["id"] for x in entry["clips"]] == list(r.ids)
             assert [x["render"] for x in entry["clips"]] == [hr.clips[c].get("render") for c in r.ids]
@@ -259,13 +263,20 @@ def test_a_purged_prior_render_is_made_again_and_must_match_its_first_showing(da
     assert entry["text"] == days["day1"][1]["renders"][rid]["text"]
 
 
-@pytest.mark.parametrize("case", ["missing", "gate", "length", "flac_changed", "repeat_mismatch"])
+@pytest.mark.parametrize("case", ["missing", "gate", "length", "flac_changed", "repeat_mismatch", "no_level",
+                                  "other_level", "level_failed"])
 def test_a_missing_render_a_failed_gate_or_a_clip_that_is_not_one_pass_stops_the_build(tmp_path, case):
+    # ... and a clip of an instrument stage without its own level record (CD-52: every clip at its own fader, its
+    # bus's loudness measured), one recorded for another case, or one whose check failed.
     doc = draw(PLAN, "day1", seed=5)
     run = tmp_path / "runs" / "shootout-9"
     rid = sorted(doc["renders"])[3]
+    lvl = fake_level(doc, doc["renders"][rid])
+    assert lvl is not None
     over = {"missing": {rid: None}, "gate": {rid: {"status": "gate"}},
-            "length": {rid: {"n": 1000}}, "flac_changed": {}, "repeat_mismatch": {}}[case]
+            "length": {rid: {"n": 1000}}, "flac_changed": {}, "repeat_mismatch": {}, "no_level": {rid: {"level": None}},
+            "other_level": {rid: {"level": {**lvl, "case": "l0_elsewhere"}}},
+            "level_failed": {rid: {"level": {**lvl, "ok": False}}}}[case]
     fake_renders(doc, run / "renders", over)
     if case == "flac_changed":
         (run / "renders" / rid / "render.flac").write_bytes(b"fLaC" + bytes(38))

@@ -18,12 +18,14 @@ The anchors' sour copies are written there and gate-checked (G1-G6 in the loop's
 
 `build` reads the draw and the job's renders and writes every batch of the stage as `<out>/<date>/<batch>/`:
 one FLAC per clip appearance under an opaque name (`k` + 10 hex), `manifest.json` (public) and
-`manifest.hidden.json` (what each clip really is), then runs `python -m lofi_rl.ui.manifest check` on each folder
-and records the id map in `summary/batches.json`. Nothing is written unless everything is in order: a missing
-render, a failed gate, a clip that is not exactly one pass of its loop, a FLAC that changed since it was
-rendered, a repeat whose render is not the first showing's, an opaque id or note that would leak a hidden value,
-or a batch folder that already exists, stops the build before the first file is written. Batches are staged in
-`<out>/.staging-*` and moved into place only after every folder passes the check.
+`manifest.hidden.json` (what each clip really is: for a clip of an instrument stage, its own fader `fader_db` and
+its bus's loudness as the level tool measured it after that fader, `bus_lufs`, and re S*, `bus_lu`; CD-52), then
+runs `python -m lofi_rl.ui.manifest check` on each folder and records the id map in `summary/batches.json`. Nothing
+is written unless everything is in order: a missing render, a failed gate, a clip that is not exactly one pass of
+its loop, a FLAC that changed since it was rendered, a repeat whose render is not the first showing's, a clip whose
+draw palette names a `level` but whose record carries none for that case or failed it, an opaque id or note that
+would leak a hidden value, or a batch folder that already exists, stops the build before the first file is
+written. Batches are staged in `<out>/.staging-*` and moved into place only after every folder passes the check.
 
 Opaque ids are drawn per batch from the draw's seed (so one seed gives byte-identical batches), and an id that
 would contain any word or real-id stretch the leak check looks for (docs/RATING.md: "Leak check") is drawn again.
@@ -124,7 +126,8 @@ def _render_dir(renders: Path, clip: Mapping) -> Path:
     return Path(clip["run_dir"]) / "renders" / clip["render"] if clip.get("run_dir") else renders / clip["render"]
 
 
-def _check_clip(folder: Path, rid: str, rnd: Mapping, clip: Mapping, entry: Mapping | None) -> tuple[dict | None, list]:
+def _check_clip(folder: Path, rid: str, rnd: Mapping, clip: Mapping, entry: Mapping | None,
+                spec: Mapping | None = None) -> tuple[dict | None, list]:
     errs: list[str] = []
     try:
         rec = json.loads((folder / "record.json").read_text(encoding="utf-8"))
@@ -161,6 +164,12 @@ def _check_clip(folder: Path, rid: str, rnd: Mapping, clip: Mapping, entry: Mapp
     want = (entry or {}).get("expect_pcm_sha256")
     if want and rec.get("pcm_sha256") != want:
         errs.append(f"{rid}: made again, but its pcm_sha256 differs from the first showing's")
+    level = (spec or {}).get("level")
+    got = rec.get("level") or {}
+    if level and ({k: got.get(k) for k in level} != dict(level) or got.get("ok") is not True):
+        errs.append(f"{rid}: a clip of an instrument stage plays its own fader (CD-52), but its record carries "
+                    f"{'no level' if not got else 'the level ' + str({k: got.get(k) for k in (*level, 'ok')})} for "
+                    f"{dict(level)}")
     return rec, errs
 
 
@@ -168,7 +177,11 @@ def _hidden_clip(rec: Mapping, rnd: Mapping, clip: Mapping) -> dict:
     bus, buses = rec["bus"], rec.get("buses") or {}
     info = {"clip": rec["clip"], "option": clip["option"], "what": clip.get("what"), "stage": rnd["stage"],
             "slot": rnd["slot"], "loop": rnd["loop"], "palette": rec["palette"]["label"]}
-    if bus in buses:
+    level = rec.get("level")
+    if bus in buses and level:                       # its own fader, and the loudness measured after it (CD-52)
+        b = buses[bus]
+        info.update(trim_db=b["trim_db"], fader_db=b["fader_db"], bus_lufs=level["lufs"], bus_lu=level["lu"])
+    elif bus in buses:
         b = buses[bus]
         info.update(trim_db=b["trim_db"], fader_db=b["fader_db"], bus_lufs=b["post_lufs"])
     elif bus == "keys+bass":                         # vamps: the harmony moves the keys and the bass (CD-27)
@@ -220,7 +233,9 @@ def build(doc: Mapping, renders_dir: Path | str, out_root: Path | str, *, summar
                 folder = _render_dir(renders_dir, c)
                 if str(folder) in recs:
                     continue
-                rec, errs = _check_clip(folder, c["render"], r, c, doc["renders"].get(c["render"]))
+                entry = doc["renders"].get(c["render"])
+                spec = (doc.get("palettes") or {}).get(entry["palette"]) if entry else None
+                rec, errs = _check_clip(folder, c["render"], r, c, entry, spec)
                 errors += errs
                 if rec is not None and not errs:
                     recs[str(folder)] = (folder, rec)

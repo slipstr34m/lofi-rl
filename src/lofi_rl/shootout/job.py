@@ -19,9 +19,10 @@ adds `--cut <name>+<name>`. ARGS hold no spaces, so they need no comma-safe `--e
    repeats, and the renders and palettes the job must make), from a seed drawn there and recorded only there.
 3. `measure`: the palette generator (section 7.8) with `--levels none`: the measuring palettes, in
    `summary/palettes/measure/`.
-4. `levels`: the levels tool (section 7.1), with `--prior` the first prior job's levels.json (its drift keys).
+4. `levels`: the levels tool (section 7.1), with the draw (every clip's own fader, its sour copies' texts
+   included: CD-52) and with `--prior` the first prior job's levels.json (its drift keys).
 5. `palettes`: the generator again, with the measured trims and faders and the draw: `summary/palettes/<key>.yaml`
-   for every palette the draw asks for.
+   for every palette the draw asks for, each clip of an instrument stage its own.
 6. `render`: every clip, `--jobs` at a time with 1 worker each (`python -m lofi_rl.shootout.render`).
 7. `build`: `python -m lofi_rl.shootout.batch build` writes the batches into the inbox and checks each folder.
 
@@ -141,7 +142,7 @@ def commands(a: argparse.Namespace, doc: dict) -> list[tuple[str, list[str]]]:
     measure = [py, "-m", "lofi_rl.shootout.palettes", "--plan", str(a.plan), "--stage", a.stage, "--levels", "none",
                "--out", str(s / "palettes")]
     levels = [py, "-m", "lofi_rl.shootout.levels", "--plan", str(a.plan), "--loops", str(a.loops),
-              "--palettes", str(s / "palettes" / "measure"), "--stage", a.stage]
+              "--palettes", str(s / "palettes" / "measure"), "--stage", a.stage, "--draw", str(s / "draw.json")]
     if doc["prior_runs"]:                       # drift keys against job 1's (section 3, "Drift between jobs")
         levels += ["--prior", str(Path(doc["prior_runs"][0]) / "summary" / "levels.json")]
     levels += ["--out", str(s / "levels.json"), "--workers", str(a.jobs)]

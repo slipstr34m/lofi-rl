@@ -163,7 +163,13 @@ def test_the_anchor_imitates_a_sax_round_with_one_sour_clip(draws):
         assert rec["ok"] and rec["gate"] == "pass" and rec["p_chrom"] >= 0.2
         ren = doc["renders"][sour[0]["render"]]
         normal = doc["renders"][next(c["render"] for c in src[0]["clips"] if c["option"] == sour[0]["option"])]
-        assert ren["text"] == raise_accidentals(normal["text"]) and ren["palette"] == normal["palette"]
+        assert ren["text"] == raise_accidentals(normal["text"])
+        sp, np_ = doc["palettes"][ren["palette"]], doc["palettes"][normal["palette"]]
+        if "level" in np_:          # CD-52: the sour copy is its own clip, matched on its own text
+            assert sp["band"] == np_["band"] and sp["base"] == np_["base"] and ren["palette"] == normal["palette"] + "_sour"
+            assert sp["level"] == {**np_["level"], "case": np_["level"]["case"] + ".sour"}
+        else:                       # a stage whose option is not an instrument keeps the clip's palette
+            assert ren["palette"] == normal["palette"]
         others = [c["render"] for c in a["clips"] if c is not sour[0]]
         assert set(others) <= {c["render"] for c in src[0]["clips"]}       # the other clips reuse their renders
 
@@ -171,12 +177,39 @@ def test_the_anchor_imitates_a_sax_round_with_one_sour_clip(draws):
 def test_render_and_palette_counts_match_section_7_7(draws):
     d1, d2, d3 = draws[("day1", 1)], draws[("day2", 1)], draws[("day3", 1)]
     assert (len(d1["renders"]), len(d2["renders"]), len(d3["renders"])) == (67, 84, 26)
-    assert len(d1["palettes"]) == 8 + 3 + 9 + 6
+    assert len(d1["palettes"]) == 67 and len({p["base"] for p in d1["palettes"].values()}) == 8 + 3 + 9 + 6
     assert [b["est_min"] for b in d1["batches"][:2]] == [7.8, 6.0] and 9.0 <= d1["batches"][2]["est_min"] <= 9.3
     assert d2["batches"][0]["est_min"] == 5.6
     rerun = _draw("day3", 1, rerun_s2="sax_gu_alto")
     assert len(rerun["renders"]) == 26 + 18
     assert {p["band"]["sax"] for k, p in rerun["palettes"].items() if k.startswith("s2")} == {"sax_gu_alto"}
+
+
+MATCHED = ("keys", "kit", "bass", "sax")       # band slots whose option is an instrument (CD-52)
+
+
+def test_every_clip_of_an_instrument_stage_plays_its_own_palette_named_for_its_loop(draws):
+    # CD-52: a clip's varied-bus fader comes from its candidate's loudness on the round's own loop, so each render
+    # of a stage whose option is an instrument plays its own palette: the stage palette `base` (the band), whose
+    # bus fader `level` names (the bus, the option, and the case it is measured on: the loop, or loop.<variant>
+    # for a changed text such as an anchor's sour copy). Other stages keep one palette per option.
+    for (day, s), doc in draws.items():
+        seen = []
+        for rid, ren in doc["renders"].items():
+            spec = doc["palettes"][ren["palette"]]
+            st = PLAN.stages[ren["stage"]]
+            if st.fills in MATCHED:
+                lp = PLAN.loop_named(ren["loop"])
+                case = ren["loop"] if ren["variant"] == "base" else f"{ren['loop']}.{ren['variant']}"
+                assert spec["level"] == {"bus": st.bus, "variant": ren["option"], "case": case}, (day, rid)
+                tail = [lp.id.lower()] + ([] if ren["variant"] == "base" else [ren["variant"]])
+                assert ren["palette"] == "_".join([spec["base"], *tail]), (day, rid)
+                assert spec["band"][st.fills] == ren["option"]
+                seen.append(ren["palette"])
+            else:
+                assert "level" not in spec and "base" not in spec, (day, rid)
+        assert len(seen) == len(set(seen)), (day, s, "one palette per clip")
+        assert bool(seen) == (day != "day3")
 
 
 def test_palettes_carry_the_day_band_and_stage_texts_their_substitution(draws):

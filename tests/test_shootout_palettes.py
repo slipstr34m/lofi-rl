@@ -10,6 +10,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -329,12 +330,16 @@ def _rewrite(path: Path, edit) -> Path:
 
 
 def test_with_the_jobs_draw_every_palette_it_asks_for_is_written_under_its_key(env, tmp_path):
-    # The render driver reads <palettes>/<key>.yaml for each key of the draw's `palettes` table (§7.7); the key
-    # is the palette's id, `<stage>_<option>` or R2's `r2_<kit>_<bass>`.
+    # The render driver reads <palettes>/<key>.yaml for each key of the draw's `palettes` table (§7.7). On Day 1
+    # every clip plays its own (CD-52): `<base>_<loop>`, or `<base>_<loop>_sour` for the anchor's sour copy, where the
+    # base is the stage palette `<stage>_<option>` or R2's `r2_<kit>_<bass>`, written too (its median faders are the
+    # frozen palette's).
     path, doc = a_draw(tmp_path)
     got = generate(PLAN_PATH, tmp_path / "out", stage="day1", levels=env["levels"], base=env["base"], draw=path)
     by_id = {p["id"]: p for p in got.index["palettes"]}
-    assert set(doc["palettes"]) == set(by_id) and len(by_id) == 26
+    bases = {spec["base"] for spec in doc["palettes"].values()}
+    assert len(doc["palettes"]) == len(doc["renders"]) == 67 and len(bases) == 26
+    assert set(by_id) == set(doc["palettes"]) | bases and len(by_id) == 67 + 26
     assert got.index["draw"]["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
     slot_of = {"keys": "keys", "drums": "kit", "bass": "bass", "sax": "sax"}
     for key, spec in doc["palettes"].items():
@@ -343,7 +348,70 @@ def test_with_the_jobs_draw_every_palette_it_asks_for_is_written_under_its_key(e
         assert {slot_of[b]: i for b, i in entry["instruments"].items()} == \
             {s: spec["band"][s] for s in slot_of.values()}, key
         assert load_palette(tmp_path / "out" / entry["file"], verify=False).id == key
-    assert {r["palette"] for r in doc["renders"].values()} <= set(by_id)
+    assert {r["palette"] for r in doc["renders"].values()} == set(doc["palettes"])
+
+
+def test_each_clip_palette_is_its_stage_palette_with_the_clips_own_fader_on_the_bus_its_round_varies(env, tmp_path):
+    # CD-52: the varied bus's fader comes from the candidate's measured loudness on the round's own loop (the levels
+    # file's clips[case].F); every other bus keeps its instrument's median fader, every bus its trim.
+    path, doc = a_draw(tmp_path)
+    got = generate(PLAN_PATH, tmp_path / "out", stage="day1", levels=env["levels"], base=env["base"], draw=path)
+    lv = json.loads(env["levels"].read_text())
+    by_id = {p["id"]: p for p in got.index["palettes"]}
+    for key, spec in doc["palettes"].items():
+        e, base, want = by_id[key], by_id[spec["base"]], spec["level"]
+        clip = lv["variants"][want["variant"]]["clips"][want["case"]]
+        assert e["base"] == base["id"] and e["instruments"] == base["instruments"] and e["trim_db"] == base["trim_db"]
+        assert e["instruments"][want["bus"]] == want["variant"]
+        assert e["fader_db"] == {**base["fader_db"], want["bus"]: clip["F"]}, key
+        assert e["level"] == {**want, "L": clip["L"], "F": clip["F"], "lufs": clip["lufs"], "lu": clip["lu"],
+                              "target_lufs": clip["target_lufs"], "off_lu": clip["off_lu"], "tol_lu": 0.1}, key
+        pal = yaml_load((tmp_path / "out" / e["file"]).read_text())
+        assert pal["mix"]["bus_gain_db"] == e["fader_db"] and pal["id"] == key
+        assert hashlib.sha256((tmp_path / "out" / e["file"]).read_bytes()).hexdigest() == e["sha256"]
+    sour = [r for r in doc["renders"].values() if r["variant"] == "sour"]
+    assert len(sour) == 1 and doc["palettes"][sour[0]["palette"]]["level"]["case"] == f"{sour[0]['loop']}.sour"
+    bases = {spec["base"] for spec in doc["palettes"].values()}
+    assert all("level" not in p and "base" not in p for p in got.index["palettes"] if p["id"] in bases)
+
+
+def test_within_each_drawn_round_the_clip_palettes_differ_only_in_the_candidates_block_trim_and_fader(env, tmp_path):
+    # §2.1 on what the job renders: the palettes of a round's clips, each with its own fader, still differ only in
+    # the candidate's block, its trim, its fader and the palette's name; the loop texts only in an anchor's sour copy.
+    path, doc = a_draw(tmp_path)
+    generate(PLAN_PATH, tmp_path / "out", stage="day1", levels=env["levels"], base=env["base"], draw=path)
+    rounds = [r for b in doc["batches"] for r in b["rounds"]]
+    assert len(rounds) == 19
+    for r in rounds:
+        clips = [doc["renders"][c["render"]] for c in r["clips"]]
+        docs = [(c["option"], flat(yaml_load((tmp_path / "out" / f"{c['palette']}.yaml").read_text()))) for c in clips]
+        for i, (oa, a) in enumerate(docs):
+            for ob, b in docs[i + 1:]:
+                diff = {k for k in a.keys() | b.keys() if a.get(k, "<absent>") != b.get(k, "<absent>")}
+                bad = sorted(k for k in diff if not k.startswith(ALLOWED[r["stage"]]))
+                assert not bad, (r["slot"], oa, ob, bad[:5])
+                assert diff - {"id"}, (r["slot"], oa, ob, "two clips of a round must differ")
+        texts = {c["text"] for c in clips if c["variant"] != "sour"}
+        assert len(texts) == 1 and (r["kind"] == "anchor") == any(c["variant"] == "sour" for c in clips)
+
+
+def test_a_levels_file_without_a_drawn_clip_or_with_a_clip_off_its_target_is_refused(env, tmp_path):
+    # Every clip the draw makes needs its own fader from the level tool (run with --draw), and none may sit more
+    # than clip_tol_lu from S* + T after matching (§3 step 6c): the generator refuses before any render.
+    path, doc = a_draw(tmp_path)
+    sour = next(r for r in doc["renders"].values() if r["variant"] == "sour")
+    want = doc["palettes"][sour["palette"]]["level"]
+    short = json.loads(env["levels"].read_text())
+    del short["variants"][want["variant"]]["clips"][want["case"]]
+    (tmp_path / "short.json").write_text(json.dumps(short))
+    with pytest.raises(GenerateError, match=rf"{want['variant']} on {re.escape(want['case'])}.*--draw"):
+        generate(PLAN_PATH, tmp_path / "a", stage="day1", levels=tmp_path / "short.json", base=env["base"], draw=path)
+    off = json.loads(env["levels"].read_text())
+    off["variants"][want["variant"]]["clips"][want["case"]]["off_lu"] = 0.13
+    (tmp_path / "off.json").write_text(json.dumps(off))
+    with pytest.raises(GenerateError, match=r"0\.13.*0\.1 LU"):
+        generate(PLAN_PATH, tmp_path / "b", stage="day1", levels=tmp_path / "off.json", base=env["base"], draw=path)
+    assert not (tmp_path / "a").exists() and not (tmp_path / "b").exists(), "a refused generation writes nothing"
 
 
 def test_a_draw_off_its_plan_or_its_constraints_is_refused(env, tmp_path):
@@ -364,16 +432,24 @@ def test_a_draw_off_its_plan_or_its_constraints_is_refused(env, tmp_path):
         d["plan"]["sha256"] = "0" * 64
 
     def extra_palette(d):
-        d["palettes"]["k1_nonesuch"] = d["palettes"]["k1_jrhodes3d"]
+        d["palettes"]["k1_nonesuch_l5"] = d["palettes"]["k1_jrhodes3d_l5"]
+
+    def other_base(d):
+        d["palettes"]["k1_jrhodes3d_l5"]["base"] = "k1_nonesuch"
 
     def other_band(d):
-        d["palettes"]["k1_jrhodes3d"]["band"]["bass"] = "bass_vsco2_pizz"
+        d["palettes"]["k1_jrhodes3d_l5"]["band"]["bass"] = "bass_vsco2_pizz"
+
+    def other_bus(d):
+        d["palettes"]["k1_jrhodes3d_l5"]["level"]["variant"] = "gu_organ"
 
     def other_day(d):
         d["stage"] = "day2"
 
     for edit, match in ((swap_s1, "S1.*t1.*tenor"), (split_k1, "K1.*P1.*family"), (other_plan, "another plan"),
-                        (extra_palette, "k1_nonesuch"), (other_band, "k1_jrhodes3d.*bass"), (other_day, "day2")):
+                        (extra_palette, "k1_nonesuch_l5.*k1_jrhodes3d_l5"), (other_base, "k1_nonesuch"),
+                        (other_band, "k1_jrhodes3d_l5.*bass"), (other_bus, "gu_organ.*k1_jrhodes3d plays jrhodes3d"),
+                        (other_day, "day2")):
         with pytest.raises(GenerateError, match=match):
             run(_rewrite(path, edit))
 

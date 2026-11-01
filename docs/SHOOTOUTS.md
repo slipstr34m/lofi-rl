@@ -7,8 +7,10 @@ which freezes on Nov 6 and never changes after (docs/DECISIONS.md D-017).
 
 - **Status (2026-10-31, revised after two reviews):** the job-1 tooling of §7.11 is built and integrated on one
   plan (§7.1–§7.8, below). A laptop dry run of job 1 rendered all 67 Day-1 clips and built the three Day-1 batches
-  (§7.7, "Dry run"); those laptop clips are not canonical (LESSONS 38) and none is queued for listening. No cluster
-  shootout job has run. The 9 reference loops in `shootouts/loops/` exist and pass the gates (§5).
+  (§7.7, "Dry run"); those laptop clips are not canonical (LESSONS 38) and none is queued for listening. Since
+  CD-52 each clip takes its own fader on the bus its round varies, and every Day-1 round's candidates sit within
+  0.01 LU of each other on its loop in the dry run (§3 step 8). No cluster shootout job has run. The 9 reference
+  loops in `shootouts/loops/` exist and pass the gates (§5).
 - **Sound claims:** none. Every candidate, variant and level here is a starting point for Shresth's ear. Claude
   records counts and picks, never descriptions of sound (TASTE.md: "Shootout prunes, votes decide").
 - **Blind by construction.** This file gives every round in symbols (`P1a`, `k2`, `v3`, ...). Which option sits
@@ -76,9 +78,10 @@ pattern field and the model writes every pattern [CD-46; §11 question 3].
   the FLACs and the two batch manifests go to the inbox (§6).
 - **Hidden manifest** (R): batch `category`; per round `kind` (`none`, `repeat` with `of`, `anchor` with
   `anchor_clip`), `brief_id` (the loop's name) and `category`; per clip `clip` (the real id, taste_pipeline.md §2),
-  `option`, and the free fields `what` (variant), `loop`, `palette` (id@sha8), `trim_db`, `fader_db`, `bus_lufs`
-  (post-fader loudness of the candidate's bus; keys and bass in vamp rounds), `sax_range` (lowest and highest MIDI
-  note of the lead), `render` (render id) and `pcm_sha256`.
+  `option`, and the free fields `what` (variant), `loop`, `palette` (id@sha8), `trim_db`, `fader_db` (the clip's
+  own fader on the bus its round varies, CD-52), `bus_lufs` (post-fader loudness of the candidate's bus, as the level
+  tool measured it after that fader; keys and bass in vamp rounds), `bus_lu` (the same relative to S\*, §3; clips of
+  instrument stages), `sax_range` (lowest and highest MIDI note of the lead), `render` (render id) and `pcm_sha256`.
 
 ### 2.3 Blinding (the draw)
 The repo is public (T·Assets), so nothing committed may say which option is on which tile, or which round is a
@@ -203,13 +206,24 @@ Per round at each loop's tempo, from the round slots of §4 (scratch planner, 20
   Day 3 is cut only if r × its plan would pass 30: first W1 down to 2 rounds (e1 on the middle tile sum), then W2
   down to 2 rounds, the second reversed.
 
-## 3. Level matching [CD-25]
+## 3. Level matching [CD-25, CD-52]
 
 A candidate must never win by being louder, and each candidate should meet its bus chain the way the dev instrument
 does. Every instrument in every clip plays with a **trim** before its bus chain and a **fader** after it, so that
 its bus sits at the palette's `bus_target_lu` relative to the sax bus (sax 0, drums −1.5, bass −3, keys −6 LU:
 instrument.md §4, `dev_gu.yaml`). Today every `dev_gu` gain is 0 dB, and on the fixtures the GU drums sit 15.42 LU
 under the sax (RENDER.md §3.3), so unmatched clips are not an option.
+
+**Per clip** [CD-52, a Claude's default amending this section, 2026-10-31]. Each shootout clip's fader on the bus its
+round varies comes from that candidate's measured bus loudness on the round's own loop, so every candidate in a
+round sits at the same bus loudness: the palette's `bus_target_lu` relative to the sax (S\* + T below, as before),
+within 0.1 LU, checked clip by clip. *Why:* the first Day-1 dry run matched each candidate's bus to its target by the
+median over the 9 reference loops, which left 10 of the 18 design rounds, and the anchor, with a candidate loudness
+spread above 1.0 LU on the round's own loop, the largest 4.20 LU (R1.3 on L8); a candidate must never win by being
+louder. The frozen palette still takes each candidate's median fader, as before, recorded in `levels.json`. The
+level tool already measures every (candidate, loop) pair on the 9 reference loops; the one text a clip plays that
+they do not hold, an anchor's sour copy, joins its measure plan (§7.1). The hidden manifest records each clip's
+fader and its measured loudness (§2.2, §6).
 
 **Why a trim before the chain.** During review (2026-10-31) the GU Jazz kit's one-shots peaked at −22.8 dBFS (hard
 kick) and −21.8 (hard snare), while Virtuosity's kick-mic kick peaked at −1.7 dBFS and Swirly's kicks and snares
@@ -229,26 +243,44 @@ level-independent up to about +14 dB, but at +21 dB the drum chain took 1.7 dB m
    GU Jazz kit 32 (drums), GU Acoustic Bass 32 (bass), GU Tenor 66 (sax). GU instruments get t = 0.
 3. **Chain.** L(*i*, ℓ) is the loudness of *i*'s bus after its chain, with the trim, before the fader.
 4. **One sax target.** S\* = the median of L(GU tenor, ℓ): the sax bus stays where `dev_gu` puts it.
-5. **Fader.** F(*i*) = S\* + T(bus) − median over ℓ of L(*i*, ℓ), with T the bus target above. Trims and faders
-   are rounded to 0.01 dB (as `mix.calibrated_gains` rounds). The fixed instruments of each round get their own t
-   and F the same way, so the whole band sits at target in every clip.
+5. **Fader.** F(*i*) = S\* + T(bus) − median over ℓ of L(*i*, ℓ), with T the bus target above: the median fader,
+   which the frozen palette takes. **A clip's own fader** [CD-52] on the bus its round varies is F(*i*, ℓ) =
+   S\* + T(bus) − L(*i*, ℓ) on the round's loop ℓ, then corrected by the loudness that bus measures after it until
+   it is within 0.005 LU of S\* + T, at most 3 times: a pure gain moves a quiet bus through BS.1770's −70 LUFS gate
+   (`kit_virtuosity` on L1, at −55.0 LUFS before its fader, measures 0.101 LU under L + F). In the Day-1 dry run the
+   median of each variant's 9 clip faders equals its F(*i*) (all 20 variants), so the frozen fader is the middle of
+   those Shresth hears. The fixed instruments of each round keep their median F, so they are the same in
+   every clip of the round (§2.1). Trims and faders are rounded to 0.01 dB (as `mix.calibrated_gains` rounds).
 6. **Checks.** (a) Linear range: feeding *i*'s trimmed input 6.02 dB lower must lower L by 6.02 ± 0.1 dB (median
    over the loops); a candidate that fails is flagged, since its chain then treats it differently from the GU
-   instrument. (b) Each candidate's median post-fader bus loudness must equal S\* + T within 0.05 LU, and each loop
-   within 0.1 LU (a pure gain moves a quiet bus by a few hundredths of an LU through BS.1770's −70 LUFS gate).
-7. **Render** every clip with those trims and faders; the master chain, limiter and −14 LUFS normalisation run as
-   usual (RENDER.md §2), so every clip ends at −14 ± 0.1 LUFS. The drums end up about 14 dB above today's renders
-   (RENDER.md §3.3 proposes +13.92 dB on the fixtures), so the master chain sees more drums than it does today.
-8. **Per round:** each candidate's post-fader bus loudness on that round's loop is recorded; a spread above 1.0 LU
-   flags the round in the tally report (§8).
-   - **Measured in the Day-1 dry run** (laptop, real banks and the two §7.4 kits, 2026-10-31; §7.7): every
-     variant's median post-fader bus loudness sat within 0.005 LU of S\* + T, and the renders carried the tool's L
-     and F exactly (264 render-bus pairs, largest difference 0). But matching medians over the 9 loops leaves the
-     candidates of a round apart on that round's loop: 10 of the 18 Day-1 design rounds, and the anchor, have a
-     spread above 1.0 LU (K1 0.66–2.95, R1 0.89–4.20, R2 0.95–3.85, S1 0.49–2.73 LU; the largest R1.3 on L8).
-     Step 6b also flagged `kit_virtuosity`: on L1 its drum bus, at −55.0 LUFS before the fader, sits 0.101 LU under
-     its own L + F after it (the −70 LUFS gate), against the 0.1 LU tolerance. Not changed here; put to Shresth
-     with the job-1 push.
+   instrument. (b) The median: at its median F, each candidate's median post-fader bus loudness must equal S\* + T
+   within 0.05 LU (the frozen palette's fader). (c) Per clip: at its own fader, every clip's bus must sit at S\* + T
+   within 0.1 LU. How far each loop's bus moves from its own L + F through the −70 LUFS gate at the median F is
+   recorded (`worst_loop_lu`) but flags nothing now, since each clip's own fader is measured after it [CD-52].
+7. **Render** every clip with those trims and its own faders; the master chain, limiter and −14 LUFS normalisation
+   run as usual (RENDER.md §2), so every clip ends at −14 ± 0.1 LUFS. The drums end up about 14 dB above today's
+   renders (RENDER.md §3.3 proposes +13.92 dB on the fixtures), so the master chain sees more drums than it does
+   today. A render must play the bus the tool measured: its pre-fader loudness within 0.001 LU of the tool's L, at
+   the clip's fader (§7.7, render status `level` otherwise).
+8. **Per round:** each candidate's post-fader bus loudness on that round's loop is recorded (the hidden manifest's
+   `bus_lufs`, as the level tool measured it after the clip's own fader, and `bus_lu`, the same relative to S\*); a
+   spread above 1.0 LU flags the round in the tally report (§8). Step 6c bounds every spread at 0.2 LU.
+   - **Measured in the first Day-1 dry run, median faders** (laptop, real banks and the two §7.4 kits, 2026-10-31;
+     §7.7): every variant's median post-fader bus loudness sat within 0.005 LU of S\* + T, and the renders carried
+     the tool's L and F exactly (264 render-bus pairs, largest difference 0). But matching medians over the 9 loops
+     leaves the candidates of a round apart on that round's loop: 10 of the 18 Day-1 design rounds, and the anchor,
+     have a spread above 1.0 LU (K1 0.66–2.95, R1 0.89–4.20, R2 0.95–3.85, S1 0.49–2.73 LU; the largest R1.3 on
+     L8). The old per-loop check (each loop within 0.1 LU of its own L + F) flagged `kit_virtuosity`: on L1 its drum
+     bus, at −55.0 LUFS before the fader, sat 0.101 LU under its own L + F after it (the −70 LUFS gate).
+   - **Measured with per-clip faders** [CD-52] (the same seed and inputs, three runs, 2026-10-31; §7.7): the tool
+     measured 181 clip faders (20 variants on the 9 loops, and the anchor's sour copy of L9 for its candidate); 169
+     took one measurement and 12 one correction, and the worst sits 0.0050 LU from S\* + T. Every Day-1 round's
+     candidate spread on its loop, read from the hidden manifests, is 0.0012–0.0091 LU (K1 0.0050–0.0069, R1
+     0.0063–0.0072, R2 0.0037–0.0057, S1 0.0012–0.0091, the anchor 0.0078); as pre-fader loudness + fader from the
+     render records it is at most 0.0691 LU (R2.2 on L7, the gate on a quiet bus). All 67 renders read the tool's
+     L before their own fader exactly (difference 0). No variant is flagged; `kit_virtuosity`'s L1 clip takes
+     21.65 dB (its median F is 15.26) and sits 0.0031 LU from its target. The trims and median faders are those of
+     the median-fader run, and its 26 stage palettes are byte for byte the same.
 
 **Not matched:**
 - **Variants that move notes in time** (swing, humanize, sax lag and swung timing) keep the instrument's trim and
@@ -260,18 +292,25 @@ level-independent up to about +14 dB, but at +21 dB the drum chain took 1.7 dB m
 
 **How the values are carried** [CD-51]. Each shootout palette holds one instrument per bus, so no palette code is
 needed before the freeze: a kit's trim is added to every lane's `db`, a FluidSynth instrument's trim is a `Gain`
-plugin at the head of its bus chain, and faders go into `mix.bus_gain_db` (−60 … +24). The frozen palette holds 2–3
-keys and kits on one bus, so it needs per-instrument `trim_db` and `fader_db` fields (§7.1, by Nov 6).
+plugin at the head of its bus chain, and faders go into `mix.bus_gain_db` (−60 … +24). Each clip of an instrument
+stage plays its own palette: its stage palette with the varied bus's fader set to the clip's own [CD-52; §7.8]. The
+frozen palette holds 2–3 keys and kits on one bus, so it needs per-instrument `trim_db` and `fader_db` fields (§7.1,
+by Nov 6).
 
-**Frozen values:** each survivor's t and F; a keys instrument's F is the mean of its rootless (K1) and spread (K2)
-values [CD-28]. These replace instrument.md §4's calibration on the hand loops [CD-29]. At the freeze Claude records
-the kept 10's median loudness per bus; a bus more than 1.0 LU from its target is put to Shresth before the sign-off.
+**Frozen values:** each survivor's t and median F (step 5), not a clip's own fader [CD-52]; a keys instrument's F is
+the mean of its rootless (K1) and spread (K2) values [CD-28]. These replace instrument.md §4's calibration on the
+hand loops [CD-29]. At the freeze Claude records the kept 10's median loudness per bus; a bus more than 1.0 LU from
+its target is put to Shresth before the sign-off.
 
 **Recorded per instrument variant** in `runs/shootout-<job>/summary/levels.json`: id, bus, source id and sha256,
 bank and program (or kit map sha256), variant flags (voicing, `sax_warm`, `sax_expr`), the 9 values of P and of L,
-t, F, S\*, T, the two checks, and the drift keys: the mirror stamp (`.sync-stamp`), the base palette's sha256 and
-each loop's compiled digest. **Per clip** (hidden manifest and `renders.json`): every bus's t and F, the
-candidate's post-fader bus loudness, the master gain, final LUFS, true peak and `pcm_sha256`.
+t, F, S\*, T, `clips` (each clip case's L, own fader, the loudness measured after it, that loudness relative to S\*,
+the miss from S\* + T and the measurements it took: the 9 loops and every drawn text such as an anchor's sour copy),
+the three checks, and the drift keys: the mirror stamp (`.sync-stamp`), the base palette's sha256 and each (run,
+case)'s compiled digest. **Per clip** (hidden manifest and `renders.json`): every bus's t and F (the varied bus its
+own), the candidate's bus loudness as the level tool measured it after that fader (`bus_lufs`, and `bus_lu` relative
+to S\*), the render's `level` record (the tool's L against the render's own pre-fader loudness), the master gain,
+final LUFS, true peak and `pcm_sha256`.
 
 **Drift between jobs.** Voicing, choke and humanize code are still changing in other workflows. Jobs 2 and 3 compare
 their drift keys with job 1's; on any difference they re-measure every instrument they play (stage-level, cheap)
@@ -618,8 +657,9 @@ Contents, not order: the order inside each batch is drawn (§2.3).
   then `b1104-3` + `b1104-4` (13.6). Nov 6: one push per batch.
 - **In the inbox:** `manifest.json` (public, RATING.md v1: `mode: shootout`, `scene: "city at night"` and `bpm`
   per round, `bars: 8`, `sr: 44100`, `note`, `est_min`, opaque round and clip ids, each FLAC's sha256),
-  `manifest.hidden.json` (§2.2 fields) and one FLAC per clip appearance. A repeat round gets new opaque ids for the
-  same renders (R: "a clip shown twice gets two ids"). Nothing else.
+  `manifest.hidden.json` (§2.2 fields: per clip its own fader, `fader_db`, and its bus's measured loudness,
+  `bus_lufs` and `bus_lu`, CD-52) and one FLAC per clip appearance. A repeat round gets new opaque ids for the same
+  renders (R: "a clip shown twice gets two ids"). Nothing else.
 - **On the cluster only:** `$REMOTE_SCR/runs/shootout-<job>/renders/<render id>/` (render WAV, music WAV, render
   manifest, FLAC) and `.../summary/` (`levels.json`, `draw.json`, `leaders.json`, the generated palettes,
   `renders.json` mapping render id → loop, brief, palette, variant, trims, faders and hashes, and `batches.json`
@@ -640,10 +680,11 @@ rules: `pytest -q` on the laptop under 60 s, cluster-only cases marked `cluster`
 at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, under `assets/big/derived/`.
 
 ### 7.1 Level matching (§3)
-- **Tool:** `python -m lofi_rl.shootout.levels --plan shootouts/plan.yaml --loops shootouts/loops --palettes <run>/summary/palettes/measure --stage day1|day2|day3 [--prior <levels.json>] --out <run>/summary/levels.json [--workers 8]`.
+- **Tool:** `python -m lofi_rl.shootout.levels --plan shootouts/plan.yaml --loops shootouts/loops --palettes <run>/summary/palettes/measure --stage day1|day2|day3 [--draw <run>/summary/draw.json] [--prior <levels.json>] --out <run>/summary/levels.json [--workers 8]`.
   It runs §3 steps 1–6 at stage level (stems and bus chains; no master chain, bed or loudness loop), several buses
-  per run, and writes each variant's t and F with the drift keys. With `--prior` it compares drift keys and
-  re-measures on any difference.
+  per run, and writes each variant's t and median F, every clip's own fader [CD-52], and the drift keys. With
+  `--draw` (the job passes it) it also measures every text a drawn clip plays that the 9 loops do not hold. With
+  `--prior` it compares drift keys and re-measures on any difference.
 - **Palette fields** (needed only for the frozen palette, by Nov 6): optional `trim_db` and `fader_db` (−40 … +40,
   default 0) on every `keys.<name>`, `kits.<name>` (the drums bus), `kits.<name>.bass` and `sax.<name>`. `trim_db`
   scales the instrument's bus input before its chain (a kit's whole drum stem); the gain after a bus's chain becomes
@@ -658,8 +699,11 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   4. t and F from a synthetic table of loudness values, with `statistics.median` for even counts; GU instruments
      get t = 0; the sax target comes from the named anchor instrument.
   5. The linear-range check passes a trimmed GU stem and flags a synthetic input that drives the compressor.
-  6. After matching, every instrument's median post-fader bus loudness equals S\* + T within 0.05 LU and every loop
-     within 0.1 LU (`-m cluster`, two loops).
+  6. After matching, every instrument's median post-fader bus loudness at its median F equals S\* + T within
+     0.05 LU, and every clip at its own fader sits at S\* + T within 0.1 LU; a clip palette's render reports the
+     tool's L before every fader and the clip's own fader on its varied bus (`-m cluster`, two loops). Until
+     CD-52 the second half read "every loop within 0.1 LU of its own L + F", which `kit_virtuosity` missed on L1
+     by 0.0007 LU (0.1007, the −70 LUFS gate).
   7. A changed base-palette sha or compiled digest makes `--prior` re-measure, and both values are recorded.
   8. A value outside −40 … +40, or a field on an unknown key, is a `PaletteError`.
 - **Built (2026-10-31, the tool only; the palette fields and tests 1–3 and 8 wait for the frozen palette):**
@@ -669,19 +713,35 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
     the VSCO 2 pizz bass input reads −inf on L4 and L6 and up to 7.37 LU high on the other loops (the gate keeps only
     its loudest blocks), and the sparse GU drums 0.38 LU high on L1. L and the post-fader levels stay plain, as the
     render manifest measures them.
-  - **Check (b), "each loop within 0.1 LU"** is read as each loop's post-fader loudness within 0.1 LU of its own
-    L + F. Its median must still be within 0.05 LU of S\* + T.
+  - **Check (b)** holds only the median (0.05 LU at the median F). The per-loop distance from L + F through the gate
+    (`worst_loop_lu`) is kept as information since CD-52; check (c) holds every clip at its own fader to
+    `levels.clip_tol_lu`, 0.1 LU (plan.yaml; it replaced `loop_tol_lu`).
   - **GU instruments get t = 0** for every instrument of the anchor's source (`levels.zero_trim_source: gu`), so
     the GU organ and the GU alto too.
   - **One run per variant.** Run m1 measures the four anchors, and each later run one new variant per bus. A
     variant is measured only in its first run: a bus whose variant repeats is not rendered.
-  - **`--prior`** compares the stamp, the base sha256, every (run, loop) compiled digest and each variant's source
+  - **`--prior`** compares the stamp, the base sha256, every (run, case) compiled digest and each variant's source
     and kit-map sha256. Equal keys reuse every value. Any difference re-measures everything and records the prior's
     keys, the changed ones, and each variant's prior t and F and its move; moves above 0.1 dB are listed.
+  - **Clip faders (CD-52, 2026-10-31):** `clip_fader` sets F(*i*, ℓ) = S\* + T − L(*i*, ℓ), measures the bus after
+    it (the kept chain output scaled in float64, as `mix.mix_buses` sums it into the master), and corrects F by the
+    miss until it is within `CLIP_FIX_LU` (0.005 LU, half a 0.01 dB step), at most `CLIP_STEPS` (3) times, keeping
+    the fader measured closest. Every (variant, loop) of the 9 gets one, so `levels.json`'s `clips` has them all;
+    `clip_check` is check (c). The measurements run in the tool's thread pool beside the median ones.
+  - **Drawn texts (`--draw`):** every render whose draw palette names a `level` (§7.6) must play a loop that
+    `--loops` holds, with its brief. A render of the loop's own text is measured already; any other text becomes an
+    extra case `<loop>.<variant>`: on Day 1 the anchor's sour copy, `<loop>.sour`, measured once in its candidate's
+    run, on that bus, with the candidate's trim, and kept out of P, t, the median F and check (a). A draw of another
+    plan or stage, or a render on a loop `--loops` does not hold, exits 3 before anything is measured. `levels.json`
+    records the draw's sha256 and each extra case (its loop, variant, candidates, text sha256, brief and n).
+  - **Tests** (`tests/test_shootout_levels.py`): the median check, `clip_fader` on a gated, a plain and a growing
+    gate and out of corrections, `clip_check`, the tool's clips on a table bench with a +0.02 LU gate, a draw's sour
+    copy staged once in its candidate's run, the refusals, and test 6 (`-m cluster`).
   - **Loops** are those that `--loops`'s briefs.yaml lists. The stamp is `<repo>/.sync-stamp` (null on the laptop).
   - **Checked against the real banks** (laptop, 9 loops, dev band and every converted and FreePats bank, the two
     file kits left out until §7.4 lands): every linear-range and post-fader check passes. A render of a generated
-    palette reports the tool's L on every bus exactly (`-m cluster`).
+    palette reports the tool's L on every bus exactly (`-m cluster`). With the two §7.4 kits and per-clip faders,
+    the Day-1 dry runs' numbers are in §3 step 8 and §7.7.
 
 ### 7.2 One-time 48 → 44.1 kHz conversion, and the rain excerpt picker
 - **For:** the Virtuosity one-shots (720 files, 48 kHz 24-bit: A) via the importer, and the rain file. The sampler
@@ -806,6 +866,14 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   each bass on its round's kit, an anchor's sour copy must be rendered). The draw keys every random choice by the
   seed and a label (stage, batch, group), so a seed gives the same draw anywhere; its `palettes` table names each
   palette the renders need by key (`<stage>_<option>`, R2 `r2_<kit>_<bass>`) and the band it plays.
+- **One palette per clip (CD-52, 2026-10-31):** a render of a stage whose option is an instrument (it fills the
+  keys, kit, bass or sax slot: K1, R1, R2, S1, and K2 and the S1 final on Day 2) plays its own palette,
+  `<base>_<loop id>` or, for a changed text, `<base>_<loop id>_<variant>` (an anchor's sour copy: `…_sour`), where
+  `base` is the stage palette above; its entry adds `base` and `level` (the bus, the option, and the case its fader
+  is measured on: the loop's name, or `<loop>.<variant>`). Day 1 asks for 67 palettes, one per render, on 26
+  bases. Other stages keep one palette per option. The builder refuses a clip whose palette names a `level` and
+  whose record carries none for that case, or one whose level check failed (§7.7), and writes each clip's own
+  `fader_db`, its measured `bus_lufs` and `bus_lu` into the hidden manifest (§2.2).
 
 ### 7.7 Cluster job type `lofi-shootout`
 - **Script:** `jobs/shootout.sbatch`, job name `lofi-shootout`, partition `main`, 8 CPU, 16 GB, 20 min (was 30;
@@ -825,42 +893,62 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   too; then it writes all of it into `summary/leaders.json`. `scripts/submit.sh` refuses a dirty or unsynced tree
   (exit 3; `ALLOW_DIRTY=1` would ship other workflows' edits), so each job waits for a clean, synced tree.
 - **Stages** (`python -m lofi_rl.shootout.job`): the draw (§7.6) → generator `--levels none` (§7.8) → levels
-  (§7.1) → generator with the levels and the draw → clip renders, 8 at a time with 1 worker each → FLACs →
+  (§7.1) with the draw, so every clip's own fader is measured, the anchor's sour copy included [CD-52] → generator
+  with the levels and the draw (a palette per clip) → clip renders, 8 at a time with 1 worker each → FLACs →
   batches (§7.6) → `SHOOTOUT_OK`. Every palette source is hashed once per stage process, not once per palette. Any
-  gate or compile failure fails the job before any batch is written. Each stage's exit code and wall time go into
-  `summary/stages.json` and the log.
+  gate or compile failure fails the job before any batch is written, and so does a clip off its target after
+  matching (the generator refuses it) or a render whose bus is not the one the tool measured (render status
+  `level`: its pre-fader loudness more than 0.001 LU from the tool's L, or another fader). Each stage's exit code
+  and wall time go into `summary/stages.json` and the log.
 - **SU estimate:**
 
   | Run | Measuring runs (stage level) | Clip renders | Wall at 8 in parallel, + 2 min | Expected SU (12/min) |
   |---|---|---|---|---|
-  | day1 (Nov 2) | 72 (8 per loop) | 67 | 4.0–10 min (from the dry run below; first estimate 3.0–4.1) | 48–120 |
+  | day1 (Nov 2) | 72 (8 per loop) | 67 | 3.9–10.9 min (from the dry runs below; first estimate 3.0–4.1) | 46–131 |
   | day2 (Nov 3) | 27 (3 per loop) | 84 | 2.9–3.8 min | 34–45 |
   | day3 (Nov 5) | re-measures only on drift | 26 (+18 for an S2 re-run) | 2.2–2.5 min | 27–30 (+2–4) |
 
-  About 109–195 SU expected for the three runs (days 2 and 3 still on the first basis); at most 720 SU (3 × 240)
+  About 107–206 SU expected for the three runs (days 2 and 3 still on the first basis); at most 720 SU (3 × 240)
   if each used its full walltime; a re-run costs about one day2 run. **First basis:** the cluster render check took
   2.86–3.66 s per fixture on EPYC and 4.94–5.95 s on Xeon 4116 (CLI, 4 workers, 82 BPM, start-up included;
   `runs/render-check-{13630298,13630299,13630300,13630522}/summary/fixtures.json`); × 1.35 for 1 worker (RENDER.md
   §7: 1.54 against 1.14 s) and × 1.08 for 76 BPM gives 4.2–8.7 s a render; 94 % efficiency at 8 workers
   (LESSONS 37); a measuring run counts as 0.6 of a render on Day 1 and 0.3 on Day 2 (one stem); 2 min of fixed cost
   per run.
-- **Dry run** (2026-10-31, laptop, Apple M4 with 10 cores; `python -m lofi_rl.shootout.job --stage day1 --jobs 8`
-  with a scratch seed, the real banks and the two §7.4 archives under a scratch `LOFI_ASSETS`; twice, the first
-  with an empty one-shot cache): every stage passed. The draw gave 3 batches, 19 rounds (6 + 6 + 7 with the
-  anchor), 67 renders, 26 palettes and 1 gate-passing sour copy (P_chrom 0.3); the levels tool measured 20
+- **Dry run, median faders** (2026-10-31, laptop, Apple M4 with 10 cores; `python -m lofi_rl.shootout.job --stage
+  day1 --jobs 8` with a scratch seed, the real banks and the two §7.4 archives under a scratch `LOFI_ASSETS`;
+  twice, the first with an empty one-shot cache): every stage passed. The draw gave 3 batches, 19 rounds (6 + 6 + 7
+  with the anchor), 67 renders, 26 palettes and 1 gate-passing sour copy (P_chrom 0.3); the levels tool measured 20
   variants in 8 runs; all 67 renders passed G1–G7 at −14.09 … −13.99 LUFS, true peak at most −1.468 dBTP; each
   batch passed `python -m lofi_rl.ui.manifest check`. The second run gave byte-identical batches (76 files),
   draw.json, palettes (all 34; only the index, which names each run's own files, differs), level values and render
-  records.
+  records. Stage seconds, run 1 / run 2: draw 0.1 / 0.1, measure 0.4 / 0.4, levels 44.8 / 43.8, palettes 0.5 / 0.5,
+  render (67) 43.3 / 42.8, build 0.3 / 0.3, all 89.4 / 87.9; a render took 2.98–7.31 s (median 4.71).
+- **Dry run, per-clip faders** [CD-52] (2026-10-31, the same laptop, seed, banks, kits and command, the job's own
+  runner; three runs, the first with an empty one-shot cache, each into its own scratch inbox and runs folder):
+  every stage passed. The draw gave the same 3 batches, 19 rounds and 67 renders, now with 67 palettes, one per
+  clip, on 26 bases, and the same gate-passing sour copy (S1 on L9 for an alto, P_chrom 0.3). The levels tool
+  measured the 20 variants in 8 runs and 181 clip faders, the sour copy the one extra case; the generator wrote 93
+  palettes (26 stage palettes, 67 clips' own). All 67 renders passed G1–G7 at −14.099 … −13.996 LUFS, true peak at
+  most −1.473 dBTP, and each read the tool's L before its own fader exactly. Each batch passed `python -m
+  lofi_rl.ui.manifest check` (b1103-1-keys 6 rounds and 24 clips, b1103-2-groove 6 and 18, b1103-3-sax 7 and 28).
+  Runs 2 and 3 each gave run 1's bytes: the batches (76 files), draw.json, batches.json, the palettes (all 101 YAMLs;
+  the index differs only in the paths it names), the level values and the render records (and every render file,
+  the 134 WAVs included: 402 files; `wavio.write_float` writes no PEAK chunk, so the WAVs carry no timestamp). The per-round spreads are in §3 step 8.
 
   | Stage | draw | measure | levels | palettes | render (67) | build | all |
   |---|---|---|---|---|---|---|---|
-  | seconds, run 1 / run 2 | 0.1 / 0.1 | 0.4 / 0.4 | 44.8 / 43.8 | 0.5 / 0.5 | 43.3 / 42.8 | 0.3 / 0.3 | 89.4 / 87.9 |
+  | seconds, run 1 / 2 / 3 | 0.1 / 0.2 / 0.1 | 0.5 / 0.5 / 0.5 | 46.0 / 44.5 / 44.3 | 0.7 / 0.7 / 0.7 | 49.1 / 47.7 / 44.8 | 0.3 / 0.4 / 0.3 | 96.7 / 94.0 / 90.7 |
 
-  A render took 2.98–7.31 s (median 4.71) with 8 at a time; the peak memory over every stage was 3.0 GB. The
-  levels stage costs about as much as the renders, not the 0.6 of a render per measuring run assumed above. On
-  the cluster (× 1.3–2.7 a render, × 2 if the 8 CPUs are 4 cores' hyperthreads, + 2 min of start-up) Day 1 comes
-  to about 4–10 min, 50–120 SU, inside the 20-min walltime twice over.
+  A render took 2.76–8.15 s (median 5.38) in run 1 and 3.41–7.09 s (4.91) in run 3, with 8 at a time; the peak
+  memory over every stage was at most 3.0 GB (3,020,521,472 bytes, the independent check's run a). The change costs no measurable time:
+  just before run 3, the median-fader code (ae828ae) took 93.6 s on the same seed (levels 45.3, render 47.0),
+  against run 3's 90.7, and it reproduced the first dry run's render records exactly; the laptop's own spread over
+  the seven Day-1 runs, 86.4–98.7 s, is what moved the estimate (two of them the independent check's own, 86.4 s
+  with an empty one-shot cache and 98.7 s warm). The renders took 167 loudness-loop iterations
+  against 163 with median faders. On the cluster (× 1.3–2.7 a render, × 2 if the 8 CPUs are 4 cores' hyperthreads,
+  + 2 min of start-up) Day 1 comes to about 3.9–10.9 min, 46–131 SU, inside the 20-min walltime, which is 1.8 times
+  the slowest.
 
 ### 7.8 Shootout plan and palette generator
 - **Plan:** `shootouts/plan.yaml` transcribes §4 and §6 in symbols: candidates (source, preset, register, family,
@@ -881,13 +969,21 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   `src/lofi_rl/shootout/plan.py`, `shootouts/palettes/base.yaml` and `src/lofi_rl/shootout/palettes.py`. Tests:
   `tests/test_shootout_plan.py` (the doc's tables written out a second time, and the design properties) and
   `tests/test_shootout_palettes.py`. Choices the spec left open:
-  - **CLI:** `--stage day1|day2|day3` was added, and `--draw` is optional. The palettes do not depend on the draw:
-    Day 1 writes all 26, one per (stage, option) and for R2 one per (kit, bass), since each R2 round plays one kit,
-    each as `<id>.yaml`, the id being the key the draw gives it (`k1_jrhodes3d`, `r2_kit_swirly_bass_gu_acoustic`),
-    which the render driver reads. With `--draw` (the job passes the batch builder's draw.json) the draw must be this
-    day's draw of this plan, each stage's maps must meet its rule (K1 family pairs, S1 registers, `central` for the
-    vamps), and every palette its `palettes` table asks for must be one written here with the same band. Only day1
-    is built; day2 and day3 exit 2.
+  - **CLI:** `--stage day1|day2|day3` was added, and `--draw` is optional. The stage palettes do not depend on the
+    draw: Day 1 writes all 26, one per (stage, option) and for R2 one per (kit, bass), since each R2 round plays one
+    kit, each as `<id>.yaml` (`k1_jrhodes3d`, `r2_kit_swirly_bass_gu_acoustic`), with each instrument's median F.
+    With `--draw` (the job passes the batch builder's draw.json) the draw must be this day's draw of this plan, each
+    stage's maps must meet its rule (K1 family pairs, S1 registers, `central` for the vamps), and every palette its
+    `palettes` table asks for must be one written here with the same band. Only day1 is built; day2 and day3 exit 2.
+  - **Clip palettes (CD-52, 2026-10-31):** with `--draw`, each draw palette that names a `level` (§7.6) is written
+    as `<key>.yaml`, the file the render driver reads: its base's palette with the varied bus's fader set to the
+    levels file's `clips[case].F` for its option (`clip_palette`), every other trim and fader as the base's. Its key
+    must be `<base>_<loop id>[_<variant>]` from its base and case. A clip the levels file has no fader for (the
+    tool ran without `--draw`), or one more than `clip_tol_lu` from S\* + T, stops the generation before anything is
+    written. The index entry adds `base` and `level` (bus, variant, case, the tool's L, F, the loudness measured
+    after F, `lu` relative to S\*, the target, the miss and the tolerance), which the render driver copies into its
+    record. A test diffs the clip palettes of every drawn round: they differ only in the candidate's block, trim,
+    fader and name (§2.1). Day 1 writes 93 palettes: 26 stage palettes and 67 clips' own.
   - **The base** is a loadable palette: the dev band under `ep`, `dusty` and `tenor`, and every SoundFont
     candidate's source, pinned as in assets/MANIFEST.yaml. Each pitched chain starts with a trim slot,
     `[Gain, {gain_db: 0.0}]`, which leaves the output bit-identical at 0 dB. A palette's id names its stage and
@@ -990,8 +1086,8 @@ few to flag a single shootout. Position-of-best counts are pooled by clip count 
 - **R2 on all three kits** (I6: the top 2) [CD-9]; **swing and humanize in separate rounds** (I6: the 12-clip grid)
   [CD-10]; **swing advisory** around Shresth's 55 % [CD-13].
 - **Levels.** Per-instrument trims and faders matched on the reference loops replace instrument.md §4's
-  `bus_gain_db` calibration on the hand loops [CD-25, CD-29], and the chains are not tuned on the hand loops before
-  the freeze (§3, drift).
+  `bus_gain_db` calibration on the hand loops [CD-25, CD-29], each shootout clip takes its own fader on its round's
+  loop [CD-52], and the chains are not tuned on the hand loops before the freeze (§3, drift).
 - **Rain** comes on Nov 6, with the file asked for by Nov 5 noon (P§7 has Shresth download it on Nov 6).
 - **Borrowed chords:** P§3's rule is reported, not applied; removal needs Shresth's words [CD-45], since the
   palette's chord list is shared by every mood.
@@ -1062,6 +1158,7 @@ Each is overridable by Shresth; the reason is one line.
 | CD-49 | Batch names sort in serving order | `make rate` serves the oldest unfinished batch by path |
 | CD-50 | The cut list's order | it cuts a stage's third loop before any second one, and the S1 final last |
 | CD-51 | Shootout palettes carry trims as a chain-head `Gain` or lane `db` and faders in `bus_gain_db` | no palette code is needed before the freeze, while other workflows edit `palette.py` and `pipeline.py` |
+| CD-52 | Each shootout clip's fader on the bus its round varies comes from its candidate's measured loudness on the round's own loop (0.1 LU per clip); the frozen palette keeps the median fader (amends §3, 2026-10-31) | matching the median over the 9 loops left 10 of the 18 Day-1 design rounds and the anchor over 1.0 LU apart on their own loop (up to 4.20 LU, R1.3 on L8), and a candidate must never win by being louder |
 
 ## 11. Waiting on Shresth
 
