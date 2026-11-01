@@ -157,6 +157,8 @@ def main(argv: list[str] | None = None, *, renderer=None) -> int:
         for x in against:
             if not x.is_dir():
                 raise JobError(f"--against {x} is not a folder")
+            if x.resolve() == drafts.resolve():
+                raise JobError(f"--against {x} is the drafts folder itself (each draft would match itself)")
     except (JobError, B.BriefsError, ValueError) as err:
         print(f"error: {err}", file=sys.stderr)
         return 2

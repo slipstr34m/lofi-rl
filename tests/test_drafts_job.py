@@ -236,6 +236,10 @@ def test_an_infrastructure_fault_is_exit_1(tmp_path):
 def test_bad_arguments_and_an_existing_batch_exit_2(tmp_path):
     assert run(tmp_path, "--briefs", "d09") == 2
     assert run(tmp_path, "--name", "b 1105") == 2
+    assert run(tmp_path, "--against", str(tmp_path / "v1")) == 2           # the drafts folder itself
+    assert run(tmp_path, "--against", str(tmp_path / "v1" / ".." / "v1")) == 2
+    assert run(tmp_path, "--against", str(tmp_path / "nowhere")) == 2
+    assert not (tmp_path / "runs").exists()                                 # refused before any stage or args.json
     assert run(tmp_path) == 0
     assert run(tmp_path) == 2                                 # the batch exists: never overwritten
 
