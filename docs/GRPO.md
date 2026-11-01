@@ -343,10 +343,16 @@ config reaches the dry run, both launches and both checks, and the log names it.
   - **The means:** `mean_of_steps` and `token_weighted_mean`, which is D-020's "over every completion token", are
     reported, overall and `by_launch`.
   - **The rule** reads the token-weighted mean when every step has its tokens, else the mean of the steps:
-    `exceeds` is value > 0.05. It is D-020's reading only for the grammar + v2 config (`applies`). `caveats` name
-    steps with truncated completions, whose tokens TRL's value leaves out, the two means falling on two sides
-    of 0.05, and a rule that reads the mean of the steps (the steps that have no token count), which is not D-020's
-    mean over every completion token.
+    `exceeds` is value > 0.05. `caveats` name steps with truncated completions, whose tokens TRL's value leaves
+    out, the two means falling on two sides of 0.05, and a rule that reads the mean of the steps (the steps that
+    have no token count), which is not D-020's mean over every completion token.
+  - **When it is D-020's reading** (`applies`): only for the grammar + v2 config (`configured`), and only when both
+    launches showed the grammar applied (`grammar_shown`). A launch shows it (its `in_language` `shows_grammar`)
+    when it scored completions, its run.json names the config's regex, and none of the in-language failures above
+    was found. By D-020's Validity a constrained run that fails that check decides nothing, so its rule says so,
+    with a warning, even when the value is under 0.05. An engine without the grammar can read under it: the
+    unconstrained smoke 13632679 logged 0.0044–0.0091 at its 15 steps
+    (`runs/grpo-smoke-13632679/summary/{a,b}/steps.jsonl`).
 
 **Timeouts.** Each launch runs under `timeout -k 30s` with the job's remaining time minus 3 minutes, so the final
 check always runs inside the walltime.
@@ -431,6 +437,8 @@ for its smoke, so the merge records them in D-020 before that smoke runs.
     - It counts every step of both launches.
     - It weights the per-step values by completion tokens, truncated ones out as TRL's mask leaves them out.
     - The 0.05 rule reads the token-weighted mean, which is D-020's "over every completion token".
+    - It is D-020's reading only when both launches showed the grammar applied (`grammar_shown`); otherwise the smoke
+      fails and the rule decides nothing (D-020, Validity).
     - Without a checked TRL source it is unavailable, never computed from guessed internals.
     - An unavailable readout is a warning, not a smoke failure: D-020's reading then stays open.
 

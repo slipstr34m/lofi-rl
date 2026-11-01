@@ -23,7 +23,8 @@ What the D-020 settings add to the report (docs/GRPO.md §5):
   record, if any has the finish reason "other" (none from the token ids, so the check cannot judge it; D-020's
   Validity asks other.n to be 0), if a launch scored completions but none ended by stop (then nothing shows the
   grammar applied), or if a launch's run.json names another regex. A launch's failures here are judged at the final
-  stage.
+  stage. Its shows_grammar is true only when the launch scored completions, named the config's regex and has none
+  of these failures.
 - **backend**: each launch's record of the structured-outputs pin on the engine TRL built (requested, pin_accepted,
   backend, source, applied, engine). It decides nothing, as in junk.json.
 - **copy** (a config with copy_penalty): P_copy's mean, the completions it penalized and the largest J, per launch;
@@ -36,8 +37,10 @@ What the D-020 settings add to the report (docs/GRPO.md §5):
   "over every completion token" reads (weights: each step's completion tokens from rewards.jsonl, without the
   truncated completions when TRL's mask drops them), are both reported, and the 0.05 rule reads the token-weighted
   mean when every step has its tokens, else the mean of the per-step values, with a caveat and a warning that say
-  so. The rule is D-020's reading only for a config with the grammar and prompt v2
-  (`applies`); an unavailable readout is a warning, not a failure.
+  so. The rule is D-020's reading (`applies`) only for a config with the grammar and prompt v2 (`configured`) whose
+  two launches both showed the grammar applied (`grammar_shown`: each launch's in_language shows_grammar), since by
+  D-020's Validity a constrained run that fails the in-language check decides nothing. An unavailable readout is a
+  warning, not a failure.
 """
 from __future__ import annotations
 
@@ -191,11 +194,14 @@ def _launch(run: Path, name: str, cfg: RunConfig, steps_want: list[int], start_s
 
 def _language(name: str, meta: dict[str, Any], rewards: list[dict[str, Any]], cfg: RunConfig,
               problems: list[str]) -> dict[str, Any]:
-    """A constrained launch's completions in the regex's language, by finish reason (module docstring)."""
+    """A constrained launch's completions in the regex's language, by finish reason (module docstring). Its
+    shows_grammar is true only when the launch scored completions, its run.json names the config's regex and none of
+    the failures below was found: the one predicate the IS rule's `applies` reads."""
     want = cfg.structured_outputs["sha256"]
     got = (meta.get("structured_outputs") or {}).get("sha256")
+    mine: list[str] = []
     if meta and got != want:
-        problems.append(f"launch {name}: run.json's regex sha256 {str(got)[:16]} is not the config's {want[:16]}")
+        mine.append(f"launch {name}: run.json's regex sha256 {str(got)[:16]} is not the config's {want[:16]}")
     counts = {g: {"n": 0, "in_language": 0, "out_of_language": 0} for g in FINISH}
     by_step: dict[Any, dict[str, int]] = {}
     unrecorded, out = 0, []
@@ -215,21 +221,23 @@ def _language(name: str, meta: dict[str, Any], rewards: list[dict[str, Any]], cf
                 if len(out) < 5:
                     out.append({"step": r.get("step"), "i": r.get("i"), "text_sha256": r.get("text_sha256")})
     if unrecorded:
-        problems.append(f"launch {name}: {unrecorded} of {len(rewards)} completions have no in-language record (a "
-                        "constrained run's reward counts every one)")
+        mine.append(f"launch {name}: {unrecorded} of {len(rewards)} completions have no in-language record (a "
+                    "constrained run's reward counts every one)")
     other = counts["other"]["n"]
     if other:
-        problems.append(f"launch {name}: {other} of {len(rewards)} completions have no finish reason from the token ids "
-                        "(completion_ids or the limit unknown), so the in-language check cannot judge them (D-020, "
-                        "Validity: other.n is 0)")
+        mine.append(f"launch {name}: {other} of {len(rewards)} completions have no finish reason from the token ids "
+                    "(completion_ids or the limit unknown), so the in-language check cannot judge them (D-020, "
+                    "Validity: other.n is 0)")
     if rewards and counts["stop"]["n"] == 0:
-        problems.append(f"launch {name}: no completion ended by stop, so nothing shows the grammar applied")
+        mine.append(f"launch {name}: no completion ended by stop, so nothing shows the grammar applied")
     bad = counts["stop"]["out_of_language"]
     if bad:
-        problems.append(f"launch {name}: {bad} of {counts['stop']['n']} stop completions are not in the regex's "
-                        "language: the engine did not apply the grammar as re reads it, or the text TRL decoded for "
-                        f"the reward is not the text vLLM generated (D-020, Validity); first {out[:2]}")
+        mine.append(f"launch {name}: {bad} of {counts['stop']['n']} stop completions are not in the regex's "
+                    "language: the engine did not apply the grammar as re reads it, or the text TRL decoded for "
+                    f"the reward is not the text vLLM generated (D-020, Validity); first {out[:2]}")
+    problems += mine
     return {"regex_sha256": want, **counts, "unrecorded": unrecorded, "first_out_of_language": out,
+            "shows_grammar": bool(rewards) and got == want and not mine,
             "by_step": {str(k): v for k, v in sorted(by_step.items(), key=lambda kv: (kv[0] is None, kv[0]))}}
 
 
@@ -270,18 +278,22 @@ def _step_tokens(rewards: list[dict[str, Any]], drop_truncated: bool) -> dict[An
     return {k: (v[0], v[1]) for k, v in out.items()}
 
 
-def _is_readout(launches: dict[str, dict[str, Any]], cfg: RunConfig, warnings: list[str]) -> dict[str, Any]:
-    """D-020's IS readout from TRL's per-step metric, read only when its source was checked (module docstring)."""
+def _is_readout(launches: dict[str, dict[str, Any]], cfg: RunConfig, warnings: list[str],
+                grammar_shown: bool = False) -> dict[str, Any]:
+    """D-020's IS readout from TRL's per-step metric, read only when its source was checked (module docstring).
+    grammar_shown: both launches' in_language showed the grammar applied (check() reads it); without it the rule
+    is not D-020's reading, whatever the config."""
     sources = {n: (d.get("meta") or {}).get("trl_logp_metric") for n, d in launches.items()}
     verdicts = {n: (s or {}).get("verdict") for n, s in sources.items()}
-    applies = cfg.structured_outputs is not None and cfg.prompt == "v2"
+    configured = cfg.structured_outputs is not None and cfg.prompt == "v2"
+    applies = configured and grammar_shown
     # TRL's completion mask leaves truncated completions out when mask_truncated_completions is on (the weights do
     # the same); whether the source was seen to do it is in excludes_truncated
     excludes = cfg.trainer.get("mask_truncated_completions") is True
     seen = bool(sources) and all((s or {}).get("excludes_truncated") is True for s in sources.values())
     out: dict[str, Any] = {
         "definition": IS_DEFINITION, "metric": IS_METRIC, "threshold": IS_THRESHOLD, "applies": applies,
-        "verdicts": verdicts,
+        "configured": configured, "grammar_shown": grammar_shown, "verdicts": verdicts,
         "source": {n: None if s is None else {k: s.get(k) for k in ("package", "version", "verdict", "file", "sha256",
                                                                      "sites", "missing", "excludes_truncated",
                                                                      "lines", "error")}
@@ -343,8 +355,13 @@ def _is_readout(launches: dict[str, dict[str, Any]], cfg: RunConfig, warnings: l
     if plain is not None and weighted is not None and (plain > IS_THRESHOLD) != (weighted > IS_THRESHOLD):
         caveats.append(f"the mean of the per-step values ({plain:.6f}) and the token-weighted mean ({weighted:.6f}) "
                        "fall on two sides of 0.05")
-    if not applies:
+    if not configured:
         says = "not D-020's reading: it is read in a GRPO smoke with the grammar and prompt v2"
+    elif not grammar_shown:
+        says = ("not D-020's reading: this smoke did not show the grammar applied in both launches (in_language "
+                "failed), so it decides nothing (D-020, Validity)")
+        warnings.append("IS readout: the in-language check did not show the grammar applied in both launches, so the "
+                        "0.05 rule decides nothing")
     elif exceeds:
         says = "exceeds 0.05: by D-020 the grammar goes off for GRPO run 1, and run 1's start is registered again"
     else:
@@ -424,7 +441,10 @@ def check(run: Path, stage: str, cfg: RunConfig, exit_codes: dict[str, str] | No
     if cfg.copy_penalty is not None:
         rep["copy"] = {n: info.get("copy") for n, info in (("a", first), ("b", rep.get("resumed") or {}))
                        if info.get("ran")}
-    rep["is_ratio"] = _is_readout(ran, cfg, warnings) if stage == "final" else None
+    infos = [i for i in (first, rep.get("resumed") or {}) if i.get("ran")]
+    shown = (cfg.structured_outputs is not None and len(infos) == 2
+             and all((i.get("in_language") or {}).get("shows_grammar") is True for i in infos))
+    rep["is_ratio"] = _is_readout(ran, cfg, warnings, grammar_shown=shown) if stage == "final" else None
     rep["failures"], rep["warnings"], rep["ok"] = problems, warnings, not problems
     return rep
 

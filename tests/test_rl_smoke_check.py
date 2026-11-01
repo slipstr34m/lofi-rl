@@ -198,6 +198,8 @@ def test_a_d020_smoke_reports_the_language_the_backend_the_copies_and_the_is_rea
     assert isr["mean_of_steps"] == pytest.approx(sum(values) / 15)
     assert isr["token_weighted_mean"] == pytest.approx(sum(v * t for v, t in zip(values, tokens)) / sum(tokens))
     assert isr["by_launch"]["a"]["mean_of_steps"] == pytest.approx(0.0055)
+    assert rep["in_language"]["launches"]["a"]["shows_grammar"] is True is rep["in_language"]["launches"]["b"]["shows_grammar"]
+    assert isr["configured"] is True and isr["grammar_shown"] is True and isr["applies"] is True
     assert isr["rule"]["applies"] is True and isr["rule"]["exceeds"] is False and isr["rule"]["caveats"] == []
     assert "IS readout (trl:sampling/sampling_logp_difference/mean)" in out and "in the regex's language" in out
 
@@ -213,11 +215,39 @@ def test_a_stop_completion_out_of_the_language_fails_the_smoke_at_the_final_stag
     assert "GRPO_SMOKE_FAILED" in capsys.readouterr().out
 
 
+def test_a_smoke_whose_engine_did_not_apply_the_grammar_gives_no_grammar_verdict(tmp_path):
+    # Every stop completion out of the language, at TRL's unconstrained level (smoke 13632679 logged 0.0044-0.0091):
+    # the value is under 0.05, but by D-020's Validity a constrained run that fails the in-language check decides
+    # nothing, so the rule must not say "keeps the grammar on".
+    run = _d020_run(tmp_path, out_of_language={(k, i) for k in range(10) for i in range(32)}, value=lambda s: 0.007)
+    rep = sc.check(run, "final", _cfg(), {"a": "0", "b": "0"})
+    isr, rule = rep["is_ratio"], rep["is_ratio"]["rule"]
+    assert not rep["ok"] and rule["exceeds"] is False and rule["value"] == pytest.approx(0.007)
+    assert isr["configured"] is True and isr["grammar_shown"] is False
+    assert rule["applies"] is False and isr["applies"] is False
+    assert "decides nothing" in rule["says"] and "keeps the grammar on" not in rule["says"]
+    assert rep["in_language"]["launches"]["a"]["shows_grammar"] is False
+    assert any("0.05 rule decides nothing" in w for w in rep["warnings"])
+
+
+def test_one_launch_that_names_another_regex_is_enough_to_withhold_the_verdict(tmp_path):
+    run = _d020_run(tmp_path)
+    meta = run / "summary" / "b" / "run.json"
+    m = json.loads(meta.read_text())
+    meta.write_text(json.dumps({**m, "structured_outputs": {**m["structured_outputs"], "sha256": "0" * 64}}))
+    rep = sc.check(run, "final", _cfg(), {"a": "0", "b": "0"})
+    langs = rep["in_language"]["launches"]
+    assert (langs["a"]["shows_grammar"], langs["b"]["shows_grammar"]) == (True, False)
+    assert any(f.startswith("launch b: run.json's regex sha256 0000000000000000") for f in rep["failures"])
+    assert rep["is_ratio"]["grammar_shown"] is False and rep["is_ratio"]["rule"]["applies"] is False
+
+
 def test_a_length_completion_out_of_the_language_is_counted_apart_and_passes(tmp_path):
     run = _d020_run(tmp_path, truncated=lambda k, i: i == 5, out_of_language={(k, 5) for k in range(10)})
     rep = sc.check(run, "final", _cfg(), {"a": "0", "b": "0"})
     assert rep["ok"], rep["failures"]
     assert rep["in_language"]["length"] == {"n": 15, "in_language": 0, "out_of_language": 15}
+    assert rep["is_ratio"]["rule"]["applies"] is True, "a cut completion out of the language still shows the grammar"
     assert any("truncated completions" in c for c in rep["is_ratio"]["rule"]["caveats"])
     assert rep["is_ratio"]["steps"][0]["tokens"] == 31 * 100, "TRL's mask leaves the cut completion out"
 
