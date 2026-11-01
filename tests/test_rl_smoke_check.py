@@ -248,6 +248,10 @@ def test_one_launch_that_names_another_regex_is_enough_to_withhold_the_verdict(t
     assert (langs["a"]["shows_grammar"], langs["b"]["shows_grammar"]) == (True, False)
     assert any(f.startswith("launch b: run.json's regex sha256 0000000000000000") for f in rep["failures"])
     assert rep["is_ratio"]["grammar_shown"] is False and rep["is_ratio"]["rule"]["applies"] is False
+    meta.unlink()                                   # no run.json: nothing names the regex the engine was given
+    rep = sc.check(run, "final", _cfg(), {"a": "0", "b": "0"})
+    assert any("summary/b/run.json: cannot read" in f for f in rep["failures"])
+    assert rep["in_language"]["launches"]["b"]["shows_grammar"] is False and rep["is_ratio"]["grammar_shown"] is False
 
 
 def test_a_length_completion_out_of_the_language_is_counted_apart_and_passes(tmp_path):
