@@ -10,9 +10,12 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
+import types
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -256,9 +259,9 @@ def test_score_without_completions_fails_loudly(tmp_path):
 class FakeEngine:
     """The engine interface junk.generate uses: .info, .load_s, .sampling(**kw), .chat(convs, sp)."""
 
-    def __init__(self, texts, clock=None, step_s=0.0):
+    def __init__(self, texts, clock=None, step_s=0.0, info=None):
         self.texts, self.calls, self.clock, self.step_s = texts, [], clock, step_s
-        self.info, self.load_s = {"engine": "fake"}, 1.5
+        self.info, self.load_s = dict(info or {"engine": "fake"}), 1.5
 
     def sampling(self, **kw):
         self.sp = dict(kw)
@@ -304,18 +307,23 @@ def test_generate_writes_one_row_per_brief_with_the_v1_prompt(tmp_path, pal, mon
     assert meta["model"] == {"repo": junk.QWEN[0], "revision": junk.QWEN[1]}
     assert [c["count"] for c in meta["timing"]["chunks"]] == [4, 4, 2] and meta["timing"]["load_s"] == 1.5
     assert meta["constrained"] == UNCONSTRAINED, "v0's settings: no structured outputs unless --constrained"
+    assert seen["backend"] is None, "no structured-outputs backend is pinned for an unconstrained run"
     assert junk.main(["score", "--run", str(tmp_path), "--palette", str(DEV)]) == 0
     s = json.loads((tmp_path / "summary" / "junk.json").read_text())
     assert s["n"] == 10 and s["prompt"]["rows_matching"] == 10 and s["near_copy"]["count"] == 5
-    assert s["constrained"] == UNCONSTRAINED
+    assert s["constrained"] == {**UNCONSTRAINED, "in_language": None}
 
 
-UNCONSTRAINED = {"enabled": False, "regex_sha256": None, "regex_chars": None, "builder": None}
+UNCONSTRAINED = {"enabled": False, "regex_sha256": None, "regex_chars": None, "builder": None, "backend": None}
+# what VllmEngine.info["structured_outputs"] holds when vLLM takes the pin (test_vllm_engine_pins_the_xgrammar_backend)
+PINNED = {"requested": "xgrammar", "pin_accepted": True, "backend": "xgrammar",
+          "source": "llm_engine.vllm_config.structured_outputs_config.backend", "applied": True}
 
 
 def test_generate_constrained_sends_the_loopscript_regex_and_records_its_sha(tmp_path, pal, monkeypatch):
-    engine = FakeEngine([prompt.example_text(pal), ORIG])
-    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: engine)
+    engine = FakeEngine([prompt.example_text(pal), ORIG], info={"engine": "fake", "structured_outputs": PINNED})
+    asked = []
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: asked.append(kw["backend"]) or engine)
     made = []
 
     def params(regex):
@@ -327,16 +335,94 @@ def test_generate_constrained_sends_the_loopscript_regex_and_records_its_sha(tmp
     assert rc == 0
     rx = grammar.loopscript_regex(pal)
     assert made == [rx], "built once, from the run's palette"
+    assert asked == ["xgrammar"], "the backend is pinned, so a regex xgrammar refuses fails the run"
     assert engine.sp == {**junk.SAMPLING, "structured_outputs": {"StructuredOutputsParams": {"regex": rx}}}
     meta = json.loads((tmp_path / "summary" / "generate.json").read_text())
     want = {"enabled": True, "regex_sha256": grammar.regex_sha256(pal), "regex_chars": len(rx),
-            "builder": "lofi_rl.grammar.loopscript_regex"}
+            "builder": "lofi_rl.grammar.loopscript_regex", "backend": PINNED}
     assert meta["constrained"] == want
     assert meta["sampling"] == junk.SAMPLING, "the sampling settings are v0's; the regex is recorded by its sha"
     assert junk.main(["score", "--run", str(tmp_path), "--palette", str(DEV)]) == 0
     s = json.loads((tmp_path / "summary" / "junk.json").read_text())
-    assert s["constrained"] == want
+    full = re.compile(rx).fullmatch
+    assert full(prompt.example_text(pal)) and full(ORIG), "both fake completions are in the language"
+    assert s["constrained"] == {**want, "in_language": {
+        "regex_sha256": grammar.regex_sha256(pal), "matches_generate": True,
+        "stop": {"n": 4, "in_language": 4, "out_of_language": 0},
+        "length": {"n": 0, "in_language": 0, "out_of_language": 0},
+        "other": {"n": 0, "in_language": 0, "out_of_language": 0}}}
     assert s["pass"]["count"] == 4 and s["failures"]["G1"] == 0, "the score step is the same"
+
+
+def _v0_like(pal) -> dict[str, str]:
+    """Completions as v0 wrote them (runs/junk-13632676): its line ends ("  \\n", none after B) on the example, and
+    the same with v0's commonest faults, which a regex-constrained engine cannot write."""
+    ex = prompt.example_text(pal)
+    v0 = ex[:-1].replace("\n", "  \n")
+    return {"in": v0,
+            "two grids on an edit": v0.replace("@4 kick: x......x..x...x.", "@4 kick: x......x..x...x. x......x..x...x."),
+            "a 15-cell edit": v0.replace("@7 ohat: ......x.........", "@7 ohat: ......x........"),
+            "a sax line": v0.replace("  \nA: ", "  \nsax: tenor  \nA: "),
+            "cut": v0[:200]}
+
+
+class Ignoring(FakeEngine):
+    """An engine that takes the regex and ignores it: it returns what v0's unconstrained model wrote."""
+
+    def __init__(self, texts):
+        super().__init__([t for _, t in texts], info={"engine": "fake", "structured_outputs": PINNED})
+        self.reasons = [r for r, _ in texts]
+
+    def chat(self, convs, sp):
+        out = super().chat(convs, sp)
+        return [replace(c, finish_reason=self.reasons[k % len(self.reasons)]) for k, c in enumerate(out)]
+
+
+def test_score_counts_constrained_completions_in_and_out_of_the_regexs_language(tmp_path, pal, monkeypatch):
+    v = _v0_like(pal)
+    engine = Ignoring([("stop", v["in"]), ("stop", v["two grids on an edit"]), ("stop", v["a 15-cell edit"]),
+                       ("stop", v["a sax line"]), ("length", v["cut"]), (None, v["in"])])
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: engine)
+    monkeypatch.setattr(junk, "structured_outputs_params", lambda regex: {"regex_sha256": junk.sha256_text(regex)})
+    assert junk.main(["generate", "--run", str(tmp_path), "--n", "6", "--palette", str(DEV), "--hang-s", "0",
+                      "--constrained"]) == 0
+    assert junk.main(["score", "--run", str(tmp_path), "--palette", str(DEV)]) == 0
+    s = json.loads((tmp_path / "summary" / "junk.json").read_text())
+    lang = s["constrained"]["in_language"]
+    assert lang["matches_generate"] is True and lang["regex_sha256"] == grammar.regex_sha256(pal)
+    assert lang["stop"] == {"n": 4, "in_language": 1, "out_of_language": 3}, "the engine did not apply the regex"
+    assert lang["length"] == {"n": 1, "in_language": 0, "out_of_language": 1}, "cut completions are counted apart"
+    assert lang["other"] == {"n": 1, "in_language": 1, "out_of_language": 0}
+    assert s["constrained"]["backend"] == PINNED
+    assert "in the regex's language: stop 1/4, length 0/1" in junk.headline(s)
+    assert s["failures"]["G1"] == 1 and s["failures"]["G2"] == 1, "the gates are scored as before"
+
+
+def test_in_language_is_not_counted_against_a_regex_generate_did_not_record(tmp_path, pal, monkeypatch):
+    engine = FakeEngine([prompt.example_text(pal)], info={"engine": "fake", "structured_outputs": PINNED})
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: engine)
+    monkeypatch.setattr(junk, "structured_outputs_params", lambda regex: {})
+    assert junk.main(["generate", "--run", str(tmp_path), "--n", "2", "--palette", str(DEV), "--hang-s", "0",
+                      "--constrained"]) == 0
+    gen = tmp_path / "summary" / "generate.json"
+    meta = json.loads(gen.read_text())
+    meta["constrained"]["regex_sha256"] = "0" * 64          # a regex grammar.py no longer builds
+    gen.write_text(json.dumps(meta))
+    assert junk.main(["score", "--run", str(tmp_path), "--palette", str(DEV)]) == 0
+    s = json.loads((tmp_path / "summary" / "junk.json").read_text())
+    assert s["constrained"]["in_language"] == {"regex_sha256": grammar.regex_sha256(pal), "matches_generate": False,
+                                               "stop": None, "length": None, "other": None}
+    assert "not counted" in junk.headline(s)
+
+
+def test_an_engine_that_reports_no_backend_is_recorded_as_unknown(tmp_path, pal, monkeypatch):
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: FakeEngine([ORIG]))
+    monkeypatch.setattr(junk, "structured_outputs_params", lambda regex: {})
+    assert junk.main(["generate", "--run", str(tmp_path), "--n", "1", "--palette", str(DEV), "--hang-s", "0",
+                      "--constrained"]) == 0
+    meta = json.loads((tmp_path / "summary" / "generate.json").read_text())
+    assert meta["constrained"]["backend"] == {"requested": "xgrammar", "pin_accepted": None, "backend": "unknown",
+                                              "source": None, "applied": None}
 
 
 def test_generate_constrained_fails_before_the_model_loads_naming_the_import(tmp_path, pal, monkeypatch):
@@ -401,10 +487,13 @@ def test_generate_records_an_engine_failure_and_exits_nonzero(tmp_path, pal, mon
     assert len((tmp_path / "summary" / "completions.jsonl").read_text().splitlines()) == 3
 
 
-def _fake_vllm(monkeypatch, *, refuse_top_k_zero: bool) -> dict:
-    """vllm, torch and transformers stand-ins with the attributes VllmEngine reads (the laptop has none of them)."""
+def _fake_vllm(monkeypatch, *, refuse_top_k_zero: bool, pin: str = "takes") -> dict:
+    """vllm, torch and transformers stand-ins with the attributes VllmEngine reads (the laptop has none of them).
+    pin "takes": LLM() takes structured_outputs_config and keeps its backend where vLLM's VllmConfig does ("auto"
+    without it); "ignores": it takes the keyword and keeps "auto"; "refuses": LLM() raises TypeError on that
+    keyword, as a vLLM without it would, and has no engine."""
     import types
-    seen: dict = {}
+    seen: dict = {"inits": []}
 
     class SamplingParams:
         def __init__(self, **kw):
@@ -426,7 +515,15 @@ def _fake_vllm(monkeypatch, *, refuse_top_k_zero: bool) -> dict:
 
     class LLM:
         def __init__(self, **kw):
+            seen["inits"].append(kw)
+            if pin == "refuses" and "structured_outputs_config" in kw:
+                raise TypeError("LLM.__init__() got an unexpected keyword argument 'structured_outputs_config'")
             seen["init"] = kw
+            if pin in ("takes", "ignores"):
+                backend = (kw.get("structured_outputs_config") or {}).get("backend", "auto")
+                backend = "auto" if pin == "ignores" else backend
+                self.llm_engine = types.SimpleNamespace(vllm_config=types.SimpleNamespace(
+                    structured_outputs_config=types.SimpleNamespace(backend=backend)))
 
         def chat(self, messages, sampling_params=None, use_tqdm=True):
             seen["chat"] = (messages, sampling_params, use_tqdm)
@@ -456,6 +553,83 @@ def test_vllm_engine_runs_vllm_as_the_smoke_did_and_maps_its_outputs(monkeypatch
     assert out == [junk.Completion("text 0", "stop", 3, 1388), junk.Completion("text 1", "length", 4, 1388)]
 
 
+BASE_KW = {"model": "/hf/snap", "dtype": "bfloat16", "gpu_memory_utilization": 0.85, "max_model_len": 4096,
+           "enforce_eager": True, "seed": 5}
+
+
+def test_vllm_engine_pins_the_xgrammar_backend_and_reads_it_back_after_the_build(monkeypatch):
+    seen = _fake_vllm(monkeypatch, refuse_top_k_zero=False)
+    eng = junk.VllmEngine("/hf/snap", seed=5, gpu_mem=0.85, max_model_len=4096, backend="xgrammar")
+    assert seen["inits"] == [{**BASE_KW, "structured_outputs_config": {"backend": "xgrammar"}}], "built once"
+    assert eng.info["structured_outputs"] == PINNED
+
+
+def test_vllm_engine_builds_without_the_pin_when_llm_refuses_the_keyword(monkeypatch):
+    seen = _fake_vllm(monkeypatch, refuse_top_k_zero=False, pin="refuses")
+    eng = junk.VllmEngine("/hf/snap", seed=5, gpu_mem=0.85, max_model_len=4096, backend="xgrammar")
+    assert seen["inits"] == [{**BASE_KW, "structured_outputs_config": {"backend": "xgrammar"}}, BASE_KW]
+    rec = eng.info["structured_outputs"]
+    assert rec["requested"] == "xgrammar" and rec["pin_accepted"] is False
+    assert "structured_outputs_config" in rec["pin_error"] and rec["pin_error"].startswith("TypeError")
+    assert (rec["backend"], rec["source"], rec["applied"]) == ("unknown", None, None), "nothing to read: not fatal"
+    assert eng.chat([[{"role": "user", "content": "a"}]], eng.sampling(**junk.SAMPLING))[0].text == "text 0"
+
+
+def test_vllm_engine_records_a_pin_that_was_taken_but_not_applied(monkeypatch):
+    seen = _fake_vllm(monkeypatch, refuse_top_k_zero=False, pin="ignores")
+    eng = junk.VllmEngine("/hf/snap", seed=5, gpu_mem=0.85, max_model_len=4096, backend="xgrammar")
+    assert len(seen["inits"]) == 1
+    rec = eng.info["structured_outputs"]
+    assert rec["pin_accepted"] is True and rec["backend"] == "auto" and rec["applied"] is False
+
+
+def test_vllm_engine_unconstrained_asks_for_no_backend_and_records_vllms_default(monkeypatch):
+    seen = _fake_vllm(monkeypatch, refuse_top_k_zero=False)
+    eng = junk.VllmEngine("/hf/snap", seed=5, gpu_mem=0.85, max_model_len=4096)
+    assert seen["inits"] == [BASE_KW]
+    assert eng.info["structured_outputs"] == {"requested": None, "pin_accepted": None, "backend": "auto",
+                                              "source": "llm_engine.vllm_config.structured_outputs_config.backend",
+                                              "applied": None}
+
+
+def test_read_backend_follows_the_attribute_chains_and_never_raises():
+    ns = types.SimpleNamespace
+
+    class Raising:
+        @property
+        def vllm_config(self):
+            raise RuntimeError("engine core not reachable")
+
+    class Mode:                                    # an enum member, as older vLLMs typed the backend
+        value = "outlines"
+    newest = ns(llm_engine=ns(vllm_config=ns(structured_outputs_config=ns(backend="xgrammar"))))
+    older = ns(llm_engine=ns(vllm_config=ns(structured_outputs_config=ns(backend=None),
+                                            decoding_config=ns(backend="guidance"))))
+    v0_engine = ns(llm_engine=ns(decoding_config=ns(guided_decoding_backend=Mode())))
+    assert junk.read_backend(newest) == {"backend": "xgrammar",
+                                         "source": "llm_engine.vllm_config.structured_outputs_config.backend"}
+    assert junk.read_backend(older) == {"backend": "guidance", "source": "llm_engine.vllm_config.decoding_config.backend"}
+    assert junk.read_backend(v0_engine) == {"backend": "outlines",
+                                            "source": "llm_engine.decoding_config.guided_decoding_backend"}
+    for nothing in (object(), ns(llm_engine=Raising()), ns(llm_engine=None)):
+        assert junk.read_backend(nothing) == {"backend": "unknown", "source": None}
+
+
+def test_build_llm_retries_only_on_a_typeerror(monkeypatch):
+    calls = []
+
+    class Strict:
+        def __init__(self, **kw):
+            calls.append(kw)
+            if "structured_outputs_config" in kw:
+                raise ValueError("the regex is not supported by xgrammar")
+    with pytest.raises(ValueError, match="xgrammar"):
+        junk.build_llm(Strict, {"model": "m"}, "xgrammar")
+    assert calls == [{"model": "m", "structured_outputs_config": {"backend": "xgrammar"}}], "a refusal stays loud"
+    llm, pin = junk.build_llm(Strict, {"model": "m"}, None)
+    assert isinstance(llm, Strict) and pin == {"requested": None, "pin_accepted": None}
+
+
 def test_load_engine_takes_the_pinned_snapshot_from_the_hf_cache(tmp_path, monkeypatch):
     repo, rev = junk.QWEN[0], junk.QWEN[1]
     snap = tmp_path / "hub" / ("models--" + repo.replace("/", "--")) / "snapshots" / rev
@@ -469,7 +643,9 @@ def test_load_engine_takes_the_pinned_snapshot_from_the_hf_cache(tmp_path, monke
     for f in junk.QWEN[2]:
         (snap / f).write_text("{}")
     path, kw = junk.load_engine(f"{repo}@{rev}", seed=1, gpu_mem=0.8, max_model_len=4096)
-    assert path == str(snap) and kw == {"seed": 1, "gpu_mem": 0.8, "max_model_len": 4096}
+    assert path == str(snap) and kw == {"seed": 1, "gpu_mem": 0.8, "max_model_len": 4096, "backend": None}
+    path, kw = junk.load_engine(f"{repo}@{rev}", seed=1, gpu_mem=0.8, max_model_len=4096, backend="xgrammar")
+    assert kw["backend"] == "xgrammar"
 
 
 def test_model_spec_needs_a_pinned_commit():

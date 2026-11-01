@@ -25,9 +25,31 @@ regex_sha256(palette)               # sha256 of the regex text (UTF-8): the iden
   field as `structured_outputs=None`.
   - **The import.** `vllm.sampling_params.StructuredOutputsParams` is imported inside the run, before the model
     loads. A vLLM without it stops in seconds, and `generate.json` `stopped` names the import that failed.
+  - **The backend.** `LLM()` is asked for `structured_outputs_config={"backend": "xgrammar"}`
+    (`junk.STRUCTURED_BACKEND`), so a regex xgrammar refuses stops the run with the error, where vLLM's default
+    `auto` would fall back to guidance without a word. If `LLM()` raises TypeError on that keyword (a vLLM without
+    it), it is built again without it, and the record says `pin_accepted: false` and keeps the error. An
+    unconstrained run asks for nothing.
   - **The record.** `generate.json` and `junk.json` hold a `constrained` block: `enabled`, `regex_sha256`,
-    `regex_chars` and `builder`.
-  - **Unchanged:** the sampling settings (`sampling` is v0's) and the score step.
+    `regex_chars`, `builder` and `backend`. `backend` has:
+    - `requested` and `pin_accepted`;
+    - `backend`, read from the built `LLM` through `junk.BACKEND_PATHS` (VllmConfig's
+      `structured_outputs_config.backend` first, then the older `decoding_config` names), or `unknown` when none
+      resolves;
+    - `source`, the path it came from;
+    - `applied`, whether that backend is the one asked for (null when nothing could be read). A vLLM that takes
+      the keyword but keeps `auto` shows `pin_accepted: true, applied: false`.
+  - **In the language.** `score` adds `in_language` to `junk.json`'s block. It rebuilds the regex from the palette,
+    checks its sha256 against the recorded one, and counts the completions that fullmatch it, apart for
+    `finish_reason` `stop`, `length` and anything else. Each count has `n`, `in_language` and `out_of_language`.
+    - Under a working constraint every `stop` completion is in the language. One out of it means the engine did
+      not apply the regex.
+    - A `length` completion is cut, so it is counted apart.
+    - If the sha256 differs (another palette, or a changed `grammar.py`), nothing is counted and
+      `matches_generate` is false. The headline line prints the counts.
+  - **UNVERIFIED:** vLLM 0.32.0 is not on the laptop. Whether its `LLM()` takes `structured_outputs_config` and
+    where it keeps the backend are first checked by the constrained run's own record.
+  - **Unchanged:** the sampling settings (`sampling` is v0's) and the gates.
   - **The job:** `make submit JOB=jobs/junk_rate.sbatch ARGS='500 2026 1'`. The third argument, CONSTRAINED, is 0
     (the default) or 1. Anything else stops the job before any work.
 - **GRPO.** `configs/grpo_smoke_constrained.yaml` is `configs/grpo_smoke.yaml` plus one top-level key,

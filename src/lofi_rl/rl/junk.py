@@ -15,10 +15,15 @@ jobs/junk_rate.sbatch runs the three in order on one GPU node, with DIR = $REMOT
   what was done. A chunk that would end past --deadline-s is not started.
   --constrained adds grammar-constrained decoding (D-016; docs/GRAMMAR.md): SamplingParams(structured_outputs=
   StructuredOutputsParams(regex=lofi_rl.grammar.loopscript_regex(palette))). vLLM's class is imported inside the run,
-  before the model loads, so a vLLM without it fails in seconds with the import named. generate.json and junk.json
-  record the regex's sha256 under "constrained"; the sampling settings stay v0's.
+  before the model loads, so a vLLM without it fails in seconds with the import named. LLM() is asked for the
+  xgrammar backend (structured_outputs_config), so a regex xgrammar refuses stops the run instead of falling back; a
+  vLLM whose LLM() refuses the keyword (TypeError) is built without it, and the record says the pin was not taken.
+  generate.json and junk.json record under "constrained" the regex's sha256 and length and the backend: the pin, and
+  what LLM() was built with, read back from it (BACKEND_PATHS; "unknown" when none resolves). The sampling settings
+  stay v0's.
 - score: gates G1-G6 (dsl.parse with the palette's vocabulary and the brief's mode) and compile (compile_loop). No
-  audio, no numpy, so it runs in the policy env. Writes scored.jsonl and junk.json.
+  audio, no numpy, so it runs in the policy env. Writes scored.jsonl and junk.json. For a constrained run it also
+  counts the completions in the recorded regex's language, by finish_reason (stop, length, other).
 - render: a seeded sample of --k gate-passing loops rendered with dev_gu (render.pipeline) to one-pass 16-bit
   FLACs under DIR/clips/, for a later ear check. G7 comes from these renders and is merged into junk.json.
   Nothing goes to the inbox.
@@ -38,8 +43,11 @@ junk.json (schema lofi-rl/junk/1):
   compared by its canonical text without `sax:` (the form the example is printed in), any other by its raw text
   with fences, blank lines and extra spaces dropped;
 - prompt: version, template sha, system-message sha, and how many rows were sent exactly today's prompt;
-- constrained: generate.json's record of the decoding grammar (enabled, regex sha256 and length, builder); null for a
-  run whose generate.json predates --constrained (v0, unconstrained);
+- constrained: generate.json's record of the decoding grammar (enabled, regex sha256 and length, builder, backend:
+  requested, pin_accepted, backend, source, applied), plus in_language: the regex rebuilt from the palette, whether its sha256
+  is the recorded one, and for "stop", "length" and "other" completions n, in_language and out_of_language (counted
+  only when the sha256 matches; null when unconstrained). A stop completion out of the language means the engine did
+  not apply the regex. The block is null for a run whose generate.json predates --constrained (v0, unconstrained);
 - by_knob: pass counts by energy and by mood. top_details: the commonest gate details, line numbers dropped.
 
 No claim about sound: clips are only measured (length, loudness, hashes).
@@ -244,25 +252,73 @@ def _check_toolchain() -> None:
         raise RuntimeError(f"Triton's driver build needs {python_h}")
 
 
+STRUCTURED_BACKEND = "xgrammar"         # pinned for --constrained, so a regex xgrammar refuses stops the run loudly
+# Where a built LLM keeps its structured-outputs backend, newest first: VllmConfig.structured_outputs_config, then
+# the older DecodingConfig names, then a V0 engine's own configs. UNVERIFIED for vLLM 0.32.0 (not on the laptop).
+BACKEND_PATHS = (
+    "llm_engine.vllm_config.structured_outputs_config.backend",
+    "llm_engine.vllm_config.decoding_config.backend",
+    "llm_engine.vllm_config.decoding_config.guided_decoding_backend",
+    "llm_engine.structured_outputs_config.backend",
+    "llm_engine.decoding_config.backend",
+    "llm_engine.decoding_config.guided_decoding_backend",
+)
+
+
+def read_backend(llm) -> dict:
+    """The structured-outputs backend a built LLM is configured with: the first of BACKEND_PATHS that resolves, as
+    text, and the path it came from; {"backend": "unknown", "source": None} when none does. Never raises (a record,
+    not a check). "auto" means vLLM picks per request: xgrammar, else guidance."""
+    for path in BACKEND_PATHS:
+        obj = llm
+        try:
+            for name in path.split("."):
+                obj = getattr(obj, name)
+        except Exception:  # noqa: BLE001: a missing attribute, or a property that raises
+            continue
+        if obj is not None:
+            return {"backend": str(getattr(obj, "value", obj)), "source": path}     # .value: an enum in older vLLMs
+    return {"backend": "unknown", "source": None}
+
+
+def build_llm(llm_cls, kw: dict, backend: str | None):
+    """llm_cls(**kw), asking for the structured-outputs `backend` (structured_outputs_config={"backend": ...}) when
+    one is given. On a TypeError, a vLLM whose LLM() does not take that keyword, it is built again without it and the
+    pin is recorded as not accepted, so an unknown keyword never costs the run. Returns (llm, pin record)."""
+    if backend is None:
+        return llm_cls(**kw), {"requested": None, "pin_accepted": None}
+    try:
+        return llm_cls(**kw, structured_outputs_config={"backend": backend}), {"requested": backend,
+                                                                               "pin_accepted": True}
+    except TypeError as err:
+        return llm_cls(**kw), {"requested": backend, "pin_accepted": False, "pin_error": f"TypeError: {err}"[:300]}
+
+
 class VllmEngine:
     """vLLM offline generation as smoke 13628361 ran it: bf16, eager, the engine core forked from a parent that
-    never touches CUDA. Policy env only (vllm is imported here, not at module level)."""
+    never touches CUDA. Policy env only (vllm is imported here, not at module level). `backend` pins the
+    structured-outputs backend (build_llm); info["structured_outputs"] records the pin, what LLM() was built with
+    (read_backend), and `applied`: whether that is the backend asked for (None when nothing was asked for or nothing
+    could be read)."""
 
-    def __init__(self, path: str, *, seed: int, gpu_mem: float, max_model_len: int) -> None:
+    def __init__(self, path: str, *, seed: int, gpu_mem: float, max_model_len: int, backend: str | None = None) -> None:
         _check_toolchain()
         import torch
         import transformers
         import vllm
         from vllm import LLM, SamplingParams
         t = _now()
-        self.llm = LLM(model=path, dtype="bfloat16", gpu_memory_utilization=gpu_mem, max_model_len=max_model_len,
-                       enforce_eager=True, seed=seed)
+        self.llm, pin = build_llm(LLM, {"model": path, "dtype": "bfloat16", "gpu_memory_utilization": gpu_mem,
+                                        "max_model_len": max_model_len, "enforce_eager": True, "seed": seed}, backend)
         self.load_s = round(_now() - t, 1)
         self._params = SamplingParams
         self.info = {"engine": "vllm", "vllm": vllm.__version__, "torch": torch.__version__,
                      "transformers": transformers.__version__, "path": path, "dtype": "bfloat16",
                      "enforce_eager": True, "gpu_memory_utilization": gpu_mem, "max_model_len": max_model_len,
                      "seed": seed, "mp_method": os.environ.get("VLLM_WORKER_MULTIPROC_METHOD") or "fork"}
+        so = {**pin, **read_backend(self.llm)}
+        so["applied"] = None if backend is None or so["backend"] == "unknown" else so["backend"] == backend
+        self.info["structured_outputs"] = so
         try:                                    # informational only: never a reason to lose the run
             self.info["max_num_seqs"] = self.llm.llm_engine.vllm_config.scheduler_config.max_num_seqs
         except Exception:  # noqa: BLE001
@@ -309,18 +365,33 @@ def structured_outputs_params(regex: str):
 
 def constrained_block(regex: str | None) -> dict:
     """What generate.json (and junk.json after it) records about grammar-constrained decoding: never the regex
-    itself, only its sha256 and length (None when the run is unconstrained)."""
+    itself, only its sha256 and length (None when the run is unconstrained). `backend` is filled in once the engine
+    is built (backend_record)."""
     if regex is None:
-        return {"enabled": False, "regex_sha256": None, "regex_chars": None, "builder": None}
-    return {"enabled": True, "regex_sha256": sha256_text(regex), "regex_chars": len(regex), "builder": REGEX_BUILDER}
+        return {"enabled": False, "regex_sha256": None, "regex_chars": None, "builder": None, "backend": None}
+    return {"enabled": True, "regex_sha256": sha256_text(regex), "regex_chars": len(regex), "builder": REGEX_BUILDER,
+            "backend": None}
 
 
-def load_engine(model: str, *, seed: int, gpu_mem: float, max_model_len: int) -> VllmEngine:
+def backend_record(info: dict) -> dict:
+    """The structured-outputs backend an engine reports (VllmEngine.info["structured_outputs"]: the pin asked for,
+    whether LLM() took it, the backend read after it was built and from where); an engine that reports none gives
+    the pin asked for and "unknown"."""
+    rec = info.get("structured_outputs")
+    if isinstance(rec, dict):
+        return dict(rec)
+    return {"requested": STRUCTURED_BACKEND, "pin_accepted": None, "backend": "unknown", "source": None,
+            "applied": None}
+
+
+def load_engine(model: str, *, seed: int, gpu_mem: float, max_model_len: int,
+                backend: str | None = None) -> VllmEngine:
     """The pinned snapshot from the HF cache (no huggingface_hub call), then vLLM on it."""
     from kit.hf_cache import resolve_pinned
     repo, rev = split_model(model)
     need = QWEN[2] if repo == QWEN[0] else ("config.json", "tokenizer_config.json")
-    return VllmEngine(resolve_pinned(repo, rev, need), seed=seed, gpu_mem=gpu_mem, max_model_len=max_model_len)
+    return VllmEngine(resolve_pinned(repo, rev, need), seed=seed, gpu_mem=gpu_mem, max_model_len=max_model_len,
+                      backend=backend)
 
 
 def cmd_generate(a: argparse.Namespace) -> int:
@@ -352,8 +423,11 @@ def cmd_generate(a: argparse.Namespace) -> int:
             extra = {}                  # vLLM's StructuredOutputsParams is imported before the model loads
             if regex is not None:
                 extra["structured_outputs"] = structured_outputs_params(regex)
-            engine = load_engine(a.model, seed=a.seed, gpu_mem=a.gpu_mem, max_model_len=a.max_model_len)
+            engine = load_engine(a.model, seed=a.seed, gpu_mem=a.gpu_mem, max_model_len=a.max_model_len,
+                                 backend=STRUCTURED_BACKEND if regex is not None else None)
             meta["timing"]["load_s"] = engine.load_s
+            if regex is not None:
+                meta["constrained"]["backend"] = backend_record(engine.info)
             sp = engine.sampling(**sampling, **extra)
             meta["engine"] = dict(engine.info)
             _write_json(summ / "generate.json", meta)
@@ -390,9 +464,10 @@ def cmd_generate(a: argparse.Namespace) -> int:
     meta["partial"] = False
     _write_json(summ / "generate.json", meta)
     regex_sha = meta["constrained"]["regex_sha256"]
+    backend = (meta["constrained"]["backend"] or {}).get("backend")
     print(f"GENERATE_{'OK' if rc == 0 and meta['generated'] else 'FAILED'} {meta['generated']}/{a.n} "
           f"stopped={meta['stopped']} tok/s={meta['timing']['tok_per_s']} "
-          f"constrained={regex_sha[:16] if regex_sha else 'off'}", flush=True)
+          f"constrained={f'{regex_sha[:16]} backend={backend}' if regex_sha else 'off'}", flush=True)
     return rc if meta["generated"] else 1
 
 
@@ -448,6 +523,40 @@ def render_block(clips: dict) -> dict:
             "other_gates": sum(1 for r in recs if r.get("gate") not in (None, "G7")),
             "errors": sum(1 for r in recs if r.get("error")), "skipped": skipped,
             "seed": clips.get("seed"), "k": clips.get("k")}
+
+
+FINISH_GROUPS = ("stop", "length", "other")
+
+
+def in_language(rows: list[dict], recorded: dict | None, palette: Palette) -> dict | None:
+    """For a constrained run, how many completions are in the language of the regex generate.json recorded, by
+    finish_reason: "stop" ones should all be (one out of it means the engine did not apply the regex), "length" ones
+    are cut, so they are counted apart, and "other" is any other reason. The regex is rebuilt from the palette and
+    must have the recorded sha256; otherwise nothing is counted (matches_generate false). None when unconstrained."""
+    if not (recorded or {}).get("enabled"):
+        return None
+    regex = loopscript_regex(palette)
+    sha = sha256_text(regex)
+    out: dict = {"regex_sha256": sha, "matches_generate": sha == recorded.get("regex_sha256")}
+    if not out["matches_generate"]:
+        return {**out, **dict.fromkeys(FINISH_GROUPS)}
+    full = re.compile(regex).fullmatch
+    groups: dict[str, list[dict]] = {g: [] for g in FINISH_GROUPS}
+    for r in rows:
+        reason = r.get("finish_reason")
+        groups[reason if reason in ("stop", "length") else "other"].append(r)
+    for g, group in groups.items():
+        k = sum(1 for r in group if isinstance(r.get("text"), str) and full(r["text"]))
+        out[g] = {"n": len(group), "in_language": k, "out_of_language": len(group) - k}
+    return out
+
+
+def constrained_summary(recorded: dict | None, rows: list[dict], palette: Palette) -> dict | None:
+    """junk.json's `constrained`: generate.json's block plus the in-language counts; None for a run whose generate.json
+    predates --constrained (v0)."""
+    if recorded is None:
+        return None
+    return {**recorded, "in_language": in_language(rows, recorded, palette)}
 
 
 def summarize(rows: list[dict], scored: list[dict], meta: dict, palette: Palette, *, unreadable: int = 0,
@@ -517,7 +626,7 @@ def summarize(rows: list[dict], scored: list[dict], meta: dict, palette: Palette
         "prompt": {"version": PROMPT_VERSION, "template_sha256": template_sha256(),
                    "system_sha256": sha256_text(system_message(palette)), "rows_matching": matching,
                    "as_generated": meta.get("prompt")},
-        "constrained": meta.get("constrained"),
+        "constrained": constrained_summary(meta.get("constrained"), rows, palette),
         "palette": {"id": palette.id, "sha256": palette.sha256,
                     "matches_generate": None if gen_palette is None else gen_palette == palette.sha256},
         "by_knob": {"energy": _knobs(scored, "energy", ENERGIES), "mood": _knobs(scored, "mood", MOOD_NAMES)},
@@ -533,9 +642,14 @@ def headline(s: dict) -> str:
     lo, hi = p["ci95"]
     rate = f"{100 * p['rate']:.1f}%" if p["rate"] is not None else "-"
     gates = " ".join(f"{g} {f[g]}" for g in GATES if f[g])
+    lang = (s.get("constrained") or {}).get("in_language") or {}
+    stop, length = lang.get("stop"), lang.get("length")
+    in_lang = ("" if not lang else " | in the regex's language: "
+               + (f"stop {stop['in_language']}/{stop['n']}, length {length['in_language']}/{length['n']}" if stop
+                  else "not counted (the regex is not the one generate recorded)"))
     return (f"JUNK n={s['n']}/{s['requested']} pass {p['count']} = {rate} [{100 * lo:.1f}, {100 * hi:.1f}] | "
             f"near-copies {s['near_copy']['count']} (pass, not a copy: {s['pass_not_copy']['count']}) | "
-            f"{gates or 'no failures'} | truncated {s['tokens']['truncated']}")
+            f"{gates or 'no failures'} | truncated {s['tokens']['truncated']}{in_lang}")
 
 
 def cmd_score(a: argparse.Namespace) -> int:
