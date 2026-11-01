@@ -17,10 +17,12 @@ GPU, repeatably, and how long does each stage take?
   health, every response, the wall times and the stats.
 - **verdict** checks the passes and writes scorer_smoke.json: every pass has 32 items with the expected gates
   and no render error; the same server's second pass is all memory hits and identical; a fresh server with a cold
-  cache (b) agrees with the first (a) within TOL on every audio term (the max abs difference of each is recorded);
-  a fresh server on a's disk cache (c) is all disk hits and identical; the features in a's and b's caches are
-  compared array by array; servers exited 0 and removed their sockets. It prints SCORER_SMOKE_OK or
-  SCORER_SMOKE_FAILED <reasons> last and exits 0 or 1.
+  cache (b) agrees with the first (a) within TOL on every audio term (the max abs difference of each is recorded),
+  and a.0 and b.0 both ran cold (no memory or disk hit); every hard item of a.0 and b.0 has the same mix and music
+  pcm_sha256 (CLAUDE.md §6: bit-identical PCM on one machine, whatever TOL lets through); a fresh server on a's
+  disk cache (c) is all disk hits and identical; the features in a's and b's caches are compared array by array,
+  and the caches must hold every clip a.0 rendered, with the same outcome and PCM; servers exited 0 and removed
+  their sockets. It prints SCORER_SMOKE_OK or SCORER_SMOKE_FAILED <reasons> last and exits 0 or 1.
 No result says anything about how a clip sounds: the smoke measures agreement, timing and memory.
 """
 from __future__ import annotations
@@ -246,6 +248,11 @@ def cmd_verdict(a: argparse.Namespace) -> int:
             if not _identical(ra[0], ra[1]):
                 fails.append("pass a.1 differs from a.0 on the same server")
             out["diff_a0_a1"] = compare(ra[0], ra[1])
+    for name, rs in (("a", ra), ("b", rb)):           # the a-vs-b comparison means something only if both ran cold
+        if rs:
+            kinds = passes[name]["runs"][0]["response"]["batch"]["cache"]
+            if kinds.get("mem", 0) or kinds.get("disk", 0):
+                fails.append(f"pass {name}.0 did not start from a cold cache: {kinds}")
     if ra and rb:
         out["diff_a_b"] = diff = compare(ra[0], rb[0])
         over = {k: v for k, v in diff.items() if v is not None and v > TOL[k]}
@@ -253,6 +260,12 @@ def cmd_verdict(a: argparse.Namespace) -> int:
             fails.append(f"a fresh server (b) differs from a beyond tolerance: {over}")
         if any(x["clip_id"] != y["clip_id"] or x["hard"] != y["hard"] for x, y in zip(ra[0], rb[0])):
             fails.append("b disagrees with a on clip ids or gates")
+        pcm = [f"item {x['i']} {k}" for x, y in zip(ra[0], rb[0]) if x["hard"] == 1 and y["hard"] == 1
+               for k in ("audio_sha256", "music_sha256")
+               if ((x["diag"].get("render") or {}).get(k) != (y["diag"].get("render") or {}).get(k))]
+        out["pcm_mismatch_a_b"] = len(pcm)
+        if pcm:
+            fails.append(f"b's renders are not a's bit for bit: {pcm[:6]}{' ...' if len(pcm) > 6 else ''}")
     if ra and rc:
         out["diff_a_c"] = compare(ra[0], rc[0])
         out["cache_hits"]["c.0"] = dict(Counter(it["diag"]["cache"] for it in rc[0]))
@@ -262,7 +275,15 @@ def cmd_verdict(a: argparse.Namespace) -> int:
             fails.append("pass c (a's disk cache) differs from a")
     caches = _pairs(a.cache)
     if "a" in caches and "b" in caches:
-        out["feature_diff_a_b"] = feature_diffs(Path(caches["a"]), Path(caches["b"]))
+        out["feature_diff_a_b"] = fd = feature_diffs(Path(caches["a"]), Path(caches["b"]))
+        worst = fd["max_abs"]
+        if worst.get("pcm_mismatch", 0) > 0:
+            fails.append(f"{worst['pcm_mismatch']} clips in a's and b's caches have other PCM (audio_sha256)")
+        if worst.get("ok_mismatch", 0) > 0:
+            fails.append(f"{worst['ok_mismatch']} clips in a's and b's caches have another render outcome (ok)")
+        rendered = sum(1 for it in ra[0] if it["diag"]["cache"] == "miss") if ra else 0
+        if fd["common"] < rendered:
+            fails.append(f"a's and b's caches share {fd['common']} clips, fewer than the {rendered} a.0 rendered")
     for k, rc_ in _pairs(a.rc).items():
         out.setdefault("server_rc", {})[k] = rc_
         if rc_ != "0":
@@ -285,7 +306,8 @@ def cmd_verdict(a: argparse.Namespace) -> int:
             fails.append(f"pass {k} is missing")
     out["ok"], out["failures"] = not fails, fails
     _write(Path(a.out), out)
-    print(json.dumps({k: out.get(k) for k in ("diff_a_b", "cache_hits", "peak_gpu_allocated_mb")}, default=str))
+    print(json.dumps({k: out.get(k) for k in ("diff_a_b", "feature_diff_a_b", "cache_hits", "peak_gpu_allocated_mb")},
+                     default=str))
     print("SCORER_SMOKE_OK" if not fails else "SCORER_SMOKE_FAILED " + " | ".join(fails), flush=True)
     return 0 if not fails else 1
 

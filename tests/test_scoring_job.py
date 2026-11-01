@@ -131,6 +131,42 @@ def test_the_smoke_steps_pass_on_the_fake_backends(tmp_path, capsys):
     assert set(v["passes"]["a"]["t_ms"]) >= {"render", "featurize", "score", "request"}
 
 
+def test_the_verdict_fails_on_one_clip_rendered_to_other_pcm_whatever_tol_says(tmp_path, capsys):
+    # A PCM drift small enough to move G, r, sig and P_acc by less than TOL still breaks CLAUDE.md §6.
+    import numpy as np
+    run, out, socks = _rehearse(tmp_path)
+    b = json.loads((out / "pass_b.json").read_text())
+    it = next(x for x in b["runs"][0]["response"]["items"] if x["hard"] == 1 and x["diag"]["cache"] == "miss")
+    it["diag"]["render"]["audio_sha256"] = "0" * 64
+    (out / "pass_b.json").write_text(json.dumps(b))
+    [rec] = (run / "cache_b").glob(f"feat/**/{it['clip_id']}.npz")
+    with np.load(rec, allow_pickle=False) as z:
+        arrays = {k: z[k] for k in z.files}
+    meta = json.loads(str(arrays["meta"]))
+    meta["render"]["audio_sha256"] = "0" * 64
+    arrays["meta"] = np.array(json.dumps(meta))
+    with rec.open("wb") as f:
+        np.savez(f, **arrays)
+    rc, v = _verdict(run, out, socks)
+    assert rc == 1 and capsys.readouterr().out.splitlines()[-1].startswith("SCORER_SMOKE_FAILED")
+    joined = " | ".join(v["failures"])
+    assert "not a's bit for bit" in joined and f"item {it['i']} audio_sha256" in joined
+    assert "other PCM" in joined and v["feature_diff_a_b"]["max_abs"]["pcm_mismatch"] == 1
+    assert v["diff_a_b"] and not any("beyond tolerance" in f for f in v["failures"]), "within TOL on every term"
+
+
+def test_the_verdict_fails_when_a_or_b_was_not_cold_or_the_caches_miss_clips(tmp_path):
+    run, out, socks = _rehearse(tmp_path)
+    a = json.loads((out / "pass_a.json").read_text())
+    a["runs"][0]["response"]["batch"]["cache"]["mem"] = 1
+    (out / "pass_a.json").write_text(json.dumps(a))
+    next((run / "cache_b").glob("feat/**/*.npz")).unlink()
+    rc, v = _verdict(run, out, socks)
+    joined = " | ".join(v["failures"])
+    assert rc == 1 and "pass a.0 did not start from a cold cache" in joined
+    assert "share 19 clips, fewer than the 20 a.0 rendered" in joined
+
+
 def test_the_verdict_fails_on_drift_a_missing_pass_a_bad_exit_or_a_left_socket(tmp_path, capsys):
     run, out, socks = _rehearse(tmp_path)
     b = json.loads((out / "pass_b.json").read_text())

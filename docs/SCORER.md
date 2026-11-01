@@ -366,10 +366,13 @@ feat_ver names another renderer than the one it runs (the real featurizer names 
   stopped with SIGTERM. The sockets live under `$TMPDIR` (`/tmp` when that path would pass 90 characters), mode
   0600, in a 0700 directory that is removed at the end.
 - **Verdict** (`summary/scorer_smoke.json`, `SCORER_SMOKE_OK` or `SCORER_SMOKE_FAILED`): the expected gates and no
-  infrastructure failure in any pass; a's second pass all memory hits and identical; b within `smoke.TOL` of a on
-  every audio term (G, r, sig, P_acc, rm_mean, rm_std; the max abs differences recorded); c all disk hits and
-  identical; feature arrays of a's and b's caches compared (max abs per array, pcm mismatches); every pass's
-  per-stage timings, cache counters and GPU peaks; nvidia-smi after pass a; exit codes 0 and sockets removed.
+  infrastructure failure in any pass; a's second pass all memory hits and identical; a.0 and b.0 both cold (no
+  memory or disk hit); b within `smoke.TOL` of a on every audio term (G, r, sig, P_acc, rm_mean, rm_std; the max
+  abs differences recorded); every hard item of a.0 and b.0 with the same mix and music pcm_sha256, exactly
+  (CLAUDE.md §6: a PCM drift inside TOL still fails); c all disk hits and identical; feature arrays of a's and
+  b's caches compared (max abs per array), with no pcm or ok mismatch and every clip a.0 rendered in both;
+  every pass's per-stage timings, cache counters and GPU peaks; nvidia-smi after pass a; exit codes 0 and
+  sockets removed. The summary line it prints holds diff_a_b, feature_diff_a_b, the cache hits and the GPU peak.
 - **Timeouts:** every step runs under `timeout`, sized from the job's remaining time (`kit.chain.end_time`) so
   the verdict always runs.
 
@@ -393,5 +396,5 @@ feat_ver names another renderer than the one it runs (the real featurizer names 
 | `test_scoring_calib_rm.py` | the calibration and RM loaders: missing, valid, every malformed case, CE thresholds, exit 2 before binding |
 | `test_scoring_render.py` | three real renders through the pool (dev_gu): `/score` of example.ls, where the mix and music stem reach the featurizer once and their hashes match the manifest and the laptop's golden hashes, `/render` to a FLAC and manifest named by clip id with the same PCM (the clip id equal to the shootout's id of that manifest), and the canary in spec; a gate failure in a worker, a batch past its deadline, a broken pool (in flight, and found broken at submit after a worker died between batches), a worker's child process ended by the pool's kill, a worker ending itself after its server's SIGKILL, workers on other code or another palette refused at warm and after a restart, the centroid |
 | `test_scoring_reward_hook.py` | the no-scorer golden byte for byte; the env var; G, r, gate and the new fields with a stand-in client; the CE rule; failures raise; nothing sent without a pass; TRL hooks; the run's pin (a later link against another rm_ver refused, a seeded client's 409, a pin with other terms or a malformed one refused); the real client and server end to end |
-| `test_scoring_job.py` | the job's size, cost line, env, timeouts, steps and outputs; the smoke's batch; the steps rehearsed on fakes to SCORER_SMOKE_OK; the verdict failing on drift, a missing pass, a bad exit and a left socket |
+| `test_scoring_job.py` | the job's size, cost line, env, timeouts, steps and outputs; the smoke's batch; the steps rehearsed on fakes to SCORER_SMOKE_OK; the verdict failing on drift, one clip's PCM changed inside TOL, a warm a.0, a clip missing from b's cache, a missing pass, a bad exit and a left socket |
 | `test_scoring_imports.py` | every scoring module imports without the ML stack; client, protocol and the reward without numpy or the audio stack |
