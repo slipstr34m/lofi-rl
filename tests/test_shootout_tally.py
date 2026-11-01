@@ -18,7 +18,7 @@ from lofi_rl.shootout import tally as T
 from lofi_rl.shootout.batch import build
 from lofi_rl.shootout.draw import day_band, draw, load_prior, parse_leaders, write_draw
 from lofi_rl.shootout.plan import load_plan
-from lofi_rl.ui.audit import agreement
+from lofi_rl.ui.audit import agreement, heard_over_attempts, with_merged_heard
 from lofi_rl.ui.manifest import HIDDEN_NAME, load_batch
 from lofi_rl.ui.votes import Ledger, active_votes, read_all
 
@@ -83,9 +83,13 @@ def prefer(order=ORDER, *, catch: bool = True):
     return choose
 
 
-def vote(folder: Path, votes: Path, clock: Clock, choose, *, rounds=None, commit_ms: int = 60000) -> None:
+def vote(folder: Path, votes: Path, clock: Clock, choose, *, rounds=None, commit_ms: int = 60000,
+         redo: dict | None = None) -> None:
     """Vote rounds of one batch through the page's Ledger. `choose(round, hidden round)` gives the picks, and may add
-    `heard` ({opaque id: heard_bars}) and `gap` (time since the last event)."""
+    `heard` ({opaque id: heard_bars}) and `gap` (time since the last event). `redo` ({round id: "undo" | "abandon"})
+    first answers that round and takes the vote back (Backspace twice, why "undo") or leaves it (Esc, an `abandon`
+    with what was heard), with `heard`'s bars, and then answers it again with every clip at "00000000", as the page
+    shows a round whose bar count restarted (D-013 as amended: the bars of every attempt count)."""
     m, h = load_batch(folder, check_files=False)
     led = Ledger(votes, m, h, clock=clock)
     try:
@@ -93,9 +97,18 @@ def vote(folder: Path, votes: Path, clock: Clock, choose, *, rounds=None, commit
             p = dict(choose(r, h.rounds[r.id]))
             clock.t += p.pop("gap", timedelta(seconds=90))
             heard = p.pop("heard", {})
-            led.submit({"type": "shootout", "round": r.id, **p, "t_ms": {"commit": commit_ms},
-                        "clips": [{"clip": c, "pos": i + 1, "heard_bars": heard.get(c, FULL), "heard_ms": 20000}
-                                  for i, c in enumerate(r.ids)]})
+            clips = [{"clip": c, "pos": i + 1, "heard_bars": heard.get(c, FULL), "heard_ms": 20000}
+                     for i, c in enumerate(r.ids)]
+            how = (redo or {}).get(r.id)
+            if how == "undo":
+                first = led.submit({"type": "shootout", "round": r.id, **p, "t_ms": {"commit": commit_ms},
+                                    "clips": clips})
+                led.submit({"type": "retract", "target": first["event_id"], "why": "undo"})
+            elif how == "abandon":
+                led.submit({"type": "abandon", "round": r.id, "why": "esc", "clips": clips})
+            if how:
+                clips = [dict(c, heard_bars="00000000") for c in clips]
+            led.submit({"type": "shootout", "round": r.id, **p, "t_ms": {"commit": commit_ms}, "clips": clips})
     finally:
         led.close()
 
@@ -153,7 +166,9 @@ def test_counts_equal_the_audits_anchor_rounds_excepted(inbox, tmp_path):
     assert sum(o["shown"] for o in doc["stages"]["K1"]["options"]) == 24      # 6 rounds of 4, every clip heard
 
 
-def test_a_mark_on_a_clip_heard_under_4_bars_is_left_out(inbox, tmp_path):
+def test_at_an_explicit_4_bar_minimum_a_mark_on_a_clip_heard_3_bars_is_left_out(inbox, tmp_path):
+    """The heard filter's mechanism at the old 4-bar minimum (CD-38 before D-013's amendment): the recount leaves out
+    a best on a clip heard 3 bars, the audit counts it. Under the rule as amended (1 bar, the default) it counts."""
     votes = tmp_path / "votes"
     votes.mkdir()
     base = prefer()
@@ -167,7 +182,9 @@ def test_a_mark_on_a_clip_heard_under_4_bars_is_left_out(inbox, tmp_path):
         return p
 
     vote(inbox["folders"]["b1103-1-keys"], votes, Clock(), choose)
-    doc, batches = tally(inbox, votes, batches=["b1103-1-keys"])
+    now, _ = tally(inbox, votes, batches=["b1103-1-keys"])
+    assert now["heard_min_bars"] == 1 and now["stages"]["K1"]["unheard_marks"] == 0
+    doc, batches = tally(inbox, votes, batches=["b1103-1-keys"], heard_min=4, toss_min=2)
     row = next(o for o in doc["stages"]["K1"]["options"] if o["option"] == first["option"])
     audit = next(o for o in batches["b1103-1-keys"]["audit"]["shootout"]["options"] if o["option"] == first["option"])
     assert audit["best"] == row["audit"]["best"] == int(row["best"]) + 1            # the audit counts it; BW does not
@@ -223,10 +240,11 @@ def test_repeats_are_scored_for_agreement_and_left_out_of_the_counts(inbox, tmp_
     rep = doc["repeats"]
     assert rep["voted"] == rep["found"] == 5 and rep["missing"] == 0 and rep["pending"] == 0
     logs = read_all(votes)
-    originals = {k: v for evs in logs.values() for k, v in active_votes(evs).items()}
+    originals = {k: with_merged_heard(v, heard_over_attempts(evs)) for evs in logs.values()
+                 for k, v in active_votes(evs).items()}
     agree = compared = 0
     for row in rep["rows"]:                              # the audit's own figure, pooled
-        a, n = agreement("shootout", originals[row["of"]], originals[row["round"]], 4)
+        a, n = agreement("shootout", originals[row["of"]], originals[row["round"]], 1)
         assert (row["agree"], row["compared"]) == (a, n)
         agree, compared = agree + a, compared + n
     assert (rep["agree"], rep["compared"]) == (agree, compared) and 0 < agree < compared
@@ -631,3 +649,70 @@ def test_the_cli_writes_private_files_and_refuses_a_public_path(inbox, tmp_path,
     assert T.main(["--votes", str(votes), "--inbox", str(inbox["root"]), "--batch", "b9999-nope"]) == 2
     assert "not under data/" in capsys.readouterr().err
     assert not (ROOT / "gates" / "x").exists() and not (ROOT / "docs" / "tally.md").exists()
+
+
+
+# ---------------------------------------------------------------------------- D-013 as amended: every attempt
+def test_a_mark_on_a_clip_heard_only_in_an_undone_or_abandoned_attempt_counts(inbox, tmp_path):
+    """D-013 as amended (Shresth, 2026-10-31): a clip counts as heard once 1 bar has played, over every attempt of its
+    round. A best whose clip played only before an undo (a vote taken back) or before an Esc (an abandoned attempt)
+    still counts, the redo's own bars being all 0, and the recount reads the same rows as a log with no redo; a mark
+    on a clip that never played in any attempt is left out."""
+    folder = inbox["folders"]["b1103-1-keys"]
+    m, h = load_batch(folder, check_files=False)
+    undo, esc, never = (r.id for r in m.rounds[:3])
+    base = prefer()
+
+    def choose(r, hr):
+        p = base(r, hr)
+        if r.id in (undo, esc):          # the first attempt played every clip 1-2 bars before it was undone or left
+            p["heard"] = {c: "11000000" for c in r.ids}
+        if r.id == never:                # its best never played: picked on the tile without a bar heard
+            p["heard"] = {p["best"]: "00000000"}
+        return p
+
+    plain, redone = tmp_path / "plain", tmp_path / "redone"
+    plain.mkdir()
+    redone.mkdir()
+    vote(folder, plain, Clock(), lambda r, hr: {k: v for k, v in choose(r, hr).items() if r.id != undo or k != "heard"})
+    vote(folder, redone, Clock(), choose, redo={undo: "undo", esc: "abandon"})
+    a, _ = tally(inbox, plain, batches=["b1103-1-keys"])
+    b, bd = tally(inbox, redone, batches=["b1103-1-keys"])
+    assert a["stages"]["K1"]["options"] == b["stages"]["K1"]["options"]           # the redo changes nothing
+    assert b["stages"]["K1"]["unheard_marks"] == 1                                 # the clip that never played
+    rows = {r["round"]: r for r in bd["b1103-1-keys"]["votes"]}
+    assert all(c["heard"] and c["heard_bars"] == "11000000" and c["own_bars"] == "00000000"
+               for c in rows[undo]["clips"])
+    assert all(c["heard"] and c["own_bars"] == "00000000" for c in rows[esc]["clips"])
+    best = next(c for c in rows[never]["clips"] if c["option"] == rows[never]["best"])
+    assert not best["heard"] and best["heard_bars"] == "00000000" and "own_bars" not in best
+    audit = bd["b1103-1-keys"]["audit"]
+    assert audit["retracted"] == 1 and audit["abandoned"] == 1 and audit["heard"]["heard"] == 23   # merged there too
+    # what makes them count is the earlier attempts: on the standing votes' own bars, 9 clips never played
+    own = active_votes(read_all(redone)["b1103-1-keys"])
+    assert sum(c["heard_bars"] == "00000000" for v in own.values() for c in v["clips"]) == 4 + 4 + 1
+
+
+def test_repeat_agreement_reads_the_bars_of_every_attempt_of_both_showings(inbox, tmp_path):
+    """CD-47 with D-013 as amended: a repeat compares the implied pairs of the clips heard in any attempt of each
+    showing, as ui.audit does, so a first showing redone after an undo still gives its pairs."""
+    reps = []
+    for n in DAY3:
+        m, h = load_batch(inbox["folders"][n], check_files=False)
+        reps += [(n, r.id, h.rounds[r.id].of) for r in m.rounds if h.rounds[r.id].kind == "repeat"]
+    day1 = {r.id: n for n in DAY1 for r in load_batch(inbox["folders"][n], check_files=False)[0].rounds}
+    batch, rid, of = next((n, r, o) for n, r, o in reps if o in day1)
+    votes = tmp_path / "votes"
+    votes.mkdir()
+    clock = Clock()
+    for n in DAY1:
+        vote(inbox["folders"][n], votes, clock, prefer(), redo={of: "undo"} if n == day1[of] else None)
+    for n in DAY2 + DAY3:
+        vote(inbox["folders"][n], votes, clock, prefer())
+    doc, _ = tally(inbox, votes)
+    row = next(r for r in doc["repeats"]["rows"] if r["round"] == rid)
+    assert row["found"] and row["compared"] > 0                       # the redo's own bars are all 0
+    logs = read_all(votes)
+    merged = {k: with_merged_heard(v, heard_over_attempts(logs[b])) for b in logs for k, v in active_votes(logs[b]).items()}
+    assert (row["agree"], row["compared"]) == agreement("shootout", merged[of], merged[rid], 1)
+    assert agreement("shootout", active_votes(logs[day1[of]])[of], merged[rid], 1)[1] == 0     # unmerged: no pair

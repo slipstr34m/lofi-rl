@@ -11,8 +11,10 @@ across its batches (section 8):
 
 - the audit's net (best - worst over every shown clip, an anchor round's broken clip skipped, hidden repeats left
   out) and Claude's recount [CD-38]: BW = (best - worst) / heard, over appearances heard for `heard.min_bars` bars or
-  more (4), a best or worst mark on a clip heard less being left out; anchor rounds dropped; every vote of a
-  micro-session that missed its anchor at half weight (D-013);
+  more (1: D-013 as amended, Shresth 2026-10-31), a clip's heard bars OR-ed over every attempt of its round in that
+  batch's log (kept and undone votes and abandoned attempts: ui.audit's heard_over_attempts), so only a mark on a clip
+  that never played is left out; anchor rounds dropped; every vote of a micro-session that missed its anchor at half
+  weight (D-013);
 - T and B add no mark; G marks every clip of its round all-bad, and an option all-bad in half its rounds or more
   cannot survive [CD-44];
 - ties [CD-39]: BW, then more bests, then fewer worsts; on a single-winner choice the default if it is among the
@@ -56,7 +58,8 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
-from lofi_rl.ui.audit import aggregate, agreement, anchor_caught, chi2_uniform, heard_bars, wilson
+from lofi_rl.ui.audit import (aggregate, agreement, anchor_caught, chi2_uniform, heard_bars, heard_over_attempts, wilson,
+                              with_merged_heard)
 from lofi_rl.ui.manifest import ManifestError, load_batch, load_public
 from lofi_rl.ui.serve import ROOT as REPO
 from lofi_rl.ui.serve import ConfigError, _inside, load_config
@@ -107,7 +110,7 @@ class Vote:
     session: str | None
     micro: int | None
     weight: Fraction                  # 1, or 1/2 in a micro-session that missed its anchor (D-013)
-    clips: tuple[dict, ...]           # tile order: oid, real, pos, option, heard_bars, heard, kit
+    clips: tuple[dict, ...]           # tile order: oid, real, pos, option, heard_bars (merged), own_bars, heard, kit
     best: str | None                  # real clip ids
     worst: str | None
     no_best: bool
@@ -148,14 +151,14 @@ class Row:
 
     option: str
     shown: int = 0                    # appearances in design rounds
-    heard_n: int = 0                  # of them heard for heard.min_bars bars or more
+    heard_n: int = 0                  # of them heard for heard.min_bars bars or more, over every attempt (D-013)
     heard: Fraction = ZERO            # the same, weighted: BW's denominator
     best: Fraction = ZERO             # marks on heard clips, weighted
     worst: Fraction = ZERO
     rounds: Fraction = ZERO           # design rounds it was shown in, weighted (CD-44's denominator)
     all_bad: Fraction = ZERO          # of them marked G, weighted
     all_bad_n: int = 0
-    unheard_marks: int = 0            # best or worst marks left out: the clip was heard less (CD-38)
+    unheard_marks: int = 0            # best or worst marks left out: heard less in every attempt (CD-38)
     a_shown: int = 0                  # the audit's counts: anchor rounds in (their broken clip skipped), heard or not
     a_best: int = 0
     a_worst: int = 0
@@ -659,7 +662,12 @@ def micro_sessions(logs: Mapping[str, list[dict]]) -> dict[tuple, dict]:
 
 
 def _vote(v: dict, infos: Sequence[dict], kind: str, weights: Mapping[tuple, dict], heard_min: int,
-          problems: list[str], rid: str) -> Vote:
+          problems: list[str], rid: str, heard: Mapping[tuple, str] | None = None) -> Vote:
+    """One standing vote as the recount reads it. Its clips' heard bars are OR-ed over every attempt of the round in
+    the batch's log (`heard`, ui.audit.heard_over_attempts: kept and undone votes and abandoned attempts; D-013 as
+    amended), so bars heard before an undo or a reload count; `raw` is that merged copy, `own_bars` each clip's own."""
+    own = {c.get("clip"): c.get("heard_bars") for c in v.get("clips") or []}
+    v = with_merged_heard(v, heard if heard is not None else heard_over_attempts([v]))
     by_oid = {i["oid"]: i for i in infos}
     options = v.get("options") or []
     clips = []
@@ -670,7 +678,8 @@ def _vote(v: dict, infos: Sequence[dict], kind: str, weights: Mapping[tuple, dic
             problems.append(f"round {rid}: tile {c.get('pos')} is {opt!r} in the vote and {info.get('option')!r} in "
                             "the hidden manifest; the vote's own record counts")
         clips.append({"oid": c.get("oid"), "real": c.get("clip"), "pos": c.get("pos"), "option": opt,
-                      "heard_bars": c.get("heard_bars"), "heard": heard_bars(c) >= heard_min, "kit": info.get("kit")})
+                      "heard_bars": c.get("heard_bars"), "own_bars": own.get(c.get("clip")),
+                      "heard": heard_bars(c) >= heard_min, "kit": info.get("kit")})
     hid = v.get("hidden") or {}
     if hid.get("kind", "none") != kind:
         problems.append(f"round {rid}: the vote says {hid.get('kind')!r} and the hidden manifest {kind!r}")
@@ -706,11 +715,13 @@ class Batch:
 
 def load_tallied(name: str, folder: Path, votes_dir: Path, plan: Plan, weights: Mapping[tuple, dict],
                  heard_min: int) -> Batch:
-    """One batch's manifests (no audio checks: the tally reads labels only) and its standing votes."""
+    """One batch's manifests (no audio checks: the tally reads labels only) and its standing votes, each clip's
+    heard bars OR-ed over every attempt of its round in the batch's log (D-013 as amended)."""
     m, h = load_batch(folder, check_files=False)
     path = Path(votes_dir) / f"{name}.jsonl"
     events, problems = read_events(path)
     act = active_votes(events)
+    heard = heard_over_attempts(events)
     day = {n: b.day for b in plan.batches for n in b.names}.get(name)
     rounds = []
     for r in m.rounds:
@@ -729,7 +740,7 @@ def load_tallied(name: str, folder: Path, votes_dir: Path, plan: Plan, weights: 
         v = act.get(r.id)
         rounds.append(Round(name, folder.parent.name, r.id, r.number, hr.kind, stage,
                             slots.pop() if len(slots) == 1 else None, hr.brief_id, hr.of, infos,
-                            _vote(v, infos, hr.kind, weights, heard_min, problems, r.id) if v else None))
+                            _vote(v, infos, hr.kind, weights, heard_min, problems, r.id, heard) if v else None))
     stray = sorted(set(act) - {r.id for r in m.rounds})
     if stray:
         problems.append(f"{len(stray)} vote(s) name rounds that are not in this manifest; left out")
@@ -812,10 +823,13 @@ def levels_moved(paths: Sequence[Path]) -> list[dict]:
 
 def repeats_doc(rounds: Sequence[Round], logs: Mapping[str, list[dict]], heard_min: int) -> dict:
     """CD-47: each shootout repeat against its first showing (looked up in every log, as the audit does), on implied
-    pairs, pooled with a Wilson 95 % interval. Repeats never enter the counts."""
+    pairs, pooled with a Wilson 95 % interval. Both sides carry their heard bars OR-ed over every attempt of their
+    round, each in its own batch's log (D-013 as amended; ui.audit.aggregate merges the same way). Repeats never
+    enter the counts."""
     originals: dict[str, dict] = {}
     for b in sorted(logs):
-        originals.update(active_votes(logs[b]))
+        merged = heard_over_attempts(logs[b])
+        originals.update({k: with_merged_heard(v, merged) for k, v in active_votes(logs[b]).items()})
     rows, agree, compared, pending = [], 0, 0, 0
     for rd in rounds:
         if rd.kind != "repeat":
@@ -947,12 +961,13 @@ def _note_pick(needs: list[dict], key: str, label: str, pick: Mapping) -> None:
                               f"among them (CD-39); provisional {pick['pick']}"})
 
 
-def tally(votes_dir: Path, inbox: Path, *, plan: Plan, batches: Sequence[str] | None = None, heard_min: int = 4,
-          toss_min: int = 2, budget_min: float = 60.0, levels: Sequence[Path] = (), today: date | None = None,
+def tally(votes_dir: Path, inbox: Path, *, plan: Plan, batches: Sequence[str] | None = None, heard_min: int = 1,
+          toss_min: int = 1, budget_min: float = 60.0, levels: Sequence[Path] = (), today: date | None = None,
           runs: Path | None = None) -> tuple[dict, dict[str, dict]]:
     """The tally of every shootout batch in `inbox` (or the named ones): (shootouts.json, {batch: <batch>.json}).
-    `runs` holds the pulled job summaries (runs/shootout-<job>/summary/): the job that built the Day-1 batches is
-    job 2's --prior (section 3, drift)."""
+    `heard_min` and `toss_min` default to configs/rating.yaml's heard.min_bars and toss_min_bars, 1 (D-013 as
+    amended; the CLI reads the config), over every attempt of a round. `runs` holds the pulled job summaries
+    (runs/shootout-<job>/summary/): the job that built the Day-1 batches is job 2's --prior (section 3, drift)."""
     votes_dir, inbox = Path(votes_dir), Path(inbox)
     found, problems = find_batches(inbox)
     names = list(batches) if batches else sorted(found)
@@ -1059,7 +1074,8 @@ def _round_doc(rd: Round) -> dict:
     doc.update(event_id=v.event_id, ts=v.ts, session=v.session, micro=v.micro, weight=float(v.weight),
                best=opt.get(v.best), worst=opt.get(v.worst), no_best=v.no_best, no_worst=v.no_worst,
                all_bad=v.all_bad, anchor=opt.get(v.anchor) if v.anchor else None,
-               clips=[{"pos": c["pos"], "option": c["option"], "heard_bars": c["heard_bars"], "heard": c["heard"]}
+               clips=[{"pos": c["pos"], "option": c["option"], "heard_bars": c["heard_bars"], "heard": c["heard"],
+                       **({"own_bars": c["own_bars"]} if c["own_bars"] != c["heard_bars"] else {})}
                       for c in v.clips])
     return doc
 
@@ -1267,10 +1283,12 @@ def shown_path(path) -> str:
 
 def report_md(doc: dict, out_dir: str | None = None) -> str:
     """The tally as markdown for gates/GATE_palette.md (section 8 "What is recorded"). Per option, never per tile."""
+    n = doc["heard_min_bars"]
     L = [f"# Shootout tally ({doc['generated']})", "",
          f"Made by `python -m lofi_rl.shootout.tally` from the vote logs in `{shown_path(doc['votes'])}` and the "
          f"hidden manifests in `{shown_path(doc['inbox'])}`; the rules are docs/SHOOTOUTS.md section 8. Heard = "
-         f"{doc['heard_min_bars']} bars or more. Counts only: nothing here says how anything sounds."]
+         f"{n} bar{'' if n == 1 else 's'} or more, over every attempt of a round (D-013 as amended). Counts only: "
+         "nothing here says how anything sounds."]
     if out_dir:
         files = [f"`{out_dir}/{n}.json`" for n in doc["batches"]] + [f"`{out_dir}/shootouts.json`"]
         L.append(f"The numbers come from {', '.join(files)} (private).")
@@ -1281,8 +1299,9 @@ def report_md(doc: dict, out_dir: str | None = None) -> str:
                  f"{_n(b['minutes']) if b['minutes'] is not None else '-'} |")
     L += ["", "## Stages", "",
           "Columns: shown = appearances in design rounds (anchor rounds dropped, repeats left out); heard = those "
-          "heard for the minimum bars, weighted (a micro-session that missed its anchor counts half, D-013); best and "
-          "worst = marks on heard clips, weighted; BW = (best - worst) / heard; net = the audit's best - worst over "
+          "heard for the minimum bars over every attempt of their round, weighted (a micro-session that missed its "
+          "anchor counts half, D-013); best and worst = marks on heard clips, weighted; BW = (best - worst) / heard; "
+          "net = the audit's best - worst over "
           "every shown clip; all-bad = rounds marked G of the rounds shown, weighted (CD-44: half or more cannot "
           "survive). Places follow CD-39 (BW, then more bests, then fewer worsts); `=` marks a full tie."]
     for sid, s in doc["stages"].items():
@@ -1312,7 +1331,8 @@ def report_md(doc: dict, out_dir: str | None = None) -> str:
         e = s["escape"]
         L += ["", f"Escape hatches: no clear best (T) {e['no_best']}, no clear worst (B) {e['no_worst']}, all bad (G) "
                   f"{e['all_bad']}. Anchor rounds dropped: {s['anchor_rounds']}. Votes at half weight: "
-                  f"{s['half_weight_votes']}. Marks left out (clip heard under the minimum): {s['unheard_marks']}."]
+                  f"{s['half_weight_votes']}. Marks left out (clip heard under the minimum in every attempt): "
+                  f"{s['unheard_marks']}."]
     for name, _a, _b in POOLS:
         pooled = (doc.get("pooled") or {}).get(name)
         if pooled:
