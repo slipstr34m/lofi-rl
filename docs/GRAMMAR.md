@@ -54,15 +54,27 @@ regex_sha256(palette)               # sha256 of the regex text (UTF-8): the iden
     (the default) or 1. Anything else stops the job before any work. A fourth, PROMPT, is v1 (the default) or v2
     (`lofi_rl.prompt_v2`): `ARGS='500 2026 1 v2'` is the constrained run on prompt v2.
 - **GRPO.** `configs/grpo_smoke_constrained.yaml` is `configs/grpo_smoke.yaml` plus one top-level key,
-  `structured_outputs: loopscript_regex`.
+  `structured_outputs: loopscript_regex`. `configs/grpo_smoke_v2_grammar.yaml` adds `prompt: v2` and the copy
+  penalty too: D-020's run-1 settings (docs/GRPO.md §3).
   - **Load time.** `lofi_rl.rl.config.load_config` builds the regex from the config's palette.
   - **The field.** `resolve` puts the regex in TRL's `vllm_structured_outputs_regex` for every profile. The regex is
     never written in YAML, and writing that field by hand is refused.
+  - **The field exists** in TRL 1.17.1's GRPOConfig: `runs/grpo-smoke-13632679/summary/a/run.json` lists it in
+    `grpo_config` (as null, in that unconstrained run). The trainer's field check still runs before the model loads.
+  - **The backend, as junk does it.** In colocate mode TRL builds the vLLM engine, so the trainer wraps
+    `vllm.LLM.__init__` for the launch (`lofi_rl.rl.trl_probe.BackendPin`).
+    - **The pin:** every LLM built asks for `structured_outputs_config={"backend": "xgrammar"}`; a TypeError on the
+      keyword builds it again without it.
+    - **The read-back:** the engine is found on the trainer and read through `junk.read_backend`.
+    - **The record:** run.json `structured_outputs.backend` has `requested`, `pin_accepted`, `backend`, `source`,
+      `applied` and `engine`, as junk.json's block does. It decides nothing.
+  - **In the language.** The reward counts, per step and by finish reason (`stop`, `length`, `other`, read from
+    the token ids), the completions that fullmatch the regex under `re`. `smoke_check` fails the smoke if any `stop`
+    completion is out of it (docs/GRPO.md §2, §5).
   - **The record.** The dry run and `run.json` give its builder, field, sha256 and length under
     `structured_outputs`.
-  - **UNVERIFIED:** the field name, for TRL 1.17.1. It goes through the trainer's GRPOConfig field check before the
-    model loads, so a wrong name stops the run in about 2 minutes.
-  - **Not yet runnable:** `jobs/grpo_smoke.sbatch` runs only `configs/grpo_smoke.yaml`.
+  - **The job:** `make submit JOB=jobs/grpo_smoke.sbatch ARGS='configs/grpo_smoke_v2_grammar.yaml'` (or
+    `configs/grpo_smoke_constrained.yaml`). A bare submit still runs `configs/grpo_smoke.yaml`.
 
 ## 2. Identity
 
@@ -318,6 +330,13 @@ completion cannot run on inside it.
 - **The IS-ratio caveat.** `docs/design/taste_pipeline.md` §6 gates the lever for GRPO:
   - on only if step-0 parse failures exceed 20 %;
   - off if the mean |log IS ratio| exceeds 0.05 (UNVERIFIED).
+
+  D-020's outcome fixes both readings for v2. The IS one is the v2 grammar smoke's `smoke.json` `is_ratio`
+  (docs/GRPO.md §5). It is TRL's `sampling/sampling_logp_difference/mean`, read only when the installed TRL's
+  source is checked at run time to compute mean |old_per_token_logps − sampling_per_token_logps| over
+  `completion_mask`; otherwise it is unavailable. That check is TRL's half of D-020's definition. Whether vLLM's
+  reported log-probs include the grammar mask is unchecked (UNVERIFIED; run.json `vllm_logprobs`), and the rule says
+  so in its caveats.
 - **Near-copies.** The in-prompt example is in the regex's language, so constrained decoding does nothing about
   copying it. That is D-019's second cause. Prompt v2 (`lofi_rl.prompt_v2`) is the lever for it: each brief is shown
   the example of its energy and the next mood, and junk-rate's near-copy check compares each completion with the

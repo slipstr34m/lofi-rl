@@ -26,6 +26,31 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (16:05 PST): D-020's before-GRPO list built on the GRPO path; grpo_smoke re-registered; a grammar + v2 smoke queued
+
+**What was done**
+- **Merged `worktree-wf_8654abe9-1dd-1`** (clean). Workflow `wf_8654abe9-1dd` had 6 agents: a builder, two reviewers, a judge, a fixer and a verifier.
+  - **Review:** 8 findings, 7 kept and fixed. Among them: the grammar-lever verdict now needs the in-language check to pass; `other.n` must be 0 with at least one stop completion; and the IS readout says which half of D-020's definition TRL's source covers.
+  - **Verifier:** ok. Suite on the merged tree: 2503 passed, 3 skipped. `scripts/check_frozen.sh` reports the 60 frozen files unchanged.
+- **What it adds** (docs/GRPO.md §6–7):
+  - the config key `prompt: v1|v2`, default v1, so `configs/grpo_smoke.yaml`'s dry run keeps reward check 0.5784511276657195, the same as smoke 13632679;
+  - an opt-in copy penalty (`rl/copy_penalty.py`): taste_pipeline §5's 0 at J 0.6 to 0.3 at J ≥ 0.8, against all 9 v2 references plus an optional pool;
+  - the backend pin and read-back around TRL's colocate engine, and the in-language count;
+  - `rl/trl_probe.py`, which reads TRL's IS-metric definition from its installed source at run time;
+  - the smoke check's in-language verdict, backend and copy readouts, and D-020's IS readout with the 0.05 rule;
+  - `configs/grpo_smoke_v2_grammar.yaml`;
+  - `jobs/grpo_smoke.sbatch` takes an optional config word; a bare submit runs `configs/grpo_smoke.yaml`.
+- **The copy penalty on D-020 arm B's real output** (the builder's run over `runs/junk-13640325/summary`; J and the nearest reference equal junk's copy readouts on 500 of 500):
+  - 52 at J ≤ 0.6, 394 in the ramp, 54 at J ≥ 0.8;
+  - at step 0, P_copy > 0 for 448 of 500, mean 0.1754;
+  - the mean reward is 0.4285 with it and 0.6038 without.
+- **Re-registered `jobs/grpo_smoke.sbatch`** (a changed type, ≤ 500 SU, so Claude registers it): sha `07203168742f7411` → `1dded12d386c7fab`, max 500 SU, by Claude. The `#SBATCH` lines are unchanged; the worst case is 20 SU/min × 25 min.
+- **Checked only at run time:** TRL's engine path, its use of `vllm_structured_outputs_regex`, the definition of its IS metric, and whether vLLM 0.32's log-probs come after the grammar mask. The smoke records each one and fails closed (docs/GRPO.md §7).
+
+**SU spent:** 0.
+
+---
+
 ## 2026-11-01 (15:05 PST): scorer server's cluster smoke passed: deterministic, about 9 s per 32-completion batch
 
 **What was done**

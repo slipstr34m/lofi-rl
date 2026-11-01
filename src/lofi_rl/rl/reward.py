@@ -32,11 +32,23 @@ reward(prompts=..., completions=..., completion_ids=..., **columns) -> list[floa
 - **Failures**: a verifier exception or a non-finite value scores 0 (gate "error") and is logged with its
   message, so a verifier bug cannot crash a GPU run; strict=True re-raises instead. The smoke counts them
   (lofi_rl.rl.smoke_check) and fails on any.
+- **P_copy** (opt-in: make_reward(..., copy=CopyPenalty); a config's `copy_penalty` key): taste_pipeline §5's copy
+  penalty, 0 at J 0.6 rising linearly to 0.3 at J >= 0.8, with J the largest character 5-gram Jaccard of the
+  completion with every example the prompt version can show and the pool (lofi_rl.rl.copy_penalty, junk.py's
+  measure). It is one more term of the penalty, for every completion that is scored (a failed gate and a G2 keep it,
+  as they keep P_group: it reads the text, not a parse); a verifier error still scores 0. Logged as p_copy, copy_j
+  (the largest J) and copy_nearest (its reference).
+- **In the language** (opt-in: make_reward(..., language=cfg.structured_outputs); a constrained config): whether each
+  completion fullmatches the decoding regex under Python's `re`, by finish reason read from the token ids: "length"
+  when it hit the limit (G2's test), "stop" when it ended before it or on an EOS, "other" when the ids or the limit
+  are unknown. Under a working constraint every "stop" completion is in the language (D-020, Validity).
+- **The shown example**: a dataset row of prompt v2 carries `example_id`, the example its prompt showed; the log
+  copies it per completion (absent for v1 rows, whose one example is "example").
 
 Every completion is one JSONL line in log_path with every sub-reward, its weights, the step and the text; with a
 scorer also G_sym, the server's item (`audio`), the clip id, the CE rule (`w_rule`) and the server's five versions.
-Without a scorer the rewards, the log and the per-step stats are byte-for-byte what they were before the scorer
-hook (tests/test_scoring_reward_hook.py against tests/golden/reward_no_scorer.json).
+Without a scorer, P_copy and the language check, the rewards, the log and the per-step stats are byte-for-byte what
+they were before the scorer hook (tests/test_scoring_reward_hook.py against tests/golden/reward_no_scorer.json).
 Standard library and the project's standard-library modules only, so it imports in the policy env and on the
 laptop (tests/test_rl_imports.py).
 """
@@ -48,6 +60,7 @@ import importlib
 import json
 import math
 import numbers
+import re
 import statistics
 import time
 from collections import Counter
@@ -70,6 +83,7 @@ ERROR_GATE = "error"
 PQ_GATE = "PQ"                               # the audio gate's PQ floor (taste_pipeline.md §5)
 KNOBS_WITHOUT_CE = 0.20                      # taste_pipeline.md §5, beside W0: "ce→0, knobs→.20 unless CE validated"
 CE_RULE = "ce->0, knobs->0.20: the scorer reports CE not validated (taste_pipeline.md §5, W0)"
+FINISH_GROUPS = ("stop", "length", "other")  # junk.FINISH_GROUPS: the in-language counts' finish reasons
 _BRIEF_FIELDS = tuple(f.name for f in dataclasses.fields(Brief))
 
 
@@ -164,6 +178,12 @@ def _mean(xs: Sequence[float]) -> float | None:
     return statistics.fmean(xs) if xs else None
 
 
+def finish_reason(truncated: bool | None) -> str:
+    """The finish reason the token ids show (is_truncated): "length" at the limit, "stop" before it or on an EOS,
+    "other" when the ids or the limit are unknown."""
+    return "length" if truncated is True else "stop" if truncated is False else "other"
+
+
 # ------------------------------------------------------------------------------------------ the reward
 class LofiReward:
     """The reward TRL calls. Build it with make_reward(). `stats[step]` holds the latest call's summary for
@@ -172,7 +192,7 @@ class LofiReward:
     def __init__(self, palette: Palette, log_path: Path | str, verify: ModuleType, *,
                  max_completion_length: int | None = None, eos_token_ids: Iterable[int] = (),
                  start_step: int = 0, strict: bool = False, scorer: Any = None, scorer_wait_s: float = 600.0,
-                 scorer_pin: Path | str | None = None):
+                 scorer_pin: Path | str | None = None, copy: Any = None, language: Mapping[str, Any] | None = None):
         self.__name__ = NAME
         self.palette, self.verify, self.strict = palette, verify, strict
         self.log_path = Path(log_path)
@@ -182,6 +202,14 @@ class LofiReward:
         self.stats: dict[int, dict[str, Any]] = {}
         self.scorer, self.scorer_wait_s, self._scorer_ready = scorer, float(scorer_wait_s), False
         self.scorer_pin = None if scorer_pin is None else Path(scorer_pin)
+        self.copy = copy                            # a CopyPenalty (lofi_rl.rl.copy_penalty), or None: no P_copy
+        self.language = None                        # (sha256, compiled regex) of the decoding regex, or None
+        if language is not None:
+            regex = language["regex"]
+            sha = hashlib.sha256(regex.encode("utf-8")).hexdigest()
+            if language.get("sha256") not in (None, sha):
+                raise ValueError(f"the language regex has sha256 {sha}, not the {language['sha256']} it was given with")
+            self.language = (sha, re.compile(regex))
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     # -------------------------------------------------------------------------------------- inputs
@@ -224,6 +252,7 @@ class LofiReward:
             w, w_rule = self._scorer_weights(w)
         briefs = [decode_brief(b) for b in self._column(kwargs, "brief", n, required=True)]
         brief_ids = self._column(kwargs, "brief_id", n, required=False)
+        shown = self._column(kwargs, "example_id", n, required=False) if "example_id" in kwargs else None
         ids = list(completion_ids) if completion_ids is not None else [None] * n
         if len(ids) != n:
             raise ValueError(f"{len(ids)} completion_ids for {n} completions")
@@ -247,6 +276,19 @@ class LofiReward:
                 if self.strict:
                     raise
                 errors[i] = f"{type(e).__name__}: {e}"
+        copies: list[Any] = [None] * n
+        if self.copy is not None:
+            for i in range(n):
+                try:
+                    copies[i] = self.copy(texts[i], briefs[i], trunc[i])
+                    if not (_real(copies[i].p_copy) and math.isfinite(copies[i].p_copy)):
+                        raise ValueError(f"the copy penalty returned p_copy={copies[i].p_copy!r}, which is not finite")
+                except Exception as e:  # noqa: BLE001: like a verifier error: scored 0 and logged (strict re-raises)
+                    if self.strict:
+                        raise
+                    copies[i] = None
+                    errors[i] = errors[i] or f"copy_penalty: {type(e).__name__}: {e}"
+                    scores[i] = None
 
         p_group = [0.0] * n
         for live in ([i for i in m if scores[i] is not None] for m in members):
@@ -269,7 +311,8 @@ class LofiReward:
                     errors[i] = errors[i] or f"group_penalties: {type(e).__name__}: {e}"
 
         records = [self._record(i, step, source, w, group[i], keys[group[i]], brief_ids[i], briefs[i], ids[i],
-                                trunc[i], texts[i], scores[i], p_group[i], errors[i]) for i in range(n)]
+                                trunc[i], texts[i], scores[i], p_group[i], errors[i], copies[i],
+                                None if shown is None else shown[i]) for i in range(n)]
         audio = None
         if self.scorer is not None:     # after the symbolic records, so a scorer error leaves no partial log
             audio = self._audio(step, texts, briefs, brief_ids, records)
@@ -280,6 +323,10 @@ class LofiReward:
             for r in records:
                 f.write(json.dumps(r, ensure_ascii=False, default=str) + "\n")
         st = self._summary(step, source, n, len(members), w, records, rewards, trunc, errors)
+        if self.copy is not None:
+            st["copy"] = self._copy_summary(records)
+        if self.language is not None:
+            st["in_language"] = self._language_summary(records, self.language[0])
         if audio is not None:
             st["audio"] = self._audio_summary(records, audio, w_rule)
         st["t_ms"] = round(1000 * (time.perf_counter() - t0), 2)
@@ -295,7 +342,8 @@ class LofiReward:
             return dataclasses.replace(score, gate_ok=False, gate="G2")
         return score
 
-    def _record(self, i, step, source, w, g, key, brief_id, brief, ids, trunc, text, s, p_group, error) -> dict:
+    def _record(self, i, step, source, w, g, key, brief_id, brief, ids, trunc, text, s, p_group, error,
+                copy=None, shown=None) -> dict:
         rec: dict[str, Any] = {
             "step": step, "step_source": source, "call": self.calls, "i": i, "group": g, "group_key": key,
             "brief_id": brief_id, "brief": dataclasses.asdict(brief),
@@ -304,6 +352,8 @@ class LofiReward:
             rec.update(gate_ok=False, gate=ERROR_GATE, G=0, r={k: 0.0 for k in TERMS}, theory_parts={}, knob_parts={},
                        p_sax=0.0, penalties={}, p_group=0.0, p_fix=0.0, repairs=0, positive=0.0, penalty=0.0,
                        reward=0.0, digest=None, error=error)
+            if self.copy is not None:
+                rec.update(p_copy=0.0, copy_j=None, copy_nearest=None)
         else:
             g2 = trunc is True
             gate_ok = bool(s.gate_ok) and not g2
@@ -316,13 +366,21 @@ class LofiReward:
             p_fix = 0.0 if g2 else float(s.p_fix)
             positive = G * sum(w[k] * r[k] for k in TERMS)
             penalty = p_sax + sum(pens.values()) + p_group + p_fix
+            if copy is not None:                # opt-in, so a run without P_copy adds nothing, not even 0.0
+                penalty += copy.p_copy
             rec.update(gate_ok=gate_ok, gate=gate, G=G, r=r,
                        theory_parts=_parts(s.theory_parts), knob_parts=_parts(s.knob_parts), p_sax=p_sax,
                        penalties=pens, p_group=p_group, p_fix=p_fix, repairs=0 if g2 else int(s.repairs),
                        positive=positive, penalty=penalty, reward=positive - penalty,
                        digest=None if g2 else s.digest)
+            if copy is not None:
+                rec.update(p_copy=copy.p_copy, copy_j=copy.j, copy_nearest=copy.nearest)
             if g2:
                 rec["raw_gate"] = None if s.gate_ok else (s.gate or "unknown")   # the verifier's view of the cut text
+        if shown is not None:
+            rec["example_id"] = shown
+        if self.language is not None:
+            rec.update(finish=finish_reason(trunc), in_language=self.language[1].fullmatch(text) is not None)
         rec["text_sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
         rec["text"] = text
         return rec
@@ -403,6 +461,27 @@ class LofiReward:
                 "terms": audio["terms"], "w_rule": w_rule}
 
     @staticmethod
+    def _copy_summary(records: list[dict]) -> dict[str, Any]:
+        """One step's P_copy: its mean over every completion, and J over the scored ones (an error has none)."""
+        js = [r["copy_j"] for r in records if r.get("copy_j") is not None]
+        return {"p_copy_mean": _mean([r["p_copy"] for r in records]),
+                "penalized": sum(1 for r in records if r["p_copy"] > 0),
+                "j_mean": _mean(js), "j_max": max(js, default=None),
+                "at_least": {"0.6": sum(1 for j in js if j >= 0.6), "0.8": sum(1 for j in js if j >= 0.8)},
+                "nearest": dict(sorted(Counter(r["copy_nearest"] for r in records
+                                               if r.get("copy_nearest") is not None and r["p_copy"] > 0).items()))}
+
+    @staticmethod
+    def _language_summary(records: list[dict], sha: str) -> dict[str, Any]:
+        """junk.json's in_language block for one step: per finish reason n, in_language and out_of_language."""
+        out: dict[str, Any] = {"regex_sha256": sha}
+        for g in FINISH_GROUPS:
+            group = [r for r in records if r["finish"] == g]
+            k = sum(1 for r in group if r["in_language"])
+            out[g] = {"n": len(group), "in_language": k, "out_of_language": len(group) - k}
+        return out
+
+    @staticmethod
     def _summary(step, source, n, groups, w, records, rewards, trunc, errors) -> dict[str, Any]:
         ok = [r for r in records if r["gate_ok"]]       # G == 1 without a scorer; G > 0 with one
         pen_names = sorted({k for r in records for k in r["penalties"]})
@@ -435,6 +514,10 @@ class LofiReward:
                     if st["r_mean"][k] is not None:
                         log_metric(f"lofi/r_{k}", st["r_mean"][k])
                 log_metric("lofi/p_group", st["p_group_mean"])
+                if "copy" in st and st["copy"]["p_copy_mean"] is not None:     # opt-in: absent, it logs nothing
+                    log_metric("lofi/p_copy", st["copy"]["p_copy_mean"])
+                if "in_language" in st:
+                    log_metric("lofi/stop_out_of_language", st["in_language"]["stop"]["out_of_language"])
                 if "audio" in st:               # with a scorer: taste_pipeline.md §5's hack/* signatures
                     a = st["audio"]
                     if a["G_mean"] is not None:
@@ -470,7 +553,8 @@ def resolve_scorer(scorer: Any = None, environ: Mapping[str, str] | None = None)
 def make_reward(palette_path: Path | str | Palette, log_path: Path | str, *, verify: ModuleType | None = None,
                 max_completion_length: int | None = None, eos_token_ids: Iterable[int] = (),
                 start_step: int = 0, strict: bool = False, scorer: Any = None,
-                scorer_wait_s: float = 600.0, scorer_pin: Path | str | None = None) -> LofiReward:
+                scorer_wait_s: float = 600.0, scorer_pin: Path | str | None = None, copy: Any = None,
+                language: Mapping[str, Any] | None = None) -> LofiReward:
     """The TRL reward function: (prompts, completions, **kwargs) -> list[float] (module docstring).
 
     palette_path: the palette the loops are scored against (loaded with verify=False: the reward is symbolic and
@@ -482,10 +566,13 @@ def make_reward(palette_path: Path | str | Palette, log_path: Path | str, *, ver
     waits up to scorer_wait_s for its /health, under the run's pin when `scorer_pin` names one (a file shared by
     every link of the run, never a per-link summary directory). The GRPO config has no scorer field yet
     (lofi_rl.rl.config refuses unknown keys), so until it does a run turns the scorer on with the environment
-    variable."""
+    variable. `copy` (a lofi_rl.rl.copy_penalty.CopyPenalty) adds P_copy, and `language` (a mapping with the
+    decoding regex under "regex" and optionally its "sha256": a config's structured_outputs) counts the completions
+    in the regex's language; both are off by default, so a run without them logs what it did before."""
     if verify is None:
         verify = importlib.import_module("lofi_rl.verify")
     palette = palette_path if isinstance(palette_path, Palette) else load_palette(palette_path, verify=False)
     return LofiReward(palette, log_path, verify, max_completion_length=max_completion_length,
                       eos_token_ids=eos_token_ids, start_step=start_step, strict=strict,
-                      scorer=resolve_scorer(scorer), scorer_wait_s=scorer_wait_s, scorer_pin=scorer_pin)
+                      scorer=resolve_scorer(scorer), scorer_wait_s=scorer_wait_s, scorer_pin=scorer_pin,
+                      copy=copy, language=language)
