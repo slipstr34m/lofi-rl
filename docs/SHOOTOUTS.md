@@ -6,11 +6,13 @@ call for). They prune each sound choice to its survivors; the survivors go into 
 which freezes on Nov 6 and never changes after (docs/DECISIONS.md D-017).
 
 - **Status (2026-10-31, revised after two reviews):** the job-1 tooling of §7.11 is built and integrated on one
-  plan (§7.1–§7.8, below). A laptop dry run of job 1 rendered all 67 Day-1 clips and built the three Day-1 batches
-  (§7.7, "Dry run"); those laptop clips are not canonical (LESSONS 38) and none is queued for listening. Since
-  CD-52 each clip takes its own fader on the bus its round varies, and every Day-1 round's candidates sit within
-  0.01 LU of each other on its loop in the dry run (§3 step 8). No cluster shootout job has run. The 9 reference
-  loops in `shootouts/loops/` exist and pass the gates (§5).
+  plan (§7.1–§7.8, below), and so is the tally tool that job 2 waits for (§7.9, branch `wt/tally`). A laptop dry run
+  of job 1 rendered all 67 Day-1 clips and built the three Day-1 batches (§7.7, "Dry run"); those laptop clips are
+  not canonical (LESSONS 38) and none is queued for listening. Since CD-52 each clip takes its own fader on the bus
+  its round varies, and every Day-1 round's candidates sit within 0.01 LU of each other on its loop in the dry run
+  (§3 step 8). Job 1 then ran on the cluster (`lofi-shootout` 13635646, 25.8 SU; CHANGELOG 2026-10-31 17:45): its
+  three Day-1 batches are in `inbox/2026-11-03/`, and the tally reads per-round spreads of 0.0012–0.0091 LU from
+  their hidden manifests (§7.9). The 9 reference loops in `shootouts/loops/` exist and pass the gates (§5).
 - **Sound claims:** none. Every candidate, variant and level here is a starting point for Shresth's ear. Claude
   records counts and picks, never descriptions of sound (TASTE.md: "Shootout prunes, votes decide").
 - **Blind by construction.** This file gives every round in symbols (`P1a`, `k2`, `v3`, ...). Which option sits
@@ -1015,6 +1017,76 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
 - **Acceptance tests:** on a synthetic batch its counts equal the audit's, anchor rounds excepted; a best or worst
   mark on a clip heard under 4 bars is left out; repeats are scored for agreement and left out of the counts; a
   missed anchor halves its micro-session's weight.
+- **Built (2026-10-31, branch `wt/tally`):** `src/lofi_rl/shootout/tally.py` and `tests/test_shootout_tally.py`. As
+  built: `python -m lofi_rl.shootout.tally --votes <dir> --inbox <dir> [--batch <name> ...] [--out <dir>] [--report
+  <file.md>] [--plan shootouts/plan.yaml] [--config configs/rating.yaml] [--levels <levels.json> ...]`. `--out`
+  defaults to `<votes>/audit/`; inside the repo `--out` and `--report` are written only under `data/`, never in the
+  inbox (exit 2 otherwise), since a tally is as private as the votes until Shresth confirms it (§1 step 2).
+  - **What it writes.** `<out>/<batch>.json`: the batch's status (`no_votes`, `partial`, `complete`), the audit's
+    own aggregate, its flags and every standing vote as the recount read it (options by tile, picks, weight).
+    `<out>/shootouts.json`: per stage the recount table, the escape hatches, the anchor rounds dropped, the votes at
+    half weight and the marks left out; the K1 + K2 and S1 + final pools; the micro-sessions with anchors; the
+    pooled repeat agreement with §2.5's caveat; position of best; the flags and each stage's largest spread; the
+    drift moves of `--levels`; each stage's first vote date (job 3's `--repeats`); the rules' outcomes; job 2's
+    proposal; and everything that needs Shresth's word. `--report` writes it as markdown for
+    `gates/GATE_palette.md`: per stage a table of option, shown, heard, best, worst, BW, net and all-bad rounds,
+    per option only (never per tile, so it gives no draw away); a flagged round is named only once its batch has
+    every vote; and nothing says which rounds come back or when (RATING.md: he is never told), so the first vote
+    dates stay in the JSON and §2.5's caveat appears only once repeats have votes. A batch with no votes is
+    reported as such, never as zeros.
+  - **Rules as functions**, each applied once every round of its stage's batches has a vote: after Day 1
+    `keys_to_k2` (CD-41), `kits_after_r1` (CD-42), `bass_pairings` (CD-43), `sax_to_final` (CD-18, with D-012's
+    no-free-sax check) and `day2_cut` (CD-50); after Day 2 `keys_survivors` (CD-40), `sax_final` (with the S2
+    re-run note), `warmth` (with the `sax_expr_off` question), `timing`, `swing` (advisory, always put to
+    Shresth), `humanize` and `vamp_ranks` (CD-45's borrowed-chord condition); after Day 3 `rain_excerpt` and
+    `rain_level` (a `rain_none` lead goes to Shresth). S2a and S2b rounds in a Day-3 batch are tallied apart, as
+    the S2 re-run.
+  - **Job 2's proposal:** `keys=<K2, the K1 leader first>/kit=<the R1 leader>/bass=<its R2 pairing>/sax=<the
+    finalists, the S1 leader first>` (one sax id with the `final` cut), and `--cut` from the cut list. The tool
+    stops unless `draw.parse_leaders` reads the string back and `draw.day_band` builds the Day-2 band from it after
+    the cuts; the report gives the `make submit` line.
+  - **Raised** (`RuleGap`, naming the section; the tally records it, blocks what depends on it and puts it to
+    Shresth): after CD-44, fewer than 3 keys left for K2, fewer than 2 kits, or fewer than 2 saxes for the final;
+    no option left on a single-winner choice; a kit without exactly one R2 round; keys survivors fully tied across
+    the line of the top 2 (unless all of them fit as the third with BW above 0) or for the third place, or fewer
+    than 2 of them; every finalist all-bad. The spec gives no rule for these.
+  - **Choices the spec left open:** BW = (best − worst) / heard, its three terms over heard appearances and
+    weighted, in exact fractions; `shown` counts every appearance in a design round; an option never heard has no
+    BW and ranks last. A micro-session missed its anchor when it caught fewer than half of its anchors (with one
+    anchor, when it did not catch it), read with `ui.audit.anchor_caught` over every log in `--votes`; all its votes
+    count half, in every term. G marks every clip of its round, heard or not, and a worst given with G still counts;
+    CD-44 compares weighted all-bad rounds with weighted rounds. A full tie without the default leaves a palette
+    value at its default meanwhile (swing, humanize, warmth, timing, rain); where the leader must be one of the
+    options (the K1, R1, pooled R2 and S1 leaders, the keys leader over K1 + K2) a seeded draw names a provisional
+    one. Every seeded draw is keyed by the sha256 of the stage's standing design-round vote ids (`draw.Rng`), so it
+    is fixed once the votes exist and the private logs reproduce it. S1's places: two fully tied for one place go to
+    a seeded draw; three or more fully tied at the line give a three-source final, a seeded draw filling it when
+    more are tied than places are left. An all-bad key is not sent to K2; with one kit out, the other two stay.
+    D-012's check reads the S1 leader before CD-44 removes anything, and "most rounds" as more than half. The cut
+    list's limits are 30 and 55 minutes, on the audits' `time.minutes`. CD-45's tie is a BW equal to another vamp's
+    of its mood. `sax_expr_off` "has the top BW" when it shares it. Flags: over 1.0 LU for the instrument stages and
+    S2a's warmth variants, over 0.5 LU for R3a, R3b and S2b, over 1.0 LU on keys or bass for the vamps, none for
+    rain; a level missing where one is checked is a flag too. The rules wait for every round of their batches, and
+    job 2's proposal for every round of the Day-1 batches, because the anchor in the last batch can halve a
+    micro-session that began in an earlier one. The S2 re-run note compares the final's winner with the S1 leader
+    this tally proposes (job 2's own is in its `summary/leaders.json`). The recount's audit-style counts must equal
+    `ui.audit.aggregate`'s per option, or the tool stops.
+  - **Not built:** Day 3's `--leaders` (it needs job 2's `leaders.json`, which the inbox does not hold; the report
+    lists the Day-2 picks it is made of) and Day 3's cut (plan.yaml gives no saving for `w1-two` or `w2-two`).
+  - **Tests** (17, on batches the real draw and batch builder make from fake renders, every vote written by the
+    rating page's own `Ledger` on a fake clock): the four acceptance tests above; a retracted vote; the Day-2
+    proposal waiting for the anchor, and a late missed anchor halving the groove votes of its micro-session; the
+    leaders string through `parse_leaders`, `day_band`, the draw and the job's own `--dry-run` check; the cut list
+    and the `final` cut's one sax; ties at third place and the S1 places; the all-bad rule on keys and on kits (a
+    `RuleGap` that blocks the proposal); a batch with no votes and a partial one; keys survivors, the sax final, the
+    variant, vamp and rain rules; Day-2 and Day-3 votes through every later rule; level flags on the instrument,
+    timing and vamp limits; the CLI's files and its refusal of a public path. Seven mutations of the recount
+    (heard filter, half weight, repeats, anchors, the tie at third, CD-44, G) each fail the test meant for it.
+  - **Checked on the real Day-1 batches** (laptop, 2026-10-31; the inbox read-only, synthetic votes in a scratch
+    folder, options ranked alphabetically so nothing depends on the draw): 3 batches and 19 rounds read, the S1
+    anchor found, no round flagged (per-round spread 0.0012–0.0091 LU, read independently from the hidden
+    manifests too), and a proposal of 3 keys, 1 kit, 1 bass and 2 saxes that `draw.day_band` accepts and the job's
+    `--dry-run` check passes (exit 0).
 
 ### 7.10 Only if Shresth asks for them
 - **Per-mood chord list** (if bVI and bVII should leave the hopeful mood only, §11 question 2): a palette field
