@@ -52,8 +52,8 @@ R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix)
   - W0 = theory .50, taste .20, knobs .15, CE .05, theme .10; W1 = theory .10, taste .60, knobs .15, CE .05, theme .10.
   - So theory falls linearly from .50 to .10 over steps 0–30 and knobs stay at .15. The endpoints, and a weight
     that does not move, are returned exactly.
-  - §5's note "ce → 0, knobs → .20 unless CE validated" belongs to the scorer-server reward, after the CE check on
-    Shresth's votes. It is not applied here.
+  - §5's note "ce → 0, knobs → .20 unless CE validated" belongs to the scorer-server reward: the reward applies it
+    only when a scorer reports CE as not validated (SCORER.md §10), never in the smoke.
 - **The step t** is `trainer_state.global_step` when TRL passes it, which is 0 for the first step's rollouts.
   Otherwise it is the reward's own call counter (one call per optimizer step). A resumed run starts that counter at
   its checkpoint's step (`start_step`).
@@ -79,8 +79,11 @@ R = G × Σ_k w_k(t)·r_k − (P_sax + Σ penalties + P_group + P_fix)
 - **TRL's logging hooks.** taste_pipeline §5 names `log_metric` and `log_extra`. When TRL passes them the reward logs
   `lofi/reward`, `lofi/G`, `lofi/r_<term>` and `lofi/p_group`. A hook that raises is recorded under `hook_errors`
   and never stops the reward.
-- **TODO (taste_pipeline §5, "Scorer server"):** `lofi_rl.scoring.server` (scorer env, `POST /score` over a node-local
-  Unix socket) will supply r_taste, r_ce, r_theme and the audio part of the gate: render, PQ floor and P_acc.
+- **The scorer server** (taste_pipeline §5, "Scorer server") is built: `lofi_rl.scoring`, specified in
+  [docs/SCORER.md](SCORER.md). With `$LOFI_SCORER_SOCK` set (or `make_reward(..., scorer=...)`), the reward sends the
+  completions that passed the symbolic gate to it in one `POST /score` and takes r_taste, r_ce, r_theme and the
+  audio part of the gate (render, PQ floor, P_acc factor) from it (SCORER.md §2, §10). The smoke runs without it,
+  so its reward and logs are unchanged byte for byte (`tests/test_scoring_reward_hook.py`).
 
 ## 3. The run config (`configs/grpo_smoke.yaml`, `lofi_rl.rl.config`)
 
