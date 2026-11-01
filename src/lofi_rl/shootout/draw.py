@@ -14,7 +14,9 @@ What is drawn, per day:
    that clip's candidate; on day 3 each repeat group shows one round of a `--prior` batch again, tiles
    reversed, never the first round served of a stage [CD-24], and only from the stages `repeats` names;
 3. on day 3 the split of the pool (W1, W2, the S2 re-run, the anchor, the repeats) into the two mix batches of
-   about equal planned length;
+   about equal planned length: the greedy split (longest round first onto the shorter batch), redrawn up to 500
+   times until both batches can be ordered, and when none can, the first in a drawn order of every split whose
+   lengths are within the longest round of each other that both order (`_split_all`);
 4. the order of the rounds in each batch [CD-22]: no two consecutive rounds on one loop, and a design round first.
    An optional stage the job adds (`--add R2r`, CD-54) opens its batch: its rounds come first, in a drawn order,
    then the batch's own, in a drawn order, the two parts joined under the same rule.
@@ -58,7 +60,8 @@ SCHEMA = "lofi-rl/shootout-draw/1"
 BARS = 8
 MATCHED = tuple(SLOT_BUS)       # band slots whose option is an instrument: each clip takes its own fader (CD-52)
 ORDER_TRIES = 4000              # random orders tried before the exhaustive search
-SPLIT_TRIES = 500
+SPLIT_TRIES = 500               # greedy splits of a pool tried before the search of every split (_split_all)
+SPLIT_ALL_MAX = 22              # rounds a search of every split takes (2**22 sets); Day 3 has at most 19
 
 
 class DrawError(ValueError):
@@ -509,7 +512,7 @@ def _read_draw(run_dir: Path) -> dict:
 
 def _split(rounds: list[dict], names: Sequence[str], rng: Rng) -> dict[str, list[dict]]:
     """The pool split into the batches by planned length (longest first onto the shorter batch, ties drawn),
-    redrawn until every batch can open with a design round and be ordered."""
+    redrawn until every batch has a design round (`_split_batches` redraws it until both can be ordered)."""
     for _ in range(SPLIT_TRIES):
         pool = rng.shuffle(list(rounds))
         pool.sort(key=lambda r: -round_seconds(len(r["clips"]), r["bpm"]))
@@ -523,6 +526,92 @@ def _split(rounds: list[dict], names: Sequence[str], rng: Rng) -> dict[str, list
         if all(any(r["kind"] == "none" for r in v) for v in out.values()):
             return out
     raise DrawError(f"could not split {len(rounds)} rounds into {list(names)} with a design round in each")
+
+
+def _may_order(rounds: Sequence[Mapping]) -> bool:
+    """What any order under CD-22 needs (`order_rounds`: a design round first, no two consecutive rounds on one
+    loop): a design round; no loop holding more than half the rounds, rounded up; and where an odd number of rounds
+    has a loop holding exactly that many, a design round on that loop, since its rounds must take every odd place
+    and so open the batch. Necessary conditions only: a part that fails one cannot be ordered."""
+    m = len(rounds)
+    by_loop: dict[str, list[Mapping]] = {}
+    for r in rounds:
+        by_loop.setdefault(r["loop"], []).append(r)
+    cap = (m + 1) // 2
+    return any(r["kind"] == "none" for r in rounds) and all(
+        len(rs) < cap or (len(rs) == cap and (m % 2 == 0 or any(r["kind"] == "none" for r in rs)))
+        for rs in by_loop.values())
+
+
+def _split_batches(b: Batch, name: str, pool: list[dict], seed: int) -> list[dict]:
+    """A split pool's batches (day 3), in the plan's order of `b.names`: the greedy split of `_split`, redrawn up to
+    SPLIT_TRIES times until every batch can be ordered [CD-22] (section 2.4's planner), and only when none can, the
+    search of every split (`_split_all`). A redraw whose part fails `_may_order` goes on to the next without trying
+    to order it (order_rounds would refuse it), and the order streams are keyed per batch, so a draw that passes
+    the redraws is the one the loop gave before the search existed."""
+    names = list(b.names)
+    rng = Rng.keyed(seed, "split", name)
+    for _ in range(SPLIT_TRIES):
+        try:
+            parts = _split(pool, names, rng)
+        except DrawError:                   # no greedy split puts a design round in each batch: search them all
+            break
+        if not all(_may_order(parts[x]) for x in names):
+            continue
+        try:
+            return [_batch_doc(b, x, parts[x], Rng.keyed(seed, "order", x)) for x in names]
+        except DrawError:
+            continue
+    return _split_all(b, name, pool, seed)
+
+
+def _split_all(b: Batch, name: str, pool: list[dict], seed: int) -> list[dict]:
+    """Every split of a pool into its two batches whose planned lengths are within the longest round's of each
+    other and whose parts both pass `_may_order`, tried in an order drawn from the seed (`split-all`) until both
+    parts can be ordered [CD-22]. Each round goes to the batch its bit names (pool order), so a seed gives one
+    draw. DrawError only when no split can be ordered."""
+    names = list(b.names)
+    n = len(pool)
+    if len(names) != 2 or not 0 < n <= SPLIT_ALL_MAX:
+        raise DrawError(f"no split of {name} can be ordered ({n} rounds into {names}, and a search of every split "
+                        f"covers two batches and at most {SPLIT_ALL_MAX} rounds)")
+    secs = [round_seconds(len(r["clips"]), r["bpm"]) for r in pool]
+    full = (1 << n) - 1
+    design = sum(1 << i for i, r in enumerate(pool) if r["kind"] == "none")
+    on_loop: dict[str, int] = {}
+    for i, r in enumerate(pool):
+        on_loop[r["loop"]] = on_loop.get(r["loop"], 0) | 1 << i
+    loops = list(on_loop.values())
+
+    def may_order(part: int) -> bool:                   # _may_order on a set of the pool's rounds
+        k = part.bit_count()
+        cap = (k + 1) // 2
+        for lm in loops:
+            c = (part & lm).bit_count()
+            if c > cap or (c == cap and k % 2 and not part & lm & design):
+                return False
+        return bool(part & design)
+
+    total = [0.0] * (full + 1)                          # planned seconds of every set of rounds
+    for m in range(1, full + 1):
+        low = m & -m
+        total[m] = total[m ^ low] + secs[low.bit_length() - 1]
+    longest = max(secs)
+    cands = [m for m in range(1, full) if abs(total[m] - total[full ^ m]) <= longest and may_order(m)
+             and may_order(full ^ m)]
+    rng = Rng.keyed(seed, "split-all", name)
+    for i in range(len(cands)):                        # a drawn order, one Fisher-Yates step per split tried
+        j = i + rng.below(len(cands) - i)
+        cands[i], cands[j] = cands[j], cands[i]
+        m = cands[i]
+        parts = {names[0]: [r for k, r in enumerate(pool) if m >> k & 1],
+                 names[1]: [r for k, r in enumerate(pool) if not m >> k & 1]}
+        try:
+            return [_batch_doc(b, x, parts[x], Rng.keyed(seed, "order", x)) for x in names]
+        except DrawError:
+            continue
+    raise DrawError(f"no split of {name} can be ordered: none of its {len(cands)} splits within the longest round "
+                    "of equal length")
 
 
 def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ...]] | None = None,
@@ -591,17 +680,7 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
         pool = [r for s in stage_ids for r in by_stage[s]]
         pool += _anchors(ctx, b, name, pool, band_of, seed)
         pool += _repeats(ctx, priors, repeats, lambda g: Rng.keyed(seed, "repeat", g))
-        rng = Rng.keyed(seed, "split", name)
-        for _ in range(SPLIT_TRIES):
-            parts = _split(pool, list(b.names), rng)
-            try:
-                docs = [_batch_doc(b, x, parts[x], Rng.keyed(seed, "order", x)) for x in b.names]
-                break
-            except DrawError:
-                continue
-        else:
-            raise DrawError(f"no split of {name} can be ordered")
-        batches += docs
+        batches += _split_batches(b, name, pool, seed)
     batches.sort(key=lambda d: (d["date"], d["name"]))
     plan_doc = {"path": str(plan.path), "sha256": plan.sha256, "cuts": list(plan.applied_cuts)}
     if plan.applied_adds:

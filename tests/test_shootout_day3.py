@@ -407,3 +407,50 @@ def test_a_purged_first_showing_made_again_builds_and_its_name_leaks_nothing(tmp
             (dst / "manifest.json").write_text(json.dumps(dict(man, audio_sha256=rec["pcm_sha256"])))
     folders = build(doc2, run / "renders", tmp_path / "inbox3", summary_dir=run / "summary", plan=PLAN)
     assert len(folders) == 2
+
+
+# ------------------------------------------------------------------------------------- the split (section 2.4)
+def split_rows(doc: dict) -> list:
+    """What the split and the order decide: each batch's rounds in order, as kind, stage, slot, loop and renders."""
+    return [[b["name"], [[r["kind"], r["stage"], r["slot"], r["loop"], [c["render"] for c in r["clips"]]]
+                         for r in b["rounds"]]] for b in doc["batches"]]
+
+
+def test_every_seed_splits_day_3_and_a_seed_the_redraws_order_keeps_its_batches(tmp_path, monkeypatch):
+    # 2026-11-01 review (spec-F3): the greedy split's 500 redraws differ only in ties, so on some seeds none of the
+    # few splits they try could be ordered under CD-22 and the draw failed (9 of 300 seeds with every repeat and
+    # both Day-3 cuts, 82 of 300 with both cuts and no repeat), though balanced orderable splits existed. The
+    # redraws stand: every seed they order keeps the batches main 4020a9d drew (tests/golden/day3_split.json, the
+    # same seeds and priors); only the seeds they cannot order search every split within the longest round of equal
+    # length, in a drawn order, and each of those now draws.
+    from lofi_rl.shootout import draw as D
+    from lofi_rl.shootout.draw import round_seconds
+    golden = json.loads((ROOT / "tests" / "golden" / "day3_split.json").read_text())
+    priors = _days(tmp_path)
+    searched = []
+    search = D._split_all
+    monkeypatch.setattr(D, "_split_all", lambda *a, **kw: searched.append(a[1]) or search(*a, **kw))
+    leaders = parse_leaders(LEADERS3)
+    for name, cfg in golden["configs"].items():
+        rows, fell = [], []
+        for k in range(golden["n"]):
+            searched.clear()
+            doc = draw(PLAN, "day3", seed=golden["seed0"] + k, leaders=leaders, priors=priors if cfg["repeats"] else [],
+                       repeats=cfg["repeats"], cuts=cfg["cuts"])
+            kinds = sorted(r["kind"] for b in doc["batches"] for r in b["rounds"])
+            assert kinds == sorted(["anchor"] + ["none"] * cfg["design_rounds"]
+                                   + ["repeat"] * (5 if cfg["repeats"] else 0)), (name, k)
+            if not searched:
+                rows.append([k, split_rows(doc)])
+                continue
+            fell.append(k)
+            assert searched == ["mix"]
+            secs = [[round_seconds(len(r["clips"]), r["bpm"]) for r in b["rounds"]] for b in doc["batches"]]
+            assert [b["name"] for b in doc["batches"]] == ["b1106-1-mix", "b1106-2-mix"]
+            assert abs(sum(secs[0]) - sum(secs[1])) <= max(secs[0] + secs[1]), (name, k)
+            for b in doc["batches"]:                     # CD-22: a design round first, no loop twice in a row
+                rs = b["rounds"]
+                assert rs[0]["kind"] == "none" and all(x["loop"] != y["loop"] for x, y in zip(rs, rs[1:])), (name, k)
+        assert fell == cfg["unordered"], name
+        assert hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest() == cfg["sha256"], name
+    assert sum(len(c["unordered"]) for c in golden["configs"].values()) == 91

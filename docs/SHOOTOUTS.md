@@ -139,7 +139,14 @@ hidden control (R: "You are never told which rounds those are") [CD-21].
 - **Order** [CD-22]: consecutive rounds of a batch never share a loop, and a batch opens with a design round (not a
   repeat or anchor). A scratch planner (2026-10-31) found such an order in 200 of 200 draws for every Nov-3 and
   Nov-4 batch, and in 500 of 500 draws for the two Nov-6 batches with their repeats (redrawing the split between
-  them when needed); each Nov-6 batch stayed under 8.6 min planned, or 11.6 with the S2 re-run.
+  them when needed); each Nov-6 batch stayed under 8.6 min planned, or 11.6 with the S2 re-run. *As built
+  (2026-11-01 review):* the greedy split's redraws differ only in ties, so a seed can find no orderable split among
+  them although balanced orderable splits exist (the review: 4 of 2000 seeds on job 3's ARGS and the pulled
+  summaries; on synthetic priors 9 of 300 seeds with every repeat and both Day-3 cuts, 82 of 300 with both cuts and
+  no repeat). When the 500 redraws find none, the draw now tries every split whose planned lengths are within the
+  longest round of each other and whose batches can each be ordered at all, in an order drawn from the seed, and
+  takes the first that orders; a seed the redraws order keeps its batches byte for byte (a test on those 1,200
+  seeds against the draws of 4020a9d, `tests/golden/day3_split.json`).
 - **Position checks:** the tally tool pools position-of-best counts by clip count across all shootout batches,
   labelled descriptive (§7.9).
 

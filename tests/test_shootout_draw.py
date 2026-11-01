@@ -315,6 +315,32 @@ def test_order_rounds_and_the_listening_estimate():
     assert est_minutes(ok) == round(3 * round_seconds(2, 90) / 60, 1)
 
 
+def test_may_order_is_exactly_whether_some_order_meets_cd22():
+    # The split's check before it orders a part (2026-11-01 review, spec-F3): a part it passes over has no order
+    # under CD-22 at all, and every part it keeps is one order_rounds orders. Every part of up to 6 rounds on 3
+    # loops, each a design round or a repeat, against every permutation.
+    from itertools import permutations, product
+
+    from lofi_rl.shootout.draw import _may_order
+
+    def meets(p) -> bool:
+        return bool(p) and p[0][1] == "none" and all(a[0] != b[0] for a, b in zip(p, p[1:]))
+    parts = 0
+    for m in range(7):
+        for loops in product("abc", repeat=m):
+            if list(loops) != sorted(loops):
+                continue
+            for kinds in product(("none", "repeat"), repeat=m):
+                some = any(meets(p) for p in set(permutations(zip(loops, kinds))))
+                part = [{"loop": lp, "kind": k, "bpm": 90, "clips": [1, 2]} for lp, k in zip(loops, kinds)]
+                assert _may_order(part) is some, (loops, kinds)
+                if some:
+                    got = order_rounds(part, Rng(m))
+                    assert meets([(r["loop"], r["kind"]) for r in got]) and len(got) == m
+                parts += 1
+    assert parts == 2815
+
+
 # ------------------------------------------------------------------------- CD-54: the bass re-listen, R2r
 R2R = parse_leaders("keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/"
                     "bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor")
