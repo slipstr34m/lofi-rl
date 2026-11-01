@@ -154,7 +154,11 @@ class RenderPool:
         t0 = time.perf_counter()
         if not jobs:
             return
-        futures = {self._ex.submit(render_job, j.canon, dict(j.brief)): k for k, j in enumerate(jobs)}
+        try:
+            futures = {self._ex.submit(render_job, j.canon, dict(j.brief)): k for k, j in enumerate(jobs)}
+        except BrokenProcessPool:           # a worker died since the last batch: start this one on a fresh pool
+            self.restart()
+            futures = {self._ex.submit(render_job, j.canon, dict(j.brief)): k for k, j in enumerate(jobs)}
         broken: list[int] = []
         done: set[int] = set()
         pending = as_completed(futures, timeout=self.timeout_s)
