@@ -316,6 +316,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     for name in ("palette", "theme"):
         if not getattr(a, name).is_file():
             p.error(f"--{name} {getattr(a, name)} is not a file")
+    if a.backend == "real" and a.render == "fake":
+        p.error("--backend real needs real renders (the models read the audio): --render auto or real")
     return a
 
 

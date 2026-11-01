@@ -319,6 +319,7 @@ rewarded**; PC and CU are logged as signatures (`sig`, `diag`).
     server on the laptop; `/health` says `"backend": "fake"`, and a client refuses one unless `allow_fake=True`.
 12. **`--palette`, `--theme`, `--backend`, `--render`, `--render-workers`, `--render-timeout-s`, `--lru`** were
     added to the CLI the task named; every request carries the palette's sha256, and a mismatch is a 409.
+    `--backend real --render fake` is refused (exit 2): the models read audio the fake renderer never makes.
 13. **No score cache** (§7) and no recheck endpoint; the 1 % re-render determinism check of §2 stays with the
     queue job.
 

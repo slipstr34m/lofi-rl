@@ -65,7 +65,10 @@ def stack_versions() -> dict[str, str]:
     import torch
 
     from lofi_rl.render.machine import platform_info
-    out = {k: v for k, v in platform_info().items() if k != "cpu"}     # the CPU model keys the cache directory
+    try:
+        out = {k: v for k, v in platform_info().items() if k != "cpu"}     # the CPU model keys the cache directory
+    except (OSError, RuntimeError) as err:      # FluidSynth missing or unreadable: the canary stops the server (exit 2)
+        out = {"render_stack": f"unreadable: {type(err).__name__}: {err}"}
     for pkg in ML_PACKAGES:
         try:
             out[pkg] = importlib.metadata.version(pkg)

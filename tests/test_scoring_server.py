@@ -305,6 +305,13 @@ def test_a_renderer_that_cannot_render_stops_the_server_before_it_binds(monkeypa
     assert "the renderer cannot render (at start" in err and "fluidsynth is not on PATH" in err
 
 
+def test_real_features_on_fake_renders_is_a_bad_argument(capsys):
+    # The real featurizer reads the audio, which the fake renderer never makes; its feat_ver also names "real".
+    with pytest.raises(SystemExit) as e:
+        server.parse_args(["--sock", "/tmp/unused.sock", "--backend", "real", "--render", "fake"])
+    assert e.value.code == 2 and "needs real renders" in capsys.readouterr().err
+
+
 def test_a_renderer_that_breaks_after_start_makes_score_a_500_not_a_batch_of_zeros(tmp_path):
     r = Faulty()
     with served(tmp_path, renderer=r) as (client, scorer, _sock):
