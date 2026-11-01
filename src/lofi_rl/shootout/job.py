@@ -18,9 +18,11 @@ adds `--cut <name>+<name>`. ARGS hold no spaces, so they need no comma-safe `--e
 2. `draw`: `python -m lofi_rl.shootout.batch draw` writes `summary/draw.json` (the maps, the order, the anchors and
    repeats, and the renders and palettes the job must make), from a seed drawn there and recorded only there.
 3. `measure`: the palette generator (section 7.8) with `--levels none`: the measuring palettes, in
-   `summary/palettes/measure/`.
+   `summary/palettes/measure/`; from day 2 on with the draw too (its band, and each stage palette a matched clip
+   plays: CD-53).
 4. `levels`: the levels tool (section 7.1), with the draw (every clip's own fader, its sour copies' texts
-   included: CD-52) and with `--prior` the first prior job's levels.json (its drift keys).
+   included: CD-52; from day 2 on every bus a clip matches, on its own palette: CD-53) and with `--prior` the first
+   prior job's levels.json (its drift keys, and each instrument's move from it).
 5. `palettes`: the generator again, with the measured trims and faders and the draw: `summary/palettes/<key>.yaml`
    for every palette the draw asks for, each clip of an instrument stage its own.
 6. `render`: every clip, `--jobs` at a time with 1 worker each (`python -m lofi_rl.shootout.render`).
@@ -138,9 +140,12 @@ def commands(a: argparse.Namespace, doc: dict) -> list[tuple[str, list[str]]]:
         draw += ["--cut", "+".join(doc["cut"])]
     if a.seed:
         draw += ["--seed", a.seed]
-    # the generator writes the measuring palettes into <out>/measure/, where the levels tool reads them
-    measure = [py, "-m", "lofi_rl.shootout.palettes", "--plan", str(a.plan), "--stage", a.stage, "--levels", "none",
-               "--out", str(s / "palettes")]
+    # the generator writes the measuring palettes into <out>/measure/, where the levels tool reads them; from day 2 on
+    # they follow the draw (the band is the job's leaders, and each matched clip's own palette is measured: CD-53)
+    measure = [py, "-m", "lofi_rl.shootout.palettes", "--plan", str(a.plan), "--stage", a.stage, "--levels", "none"]
+    if a.stage != "day1":
+        measure += ["--draw", str(s / "draw.json")]
+    measure += ["--out", str(s / "palettes")]
     levels = [py, "-m", "lofi_rl.shootout.levels", "--plan", str(a.plan), "--loops", str(a.loops),
               "--palettes", str(s / "palettes" / "measure"), "--stage", a.stage, "--draw", str(s / "draw.json")]
     if doc["prior_runs"]:                       # drift keys against job 1's (section 3, "Drift between jobs")

@@ -137,6 +137,10 @@ vamps:
 # sub: a loop line every clip of the stage substitutes (§5 Substitutions); `option` takes the option's own value.
 # tie: the alternative symbols and tiles a tie brings (CD-41; §4.4). default: the option a cut pins to the middle
 # tile sum and the one that stays on a tie (§2.7, CD-39). band: band slots the stage fixes for all its clips.
+# match (CD-53, Day 2 on): the buses whose loudness the stage's varied thing moves; each clip takes its own fader on
+# every one of them, measured on its own palette and text. loops: true also measures each option's palette on the 9
+# reference loops (§3 step 1: the frozen palette's spread-voicing and sax-variant faders). A Day-1 stage has no
+# match: its clips take their own fader on the stage's bus from the candidate's 9-loop measurement (CD-52).
 stages:
   K1:
     day: 1
@@ -204,6 +208,7 @@ stages:
     category: swing
     what: swing, humanize off (advisory, CD-13)
     default: swing_55
+    match: {buses: [sax, keys, bass, drums]}   # swing moves every timing lane, the sax included (CD-12)
     symbols: [w1, w2, w3, w4]
     options: [swing_50, swing_55, swing_58, swing_split]
     draw: {rule: any}
@@ -217,6 +222,7 @@ stages:
     category: humanize
     what: humanize at swing 0.55
     default: humanize_off
+    match: {buses: [keys, bass, drums]}        # humanize nudges the drum lanes, bass and keys, never the sax
     symbols: [n1, n2, n3]
     options: [humanize_off, humanize_h1, humanize_h2]
     draw: {rule: any}
@@ -230,6 +236,7 @@ stages:
     fills: sax
     category: sax
     what: sax final
+    match: {buses: [sax]}
     symbols: [f1, f2]
     ranks: {of: S1, top: 2}
     draw: {rule: ranks}
@@ -245,6 +252,7 @@ stages:
     category: sax_warmth
     what: the S1 leader's warmth, with the expression-off control
     default: sax_plain
+    match: {buses: [sax], loops: true}         # warm on and expression off on the 9 loops too (§3 step 1)
     symbols: [m1, m2, m3]
     options: [sax_plain, sax_warm_on, sax_expr_off]
     draw: {rule: any}
@@ -259,6 +267,7 @@ stages:
     category: sax_timing
     what: the S1 leader's timing at warm off (CD-19)
     default: timing_grid
+    match: {buses: [sax]}
     symbols: [g1, g2, g3]
     options: [timing_grid, timing_lag, timing_swung]
     draw: {rule: any}
@@ -272,6 +281,7 @@ stages:
     fills: keys
     category: keys
     what: spread
+    match: {buses: [keys], loops: true}        # the K2 three in spread voicing on the 9 loops too (§3 step 1, CD-28)
     symbols: [u1, u2, u3]
     ranks: {of: K1, top: 3}
     draw: {rule: ranks}
@@ -286,7 +296,8 @@ stages:
     fills: null
     category: vamps
     what: sax muted
-    sax_muted: true                        # §4.3, §7.3: a -200 dB Gain heads the sax chain
+    sax_muted: true                        # §4.3, §7.3: a -200 dB Gain heads the sax chain, after its trim slot
+    match: {buses: [keys, bass]}           # the vamp moves the keys and bass notes (CD-27, amended by CD-53)
     symbols: [v1, v2, v3, v4]
     groups:                                # one draw per mood (CD-15); plagal and float on v2 or v3 (CD-16)
       - {slots: [V.1, V.2, V.3], options: [drift, plagal, backdoor, rise],

@@ -16,11 +16,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-from helpers_shootout import BASE_PATH, FILE_KITS, PLAN_PATH, ROOT, kit_archive, synthetic_base, synthetic_levels
+from helpers_shootout import (BASE_PATH, FILE_KITS, PLAN_PATH, ROOT, kit_archive, synthetic_base, synthetic_levels,
+                              synthetic_levels_day2)
 from lofi_rl.dsl import parse
 from lofi_rl.dsl.vocab import LANES
 from lofi_rl.palette import LAYERS, load_palette
-from lofi_rl.shootout.draw import draw, write_draw
+from lofi_rl.shootout.draw import draw, parse_leaders, write_draw
 from lofi_rl.shootout.palettes import GenerateError, generate, main, yaml_load, yaml_text
 from lofi_rl.shootout.plan import load_plan
 
@@ -452,6 +453,134 @@ def test_a_draw_off_its_plan_or_its_constraints_is_refused(env, tmp_path):
                         (other_day, "day2")):
         with pytest.raises(GenerateError, match=match):
             run(_rewrite(path, edit))
+
+
+# ------------------------------------------------------------------------------------- Day 2 (CD-53)
+LEADERS2 = "keys=jrhodes3d+gu_tine_ep+fp_fm_ep1/kit=kit_swirly/bass=bass_fp_finger_yr/sax=sax_mtg_tenor+sax_gu_alto"
+
+
+@pytest.fixture(scope="module")
+def env2(env, tmp_path_factory):
+    """A Day-2 draw from LEADERS2, its measuring palettes, a synthetic Day-2 levels file and the stage palettes."""
+    tmp = tmp_path_factory.mktemp("day2")
+    doc = draw(PLAN, "day2", seed=0xD2, leaders=parse_leaders(LEADERS2))
+    path = write_draw(doc, tmp / "draw.json")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("LOFI_ASSETS", str(env["assets"]))
+        measure = generate(PLAN_PATH, tmp / "palettes", stage="day2", levels=None, base=env["base"], draw=path)
+        levels = synthetic_levels_day2(tmp / "palettes" / "measure" / "index.json", env["base"], doc,
+                                       tmp / "levels.json")
+        stage = generate(PLAN_PATH, tmp / "palettes", stage="day2", levels=levels, base=env["base"], draw=path)
+    return {"tmp": tmp, "draw": doc, "draw_path": path, "measure": measure, "levels": levels, "stage": stage,
+            "out": tmp / "palettes"}
+
+
+def test_day2_measures_every_instrument_its_draw_plays_and_every_palette_a_matched_clip_plays(env, env2):
+    # Section 3 "Drift between jobs": job 2 measures again every instrument it plays (the four level anchors first),
+    # each in one run; CD-53: each stage palette a matched clip plays is a measuring palette of its own, at trims
+    # and faders 0, with its option's settings (and the vamps' sax mute).
+    idx = env2["measure"].index
+    doc = env2["draw"]
+    played = {p["band"][s] for p in doc["palettes"].values() for s in ("keys", "kit", "bass", "sax")}
+    assert set(idx["variants"]) == played | set(PLAN.levels.anchors.values())
+    assert idx["runs"][0]["instruments"] == {b: PLAN.levels.anchors[b] for b in ("sax", "keys", "bass", "drums")}
+    measured = sorted(r["instruments"][b] for r in idx["runs"] for b in r["measure"])
+    assert measured == sorted(idx["variants"]), "every instrument in exactly one run"
+    bases = {p["base"] for p in doc["palettes"].values()}
+    assert set(idx["configs"]) == bases and len(bases) == 4 + 3 + 2 + 3 + 3 + 3 + 1
+    assert idx["draw"]["sha256"] == hashlib.sha256(env2["draw_path"].read_bytes()).hexdigest()
+    for key, c in idx["configs"].items():
+        st = PLAN.stages[c["stage"]]
+        assert c["buses"] == list(st.match) and c["loops"] == st.match_loops, key
+        pal = load_palette(env2["out"] / "measure" / c["file"], verify=True)
+        assert pal.id == f"measure_day2_{key}" and set(pal.mix.bus_gain_db.values()) == {0.0}
+        assert all(pal.mix.buses[b][0].params == {"gain_db": 0.0} for b in ("keys", "bass"))
+        d = yaml_load((env2["out"] / "measure" / c["file"]).read_text())
+        assert d["groove"]["swing"] == ({"default": 0.58} if key == "r3a_swing_58" else
+                                        PLAN.variants["swing_split"].set["groove.swing"] if key == "r3a_swing_split"
+                                        else {"default": 0.5} if key == "r3a_swing_50" else {"default": 0.55}), key
+        assert d["groove"]["humanize"] == {"r3b_humanize_h1": "bar", "r3b_humanize_h2": "loop"}.get(key, "off")
+        assert d["mix"]["sax_warm"] == (key == "s2a_sax_warm_on") and d["sax_expr"]["enabled"] == (key != "s2a_sax_expr_off")
+        assert d["sax_expr"]["timing"] == {"s2b_timing_lag": "lag", "s2b_timing_swung": "swung"}.get(key, "grid")
+        muted = d["mix"]["buses"]["sax"][1] == ["Gain", {"gain_db": -200.0}]
+        assert muted == (key == "v") and (d["loudness"]["iters"] == 16) == (key == "v"), key
+
+
+def test_day2_stage_palettes_carry_the_band_and_each_clip_its_own_fader_on_every_bus_it_matches(env2):
+    lv = json.loads(env2["levels"].read_text())
+    by_id = {p["id"]: p for p in env2["stage"].index["palettes"]}
+    doc = env2["draw"]
+    assert set(by_id) == set(doc["palettes"]) | {p["base"] for p in doc["palettes"].values()}
+    assert len(doc["palettes"]) == len(doc["renders"]) == 84
+    for key, spec in doc["palettes"].items():
+        e, base = by_id[key], by_id[spec["base"]]
+        for bus, inst in base["instruments"].items():           # the stage palette: the band's t and median F
+            assert base["trim_db"][bus] == lv["variants"][inst]["t"] and base["fader_db"][bus] == lv["variants"][inst]["F"]
+        cfg = lv["configs"][spec["base"]]["buses"]
+        want = {**base["fader_db"], **{b: cfg[b]["cases"][spec["level"]["case"]]["F"] for b in spec["level"]["buses"]}}
+        assert e["fader_db"] == want and e["trim_db"] == base["trim_db"] and e["settings"] == base["settings"], key
+        assert e["level"]["case"] == spec["level"]["case"] and list(e["level"]["buses"]) == spec["level"]["buses"]
+        for b, x in e["level"]["buses"].items():
+            rec = cfg[b]["cases"][spec["level"]["case"]]
+            assert x == {"instrument": rec["instrument"], "L": rec["L"], "F": rec["F"], "lufs": rec["lufs"],
+                         "lu": rec["lufs"] - lv["S_star"], "target_lufs": rec["target_lufs"], "off_lu": rec["off_lu"],
+                         "tol_lu": 0.1}, (key, b)
+        pal = yaml_load((env2["out"] / e["file"]).read_text())
+        assert pal["mix"]["bus_gain_db"] == e["fader_db"] and pal["id"] == key
+    assert all(by_id[k]["sax_muted"] == (by_id[k]["stage"] == "V") for k in by_id)
+
+
+ALLOWED2 = {   # CD-53 on §2.1: the option (a block or its settings), its trim, and the faders of the matched buses
+    "R3a": ("id", "groove.swing.", "mix.bus_gain_db."),
+    "R3b": ("id", "groove.humanize", "mix.bus_gain_db.keys", "mix.bus_gain_db.bass", "mix.bus_gain_db.drums"),
+    "S1f": ("id", "sax.", "sax_lead", "mix.buses.sax.0.", "mix.bus_gain_db.sax"),
+    "S2a": ("id", "mix.sax_warm", "sax_expr.enabled", "mix.bus_gain_db.sax"),
+    "S2b": ("id", "sax_expr.timing", "mix.bus_gain_db.sax"),
+    "K2": ("id", "keys.ep.", "mix.buses.keys.0.", "mix.bus_gain_db.keys"),
+    "V": ("id", "mix.bus_gain_db.keys", "mix.bus_gain_db.bass"),
+}
+
+
+def test_within_each_day2_round_the_clip_palettes_differ_only_in_the_option_and_the_faders_it_matches(env2):
+    doc = env2["draw"]
+    rounds = [r for b in doc["batches"] for r in b["rounds"]]
+    assert len(rounds) == 26
+    for r in rounds:
+        clips = [doc["renders"][c["render"]] for c in r["clips"]]
+        docs = [(c["option"], flat(yaml_load((env2["out"] / f"{c['palette']}.yaml").read_text()))) for c in clips]
+        for i, (oa, a) in enumerate(docs):
+            for ob, b in docs[i + 1:]:
+                diff = {k for k in a.keys() | b.keys() if a.get(k, "<absent>") != b.get(k, "<absent>")}
+                bad = sorted(k for k in diff if not k.startswith(ALLOWED2[r["stage"]]))
+                assert not bad, (r["slot"], oa, ob, bad[:5])
+        texts = {c["text"] for c in clips if c["variant"] != "sour"}
+        assert len(texts) == (4 if r["stage"] == "V" else 1), r["slot"]     # a vamp round: one text per vamp
+
+
+def test_day2_needs_its_draw_and_a_measured_fader_for_every_clip_on_its_instrument(env, env2, tmp_path):
+    with pytest.raises(GenerateError, match="day2.*draw"):
+        generate(PLAN_PATH, tmp_path / "a", stage="day2", levels=None, base=env["base"])
+    lv = json.loads(env2["levels"].read_text())
+    spec = next(p for p in env2["draw"]["palettes"].values() if p["stage"] == "V")
+    case = spec["level"]["case"]
+    for name, edit, said in (
+            ("short", lambda d: d["configs"]["v"]["buses"]["bass"]["cases"].pop(case), f"no bass fader for v on {case}"),
+            ("off", lambda d: d["configs"]["v"]["buses"]["bass"]["cases"][case].update(off_lu=0.12), r"0\.120 LU"),
+            ("other", lambda d: d["configs"]["v"]["buses"]["keys"]["cases"][case].update(instrument="gu_organ"),
+             "measured gu_organ on keys"),
+            ("unmeasured", lambda d: d["configs"].pop("v"), "did not measure stage palette v")):
+        d = copy.deepcopy(lv)
+        edit(d)
+        (tmp_path / f"{name}.json").write_text(json.dumps(d))
+        with pytest.raises(GenerateError, match=said):
+            generate(PLAN_PATH, tmp_path / name, stage="day2", levels=tmp_path / f"{name}.json", base=env["base"],
+                     draw=env2["draw_path"])
+        assert not (tmp_path / name).exists(), "a refused generation writes nothing"
+    cut = draw(PLAN, "day2", seed=0xD2, leaders={**parse_leaders(LEADERS2), "sax": ("sax_mtg_tenor",)},
+               cuts=["vamps-high", "latin3", "final"])
+    got = generate(PLAN_PATH, tmp_path / "cut", stage="day2", levels=None, base=env["base"],
+                   draw=write_draw(cut, tmp_path / "cut.json"))
+    assert not any(k.startswith("s1f_") for k in got.index["configs"]), "the cut plan has no final"
 
 
 # ---------------------------------------------------------------------------------------- the CLI

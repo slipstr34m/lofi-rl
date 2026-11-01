@@ -28,9 +28,10 @@ builder stops before writing any batch; an infrastructure fault gets status `err
 - **The clip's own level** (CD-52): a clip palette's entry in the generator's index.json beside it carries a
   `level` (the bus its round varies, the level tool's L before the clip's fader, the fader, and the loudness the
   tool measured after it). The record copies it, and the render must play that very bus: its pre-fader loudness
-  within AGREE_LU of L, at the same fader, with the measured loudness within the clip tolerance of S* + T. A render
-  that does not gets status `level` (the batch builder refuses it). A palette with no index beside it (a test's
-  stand-in) gets no level.
+  within AGREE_LU of L, at the same fader, with the measured loudness within the clip tolerance of S* + T. From Day 2
+  on (CD-53) the level holds one such entry per bus the clip matches (`buses`), and the render must play each. A
+  render that does not gets status `level` (the batch builder refuses it). A palette with no index beside it (a
+  test's stand-in) gets no level.
 - `summary/renders.json` collects every record, plus the wall time of each render (kept out of the records, so
   a record is as deterministic as its render).
 
@@ -192,25 +193,40 @@ def palette_levels(files: list[Path]) -> dict[Path, dict | None]:
     return out
 
 
-def with_level(rec: dict, level: dict) -> dict:
-    """The record of a clip whose palette names a level (CD-52), with that level, the render's own pre-fader
-    loudness of its bus (`render_lufs`) and their difference (`agree_lu`). Status `level` unless the render plays
-    the bus the level tool measured (within AGREE_LU), at the clip's fader, and the tool's loudness after that fader
-    sits within its tolerance of S* + T."""
-    got = rec["buses"][level["bus"]]
+def _bus_problems(rec: dict, bus: str, level: dict) -> tuple[float | None, float | None, list[str]]:
+    """(the render's pre-fader loudness of `bus`, its difference from the tool's L, what is wrong) for one bus."""
+    got = rec["buses"][bus]
     pre, problems = got["lufs"], []
     agree = None if pre is None else pre - level["L"]
     if pre is None:
-        problems.append(f"the {level['bus']} bus is silent")
+        problems.append(f"the {bus} bus is silent")
     elif abs(agree) > AGREE_LU:
-        problems.append(f"the {level['bus']} bus reads {pre:.4f} LUFS before its fader, the level tool's L is "
+        problems.append(f"the {bus} bus reads {pre:.4f} LUFS before its fader, the level tool's L is "
                         f"{level['L']:.4f} ({agree:+.4f} LU, more than {AGREE_LU})")
     if got["fader_db"] != level["F"]:
-        problems.append(f"the {level['bus']} fader is {got['fader_db']} dB, the clip's own is {level['F']} dB")
+        problems.append(f"the {bus} fader is {got['fader_db']} dB, the clip's own is {level['F']} dB")
     if abs(level["off_lu"]) > level["tol_lu"]:
-        problems.append(f"the level tool measured the bus {level['off_lu']:+.3f} LU from S* + T, more than "
+        problems.append(f"the level tool measured the {bus} bus {level['off_lu']:+.3f} LU from S* + T, more than "
                         f"{level['tol_lu']} LU")
-    out = dict(rec, level={**level, "render_lufs": pre, "agree_lu": agree, "ok": not problems})
+    return pre, agree, problems
+
+
+def with_level(rec: dict, level: dict) -> dict:
+    """The record of a clip whose palette names a level (CD-52; CD-53 from Day 2 on, one entry per matched bus under
+    `buses`), with that level, the render's own pre-fader loudness of each matched bus (`render_lufs`) and its
+    difference from the tool's L (`agree_lu`). Status `level` unless the render plays every bus the level tool
+    measured (within AGREE_LU), at the clip's own fader, and the tool's loudness after that fader sits within its
+    tolerance of S* + T."""
+    if "buses" in level:                                # Day 2 on: every bus the round's varied thing moves
+        buses, problems = {}, []
+        for bus, lv in level["buses"].items():
+            pre, agree, bad = _bus_problems(rec, bus, lv)
+            buses[bus] = {**lv, "render_lufs": pre, "agree_lu": agree}
+            problems += bad
+        out = dict(rec, level={**level, "buses": buses, "ok": not problems})
+    else:
+        pre, agree, problems = _bus_problems(rec, level["bus"], level)
+        out = dict(rec, level={**level, "render_lufs": pre, "agree_lu": agree, "ok": not problems})
     if problems and out["status"] == "ok":
         out.update(status="level", error="; ".join(problems))
     return out
@@ -314,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {err}", file=sys.stderr)
         return 2
     if own:
-        print(f"render: {own} of the {len(files)} palettes carry their clip's own level (CD-52)", flush=True)
+        print(f"render: {own} of the {len(files)} palettes carry their clip's own level (CD-52, CD-53)", flush=True)
     print(f"render: {len(files)} palettes verified ({time.perf_counter() - t0:.1f} s); "
           f"{len(only) or len(doc['renders'])} renders, {a.jobs} at a time", flush=True)
     recs = render_all(doc, a.palettes, a.out, jobs=a.jobs, workers=a.workers, cache=a.cache,

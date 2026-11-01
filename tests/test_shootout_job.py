@@ -70,8 +70,9 @@ def test_the_runner_writes_every_argument_into_leaders_json_and_lists_the_stages
            f"{tmp_path}/runs/shootout-13640002/summary/batches.json" in lines["draw"]
     assert "--repeats K1+R1+S1" in lines["draw"] and "--rerun-s2 sax_gu_alto" in lines["draw"]
     assert "--cut w1-two" in lines["draw"] and "--seed" not in lines["draw"]
+    # from day 2 on the measuring palettes follow the draw: its band, and each matched clip's palette (CD-53)
     assert lines["measure"].endswith(f"lofi_rl.shootout.palettes --plan {job.PLAN} --stage day3 --levels none "
-                                     f"--out {s}/palettes")
+                                     f"--draw {s}/draw.json --out {s}/palettes")
     assert f"--palettes {s}/palettes/measure --stage day3 --draw {s}/draw.json " \
            f"--prior {tmp_path}/runs/shootout-13640001/summary/levels.json" in lines["levels"] \
         and f"--out {s}/levels.json --workers 8" in lines["levels"]
