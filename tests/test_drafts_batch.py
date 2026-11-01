@@ -116,6 +116,15 @@ def test_a_batch_passes_the_rating_pages_own_check(tmp_path):
     assert draw["seed"] == f"{99:016x}" and [r["brief"] for r in draw["rounds"]] == [r["brief"] for r in batch["rounds"]]
 
 
+def test_the_seed_is_recorded_only_in_the_draw(tmp_path):
+    recs = fake_records(tmp_path / "renders")
+    folder = _build(tmp_path, recs, seed=0x5EED5EED5EED5EED)
+    assert json.loads((tmp_path / "summary" / "draw.json").read_text())["seed"] == "5eed5eed5eed5eed"
+    for name in (PUBLIC_NAME, HIDDEN_NAME):
+        assert "5eed5eed" not in (folder / name).read_text() and "seed" not in (folder / name).read_text()
+    assert "5eed5eed" not in (tmp_path / "summary" / "batch.json").read_text()
+
+
 def test_one_seed_gives_byte_identical_batches(tmp_path):
     recs = fake_records(tmp_path / "renders")
     a = _build(tmp_path, recs, out_root=tmp_path / "a", summary_dir=tmp_path / "sa")

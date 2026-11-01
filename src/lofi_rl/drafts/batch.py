@@ -9,7 +9,7 @@ rest drawn without repeats, the rows dealt to the rounds at random: over 9 round
 times; over 10, each persona's tile counts are 4, 3 and 3, and each tile's 4 belongs to a different persona. The
 round order is drawn too, with no two consecutive rounds in the same energy x mood cell. Every draw is keyed SplitMix64
 (lofi_rl.prng) from a 64-bit seed (`secrets.randbits(64)` at job time, `--seed` in tests), recorded only in the run's
-summary/draw.json and the hidden manifest, never committed (the repo is public: SHOOTOUTS.md §2.3, CD-21).
+summary/draw.json, never committed (the repo is public: SHOOTOUTS.md §2.3, CD-21).
 
 **Ids**: `r` + 8 hex per round and `k` + 10 hex per clip, drawn per batch from the seed; an id that would hold a word of
 any hidden value or a 10-hex stretch of a real clip id or a pcm_sha256 is drawn again (the rating page's leak check,
