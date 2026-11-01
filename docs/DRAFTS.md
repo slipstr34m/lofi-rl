@@ -58,9 +58,11 @@ row of docs/TASTE.md (quoted in *italics*) or to a Claude's default it lists.
 - **Harmony.** A 2-chord vamp; every chord is at least a 7th and 9ths are common (*Harmony*). Mood picks the mode
   (*Briefs*): the vamp's mood signature must favour the brief's mode by 2 or more (§5). Borrowed chords are allowed
   as long as it does (*Harmony*, Claude's default). The vamp ranks of §4 are seed data you may lean on, never rules.
-- **Drums and bass carry it** (*Job: head-nod: drums and bass carry it*). In every bar: a non-ghost kick on step 1, a
-  non-ghost snare or rim on steps 5 and 13, at least 4 hat or shaker hits. The bass holds the roots (*Bass*): you
-  write only its rhythm, and most bass strikes should land on kicks (60 % or more), or write `bass: lock`.
+- **Drums and bass carry it** (*Job: head-nod: drums and bass carry it*). Aim, in every bar, for a non-ghost kick on
+  step 1, a non-ghost snare or rim on steps 5 and 13 and at least 4 hat or shaker hits (the guided verifiers,
+  TASTE.md "Guided, then faded"; theory in the validator's table shows how close a draft is); a mid-loop drop-out may
+  break them on purpose (Claude's default: welcome, but not in bar 8). The bass holds the roots (*Bass*): you write
+  only its rhythm, and most bass strikes should land on kicks (60 % or more), or write `bass: lock`.
 - **Energy** (*Energy: more energy means busier drums, harder accents, busier keys and a busier bass rhythm*). The
   validator computes E = .35·min(1, H/192) + .15·(X share of the non-ghost hits) + .25·min(1, comp strikes/48) +
   .25·min(1, bass strikes/48), H being the drum hits of all six lanes over 8 bars (a ghost counts half). The brief's
@@ -95,8 +97,8 @@ row of docs/TASTE.md (quoted in *italics*) or to a Claude's default it lists.
 
 1. **The pocket first** (*Job*; *Great: can't stop nodding*; *Dealbreaker: no groove*). Write kick, the backbeat lane
    (`snare` or `rim`), hats and maybe shaker or open hat, then the bass rhythm against the kick (`bass: lock`, or a
-   grid whose strikes sit on the kicks with a push or two). Ghost notes (`g`) on snare and hat give the pocket its
-   in-between hits; accents (`X`) come with energy.
+   grid whose strikes sit on the kicks with a push or two). Use the three levels the grids have (TASTE.md, Claude's
+   defaults: 16-step grids with X/x/g levels): ghosts (`g`) between the main hits, accents (`X`) rising with energy.
 2. **Energy lives in the groove** (*Energy*): low is sparse kick and hats with few accents; high is busier kick and
    hats, more ghosts, more `X`, a busier bass rhythm. The keys follow.
 3. **Bar by bar** (*Variation*; *Drums*): most per-bar edits are on drum lanes and the bass; bar 8 keeps the groove.
