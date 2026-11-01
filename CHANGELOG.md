@@ -26,6 +26,30 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (15:05 PST): scorer server's cluster smoke passed: deterministic, about 9 s per 32-completion batch
+
+**What was done**
+- **`lofi-scorer-smoke` 13651611:** L40S node b18-16 (AMD EPYC 9534), mirror `de88fc4`. It started at 14:53:23 after about 7 h queued, and COMPLETED 0:0 in 1.8 min, 44.0 SU (`session_report.py`), `SCORER_SMOKE_OK`.
+- **The report** (`runs/scorer-smoke-13651611/summary/scorer_smoke.json`, `pass_{a,b,c}.json`, `server_*.log`):
+  - ok true, failures [];
+  - three servers, a and b fresh and c on a's disk cache, all exit 0, and every socket removed;
+  - one batch of 32 items over 4 briefs: 24 unique, 20 rendered, 8 duplicates, 4 needing no audio.
+- **Determinism:** the differences a.0 against a.1, a against b, and a against c are 0.0 on every audio term and signature: G, r.ce, r.theme, r.taste, PQ, PC, CE, CU, CLAP margin, centroid, P_acc and the RM's mean and std.
+  - Features a against b: 20 of 20 clips in common, max |diff| 0.0 for MERT, CLAP mix, CLAP music and the four Audiobox axes.
+  - PCM mismatches: 0.
+- **Timing** (pass a, `stats.t_ms`):
+  - render mean 2,653.6 ms (max 3,131.4) per clip, 7 pool workers;
+  - featurize mean 223.5 ms: MERT 80.7, CLAP 74.4, Audiobox 68.4;
+  - a cold 32-item request takes 8.93 s, a request from the memory cache 0.012 s, one from the disk cache 0.031 s.
+- **GPU:** peak allocated 2,205.6 MB (reserved 3,562 MB) against the 6 GB cap; nvidia-smi showed 4,135 MiB in use.
+- **Calibrations** in the smoke are its own stand-ins, marked "not a calibration of anything". The real tau_PQ, theme med/MAD, CE check and RM do not exist yet.
+- **Warnings:** a torchaudio 2.9 deprecation (`load_with_torchcodec`) and a torch attention-mask deprecation. Neither affects results.
+- **For GRPO sizing:** with v2 and the grammar, nearly every completion passes, so a step has up to 32 renders: about 12 s of rendering on 7 workers, plus about 7 s of features. The smoke's symbolic step was 40.8 s (13632679). Whether rendering overlaps generation is for the GRPO job's design.
+
+**SU spent:** 44.0. Total 1158.2 (`session_report.py`).
+
+---
+
 ## 2026-11-01 (13:38 PST): Shresth kept 10 of the 30 drafts; no redrafts
 
 **What was done**
