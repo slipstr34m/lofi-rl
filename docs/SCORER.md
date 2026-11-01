@@ -113,9 +113,10 @@ rendered, cache counts, failing gates, parse/records/total ms).
   (`tests/test_scoring_protocol.py`), so the scorer's ids are the ids votes are kept under. The render config is
   `{schema, chain, flac}` of the render manifest, built from the pipeline's constants before rendering.
 - The canonical form comes from parsing the text with the palette's vocabulary in the brief's mode. Texts with
-  one canonical form, brief and palette are one clip, rendered, featurized and scored once per request
-  (`example.ls` and `example_leniency.ls` are one clip). A text that does not parse has no canonical form: its id
-  hashes `"raw:" + sha256(text)` in the first field.
+  one canonical form, brief and palette are one clip, rendered and featurized once per request (`example.ls` and
+  `example_leniency.ls` are one clip), and scored once per (clip, brief_id, scene): PAR's references are keyed by
+  brief_id, so one clip under two brief ids is scored twice, and the later items say `cache: dup` with `dup_of`.
+  A text that does not parse has no canonical form: its id hashes `"raw:" + sha256(text)` in the first field.
 - The scene is not in the id: it changes no audio. It enters only r_theme, which is computed per item.
 
 ### 3.5 Status codes
@@ -303,7 +304,8 @@ the features, for the cluster smoke). They never render or hear audio. `python -
   4 G1 items), smoke-only calibrations (τ_PQ 1.0, a theme med/MAD, a CE "validation") and the fake RM with zero
   references, so every term runs live on real features; server **a** (cold cache) scores the batch twice;
   server **b** (fresh process, cold cache) once; server **c** (fresh process, a's disk cache) once; each is
-  stopped with SIGTERM. The sockets live under `$TMPDIR`, mode 0600, in a 0700 directory.
+  stopped with SIGTERM. The sockets live under `$TMPDIR` (`/tmp` when that path would pass 90 characters), mode
+  0600, in a 0700 directory that is removed at the end.
 - **Verdict** (`summary/scorer_smoke.json`, `SCORER_SMOKE_OK` or `SCORER_SMOKE_FAILED`): the expected gates and no
   infrastructure failure in any pass; a's second pass all memory hits and identical; b within `smoke.TOL` of a on
   every audio term (G, r, sig, P_acc, rm_mean, rm_std; the max abs differences recorded); c all disk hits and
