@@ -1,0 +1,16 @@
+vamp: Im9 IV9 span 1
+keys: rhodes shell
+comp: ...x-------x---- ..x-------------
+bass: x---------x----- x------x------x-
+drums: studio
+kick: x.........x...g. x......x.....g..
+snare: ....x.......x... ....x......gX...
+hat: x...x.x.x...x.x. x...x.x.x...x...
+@3 hat: x...x.x.x.g.x.x.
+@4 kick: x......x..x.....
+@5 bass: x-----x---x-----
+@6 snare: ....x..g....x...
+@7 kick: x.....g...x.....
+@8 hat: x...x.x.x...x..g
+A: q3 e5 e7 h6 | qr e5 e4 h3 | q.5 e4 q3 e2 e1 | q6 hr qr
+B: q3 e5 e7 h6 | qr e1' e7 h5 | q.4 e3 q1 qr | q2 e3 e4 hr
