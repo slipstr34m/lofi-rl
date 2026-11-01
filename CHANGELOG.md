@@ -40,7 +40,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
-## 2026-11-01 (14:20 PST): keep3 batch and Day 3 rendered on the cluster; the v2 no-grammar measurement and GRPO prep under way
+## 2026-11-01 (13:25 PST): keep3 batch and Day 3 rendered on the cluster; the v2 no-grammar measurement and GRPO prep under way
 
 **What was done**
 - **Sync** of `de88fc4`. Its 1 deletion was not protected. The scorer smoke 13651611, still PENDING, has an unchanged code path since its submission (`e636485`; empty `git diff --stat` over scoring, render, compile, dsl, palette, kit, the job and its env).
