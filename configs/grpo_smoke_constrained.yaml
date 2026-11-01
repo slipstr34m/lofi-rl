@@ -2,10 +2,10 @@
 # `structured_outputs: loopscript_regex` makes src/lofi_rl/rl/config.py build the LoopScript regex from this config's
 # palette when it loads, and put it in TRL's GRPOConfig field vllm_structured_outputs_regex in every profile. The
 # regex is never written here: its sha256 is in the dry run and in run.json under "structured_outputs".
-# UNVERIFIED: that GRPOConfig field name, for TRL 1.17.1. `lofi_rl.rl.train` checks it with every other name before
-# the model loads, so a wrong name stops the run in about 2 minutes. tests/test_rl_train.py keeps every other key
-# equal to configs/grpo_smoke.yaml. jobs/grpo_smoke.sbatch still runs configs/grpo_smoke.yaml: running this one
-# needs the job to take a config (a changed job type, re-registered first).
+# The field exists in TRL 1.17.1's GRPOConfig: runs/grpo-smoke-13632679/summary/a/run.json lists it, as null, in
+# grpo_config; `lofi_rl.rl.train` still checks it with every other name before the model loads.
+# tests/test_rl_train.py keeps every other key equal to configs/grpo_smoke.yaml.
+# Run it with: make submit JOB=jobs/grpo_smoke.sbatch ARGS='configs/grpo_smoke_constrained.yaml'
 run: grpo-smoke
 model:                                   # D-006; the pin jobs/fetch.sbatch cached (lofi_rl.smoke.QWEN)
   repo: Qwen/Qwen3-4B-Instruct-2507
