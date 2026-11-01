@@ -5,7 +5,7 @@
   calib        tau_PQ, the theme median/MAD and the CE validation result, read from files (stdlib)
   rm_api       the reward-model protocol, the null RM, the RM loader and PAR (stdlib)
   theme        configs/clap_theme_v1.yaml and the CLAP theme margin m and r_theme
-  cache        the feature cache: <cache>/feat/<feat_ver>/<clip_id>.npz plus an in-memory LRU
+  cache        the feature cache: <cache>/feat/<feat_ver>/hw-<sha8>/<clip_id>.npz plus an in-memory LRU
   render_pool  a spawn-context process pool around lofi_rl.render.pipeline.render
   features     MERT-v1-95M, CLAP music and Audiobox aesthetics (torch etc. imported inside functions)
   core         Scorer: dedup, cache, render, features, theme, RM, the audio gate; backends injected

@@ -151,10 +151,10 @@ def _identical(xs: list[dict], ys: list[dict]) -> bool:
 
 
 def feature_diffs(dir_a: Path, dir_b: Path) -> dict[str, Any]:
-    """Array-by-array max |a - b| of the clips both caches hold (<cache>/feat/<feat_ver>/*.npz)."""
+    """Array-by-array max |a - b| of the clips both caches hold (<cache>/feat/<feat_ver>/[hw-<sha8>/]*.npz)."""
     import numpy as np
-    fa = {p.name: p for p in Path(dir_a).glob("feat/*/*.npz")}
-    fb = {p.name: p for p in Path(dir_b).glob("feat/*/*.npz")}
+    fa = {p.name: p for p in Path(dir_a).glob("feat/**/*.npz")}
+    fb = {p.name: p for p in Path(dir_b).glob("feat/**/*.npz")}
     common = sorted(set(fa) & set(fb))
     out: dict[str, Any] = {"clips_a": len(fa), "clips_b": len(fb), "common": len(common)}
     worst: dict[str, float] = {}

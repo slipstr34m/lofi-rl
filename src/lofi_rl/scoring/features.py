@@ -37,7 +37,7 @@ import numpy as np
 from lofi_rl.palette import ROOT
 from lofi_rl.smoke import AUDIOBOX, CLAP, MERT, clap_windows
 
-from .cache import AUDIOBOX_KEYS, ClipFeatures
+from .cache import AUDIOBOX_KEYS, ClipFeatures, hw_key
 
 WINDOWS = 4                     # four 2-bar windows of the 8-bar loop
 MERT_SR, CLAP_SR, SR = 24000, 48000, 44100
@@ -171,6 +171,10 @@ class Featurizer:
                         "name": torch.cuda.get_device_name(0)}
         elif device != "cpu":
             raise ValueError(f"--device {device!r}: cuda or cpu")
+        from lofi_rl.render.machine import machine_key
+        self.gpu_name = torch.cuda.get_device_name(0) if device == "cuda" else "cpu"
+        self.machine = machine_key()
+        self.hw = hw_key(self.machine, self.gpu_name)     # the cache directory's key and every record's
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
         torch.backends.cuda.matmul.allow_tf32 = False
@@ -242,7 +246,8 @@ class Featurizer:
         abx = self._audiobox(clip_id, mix)
         t["audiobox"] = 1000 * (time.perf_counter() - s)
         return check_features(ClipFeatures(clip_id, canon, mert, clap_mix, clap_music, abx, self.device,
-                                           {k: round(v, 2) for k, v in t.items()}))
+                                           {k: round(v, 2) for k, v in t.items()}, gpu=self.gpu_name,
+                                           machine=self.machine))
 
     def encode_text(self, texts: list[str]) -> np.ndarray:
         with self.torch.no_grad():
@@ -261,4 +266,5 @@ class Featurizer:
     def info(self) -> dict[str, Any]:
         torch = self.torch
         return {"backend": self.name, "models": self.models, "device": self.device, "load_s": self.load_s,
-                "torch": torch.__version__, "cuda": torch.version.cuda, "windows": WINDOWS, "stack": self.stack}
+                "torch": torch.__version__, "cuda": torch.version.cuda, "windows": WINDOWS, "stack": self.stack,
+                "gpu": self.gpu_name, "machine": self.machine}

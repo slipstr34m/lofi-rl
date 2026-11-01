@@ -23,7 +23,7 @@ from typing import Any
 
 import numpy as np
 
-from .cache import ClipFeatures
+from .cache import ClipFeatures, hw_key
 from .features import WINDOWS, feat_version, source_sha8
 from .render_pool import RenderJob, failure
 
@@ -87,7 +87,10 @@ class FakeFeaturizer:
         self.feat_ver = feat_version("fake", src=self.src_sha8, render=render)
         self.audiobox, self.raise_for = dict(audiobox or {}), set(raise_for)
         self.calls: list[str] = []
-        self.device = "fake"
+        from lofi_rl.render.machine import machine_key
+        self.device = self.gpu_name = "fake"
+        self.machine = machine_key()
+        self.hw = hw_key(self.machine, self.gpu_name)
 
     def featurize(self, clip_id: str, canon: str, mix: Any, music: Any) -> ClipFeatures:
         s = sha(canon)
@@ -101,7 +104,8 @@ class FakeFeaturizer:
         u = g.uniform(size=4)
         abx = {"PQ": 5.0 + 3.0 * u[0], "CE": 4.0 + 3.0 * u[1], "PC": 3.0 + 3.0 * u[2], "CU": 5.0 + 3.0 * u[3]}
         abx = {k: float(v) for k, v in {**abx, **self.audiobox.get(s, {})}.items()}
-        return ClipFeatures(clip_id, canon, mert, clap_mix, clap_music, abx, self.device, {"fake": 0.0})
+        return ClipFeatures(clip_id, canon, mert, clap_mix, clap_music, abx, self.device, {"fake": 0.0},
+                            gpu=self.gpu_name, machine=self.machine)
 
     def encode_text(self, texts: list[str]) -> np.ndarray:
         return np.stack([_unit(_rng("text", t).standard_normal((1, DIM)))[0] for t in texts]).astype(np.float64)
@@ -110,7 +114,8 @@ class FakeFeaturizer:
         return {"device": "fake", "cap_gb": None}
 
     def info(self) -> dict[str, Any]:
-        return {"backend": self.name, "models": {}, "device": "fake", "load_s": 0.0, "windows": WINDOWS}
+        return {"backend": self.name, "models": {}, "device": "fake", "load_s": 0.0, "windows": WINDOWS,
+                "gpu": self.gpu_name, "machine": self.machine}
 
 
 class TableRM:

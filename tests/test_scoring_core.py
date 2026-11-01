@@ -2,6 +2,7 @@
 the gate G = hard x 1[PQ >= tau_PQ] x clip(P_acc / 0.5, 0.25, 1) and PAR on hand-built numbers, the theme margin on
 hand-built embeddings, every term off when its calibration is missing and on when present, the 422 for a brief
 without references, and the feature cache on disk and in memory."""
+import hashlib
 import importlib.metadata
 import json
 import math
@@ -16,7 +17,7 @@ import pytest
 from helpers_scoring import BRIEF_A, PALETTE, ROOT, canon_sha_of, fixture_text, make_scorer, variant
 from lofi_rl.palette import load_palette
 from lofi_rl.scoring import features, fakes, protocol, rm_api, theme
-from lofi_rl.scoring.cache import FeatureCache
+from lofi_rl.scoring.cache import FeatureCache, hw_key
 from lofi_rl.smoke import AUDIOBOX
 from lofi_rl.scoring.calib import MAD_SCALE, robust_sigmoid, sigmoid
 from lofi_rl.scoring.core import Unprocessable, gate_factor
@@ -330,6 +331,27 @@ def test_a_record_for_another_feat_ver_clip_or_schema_is_a_miss(tmp_path):
     with rec.open("wb") as f:
         np.savez(f, **arrays)
     assert a_cache.get(cid) is None and a_cache.counters()["bad"] == 2
+
+
+def test_the_servers_cache_is_keyed_by_its_machine_and_gpu_and_every_record_names_them(tmp_path):
+    # The project's render rule (render/machine.py: two CPU models never share renders), applied to features: an
+    # L40S node and an A100 node, or two CPU models, never serve each other's records from one --cache.
+    from lofi_rl.scoring import server
+    a = server.parse_args(["--sock", str(tmp_path / "unused.sock"), "--backend", "fake", "--cache", str(tmp_path / "c")])
+    scorer = server.build_scorer(a)
+    it = scorer.score(_req([EX]))["items"][0]
+    feat = scorer.featurizer
+    assert feat.hw == hw_key(feat.machine, "fake") and it["diag"]["hw"] == {"machine": feat.machine, "gpu": "fake"}
+    rec = (tmp_path / "c" / "feat" / feat.feat_ver / f"hw-{hashlib.sha256(feat.hw.encode()).hexdigest()[:8]}" /
+           f"{it['clip_id']}.npz")
+    with np.load(rec, allow_pickle=False) as z:
+        meta = json.loads(str(z["meta"]))
+    assert (meta["hw"], meta["machine"], meta["gpu"], meta["device"]) == (feat.hw, feat.machine, "fake", "fake")
+    assert scorer.health()["cache"]["hw"] == feat.hw
+    other = FeatureCache(tmp_path / "c", feat.feat_ver, hw=hw_key(feat.machine, "another GPU"))
+    assert other.dir != rec.parent and other.get(it["clip_id"]) is None, "another GPU: another directory"
+    shutil.copyfile(rec, other.dir / rec.name)
+    assert other.get(it["clip_id"]) is None and other.counters()["bad"] == 1, "a record of other hardware is a miss"
 
 
 def test_fake_features_with_another_renderer_are_another_cache(tmp_path):

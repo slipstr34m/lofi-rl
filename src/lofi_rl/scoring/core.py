@@ -112,6 +112,9 @@ class Scorer:
                          "render_ver": protocol.render_version(render_cfg)}
         if cache.feat_ver != featurizer.feat_ver:
             raise ValueError(f"the cache is for {cache.feat_ver}, the featurizer makes {featurizer.feat_ver}")
+        if cache.hw is not None and cache.hw != getattr(featurizer, "hw", None):
+            raise ValueError(f"the cache is for hardware {cache.hw!r}, the featurizer runs on "
+                             f"{getattr(featurizer, 'hw', None)!r}")
         made_for = getattr(featurizer, "render", None)
         if made_for is not None and made_for != renderer.name:
             raise ValueError(f"the featurizer's feat_ver names the {made_for!r} renderer, but this scorer renders "
@@ -270,7 +273,8 @@ class Scorer:
         t = time.perf_counter()
         disabled = self.disabled()
         diag: dict[str, Any] = {k: None for k in DIAG_KEYS}
-        diag.update(disabled=disabled, cache=kind, dup_of=dup_of, error=rec.error, render=rec.render or None)
+        diag.update(disabled=disabled, cache=kind, dup_of=dup_of, error=rec.error, render=rec.render or None,
+                    hw=None if rec.feats is None else {"machine": rec.feats.machine, "gpu": rec.feats.gpu})
         sig = {k: None for k in SIG_KEYS}
         r = {k: 0.0 for k in AUDIO_TERMS}
         if not rec.ok or rec.feats is None:

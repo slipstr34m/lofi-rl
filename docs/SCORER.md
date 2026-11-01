@@ -104,7 +104,7 @@ So the server's item keeps §5's names where they survive and drops the rest:
 | `gate` | null or str | why hard is 0: `G1`…`G6` (the server's parse), `G7` (render out of spec), `compile`, `render-error` (an infrastructure fault), `render-timeout`, `parse-error` (a parser crash) |
 | `r` | {ce, theme, taste}, each 0–1 | 0 when disabled or hard is 0 |
 | `sig` | {pq, pc, ce, cu, clap_margin, centroid_hz} | the audio hack signatures; null when hard is 0 |
-| `diag` | {rm_mean, rm_std, p_acc, pq, pc, cu, pq_factor, pacc_factor, tau_pq, u, theme, disabled, cache, dup_of, error, render} | `rm_mean`/`rm_std`: mean and std of PAR's centred utilities; `u`: each member's utility; `theme`: pos_mean, contrast_max, nearest_contrast and each scene's mean cosine; `disabled`: the terms off (§5.4); `cache`: `miss` (rendered now), `mem`, `disk`, `dup` (an earlier item's clip), `none` (did not parse); `render`: n, sr, seconds, bpm_eff, LUFS and true peak of the mix and the music stem, iterations, bed, pcm_sha256 of both, canon and compiled sha256, centroid_hz, render_ms |
+| `diag` | {rm_mean, rm_std, p_acc, pq, pc, cu, pq_factor, pacc_factor, tau_pq, u, theme, disabled, cache, dup_of, error, render, hw} | `rm_mean`/`rm_std`: mean and std of PAR's centred utilities; `u`: each member's utility; `theme`: pos_mean, contrast_max, nearest_contrast and each scene's mean cosine; `disabled`: the terms off (§5.4); `cache`: `miss` (rendered now), `mem`, `disk`, `dup` (an earlier item's clip), `none` (did not parse); `render`: n, sr, seconds, bpm_eff, LUFS and true peak of the mix and the music stem, iterations, bed, pcm_sha256 of both, canon and compiled sha256, centroid_hz, render_ms; `hw`: the machine key and GPU name the features were taken on (null without features) |
 | `t_ms` | {render, features, score} | this item's work in this request (0 for a cache hit) |
 
 The response also has the versions, `terms` (which are live), `disabled`, `step`, and `batch` (n, unique,
@@ -260,11 +260,17 @@ rewarded**; PC and CU are logged as signatures (`sig`, `diag`).
   whatever it fetched, so the Featurizer first checks that `refs/main` names the pinned revision
   (`lofi_rl.smoke.AUDIOBOX`, fetched by 13624271) and its snapshot holds `config.json` and `model.safetensors`,
   and that the installed `audiobox_aesthetics` is 0.0.4: it fails closed (exit 1) before any model loads.
-- **Cache** (`cache.py`): `<cache>/feat/<feat_ver>/<clip_id>.npz` (arrays `mert`, `clap_mix`, `clap_music` plus a
-  JSON `meta`: the render numbers, Audiobox, the canonical text, the device) and an in-memory LRU of 4,096
-  records. A record is a function of the clip id and feat_ver alone, so a resumed run or a restarted server
-  reuses it. Writes go to a temporary file and a rename; an unreadable file, or one for another clip, schema or
-  feat_ver, is a miss and is rewritten. Without `--cache` only the LRU is used.
+- **Cache** (`cache.py`): `<cache>/feat/<feat_ver>/hw-<sha8>/<clip_id>.npz` (arrays `mert`, `clap_mix`,
+  `clap_music` plus a JSON `meta`: the render numbers, Audiobox, the canonical text, the device, the GPU's name,
+  the machine key and `hw`) and an in-memory LRU of 4,096 records. A record is a function of the clip id,
+  feat_ver and the hardware, so a resumed run or a restarted server on the same node type reuses it.
+  - **Hardware** (`hw`): `lofi_rl.render.machine.machine_key()` (system, architecture, CPU model) and
+    `torch.cuda.get_device_name(0)` (`cpu`, or `fake`), the project's render rule ("two CPU models never share
+    renders"). The server keys the directory by its sha8, so an A100 node and an L40S node, or two CPU models,
+    never serve each other's records (PQ near τ_PQ and the CLAP margin would otherwise depend on which node saw a
+    clip first); every record stores both, and every item's `diag.hw` names them.
+  - Writes go to a temporary file and a rename; an unreadable file, or one for another clip, schema, feat_ver or
+    hardware, is a miss and is rewritten. Without `--cache` only the LRU is used.
 - §5's `cache/score/<rm_ver>/<reward_ver>/` is not built: a score is a few dot products and an RM call on cached
   features, and it depends on the brief id (PAR) and the calibrations, so caching it would save nothing.
 
@@ -360,7 +366,7 @@ feat_ver names another renderer than the one it runs (the real featurizer names 
 |---|---|
 | `test_scoring_protocol.py` | clip id = the shootout formula, its parts, canonical-form sharing; request round trips; 25 malformed requests; NaN; response and health checks; pinned versions |
 | `test_scoring_server.py` | the real server on a real socket with fakes: health, score (order, fields, dedup, memory hits, stats), render, 400/404/405/413, 500 with its trace, a 500 for a render from a drifted worker or of another clip id, 409, render gate and infrastructure failures, mode 0600, the path rules, close() leaving a socket that replaced its own, the client's errors, a real client refusing a fake backend, SIGTERM and SIGINT removing the socket (a subprocess), exit 2 on a foreign path |
-| `test_scoring_core.py` | G on 11 hand-built cases, PAR on hand-built utilities, the RM with and without references, the 422, the theme margin on hand-built embeddings, the prompt file, every term off without calibration and on with it, CE that fails its check, the disk cache read by a fresh scorer, an unreadable file, records of another feat_ver, clip or schema read as misses, feat_ver following the source files, fake features of another renderer in another cache, LRU eviction, the fakes |
+| `test_scoring_core.py` | G on 11 hand-built cases, PAR on hand-built utilities, the RM with and without references, the 422, the theme margin on hand-built embeddings, the prompt file, every term off without calibration and on with it, CE that fails its check, the disk cache read by a fresh scorer, an unreadable file, records of another feat_ver, clip or schema read as misses, feat_ver following the source files, the library stack and the Audiobox pin, the server's cache keyed by machine and GPU, fake features of another renderer in another cache, LRU eviction, the fakes |
 | `test_scoring_calib_rm.py` | the calibration and RM loaders: missing, valid, every malformed case, CE thresholds, exit 2 before binding |
 | `test_scoring_render.py` | two real renders through the pool (example.ls, dev_gu): `/score`, where the mix and music stem reach the featurizer once and their hashes match the manifest and the laptop's golden hashes, and `/render` to a FLAC and manifest named by clip id with the same PCM, the clip id equal to the shootout's id of that manifest; a gate failure in a worker, a batch past its deadline, a broken pool (in flight, and found broken at submit after a worker died between batches), a worker's child process ended by the pool's kill, a worker ending itself after its server's SIGKILL, workers on other code or another palette refused at warm and after a restart, the centroid |
 | `test_scoring_reward_hook.py` | the no-scorer golden byte for byte; the env var; G, r, gate and the new fields with a stand-in client; the CE rule; failures raise; nothing sent without a pass; TRL hooks; the real client and server end to end |

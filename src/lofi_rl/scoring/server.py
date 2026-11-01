@@ -278,7 +278,8 @@ def build_scorer(a: argparse.Namespace) -> Scorer:
         renderer = FakeRenderer(workers=a.workers)
     return Scorer(palette=palette, renderer=renderer, featurizer=featurizer,
                   theme=theme.Theme(theme_cfg, featurizer.encode_text), calib=cal, rm=rm,
-                  cache=FeatureCache(a.cache, featurizer.feat_ver, a.lru), render_cfg=render_config(),
+                  cache=FeatureCache(a.cache, featurizer.feat_ver, a.lru, hw=featurizer.hw),
+                  render_cfg=render_config(),
                   backend=a.backend)
 
 
@@ -286,7 +287,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m lofi_rl.scoring.server", description=__doc__.split("\n\n")[0])
     p.add_argument("--sock", type=Path, required=True, help="the Unix socket to create (mode 0600)")
     p.add_argument("--workers", type=int, default=8, help="render processes")
-    p.add_argument("--cache", type=Path, default=None, help="cache root: features go to <cache>/feat/<feat_ver>/")
+    p.add_argument("--cache", type=Path, default=None,
+                   help="cache root: features go to <cache>/feat/<feat_ver>/hw-<sha8 of the machine and GPU>/")
     p.add_argument("--calib", type=Path, default=None, help="pq.json, theme.json, ce.json; missing ones disable")
     p.add_argument("--rm", type=Path, default=None, help="rm.json and refs.json; missing: r_taste 0, P_acc factor 1")
     p.add_argument("--gpu-mem-gb", type=float, default=6.0, help="cap on this process's CUDA allocator")
