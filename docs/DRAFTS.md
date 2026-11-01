@@ -270,7 +270,9 @@ passed every check and rendered in spec:
 4. **build**: one keep3 batch into `$REMOTE_SCR/inbox/<date>/b<MMDD>-keep3/`: one round per brief, its three drafts on
    tiles from a 3×3 Latin square (each persona on each tile 3 times over 9 rounds; over 10, each persona's tile counts
    4, 3 and 3, each tile's 4 another persona's), rounds in a drawn order with no two consecutive in one energy × mood
-   cell, all drawn from a fresh 64-bit seed recorded only in summary/draw.json; opaque ids (`r` + 8 hex, `k` + 10 hex)
+   cell (a redraft whose briefs share one cell cannot avoid that: its order is still drawn, the first with the fewest
+   such neighbours, and draw.json says `order_constraint_met: false`), all drawn from a fresh 64-bit seed recorded only
+   in summary/draw.json; opaque ids (`r` + 8 hex, `k` + 10 hex)
    that hold no hidden word; `manifest.json` (the scene, each round's bpm, opaque ids) and `manifest.hidden.json` (per
    clip the real clip id, persona, draft file and sha256, the brief's knobs, tempo and key, instruments, render palette,
    render id, pcm_sha256, LUFS, true peak); checked by `python -m lofi_rl.ui.manifest check` before it is moved into

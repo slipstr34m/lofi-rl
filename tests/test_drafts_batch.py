@@ -30,7 +30,35 @@ def test_ten_rounds_balance_every_persona_over_the_tiles():
             assert r["tiles"] == [draw["symbols"][BT.SQUARE[r["row"]][t]] for t in range(3)]
         cells = [(BRIEFS[r["brief"]]["energy"], BRIEFS[r["brief"]]["mood"]) for r in draw["rounds"]]
         assert all(a != b for a, b in zip(cells, cells[1:]))                  # d10 never follows its own cell
+        assert draw["order_constraint_met"] is True and draw["same_cell_neighbours"] == 0
         assert Counter(r["row"] for r in draw["rounds"]).most_common(1)[0][1] == 4
+
+
+def first_order_without_neighbours(briefs, seed):
+    """The order the draw takes when one exists: the first shuffle of the order stream with no two consecutive briefs
+    in one cell."""
+    rng, ids = BT.Rng(seed, "keep3", "order"), list(briefs)
+    for _ in range(BT.ORDER_TRIES):
+        cand = rng.shuffle(list(ids))
+        if all((briefs[a]["energy"], briefs[a]["mood"]) != (briefs[b]["energy"], briefs[b]["mood"])
+               for a, b in zip(cand, cand[1:])):
+            return cand
+    return None
+
+
+def test_the_order_is_drawn_even_when_two_briefs_share_a_cell():
+    ten = [first_order_without_neighbours(BRIEFS, s) for s in range(50)]
+    assert all(o is not None for o in ten)
+    assert [[r["brief"] for r in BT.draw_rounds(BRIEFS, s)["rounds"]] for s in range(50)] == ten
+    two = {b: BRIEFS[b] for b in ("d02", "d10")}                                # both low/wistful
+    assert (two["d02"]["energy"], two["d02"]["mood"]) == (two["d10"]["energy"], two["d10"]["mood"])
+    draws = [BT.draw_rounds(two, s) for s in range(200)]
+    assert all(d["order_constraint_met"] is False and d["same_cell_neighbours"] == 1 for d in draws)
+    orders = Counter(tuple(r["brief"] for r in d["rounds"]) for d in draws)
+    assert set(orders) == {("d02", "d10"), ("d10", "d02")} and min(orders.values()) >= 60
+    three = {b: BRIEFS[b] for b in ("d02", "d05", "d10")}
+    draws = [BT.draw_rounds(three, s) for s in range(200)]
+    assert all(d["order_constraint_met"] and [r["brief"] for r in d["rounds"]][1] == "d05" for d in draws)
 
 
 def test_nine_rounds_are_three_full_squares_and_a_redraft_uses_distinct_rows():

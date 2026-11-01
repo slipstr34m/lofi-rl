@@ -7,7 +7,9 @@ One round per brief, holding that brief's three drafts (one per persona); Shrest
 three personas in a drawn order. The rounds take its rows in turn, each row as often as the round count allows and the
 rest drawn without repeats, the rows dealt to the rounds at random: over 9 rounds each persona sits on each tile 3
 times; over 10, each persona's tile counts are 4, 3 and 3, and each tile's 4 belongs to a different persona. The
-round order is drawn too, with no two consecutive rounds in the same energy x mood cell. Every draw is keyed SplitMix64
+round order is drawn too, with no two consecutive rounds in the same energy x mood cell; when no drawn order manages it
+(a redraft of two briefs of one cell), the order is still a drawn one, the first with the fewest such neighbours, and
+the draw says so (`order_constraint_met` false, `same_cell_neighbours`). Every draw is keyed SplitMix64
 (lofi_rl.prng) from a 64-bit seed (`secrets.randbits(64)` at job time, `--seed` in tests), recorded only in the run's
 summary/draw.json, never committed (the repo is public: SHOOTOUTS.md §2.3, CD-21).
 
@@ -96,7 +98,9 @@ def round_seconds(clips: int, bpm: float) -> float:
 
 def draw_rounds(briefs: Mapping[str, Mapping], seed: int, personas: Sequence[str] = PERSONAS) -> dict:
     """The tiles and the order (module doc). `briefs`: brief id -> {energy, mood, ...}, in brief order. Returns the
-    draw document: seed, symbol -> persona, and the rounds in serving order, each {brief, row, tiles: personas}."""
+    draw document: seed, symbol -> persona, the rounds in serving order, each {brief, row, tiles: personas}, and
+    whether the order kept every two consecutive rounds in different cells (`order_constraint_met`; otherwise
+    `same_cell_neighbours` counts the pairs that share one)."""
     if len(personas) != 3:
         raise ValueError("keep3 rounds hold three drafts")
     ids = list(briefs)
@@ -107,16 +111,19 @@ def draw_rounds(briefs: Mapping[str, Mapping], seed: int, personas: Sequence[str
     rng.shuffle(rows)
     order_rng = Rng(seed, "keep3", "order")
     cell = {b: (briefs[b]["energy"], briefs[b]["mood"]) for b in ids}
-    order = list(ids)
+    order, neighbours = list(ids), None
     for _ in range(ORDER_TRIES):
         cand = order_rng.shuffle(list(ids))
-        if all(cell[a] != cell[b] for a, b in zip(cand, cand[1:])):
-            order = cand
+        k = sum(cell[a] == cell[b] for a, b in zip(cand, cand[1:]))
+        if neighbours is None or k < neighbours:            # the first drawn order with the fewest same-cell pairs
+            order, neighbours = cand, k
+        if k == 0:
             break
     rounds = [{"brief": b, "row": rows[i], "tiles": [symbols[SQUARE[rows[i]][t]] for t in range(3)]}
               for i, b in enumerate(order)]
     return {"schema": DRAW_SCHEMA, "seed": f"{seed & MASK:016x}", "square": [list(r) for r in SQUARE],
-            "symbols": symbols, "rounds": rounds}
+            "symbols": symbols, "rounds": rounds, "order_constraint_met": not neighbours,
+            "same_cell_neighbours": neighbours or 0}
 
 
 def tile_counts(draw: Mapping) -> dict[str, list[int]]:
