@@ -3,12 +3,12 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 563.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 15:20).
+- **SU used:** 589.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 17:40).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - committed: the rating page, the compiler + renderer, two reviews, voicing rules V2 and V2.1, the SFZ → SF2 converter, the shootout plan (`docs/SHOOTOUTS.md`) and the job-1 shootout tooling with per-clip level matching (CD-52);
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
   - all 14 shootout sources, the rain file and the two imported kits are on the laptop and the cluster;
-  - next: the Day-1 shootout render (`lofi-shootout`, registered at 240 SU) into `inbox/` for the Nov 3 listening.
+  - Day-1 shootout clips rendered on the cluster and in `inbox/2026-11-03/` (3 batches, 19 rounds, 70 clips): **needs ear check** (planned Nov 3; ready now).
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
   - base-model test v0 done: pass_not_copy 4.0 % against a 60 % bar, so grammar-constrained decoding comes first (D-016, D-019);
   - constrained decoding built on `wt/constrained` and reviewed; its line-end and backend-record fixes are being built;
@@ -16,6 +16,38 @@ Newest entry first. Every number cites the file or command output it was read fr
 - **Waiting on Shresth:**
   - whether Claude may re-register a changed job type of 500 SU or less (CLAUDE.md rule 6 reserves "any changed type" for him); the constrained base-model test needs `jobs/junk_rate.sbatch` re-registered;
   - `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords), due by Nov 4 morning.
+
+---
+
+## 2026-10-31 (17:45 PDT): Day-1 shootout clips rendered on the cluster and queued for listening
+
+**What was done**
+- **`lofi-shootout` 13635646** (job 1, `--stage day1`, mirror `ba26f77`): main node a01-08, COMPLETED in 2.1 min, 25.8 SU (`session_report.py`), `SHOOTOUT_OK`.
+  - Stage seconds (`runs/shootout-13635646/summary/stages.json`): draw 0.2, measure 2.5, levels 47.4, palettes 1.5, render 76.1, build 0.9; 128.6 in all. The laptop-based estimate was 3.9–10.9 min.
+  - The draw's seed is recorded only in that run's `summary/draw.json`.
+- **Renders** (`summary/renders.json`): 67 of 67 ok, −14.099 … −13.996 LUFS, true peak at most −1.475 dBTP.
+- **Batches**, pulled to `inbox/2026-11-03/` (counts from the job log):
+  - `b1103-1-keys`: 6 rounds, 24 clips, about 7.8 min;
+  - `b1103-2-groove`: 6 rounds, 18 clips, about 6.0 min;
+  - `b1103-3-sax`: 7 rounds including one anchor, 28 clips, about 9.0 min.
+- **Checks on the laptop:**
+  - each batch passes `python -m lofi_rl.ui.manifest check`;
+  - the project's leak guard (`public_leaks`) finds nothing in the public manifests;
+  - each round's clips share one loop and one tempo;
+  - every FLAC is 44.1 kHz, stereo, 16-bit, with the frame count of one pass at its round's tempo.
+- **Levels on the canonical renders** (the hidden manifests' `bus_lufs`): per-round spread 0.0012–0.0091 LU.
+- **Rating page.** Each batch was served from a copy, with a throwaway vote folder (`.claude/launch.json`, config `rate-batch-check`).
+  - Every batch loads, and the 3-clip groove rounds offer three choices.
+  - All 70 clips decode in the browser at 44.1 kHz, with no console errors.
+  - No audio played, and nothing was written to `data/votes/`.
+
+**Needs ear check:** `inbox/2026-11-03/` (three batches, about 23 min).
+
+**SU spent:** 25.8; total 589.7.
+
+**Next:**
+- Shresth's Day-1 listening, planned for Nov 3 and possible now; pushes follow SHOOTOUTS.md §6.
+- Before job 2: the `wt/levels2` builder notes that Day 2's S2a warmth/expression variants and K2's spread voicing are not yet matched clip by clip.
 
 ---
 
