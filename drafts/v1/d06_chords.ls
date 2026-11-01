@@ -14,4 +14,4 @@ hat: x.x.x.xgx.x.x.xg x.x.xgx.x.x.xgx.
 @7 comp: x-----x-x---x---
 @8 comp: --x-----x-x-----
 A: q3 e2 q3 e5 q6 | h1' qr e6 e5 | q.7 e6 q5 q3 | h.6 qr
-B: q3 e2 q3 e5 q6 | q6 e5 e4 h3 | e5 e6 q5 q3 q2 | h7 hr
+B: q3 e2 q3 e5 q6 | q6 e5 e4 q3 qr | e5 e6 q5 q3 q2 | h7 hr

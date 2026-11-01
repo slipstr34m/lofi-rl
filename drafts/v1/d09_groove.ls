@@ -13,5 +13,5 @@ shaker: .g.x.g.x.g.x.g.x
 @6 bass: x-x-----x--x-x--
 @7 snare: ....X.g...g.X..g
 @8 hat: X.x.xxX.X.xxx.xg
-A: q.5 e3 h5 | h1' e7 e6 qr | q5 e3 e2 q3 qr | qr q.6 e5 q4
+A: q.5 e3 h5 | h1' e7 e6 qr | q5 e3 e2 q3 qr | qr q.6 e5 qr
 B: q.5 e3 h5 | q1' e2' e1' h6 | q1' e7 e5 q3 qr | q4 e3 e2 hr
