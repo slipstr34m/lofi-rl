@@ -7,7 +7,8 @@
 - `draw`: the job-time draw of option maps, round order and hidden controls (§2.3-§2.5);
 - `batch`: the batch builder CLI, `draw` and `build` (§7.6);
 - `render`: the job's clip renders (§7.7);
-- `job`: the `lofi-shootout` job's stages in order (§7.7).
+- `job`: the `lofi-shootout` job's stages in order (§7.7);
+- `tally`: the laptop tally of the votes, §8's rules and the next job's `--leaders` (§7.9).
 
 Sound claims: none.
 """
