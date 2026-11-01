@@ -927,6 +927,51 @@ def test_after_day_2_the_r2_votes_are_not_pooled_in(tmp_path):
     assert a["pairings"][J]["bass"] == FP
 
 
+def test_an_r2_best_on_a_clip_that_never_played_is_no_best(inbox, tmp_path):
+    """Decision 7's "has a best" (CD-38, CD-54): a best on a clip that never played in any attempt is no best. Here
+    the only R2 best is on such a clip, so no R2 round has a best and Day 2 adds R2r; that kit takes the pooled R2
+    leader for that reason."""
+    votes = tmp_path / "votes"
+    vote_days(inbox, votes, choose=answers(by_kit={V: (FP, GU, {FP: "00000000"}), J: (None, VS), W: "G"}))
+    doc, _ = tally(inbox, votes)
+    rl, pv = doc["rules"]["R2"]["relisten"], doc["rules"]["R2"]["pairings"][V]
+    assert doc["stages"]["R2"]["unheard_marks"] == 1
+    assert rl["adds"] and rl["why"] == ["no R2 round has a best"] and rl["rounds_with_a_best"] == []
+    assert (pv["from"], pv["why"]) == ("the pooled R2 leader", "its best never played in any attempt")
+    assert doc["proposal"]["day2"]["args"].endswith(f"--prior {JOB1} --add R2r")
+
+
+def test_an_r2_best_heard_only_before_an_undo_counts(inbox, tmp_path):
+    """The same votes, but the best's clip played 1 bar in an attempt that was then undone (D-013 as amended: the
+    bars of every attempt count): it is a best, so its kit takes it from its own R2 round and nothing is added."""
+    m, h = load_batch(inbox["folders"]["b1103-2-groove"], check_files=False)
+    rd = next(r for r in m.rounds if h.rounds[r.id].kind == "none"
+              and h.rounds[r.id].clips[r.ids[0]]["stage"] == "R2" and h.rounds[r.id].clips[r.ids[0]]["kit"] == V)
+    votes = tmp_path / "votes"
+    vote_days(inbox, votes, choose=answers(by_kit={V: (FP, GU, {FP: "10000000"}), J: (None, VS), W: "G"}),
+              redo={rd.id: "undo"})
+    doc, bd = tally(inbox, votes)
+    rl, pv = doc["rules"]["R2"]["relisten"], doc["rules"]["R2"]["pairings"][V]
+    best = next(c for c in next(x for x in bd["b1103-2-groove"]["votes"] if x["round"] == rd.id)["clips"]
+                if c["option"] == FP)
+    assert best["own_bars"] == "00000000" and best["heard_bars"] == "10000000" and best["heard"]
+    assert not rl["adds"] and rl["rounds_with_a_best"] == [h.rounds[rd.id].clips[rd.ids[0]]["slot"]]
+    assert (pv["bass"], pv["from"]) == (FP, "its own R2 round") and doc["stages"]["R2"]["unheard_marks"] == 0
+    assert "--add" not in doc["proposal"]["day2"]["args"]
+
+
+def test_an_r2r_best_that_never_played_leaves_its_kit_the_pooled_r2r_leader(tmp_path):
+    """After Day 2 too, a counted best is a best on a clip that played: the leader kit's only R2r best never played,
+    so it takes the pooled R2r leader (vsco2: BW 0 like fp, with more bests)."""
+    votes = tmp_path / "votes"
+    r2r_groove(tmp_path, votes, {"R2r.1": (FP, GU, {FP: "00000000"}), "R2r.3": (None, VS), "R2r.2": (VS, GU)})
+    doc, _ = T.tally(votes, tmp_path / "inbox", plan=PLAN, batches=["b1104-1-groove"])
+    r = doc["rules"]["R2r"]
+    pv = r["pairings"][V]
+    assert doc["stages"]["R2r"]["unheard_marks"] == 1 and r["pooled_leader"]["pick"] == VS
+    assert (pv["bass"], pv["from"]) == (VS, "the pooled R2r leader") and "no counted best" in pv["why"]
+
+
 def test_day2s_minutes_are_the_drawn_plans():
     """The cut list reads Day 2's minutes from the plan the draw will play (draw.day_minutes): every design round
     exactly as the draw builds it, each anchor at the mean of the rounds it may imitate; a 4-key K2, a 3-sax final
