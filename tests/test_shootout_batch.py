@@ -357,6 +357,30 @@ def test_the_cli_draws_and_then_builds(tmp_path, capsys):
                  "--out", str(tmp_path / "inbox2")]) == 2
 
 
+def test_the_cli_draw_takes_the_add_job_2_passes_it(tmp_path, capsys):
+    """CD-54: job 2's first stage runs this CLI's draw with `--add R2r` (job.commands), in a fresh process on the
+    cluster. Run as the job writes it, the draw records the add and opens the groove batch with R2r's three rounds;
+    the same leaders without the add exit 2 (two kits go with R2r)."""
+    from lofi_rl.shootout import job
+    line = ("keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/"
+            "bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor")
+    run = tmp_path / "runs" / "shootout-2"
+    a = job._args(["--run", str(run), "--inbox", str(tmp_path / "inbox"), "--stage", "day2", "--leaders", line,
+                   "--add", "R2r", "--seed", "00000000000000ff"])
+    argv = dict(job.commands(a, job.check(a)))["draw"]
+    assert argv[1:4] == ["-m", "lofi_rl.shootout.batch", "draw"] and argv[-4:-2] == ["--add", "R2r"]
+    assert main(argv[3:]) == 0
+    doc = json.loads((run / "summary" / "draw.json").read_text())
+    groove = doc["batches"][0]
+    assert doc["plan"]["adds"] == ["R2r"] and groove["name"] == "b1104-1-groove"
+    assert [r["stage"] for r in groove["rounds"][:3]] == ["R2r"] * 3
+    assert not any(r["stage"] == "R2r" for b in doc["batches"] for r in b["rounds"] if r not in groove["rounds"][:3])
+    capsys.readouterr()
+    assert main(["draw", "--plan", str(PLAN.path), "--stage", "day2", "--summary", str(tmp_path / "s2"),
+                 "--leaders", line, "--seed", "00000000000000ff"]) == 2
+    assert "2 kits go with --add R2r" in capsys.readouterr().err and not (tmp_path / "s2").exists()
+
+
 def test_a_day2_build_with_r2r_opens_the_groove_batch_with_the_bass_re_listen(tmp_path):
     """CD-54: R2r's rounds come first in the groove batch's manifests; each of its clips names its kit and keeps its
     own bass fader and loudness as fader_db / bus_lufs / bus_lu (its stage's bus, CD-53); no hidden value shows in

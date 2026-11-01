@@ -601,6 +601,18 @@ def test_day2_with_r2r_measures_each_bass_on_its_rounds_kit_and_each_round_diffe
         levels = synthetic_levels_day2(tmp_path / "palettes" / "measure" / "index.json", env["base"], doc,
                                        tmp_path / "levels.json")
         stage = generate(PLAN_PATH, tmp_path / "palettes", stage="day2", levels=levels, base=env["base"], draw=path)
+        # the generator applies the draw's adds (draw.json plan.adds) before its cuts, so R2r is checked and indexed
+        assert [s["id"] for s in stage.index["slots"] if s["stage"] == "R2r"] == ["R2r.1", "R2r.2", "R2r.3"]
+
+        def two_on_one(d):                # an R2r map that is not one to one
+            m = d["maps"]["R2r"][0]
+            a, b = sorted(m)[:2]
+            m[a] = m[b]
+
+        with pytest.raises(GenerateError, match="draw R2r: must map onto the options"):
+            generate(PLAN_PATH, tmp_path / "bad", stage="day2", levels=levels, base=env["base"],
+                     draw=_rewrite(path, two_on_one))
+        assert not (tmp_path / "bad").exists(), "a refused generation writes nothing"
     cfg = {k: c for k, c in measure.index["configs"].items() if c["stage"] == "R2r"}
     assert sorted(cfg) == sorted(f"r2r_{k}_{b}" for k in ("kit_virtuosity", "kit_gu_jazz")
                                  for b in PLAN.stages["R2r"].options)
