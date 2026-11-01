@@ -3,20 +3,25 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 870.4 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 18:57).
+- **SU used:** 1095.0 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-01 13:10 PST).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
-  - committed: the rating page, the compiler + renderer, two reviews, voicing rules V2 and V2.1, the SFZ → SF2 converter, the shootout plan (`docs/SHOOTOUTS.md`) and the job-1 shootout tooling with per-clip level matching (CD-52);
+  - **shootouts:**
+    - Days 1 and 2 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended);
+    - Day 3 (rain W1/W2, five repeats, an anchor) is built and merged (`6dad45d`), to be served from 2026-11-03;
+  - **keep3 drafts:** 30 drafts (3 personas × 10 briefs), the draft palette and the `lofi-drafts` job are built on a branch (workflow `wf_6930ad87-bf9`), to be checked and merged;
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
-  - all 14 shootout sources, the rain file and the two imported kits are on the laptop and the cluster;
-  - Day-1 shootout voted: 19 of 19 rounds, backed up (`bfad896`). Shresth confirmed the survivors and the 1-bar heard rule (D-013 amended). Day 2 is next: the tally tool's merge fix and the bass re-listen, then the render.
+  - all 14 shootout sources, the rain file, its 44.1 kHz conversion and the two imported kits are on the laptop and the cluster.
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
-  - base-model test v0 done: pass_not_copy 4.0 % against a 60 % bar, so grammar-constrained decoding comes first (D-016, D-019);
-  - constrained decoding, its review fixes (F1 line ends, F3 run record) and prompt v2 merged into main (`b56fbf6`). The constrained base-model test is pre-registered as D-020 (two arms: v1 and v2, both with the grammar) and amended before either run (`49e2f5a`);
-  - **D-020's two arms are queued** from one sync of `49e2f5a`: `lofi-junk-rate` 13640324 (arm A, v1) and 13640325 (arm B, v2), on gpu A40s, at most 450 SU each. **No `make sync` until both have ended** (D-020's one-mirror rule);
-  - scorer server (`lofi_rl.scoring`) being built in workflow `wf_e7f4b866-15c`;
-  - GRPO smoke 13632679 passed (`GRPO_SMOKE_OK`: 10 steps, then a resume from step 5; 280.7 SU). 67 of the 71 loops that passed its gates in launch a are near-copies of the prompt's example, so run 1 waits for the grammar, prompt v2 and an example-copy penalty.
-- **Waiting on Shresth:**
-  - `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords), due by Nov 4 morning.
+  - **D-020 is decided:** both arms are valid and pass, and **prompt v2 with the grammar** wins (pass_not_copy 446/500 against 355/500; the CIs do not overlap). An independent check agrees;
+  - **before GRPO run 1** (D-020's list):
+    - a prompt-version key;
+    - the copy penalty;
+    - the backend pin and in-language count on the GRPO path;
+    - the grammar-lever measurements (v2 without the grammar; the IS ratio under it);
+    - a GRPO smoke with the grammar and v2;
+  - **scorer server** merged (`5d36898`); its cluster smoke 13651611 is queued on an L40S;
+  - **GRPO smoke 13632679** passed (`GRPO_SMOKE_OK`: 10 steps, then a resume from step 5; 280.7 SU).
+- **Waiting on Shresth:** nothing right now. Day 3 and the keep3 batch come to him when they are rendered.
 - **Before GRPO run 1, also:** jobs import the mirror live, so a sync during a running job changes its code. A multi-day GRPO chain needs a per-job code snapshot (job_env.sh), so that syncs can go on while it runs.
 
 ---

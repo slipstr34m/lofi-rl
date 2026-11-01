@@ -273,3 +273,18 @@ no GRPO had run.
     - that commit's frozen files equal the list, which is checked on the laptop with git;
     - the two arms may run from different commits.
   - **Unchanged:** the hardware (an A40 in the `gpu` partition) and every other rule above.
+- **Outcome, 2026-11-01.** Arm A: `lofi-junk-rate` 13640324, A40 b09-09, 93.0 SU. Arm B: 13640325, A40 b10-11, 99.0 SU. Results: `runs/junk-1364032{4,5}/summary/junk.json`.
+  - **Validity:** both arms meet every condition of the amended entry: complete, as registered, constrained (500/500 stop completions in the language), the regex's guaranteed gates at 0, and one mirror. An independent checker (workflow `wf_5586783e-d6b`) reproduced both from the raw files with its own copy check and its own Wilson intervals.
+  - **The sync:** both arms ran from one sync, of `e636485` (07:38 PST on Nov 1), a commit that holds both amendments.
+    - The second amendment's code-path rule replaced the first amendment's single sync of `49e2f5a`.
+    - The 60 frozen files at `e636485` equal the list. They differ from `49e2f5a` only in the two changes the second amendment reviewed.
+  - **Arm A (v1):** pass 494/500; pass_not_copy 355/500, ci95 [0.6687, 0.7481]; G6 6.
+  - **Arm B (v2):** pass 500/500; pass_not_copy 446/500, ci95 [0.8617, 0.9163]; no gate failures.
+  - **Verdict:** both arms pass. Their pass_not_copy intervals do not overlap (0.8617 > 0.7481), so arm B wins on its count. **GRPO run 1 starts from the base model with prompt v2 and the grammar**, once the Before-GRPO-run-1 list is done. The quasi-copy tier and the closing judgment were not needed.
+  - **Readings fixed now, before any further measurement:**
+    - **The official Phase 1 gate** re-runs the chosen settings, v2 with the grammar, on the frozen palette.
+    - **The grammar lever** (taste_pipeline §6) for v2:
+      - "Step-0 parse failures without the grammar" means G1 + G2 + G5, D-019's syntax class. They are counted in a 500-brief junk-rate run of v2 without the grammar, on D-019's briefs, seed and sampling (`ARGS='500 2026 0 v2'`, `-p gpu`, an A40).
+      - The grammar stays on for GRPO only if that count exceeds 100, which is 20 %.
+      - "Mean |log IS ratio|" means the mean, over every completion token of every step, of |log π_vLLM(token) − log π_trainer(token)|, in a GRPO smoke with the grammar and v2. TRL's own metric may stand in for it only if its definition in the TRL 1.17.1 source is checked to be this one. The grammar goes off if the mean exceeds 0.05.
+      - If either reading turns the grammar off, the start of run 1 is registered here again.
