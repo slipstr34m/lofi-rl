@@ -31,27 +31,30 @@ wistful slot is v1's example, so mid/melancholy briefs get exactly v1's prompt.
 
 The examples (EXAMPLES, keyed by their own cell in ENERGIES x MOOD_NAMES order) are embedded here, never read at run
 time. Each is its source without the optional `sax:` line, with the keys instrument and the kit as {keys} and {kit}
-(the shootout loops write `keys: ep` and `drums: dusty`, example.ls `keys: rhodes` and `drums: dusty`). Sources and
-their sha256 when v2 was built (2026-10-31); tests/test_prompt_v2.py checks the templates against the files, so a
-changed source needs a new prompt version:
+(the shootout loops write `keys: ep` and `drums: dusty`, example.ls `keys: rhodes` and `drums: dusty`). The sources
+are shootouts/loops/<id>.ls, and tests/fixtures/loops/example.ls for "example"; their sha256 when v2 was built
+(2026-10-31) are below. tests/test_prompt_v2.py checks the templates against the files, so a changed source needs a
+new prompt version:
 
-    l1_melancholy_low    shootouts/loops/l1_melancholy_low.ls   9173fb9d3d9a41041f6dd52647cb62933737ef9518de7dfaebf380ae5f7703c2
-    l2_melancholy_mid    shootouts/loops/l2_melancholy_mid.ls   81d554b78d06b3fafd63e97581e86f0db7adea232629283b2c858db2dc817224
-    l3_melancholy_high   shootouts/loops/l3_melancholy_high.ls  6f2cb8405407685155bda197a38d68ff7d0b6cecc2126a69018cfe707f02c2f1
-    l4_wistful_low       shootouts/loops/l4_wistful_low.ls      8208e5cf87d1fd9ff707a2fef8bb91c3a5ac8d29b726c0e9c23dfdf537d410d2
-    example              tests/fixtures/loops/example.ls        232b798a30ebcbf5c498053d89b29856671459eadc2c33bc3dd72110ffeb7226
-    l6_wistful_high      shootouts/loops/l6_wistful_high.ls     2985617db2ab0504458218649e1f258d5a4dba0f6696af3a15fd3a26cb024070
-    l7_hopeful_low       shootouts/loops/l7_hopeful_low.ls      3eb1336cbf5c25c30bcc6a31b3f9c4acc4ef20a7f49d3ac035eb30e913822d07
-    l8_hopeful_mid       shootouts/loops/l8_hopeful_mid.ls      b1126f66f09825faf497c234166bc6f81871b6ac5590670001e0a32d233c522f
-    l9_hopeful_high      shootouts/loops/l9_hopeful_high.ls     0450383e912e4657ce89fd4bbd6c1240afea72f09f44fb8d0cbcf81e2ee1e5d5
+    l1_melancholy_low    9173fb9d3d9a41041f6dd52647cb62933737ef9518de7dfaebf380ae5f7703c2
+    l2_melancholy_mid    81d554b78d06b3fafd63e97581e86f0db7adea232629283b2c858db2dc817224
+    l3_melancholy_high   6f2cb8405407685155bda197a38d68ff7d0b6cecc2126a69018cfe707f02c2f1
+    l4_wistful_low       8208e5cf87d1fd9ff707a2fef8bb91c3a5ac8d29b726c0e9c23dfdf537d410d2
+    example              232b798a30ebcbf5c498053d89b29856671459eadc2c33bc3dd72110ffeb7226
+    l6_wistful_high      2985617db2ab0504458218649e1f258d5a4dba0f6696af3a15fd3a26cb024070
+    l7_hopeful_low       3eb1336cbf5c25c30bcc6a31b3f9c4acc4ef20a7f49d3ac035eb30e913822d07
+    l8_hopeful_mid       b1126f66f09825faf497c234166bc6f81871b6ac5590670001e0a32d233c522f
+    l9_hopeful_high      0450383e912e4657ce89fd4bbd6c1240afea72f09f44fb8d0cbcf81e2ee1e5d5
 
 {keys} and {kit} are filled as v1 fills its example: rhodes and dusty through the palette's aliases, else the
 palette's first name (prompt._key). Each filled example is checked once per palette and cell: it parses under the
 palette's vocabulary in its own mood with the gates passed and no repair at all, it is its own canonical text, and it
 passes the gates (again with no repair) in the mood of the brief it is shown to. Any failure is a PromptError that
-names the example and the palette. The examples need, from a palette: the qualities m9 maj7 maj9 9 13 m7, the
-numerals I II III IV V bVI bVII, the voicing rootless, the lanes snare rim hat ohat shaker and `bass: lock`. A frozen
-palette (D-017) without one of them makes its cell refuse: that calls for a v3, not an edit of v2.
+names the example and the palette. The examples need, from a palette, the qualities m9 maj7 maj9 9 13 m7, the
+numerals I II III IV V bVI bVII and the voicing rootless: a palette without one of them refuses the cells whose
+examples use it, and if the frozen palette (D-017) does, that calls for a v3, not an edit of v2. They also use the
+lanes snare, rim, hat, ohat and shaker and `bass: lock`, which are the grammar's; the check parses and does not
+compile, so it does not look at the kit's samples.
 
 Identity. `template_sha256()` hashes `template_text()`: the system template, the rule, the 9 unfilled examples with
 their ids and cells, and the user template. tests/test_prompt_v2.py pins it as V2_SHA256 and still pins v1's.
