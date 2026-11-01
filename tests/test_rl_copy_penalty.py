@@ -102,7 +102,8 @@ def test_a_cut_completion_is_compared_by_its_plain_text_as_junk_compares_a_lengt
     cut = junk.score_row(_row(0, ex, brief, finish="length"), pal, check)
     stop = junk.score_row(_row(0, ex, brief), pal, check)
     assert cut["gate"] == "G2" and stop["gate"] is None
-    assert round(copy(ex, brief, truncated=True).j, 4) == cut["copy_any_jaccard"] < 1.0 == copy(ex, brief, truncated=False).j
+    j_cut, j_stop = copy(ex, brief, truncated=True).j, copy(ex, brief, truncated=False).j
+    assert round(j_cut, 4) == cut["copy_any_jaccard"] < 1.0 == j_stop
     assert stop["copy_any_jaccard"] == 1.0 and copy(ex, brief, truncated=False).nearest == stop["copy_any_source"]
     text = prompt_v2.reference_texts(pal)["l8_hopeful_mid"]
     assert copy_form(text, brief.mode, pal, False) == text, "a passing loop: its canonical text without sax"

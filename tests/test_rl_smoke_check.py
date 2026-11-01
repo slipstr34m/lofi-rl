@@ -204,7 +204,8 @@ def test_a_d020_smoke_reports_the_language_the_backend_the_copies_and_the_is_rea
     assert isr["mean_of_steps"] == pytest.approx(sum(values) / 15)
     assert isr["token_weighted_mean"] == pytest.approx(sum(v * t for v, t in zip(values, tokens)) / sum(tokens))
     assert isr["by_launch"]["a"]["mean_of_steps"] == pytest.approx(0.0055)
-    assert rep["in_language"]["launches"]["a"]["shows_grammar"] is True is rep["in_language"]["launches"]["b"]["shows_grammar"]
+    langs = rep["in_language"]["launches"]
+    assert langs["a"]["shows_grammar"] is True and langs["b"]["shows_grammar"] is True
     assert isr["configured"] is True and isr["grammar_shown"] is True and isr["applies"] is True
     assert isr["rule"]["applies"] is True and isr["rule"]["exceeds"] is False
     assert [c for c in isr["rule"]["caveats"] if c != sc.VLLM_CAVEAT] == [] and sc.VLLM_CAVEAT in isr["rule"]["caveats"]

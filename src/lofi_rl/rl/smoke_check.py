@@ -41,10 +41,10 @@ What the D-020 settings add to the report (docs/GRPO.md §5):
   token-weighted mean that D-020's "over every completion token" reads (weights: each step's completion tokens from
   rewards.jsonl, without the truncated completions when TRL's mask drops them), are both reported, and the 0.05
   rule reads the token-weighted mean when every step has its tokens, else the mean of the per-step values, with a
-  caveat and a warning that say so. The rule is D-020's reading (`applies`) only for a config with the grammar and prompt v2 (`configured`) whose
-  two launches both showed the grammar applied (`grammar_shown`: each launch's in_language shows_grammar), since by
-  D-020's Validity a constrained run that fails the in-language check decides nothing. An unavailable readout is a
-  warning, not a failure.
+  caveat and a warning that say so. The rule is D-020's reading (`applies`) only for a config with the grammar and
+  prompt v2 (`configured`) whose two launches both showed the grammar applied (`grammar_shown`: each launch's
+  in_language shows_grammar), since by D-020's Validity a constrained run that fails the in-language check decides
+  nothing. An unavailable readout is a warning, not a failure.
 """
 from __future__ import annotations
 
