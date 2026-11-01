@@ -51,7 +51,8 @@ regex_sha256(palette)               # sha256 of the regex text (UTF-8): the iden
     where it keeps the backend are first checked by the constrained run's own record.
   - **Unchanged:** the sampling settings (`sampling` is v0's) and the gates.
   - **The job:** `make submit JOB=jobs/junk_rate.sbatch ARGS='500 2026 1'`. The third argument, CONSTRAINED, is 0
-    (the default) or 1. Anything else stops the job before any work.
+    (the default) or 1. Anything else stops the job before any work. A fourth, PROMPT, is v1 (the default) or v2
+    (`lofi_rl.prompt_v2`): `ARGS='500 2026 1 v2'` is the constrained run on prompt v2.
 - **GRPO.** `configs/grpo_smoke_constrained.yaml` is `configs/grpo_smoke.yaml` plus one top-level key,
   `structured_outputs: loopscript_regex`.
   - **Load time.** `lofi_rl.rl.config.load_config` builds the regex from the config's palette.
