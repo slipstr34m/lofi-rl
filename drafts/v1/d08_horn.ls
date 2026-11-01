@@ -1,4 +1,4 @@
-vamp: Im11 bVIImaj9 span 1
+vamp: Im9 bVIImaj9 span 1
 keys: piano spread
 comp: x--x--x-x------- x-x---x-x-x-x---
 bass: x--x---xx-x----- x-----x-x-----x-

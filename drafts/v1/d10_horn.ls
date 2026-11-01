@@ -13,4 +13,4 @@ hat: x.x...g.x.x...g. x.x.g...x.x.g...
 @7 comp: x---x---x-------
 @8 bass: x-----x--x------
 A: h.2 e1 e7, | q1 e2 e4 hr | e5 e4 q3 h5 | q6 e7 e6 hr
-B: h.2 e1 e7, | q1 e2 e4 q6 qr | q5 e7 e1' h6 | e5 e4 q2 hr
+B: h.2 e1 e7, | q1 e2 e4 q6 qr | q5 e7 e1' h7 | e5 e4 q2 hr
