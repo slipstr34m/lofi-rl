@@ -19,6 +19,47 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-10-31 (19:45 PDT): Day-2 tooling integrated on `wt/day2-int` and run end to end on the laptop; two integration defects fixed
+
+**What was done** (branch `wt/day2-int`, cut from main at `f87ef24`; not pushed, not merged)
+- **Merged** `wt/tally` (`49bcd90`) and then `wt/day2` (`a73a317`), both `--no-ff`. Two conflicts, both resolved by keeping both sides: this file (the two entries, newest first) and the SHOOTOUTS.md status line.
+- **The tally tool** (SHOOTOUTS.md §7.9; its builder left this file to the merge): `python -m lofi_rl.shootout.tally` reads the vote logs and the hidden manifests and recounts per §8: heard-filtered BW (CD-38), anchor rounds dropped, half weight for a micro-session that missed its anchor (D-013), CD-44, and the CD-39 ties. It applies the Day-1 rules and the later ones, and writes job 2's ARGS. Private outputs only (`data/votes/audit/` by default). 17 tests.
+- **Integration defects, fixed with tests** (`f74cc3e`):
+  - **Job 2's `--prior` was missing** from the tally's `make submit` line. `jobs/shootout.sbatch` gives the Day-2 form as `--leaders ... --prior <job1>`, and §3 has job 2 compare its drift keys with job 1's. The tally now finds job 1 in the pulled summaries (`--runs`, default `runs/`): the `batches.json` whose `run` is `shootout-<job>` and which lists every Day-1 batch with its manifest's round ids. If none is found, the line has no `--prior` and a blocking item asks for it. On the real Day-1 batches (read-only: their public round ids and `runs/*/summary/batches.json`), it finds 13635646 for all three. SHOOTOUTS.md §7.7's Day-2 form now names `--prior <job1>`, as the job script does.
+  - **The tally checked only `bus_lufs`**, so the other buses CD-53 matches went unchecked: R3a's sax, keys and bass, and R3b's keys and bass (`<bus>_lufs`). It now checks every matched bus at its stage's limit (0.5 LU for the timing variants), and a missing level is a flag.
+  - **Tests:** 2 new, so the tally has 19. Undoing either change fails its test.
+- **End to end** (laptop, scratch folders; the real banks and kits under a scratch `LOFI_ASSETS` of symlinks; synthetic votes only, `data/votes` never opened; SHOOTOUTS.md §7.7 "End to end"):
+  1. **Day-1 dry run** (scratch seed): exit 0 in 97.3 s (levels 48.3, render 47.4). 67/67 renders at −14.099 … −13.996 LUFS, true peak ≤ −1.479 dBTP. 3 batches: 6 rounds/24 clips, 6/18, and 7/28 with the anchor. Per-round spread 0.0017–0.0091 LU.
+  2. **Synthetic votes** through the rating page's own `Ledger`, in its event format:
+     - set A: 49 events, 19 standing votes; one T, one B, one G; 2 marks on clips heard under 4 bars; 12 early picks; the anchor missed, taken back, then caught;
+     - set B: the anchor missed, so its micro-session counts half; ties at K1's third place and behind the S1 leader;
+     - set C: A's picks, answered more slowly.
+  3. **Tally**, exit 0 on all three sets. Each line carries `--prior 900001`, the scratch Day-1 run:
+     - A: 3 keys, 2 saxes, no cut (23.6 min, r 1.026);
+     - B: 4 keys and 3 saxes, `--cut vamps-high+latin3` (27.6 min, r 1.200);
+     - C: 1 sax, all three cuts (29.1 min, r 1.265).
+  4. **Day-2 dry runs** on those lines, every stage exit 0:
+     - A: 136.8 s, 84 renders; B: 127.0 s, 68 renders; C: 95.5 s, 57 renders;
+     - all 209 renders at −14.095 … −13.949 LUFS, true peak ≤ −1.420 dBTP. Each read the tool's L before every matched fader exactly (407 bus-clip pairs);
+     - the re-measured instruments moved 0.00 dB from the Day-1 run, and S\* stayed the same;
+     - per-round spread after matching: A 0.0001–0.0088 LU, B 0.0006–0.0093, C 0.0006–0.0088. At the median faders, the largest were 3.72, 2.54 and 1.85 LU.
+  5. **Batch checks:** `ui.manifest check` passed on all 12 Day-2 batches, and the leak guard found nothing.
+- **Beyond the five steps:** synthetic Day-2 votes on A's and B's batches, then the tally over all seven batches.
+  - Every later rule ran on the Day-2 manifests, and no round was flagged on any matched bus.
+  - One case is the spec's to decide: with the `latin3` cut, R3b has 2 rounds. A single G then leaves every humanize option all-bad in half its rounds (CD-44), so the tally raises a blocking `RuleGap`.
+- **Suite:** 1756 passed, 1 skipped (main at `f87ef24`: 1717; +17 tally, +20 Day 2, +2 integration).
+- **`jobs/shootout.sbatch`** is unchanged: sha `12f706e7f61efe72` (`scripts/approve_job.py`), as registered, and `--check` reports nothing stale.
+
+**Failed approaches and why:** the first search for set B's ties picked by a fixed order of preference. No order of the 720 gives a three-way tie in S1, so set B's S1 picks were searched round by round instead.
+
+**Needs Shresth's word, if it happens:** what a G does to a 2-round stage after the `latin3` cut (above).
+
+**SU spent:** 0 (laptop only).
+
+**Next:** merge `wt/day2-int` into main. Main has moved since `f87ef24` (`b56fbf6`, `96bd121`), and only this file overlaps. Once Shresth finishes Day 1, run the tally from the main checkout and submit the line it gives.
+
+---
+
 ## 2026-10-31 (18:58 PDT): job 2 (Day 2) built and dry-run on the laptop; every Day-2 clip matched on every bus its round varies (CD-53)
 
 **What was done** (branch `wt/day2`, not merged)

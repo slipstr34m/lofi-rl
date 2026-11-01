@@ -13,9 +13,11 @@ which freezes on Nov 6 and never changes after (docs/DECISIONS.md D-017).
   `--leaders` from the Day-1 votes (§7.9, branch `wt/tally`) and its stages (branch `wt/day2`: the Day-2
   generator, levels, vamp palettes and per-clip matching on every bus a round varies, CD-53), merged on
   `wt/day2-int`. Four laptop dry runs with simulated leaders passed every stage, built b1104-1 to b1104-4 and put
-  every Day-2 round within 0.0088 LU (§3 step 8, §7.7 "Dry run, Day 2"). Laptop clips are not canonical
-  (LESSONS 38); none is queued for listening. The 9 reference loops in `shootouts/loops/` exist and pass the gates
-  (§5).
+  every Day-2 round within 0.0088 LU (§3 step 8, §7.7 "Dry run, Day 2"). On `wt/day2-int` the whole path then ran
+  end to end on the laptop (§7.7 "End to end"): a Day-1 dry run, synthetic votes, the tally's job-2 ARGS (now with
+  `--prior`), and Day-2 dry runs of three proposals, every Day-2 round within 0.0093 LU. Laptop clips are not
+  canonical (LESSONS 38); none is queued for listening. The 9 reference loops in `shootouts/loops/` exist and pass
+  the gates (§5).
 - **Sound claims:** none. Every candidate, variant and level here is a starting point for Shresth's ear. Claude
   records counts and picks, never descriptions of sound (TASTE.md: "Shootout prunes, votes decide").
 - **Blind by construction.** This file gives every round in symbols (`P1a`, `k2`, `v3`, ...). Which option sits
@@ -1086,6 +1088,33 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
   inside the job's 16 GB. On the cluster (the Day-1 arithmetic: × 1.3–2.7 a render, × 2 if the 8 CPUs are 4 cores'
   hyperthreads, + 2 min) Day 2 comes to about 4.7–14.3 min, 56–171 SU, inside the 20-min walltime (1.4 times the
   slowest) and the 240-SU cap; job 1's own ratio (1.30–1.49) gives 2.7–3.4 min, about 32–41 SU.
+- **End to end** (2026-10-31, branch `wt/day2-int`, the laptop; scratch runs, inboxes and vote folders, the real
+  banks and kits under a scratch `LOFI_ASSETS`; votes synthetic, `data/votes` never read):
+  1. **Day 1:** `--stage day1 --jobs 8` with a scratch seed (run `shootout-900001`): every stage exit 0 in 97.3 s
+     (levels 48.3, render 47.4); 67 of 67 renders at −14.099 … −13.996 LUFS, true peak at most −1.479 dBTP; the 3
+     batches (6 rounds and 24 clips, 6 and 18, 7 with the anchor and 28), per-round spread 0.0017–0.0091 LU.
+  2. **Votes,** written by the rating page's own `Ledger` on a fake clock with the page's events (session starts,
+     round starts, an Esc, an undo): set A, 19 standing votes in 49 events, with a T (the R2 round of the R1
+     leader's kit), a B (S1), a G (K1), 2 marks on clips heard under 4 bars, 12 early picks, and the anchor missed,
+     taken back and caught; set B, the anchor missed (its micro-session's votes at half weight), a full tie across
+     K1's third place and a four-way tie behind the S1 leader; set C, A's picks with slower answers.
+  3. **Tally** (exit 0): A 3 keys, 1 kit, 1 bass, 2 saxes, no cut (23.6 min, r 1.026); B 4 keys (a seeded draw
+     among three tied at third), 3 saxes (a three-source final), `--cut vamps-high+latin3` (27.6 min, r 1.200);
+     C one sax with all three cuts (29.1 min, r 1.265). Each line carries `--prior 900001`, found from the run's
+     summary (§7.9).
+  4. **Day 2** with each line, `--prior` the scratch Day-1 run: A exit 0 in 136.8 s, 84 renders, batches of 5/17,
+     10/27 (with the anchor), 2/6 and 9/36 rounds/clips; B 127.0 s, 68 renders, 4/14, 8/24, 2/8 (four keys a round)
+     and 6/24; C 95.5 s, 57 renders, 4/14, 5/15, 2/6 and 6/24. All 209 renders at −14.095 … −13.949 LUFS, true peak
+     at most −1.420 dBTP, each reading the tool's L before every matched fader exactly (407 bus-clip pairs); every
+     instrument measured again moved 0.00 dB from the Day-1 run, S\* unchanged. Spread per round after matching:
+     A 0.0001–0.0088 LU, B 0.0006–0.0093, C 0.0006–0.0088 (at the median faders up to 3.72, 2.54 and 1.85 LU).
+  5. **Checks:** `python -m lofi_rl.ui.manifest check` passed on all 12 Day-2 batches, and the leak guard
+     (`batch.public_leaks`, and `load_batch`'s own check) found nothing.
+
+  Beyond the five steps: synthetic Day-2 votes on A's and B's batches, then the tally over all seven batches. Every
+  later rule ran on the Day-2 manifests (K2's four keys, the three-source final), and no round was flagged on any
+  matched bus. One case is the spec's to decide: with `latin3`, R3b has 2 rounds, so a single G puts every humanize
+  option all-bad in half its rounds (CD-44), and the tally raises a `RuleGap` for Shresth.
 
 ### 7.8 Shootout plan and palette generator
 - **Plan:** `shootouts/plan.yaml` transcribes §4 and §6 in symbols: candidates (source, preset, register, family,
