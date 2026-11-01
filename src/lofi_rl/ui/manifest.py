@@ -5,8 +5,9 @@ A batch is one folder, `inbox/<date>/<batch>/`, holding opaque audio files and t
 - `manifest.json` (public): the batch id, mode, scene text, bpm and bars, and rounds of opaque clip ids with
   their files. The page gets a trimmed copy of it (`Manifest.public()`).
 - `manifest.hidden.json` (never served): which rounds are repeats or anchors, and what each clip really is
-  (its real clip id, option or variant name, source). The server reads it only to label the votes it writes
-  and, once voting is done, for the audit aggregates.
+  (its real clip id, option or variant name, source). The server reads it only to label the votes it writes, for
+  the audit aggregates once voting is done, and for `serve_from` when it names one: the first day the batch may be
+  served (a Day-3 shootout batch, whose repeats come at least 2 days after their first showing's vote, D-013).
 
 Both are validated on load; every problem is reported at once (`ManifestError.errors`). Opaque ids and file
 names must not leak what a clip is: the check compares them with every word in the hidden manifest.
@@ -30,7 +31,7 @@ import stat
 import struct
 import sys
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 SCHEMA_VERSION = 1
@@ -54,6 +55,7 @@ CLIP_RE = re.compile(r"[a-z][0-9a-f]{8,32}")
 FILE_RE = re.compile(r"[a-z][0-9a-f]{8,32}\.(?:flac|wav)")
 REAL_RE = re.compile(r"c[0-9a-f]{8,64}")       # real clip ids: "c" + sha256(...)[:16] (taste_pipeline §2)
 SHA_RE = re.compile(r"[0-9a-f]{64}")
+DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 PUBLIC_KEYS = frozenset({"v", "batch", "mode", "scene", "note", "bpm", "bars", "sr", "created", "est_min", "rounds"})
 ROUND_KEYS = frozenset({"id", "scene", "bpm", "plays", "clips"})
@@ -168,6 +170,21 @@ class Hidden:
     batch: str
     category: str | None
     rounds: dict                  # round id -> HiddenRound
+    serve_from: date | None = None    # the first day the batch may be served (ui.serve), or None
+
+
+def serve_from_date(value) -> date | None:
+    """A hidden manifest's `serve_from` as a date: YYYY-MM-DD, the first day `make rate` may serve the batch (a
+    Day-3 shootout batch, since its repeats come at least 2 days after their first showing's vote, D-013), or None
+    when there is none. ValueError for anything else."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not DATE_RE.fullmatch(value):
+        raise ValueError(f"serve_from {value!r} is not a date YYYY-MM-DD")
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise ValueError(f"serve_from {value!r} is not a date YYYY-MM-DD") from None
 
 
 def default_plays(round_id: str, plays_range: tuple[int, int] = (2, 4)) -> int:
@@ -515,6 +532,11 @@ def parse_hidden(data, m: Manifest) -> Hidden:
     if data.get("batch") != m.batch:
         errs.append(f"batch: {data.get('batch')!r} does not match the public manifest's {m.batch!r}")
     category = _text(data.get("category"), "category", errs, limit=80)
+    try:
+        serve_from = serve_from_date(data.get("serve_from"))
+    except ValueError as err:
+        errs.append(str(err))
+        serve_from = None
     rounds_raw = data.get("rounds")
     if not isinstance(rounds_raw, dict):
         errs.append("rounds: must be an object mapping each round id to what it really is")
@@ -582,7 +604,7 @@ def parse_hidden(data, m: Manifest) -> Hidden:
         errs.extend(leak_errors(m, out, category))
     if errs:
         raise ManifestError(errs, where)
-    return Hidden(batch=m.batch, category=category, rounds=out)
+    return Hidden(batch=m.batch, category=category, rounds=out, serve_from=serve_from)
 
 
 _WORD = re.compile(r"[a-z0-9]+")

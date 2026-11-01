@@ -2,7 +2,7 @@
 yet: the trims and faders it writes are carried by the palette generator as CD-51 says.
 
     python -m lofi_rl.shootout.levels --plan shootouts/plan.yaml --loops shootouts/loops \\
-        --palettes <run>/summary/palettes/measure --stage day1|day2 [--draw <run>/summary/draw.json] \\
+        --palettes <run>/summary/palettes/measure --stage day1|day2|day3 [--draw <run>/summary/draw.json] \\
         [--prior <levels.json>] --out <run>/summary/levels.json [--workers 8]
 
 For every instrument variant i of the stage and every loop l of `--loops` (its briefs.yaml; the 9 reference loops):
@@ -48,6 +48,17 @@ instrument's trim: L, the clip's own fader (`clip_fader`), the loudness after it
 median fader. `configs` holds them; `rounds` holds every drawn round's spread on each matched bus at the median faders
 (`before_lu`) and at the clips' own (`after_lu`).
 
+Day 3 (section 4.5) runs as Day 2: every instrument its draw plays (the Day-2 picks in every rain palette, and the
+S2 re-run's sax when the job has one) measured again against job 1's levels.json, so the rain palettes carry each
+one's t and median F, the values the frozen palette takes. The rain design rounds match nothing (section 3 "Not
+matched": the bed is set by loudness under each clip's own music, RENDER.md section 3.4), and the repeats play their
+first showing's renders and are not measured. The anchor's sour copy is matched to its round-mates (2026-11-01
+review: at the median F its sax sat up to 1.65 LU from theirs): its rain palette is a config (`target: round`)
+measured on the sax at the band sax's trim on the loop's own text, case `<loop>`, the round-mates' sax L(loop) at
+the median F, and on the sour text, case `<loop>.sour`, whose own fader starts at F + L(loop) - L(loop.sour) and is
+corrected (`clip_fader`) until its sax measures within CLIP_FIX_LU of L(loop) + F. The palette, not the instrument
+run, since the band's sax variant and timing play there. An S2 re-run adds its configs as Day 2's.
+
 Exit codes: 0; 2 for a bad argument; 3 when the inputs are refused (a missing variant, a failed gate, drift in a
 measuring palette, a draw of another plan or with a clip on a loop `--loops` does not hold). Sound claims: none.
 """
@@ -87,7 +98,7 @@ CYCLES = 2                                  # two cycles through the chains, kee
 BUSES = ("sax", "keys", "bass", "drums")
 TRIM_BUSES = ("sax", "keys", "bass")
 STAGES = ("day1", "day2", "day3")
-BUILT = ("day1", "day2")
+BUILT = ("day1", "day2", "day3")
 MOVE_DB = 0.1                               # a trim or fader that moves more is listed (§3, drift)
 INPUT_LIFT_DB = 40.0                        # P is read this far up, then taken off: see input_lufs
 CLIP_FIX_LU = 0.005                         # a clip's fader is corrected until it measures this close (half 0.01 dB)
@@ -178,6 +189,22 @@ def clip_fader(L: float, target: float, post_at: Callable[[float], float], *, fi
     best = min(tried, key=lambda f: (abs(tried[f] - target), f))
     return {"L": L, "F": best, "lufs": tried[best], "target_lufs": target, "off_lu": tried[best] - target,
             "tried": len(tried)}
+
+
+def round_fader(L: Mapping[str, float], case: "Case", F: float, post_at: Callable[[float], float]) -> dict:
+    """Day 3's rain anchor (2026-11-01 review): a case's fader against its round-mates rather than S* + T. The
+    round-mates play the loop's own text at the band's median fader F, so the loop's case keeps F and its target is
+    its own L + F; a sour copy (`<loop>.sour`) starts at F + L(loop) - L(loop.sour) and is corrected by `clip_fader`
+    until its bus measures within CLIP_FIX_LU of L(loop) + F, the round-mates' level. `L` holds the bus's L per case
+    name; the record adds `target: round` and the `reference` case."""
+    ref = case.loop if case.variant != "base" else case.name
+    target = L[ref] + F
+    if case.name == ref:
+        got = float(post_at(F))
+        rec = {"L": L[ref], "F": F, "lufs": got, "target_lufs": target, "off_lu": got - target, "tried": 1}
+    else:
+        rec = clip_fader(L[case.name], target, post_at)
+    return {**rec, "target": "round", "reference": ref}
 
 
 def clip_check(clips: Mapping[str, Mapping[str, Mapping]], tol: float = 0.1) -> dict[str, dict]:
@@ -427,6 +454,16 @@ def config_cases(draw_doc: Mapping, configs: Mapping[str, Mapping], cases: Seque
         x = Case(want, entry["text"], by_name[loop].brief, loop, entry["variant"])
         if out[base].setdefault(want, x) != x:
             raise LevelsError(f"--draw: case {want} of {base} is drawn with two different texts")
+        if level.get("target") == "round":      # Day 3's rain anchor: its round-mates' text on the same palette
+            mates = [e for e in (draw_doc.get("renders") or {}).values()
+                     if e.get("palette") == base and e["loop"] == loop]
+            if configs[base].get("target") != "round" or not mates or any(
+                    e["text"] != by_name[loop].text for e in mates):
+                raise LevelsError(f"--draw: clip {rid} is matched to its round on {base}, but no clip of its round "
+                                  f"plays {base} with {loop}'s own text, or the index does not match it so")
+            ref = Case(loop, by_name[loop].text, by_name[loop].brief, loop, "base")
+            if out[base].setdefault(loop, ref) != ref:
+                raise LevelsError(f"--draw: case {loop} of {base} is drawn with two different texts")
     for key, cfg in configs.items():
         if not cfg.get("loops"):
             continue
@@ -482,20 +519,26 @@ def measure_configs(configs: Mapping[str, Mapping], measure_dir: Path, cases_of:
             (L if trim == t_all[inst[b]] else L_low)[b][c.name] = level
         pairs = [(b, c) for b in buses for c in cs]
         med = list(ex.map(lambda j: bench.post_lufs(run, j[1], j[0], F_all[inst[j[0]]]), pairs))
-        done = list(ex.map(lambda j: clip_fader(L[j[0]][j[1].name], s_star + targets[j[0]],
-                                                lambda f, j=j: bench.post_lufs(run, j[1], j[0], f)), pairs))
+        if cfg.get("target") == "round":        # Day 3's rain anchor: the sour copy at its round-mates' sax
+            done = list(ex.map(lambda j: round_fader(L[j[0]], j[1], F_all[inst[j[0]]],
+                                                     lambda f, j=j: bench.post_lufs(run, j[1], j[0], f)), pairs))
+        else:
+            done = list(ex.map(lambda j: clip_fader(L[j[0]][j[1].name], s_star + targets[j[0]],
+                                                    lambda f, j=j: bench.post_lufs(run, j[1], j[0], f)), pairs))
         P_in = {b: {c.name: bench.input_lufs(run, c, b) for c in cs if c.name in nine} for b in buses} if nine else {}
         rec = {}
         for b in buses:
             target = s_star + targets[b]
             cases_rec = {}
             for (bb, c), m, clip in zip(pairs, med, done):
-                if bb == b:
+                if bb == b:             # off at the median fader: from S* + T, or from the round-mates' level
                     cases_rec[c.name] = {**clip, "lu": clip["lufs"] - s_star, "instrument": inst[b],
                                          "t": t_all[inst[b]], "median_F": F_all[inst[b]], "median_lufs": m,
-                                         "median_off_lu": m - target}
+                                         "median_off_lu": m - (clip["target_lufs"] if "reference" in clip else target)}
             entry = {"instrument": inst[b], "t": t_all[inst[b]], "median_F": F_all[inst[b]], "target_lufs": target,
                      "cases": cases_rec, "checks": {"clips": clip_check({b: cases_rec}, lv.clip_tol_lu)[b]}}
+            if cfg.get("target") == "round":    # each case's own target: its round-mates' L + the median F
+                entry.update(target_lufs=None, target="round")
             if nine:
                 L9 = {n: L[b][n] for n in sorted(nine)}
                 F9 = round(target - _median(L9, f"{key}:{b}"), 2)
@@ -512,6 +555,7 @@ def measure_configs(configs: Mapping[str, Mapping], measure_dir: Path, cases_of:
         out[key] = {"stage": cfg["stage"], "option": cfg["option"], "file": cfg["file"], "sha256": cfg["sha256"],
                     "instruments": dict(cfg["instruments"]), "settings": list(cfg["settings"]),
                     "sax_muted": cfg["sax_muted"], "loops": bool(cfg.get("loops")), "buses": rec,
+                    **({"target": "round"} if cfg.get("target") == "round" else {}),
                     "cases": {c.name: {"loop": c.loop, "variant": c.variant, "n": run.compiled[c.name].n,
                                        "text_sha256": hashlib.sha256(c.text.encode("utf-8")).hexdigest()} for c in cs},
                     "digests": {c.name: run.compiled[c.name].digest() for c in cs}}
@@ -533,19 +577,26 @@ def config_flags(configs: Mapping[str, Mapping]) -> list[str]:
 def round_spreads(draw_doc: Mapping, configs: Mapping[str, Mapping]) -> list[dict]:
     """Each drawn round's spread on every bus its clips match (§3 step 8): the largest minus the smallest loudness
     after the fader, at the band's median faders (`before_lu`, what the clips would play without their own) and at
-    each clip's own (`after_lu`), with the clips' cases and options."""
+    each clip's own (`after_lu`), with the clips' cases and options. A Day-3 repeat shows its first showing's renders,
+    which this draw does not make, so it has no spread here (its hidden manifest carries the first showing's). A Day-3
+    rain anchor round (`round_spread`) gives its sour copy's sax against its round-mates'."""
     palettes, out = draw_doc.get("palettes") or {}, []
     for b in draw_doc.get("batches") or []:
         for r in b["rounds"]:
             rows = []
             for c in r["clips"]:
-                entry = draw_doc["renders"][c["render"]]
+                entry = draw_doc["renders"].get(c["render"])
+                if r["kind"] == "repeat" or entry is None or entry.get("palette_path"):
+                    break
                 spec = palettes.get(entry["palette"]) or {}
                 level = spec.get("level") or {}
                 if "buses" not in level:
                     break
                 rows.append((configs[spec["base"]], level))
             if len(rows) != len(r["clips"]) or not rows:
+                matched = round_spread(draw_doc, configs, b["name"], r)
+                if matched:
+                    out.append(matched)
                 continue
             per_bus = {}
             for bus in rows[0][1]["buses"]:
@@ -558,6 +609,31 @@ def round_spreads(draw_doc: Mapping, configs: Mapping[str, Mapping]) -> list[dic
                         "before_lu": max(v["before_lu"] for v in per_bus.values()),
                         "after_lu": max(v["after_lu"] for v in per_bus.values())})
     return out
+
+
+def round_spread(draw_doc: Mapping, configs: Mapping[str, Mapping], batch: str, r: Mapping) -> dict | None:
+    """Day 3's rain anchor round: the sax of its sour copy (the clip whose level matches its round) against its
+    round-mates', which play the loop's own text at the band's median fader on palettes that differ from the sour
+    copy's base only in their bed: at the median faders (`before_lu`) and at the sour copy's own (`after_lu`). None
+    for any other round."""
+    palettes = draw_doc.get("palettes") or {}
+    for c in r["clips"] if r["kind"] == "anchor" else ():
+        spec = palettes.get((draw_doc["renders"].get(c["render"]) or {}).get("palette")) or {}
+        level = spec.get("level") or {}
+        if level.get("target") != "round":
+            continue
+        per_bus = {}
+        for bus in level["buses"]:
+            cases = configs[spec["base"]]["buses"][bus]["cases"]
+            sour = cases[level["case"]]
+            ref = cases[sour["reference"]]
+            per_bus[bus] = {"before_lu": abs(sour["median_lufs"] - ref["median_lufs"]),
+                            "after_lu": abs(sour["lufs"] - ref["lufs"])}
+        return {"batch": batch, "stage": r["stage"], "slot": r["slot"], "kind": r["kind"], "loop": r["loop"],
+                "options": [x["option"] for x in r["clips"]], "buses": per_bus, "target": "round",
+                "before_lu": max(v["before_lu"] for v in per_bus.values()),
+                "after_lu": max(v["after_lu"] for v in per_bus.values())}
+    return None
 
 
 # ------------------------------------------------------------------------------------------ benches
@@ -658,7 +734,7 @@ def run_levels(plan_path: Path | str, loops_dir: Path | str, measure_dir: Path |
     the reference loops, and with `draw` every other text a drawn clip plays. Returns the levels document (see the
     module docstring)."""
     if stage not in BUILT:
-        raise LevelsError(f"stage {stage}: only {', '.join(BUILT)} is built (jobs 1 and 2)")
+        raise LevelsError(f"stage {stage}: only {', '.join(BUILT)} is built")
     plan = load_plan(plan_path, root=root)
     measure_dir = Path(measure_dir)
     index_bytes = (measure_dir / "index.json").read_bytes()
@@ -837,7 +913,7 @@ def main(argv: list[str] | None = None, *, bench: Bench | None = None) -> int:
     p.add_argument("--cache", type=Path, default=None, help="one-shot cache (default $LOFI_CACHE or ~/.cache/lofi-rl)")
     a = p.parse_args(argv)
     if a.stage not in BUILT:
-        p.error(f"--stage {a.stage}: only {', '.join(BUILT)} is built so far (jobs 1 and 2)")
+        p.error(f"--stage {a.stage}: only {', '.join(BUILT)} is built")
     for name, path in (("--plan", a.plan), ("--loops", a.loops / "briefs.yaml"),
                        ("--palettes", a.palettes / "index.json"), ("--draw", a.draw), ("--prior", a.prior)):
         if path is not None and not path.is_file():

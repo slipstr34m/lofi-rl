@@ -284,7 +284,7 @@ def test_a_purged_prior_render_is_made_again_and_must_match_its_first_showing(da
         flac.write_bytes(keep)
     rep2 = next(r for b in doc2["batches"] for r in b["rounds"] if r["kind"] == "repeat")
     new = rep2["clips"][0]["render"]
-    assert new == f"prior.shootout-101.{rid}" and "run_dir" not in rep2["clips"][0]
+    assert new == f"prior.101.{rid}" and "run_dir" not in rep2["clips"][0]
     entry = doc2["renders"][new]
     assert entry["expect_pcm_sha256"] == rep2["clips"][0]["expect"]["pcm_sha256"]
     assert entry["palette_path"].endswith(f"shootout-101/summary/palettes/{entry['palette']}.yaml")

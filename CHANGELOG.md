@@ -46,6 +46,107 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (12:20 PST): Day 3 review fixes: the serving date reaches the batches, the S2 re-run's slots, every seed splits, the anchor's sax matched
+
+**What was done** (worktree branch, laptop only; no ssh, sync, submit or pull; `data/` never read; the review's
+fixes, on Shresth's "Yes, use these")
+- **Serving date (spec-F1).** Only the tally knew it, so job 3's batches would have gone into the inbox at the next
+  `make pull` and `make rate` would have served them at once, a day after Day 2's votes, against D-013's 2 days.
+  Job 3 now takes `--serve-date` (day 3 only, required with `--repeats`) into leaders.json and the draw
+  (`repeats.serve_date`); the builder writes `serve_from` into every Day-3 hidden manifest; `make rate` passes over
+  a batch before its `serve_from` and refuses it by name with the date; the tally's job-3 line carries the date, and
+  the tally scores a repeat only when its vote falls at least 2 calendar days after its first showing's (`too_soon`
+  otherwise). Main's code refuses the new line (exit 2, unknown argument), so job 3 waits for this branch.
+- **S2 re-run (spec-F2).** The re-run took the Day-3 band's S2a and S2b picks for its variant slots; it now plays them
+  at their Day-2 values (`sax_plain`, `timing_grid`), so S2a compares warmth at grid timing and S2b the timings at
+  warm off (CD-19). Latent for the confirmed job 3 (no `--rerun-s2`).
+- **Split (spec-F3).** When the greedy split's 500 redraws find no orderable split, the draw now tries every split
+  within the longest round of equal length, in an order drawn from the seed, and takes the first that orders; a
+  redraw whose part cannot be ordered at all (`_may_order`, exact on every part of up to 6 rounds on 3 loops) is
+  passed over without its 4000 shuffles.
+- **Anchor's sour sax (audio review).** The sour copy now plays its own palette with the sax fader that puts its sax
+  where its round-mates' sits (the band sax at its median F on the round's own rain palette), measured by the level
+  tool on that palette; each rain clip's hidden record gives `sax_fader_db` and `sax_lufs`, and the tally flags an
+  anchor rain round whose sax spreads over 1.0 LU.
+
+**Numbers**
+- Split: 4020a9d's draw on 1,200 seeds (300 each: every repeat or none, no cut or both Day-3 cuts; synthetic priors)
+  could not order 91 (9 with every repeat and both cuts, 82 with both cuts and no repeat; scratch
+  `day3/fix/golden300_narrow.log`); the branch draws all 1,200, searches exactly those 91, and gives the other 1,109
+  the same batches (`tests/golden/day3_split.json`). On the pulled summaries the review's four failing seeds draw
+  (0.01 s each); the forced search on a 19-round re-run pool takes 0.12-0.13 s per draw; the dry run's seed
+  00000000009003a1 gives the dry run's draw.json (batches, renders, palettes) before the anchor change.
+- Job 3 on the laptop with the review fixes (`…/scratchpad/day3/runs/shootout-900303/summary/`, the dry run's seed,
+  priors and assets, `--serve-date 2026-11-03`): every stage exit 0 in 38.6 s (levels 15.4, render 21.8); a second
+  run at the same paths: same bytes in 173 of 175 run files (renders.json and stages.json: wall times) and 48 of 48
+  inbox files, 44.3 s, peak 2.63 GB. The anchor W2.2 on L4: round-mates' sax −29.8594 LUFS after the +2.55 dB
+  fader; the sour copy's L −34.0617, fader +4.20 dB, −29.8617: 0.0023 LU apart, against 1.6523 LU at the median
+  fader (`levels.json` `rounds`); its render read the tool's L exactly. 26 of 26 renders at −14.064 … −14.000 LUFS,
+  true peak at most −1.486 dBTP; both batches carry `serve_from: 2026-11-03`.
+- Days 1 and 2: 80 draws on 4020a9d's code and the branch's are the same documents, and the batches built from 12
+  of them (fake renders) the same manifest bytes.
+- Suite: 2305 passed, 3 skipped, 68 deselected (`pytest -q`, 160 s; 2286 before the fixes).
+
+**Failed approach:** the first test run of the anchor's config raised a TypeError in `config_flags`: the level tool's
+loop over the round config's cases reused the name of the bus table (`rec`), overwriting it; renamed before the commit.
+
+**SU spent:** 0.
+
+**Next:** merge this branch; place the converted rain under `assets/big/derived/rain/` and `make push-assets`; `make
+sync` once D-020's freeze allows; `make submit` job 3 with SHOOTOUTS.md §7.7's ARGS, which now end in `--serve-date
+2026-11-03`; `make pull` may then bring the batches in early, and `make rate` serves them from that date.
+
+---
+
+## 2026-11-01 (10:35 PST): Day 3 made runnable on a branch; laptop dry run of job 3 passes every stage
+
+**What was done** (worktree branch, laptop only; no ssh, sync, submit or pull; `data/` never read)
+- **Audit first** (main 316f710): job 3's `--dry-run` took the Day-3 line (exit 0); a real laptop run drew 2 batches,
+  13 rounds and 41 renders, then stopped at the measuring stage (the generator and the level tool took day1 and day2
+  only, exit 2). Missing: the 44.1 kHz rain and the excerpt picker, a way from the plan's `bed.excerpt` to a palette
+  bed, the rain as a palette source, any bed record or music check, the tally's job-3 line and a serving date for the
+  repeats (docs/SHOOTOUTS.md §7.7 "Audit before Day 3").
+- **The rain** (§7.2): converted once, sha256 `e6884875…` (69,148,858 bytes, 8,643,600 frames; two runs equal),
+  pinned in assets/MANIFEST.yaml; `lofi_rl.convert.rain_excerpts` picked e1 150.4 s (range 5.087 LU), e2 44.3 s
+  (5.736), e3 77.8 s (7.155) into `shootouts/rain_excerpts.json` (two runs equal). The file sits in the session's
+  scratch assets folder, not yet in `assets/big/derived/rain/`.
+- **Job 3's path:** the generator and the level tool for `--stage day3` (the Day-2 picks at t and median F, every rain
+  palette's bed from the excerpt record, the S2 re-run as Day 2); bed clips record `bed`, `bed_lu`, `music_lufs` and
+  the pre-limiter music hash, and the builder refuses a rain round whose music differs; two bugs the run found
+  (`round_spreads` on the repeats, a re-made render's name tripping the leak guard). The tally proposes job 3's line
+  from the logs and job 2's leaders.json, with `--serve-date` for the repeats.
+- **Job 3's ARGS for the confirmed Day-2 results** (served 2026-11-03 or later): `--stage day3 --leaders
+  keys=gu_tine_ep/kit=kit_virtuosity/bass=bass_vsco2_pizz/sax=sax_mtg_alto/swing=swing_55/humanize=humanize_off/sax_variant=sax_plain/timing=timing_lag
+  --prior 13635646+13651610 --repeats K1+R1+R2+S1+R2r+R3a+R3b+S1f+S2a+S2b+K2+V`.
+
+**Numbers** (scratch run `…/scratchpad/day3/runs/shootout-900302/summary/` and its inbox; §7.7 "Dry run, Day 3")
+- Every stage exit 0 in 36.9 s (levels 14.1, render 21.5); a second run at the same paths: same bytes in 171 of 173
+  run files and 48 of 48 inbox files (the other two hold wall times), 33.8 s, peak 2.98 GB.
+- Levels: 7 instruments measured again, every t and median F 0.00 dB from job 1's; S\* −31.9247 LUFS; no flag.
+- 26 of 26 renders at −14.064 … −14.000 LUFS, true peak at most −1.486 dBTP. `b1106-1-mix` 6 rounds, 21 clips,
+  7.0 min; `b1106-2-mix` 7 rounds (with the anchor), 23 clips, 7.7 min; one repeat per group; `ui.manifest check`
+  and `batch.public_leaks` clean on both.
+- Rain rounds: one pre-limiter music per round; `bed_lu` + Δ 0.0002–0.0274 LU apart within a round; each round's
+  offset from Δ 0.00–2.02 LU (L6 the most).
+- The repeats' 15 clips are on the cluster only: for this dry run they were rendered on the laptop from job 2's own
+  palettes into the scratch copy of its run, and that copy's batches.json was given their hashes.
+- Day 1 and Day 2 unchanged: main's code and this branch's, same seeds and paths, same bytes in 509/511 and 710/712
+  run files and 179/179 inbox files (renders.json and stages.json: wall times only).
+- Suite: 2286 passed, 3 skipped, 68 deselected (`pytest -q`, 132 s).
+
+**Failed approach:** a per-clip check that each clip's bed sits at −Δ within 0.1 LU in the finished render failed 14
+of 26 renders (+0.11 to +2.02 LU): the bed is set before the limiter, which takes more off the music's peaks than off
+the steady bed. Within a round the offsets agree within 0.03 LU, so the check moved to the round (a W1 `bed_lu`
+spread over 1.0 LU is flagged) and the value is recorded per clip.
+
+**SU spent:** 0.
+
+**Next:** place the converted rain under `assets/big/derived/rain/` and `make push-assets`; Shresth's reading of what
+W2's Δ means (set before the limiter, heard up to 2 LU closer on some loops); merge; tally with `--serve-date`;
+`make sync` once D-020's freeze allows it; `make submit` job 3.
+
+---
+
 ## 2026-11-01 (10:00 PST): Day 3 and the 30 keep3 drafts being built
 
 **What was done**
@@ -61,7 +162,6 @@ Newest entry first. Every number cites the file or command output it was read fr
 - **Day 3's serving date:** 2026-11-03 or later. Then every repeat group of §2.5 is eligible: Day-1 rounds come back 3 days later and Day-2 rounds 2 days later (D-013).
 
 **SU spent:** 0.
-
 ---
 
 ## 2026-11-01 (09:45 PST): Shresth confirmed the Day-2 results; gate file updated

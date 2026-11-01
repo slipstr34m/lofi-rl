@@ -1,0 +1,84 @@
+{
+ "schema": "lofi-rl/rain-excerpts/1",
+ "tool": "python -m lofi_rl.convert.rain_excerpts",
+ "parameters": {
+  "n": 3,
+  "warmup_s": 0.5,
+  "loop_s": 32.0,
+  "xfade_s": 1.0,
+  "stretch_s": 33.5,
+  "block_s": 0.4,
+  "hop_s": 0.1,
+  "measure": "BS.1770 momentary loudness (pyloudnorm K-weighting) after the bed's HighpassFilter 200 Hz; range = max - min of the stretch's whole blocks",
+  "order": "range, then start; each next excerpt disjoint from those taken"
+ },
+ "source": {
+  "asset_path": "derived/rain/235827__metadex__soft-rain-on-roof-window_44k.wav",
+  "sha256": "e6884875cba57f32b56f96faddee580fd3d4d3064c91176c63741045a72fd6f2",
+  "pcm_sha256": "01e17ded919e4582482686c1b9bb8565275620cb1e3274417e0caf03f5cc73f3",
+  "frames": 8643600,
+  "sr": 44100,
+  "channels": 2,
+  "subtype": "FLOAT",
+  "bytes": 69148858,
+  "converted_from": {
+   "path": "assets/big/rain/235827__metadex__soft-rain-on-roof-window.wav",
+   "sha256": "60f7398e590213d207222648ea8e0885ab1c58ff46d86ba73e1badc26446e769",
+   "sr": 48000,
+   "by": "python -m lofi_rl.convert.resample (resample_poly 147/160, float32 WAV)"
+  },
+  "license": "CC0 1.0 (Freesound page: Creative Commons 0)",
+  "url": "https://freesound.org/people/Metadex/sounds/235827/",
+  "attribution": null
+ },
+ "excerpts": {
+  "e1": {
+   "start_s": 150.4,
+   "stretch_s": [
+    149.9,
+    183.4
+   ],
+   "samples": [
+    6610590,
+    8087940
+   ],
+   "range_lu": 5.087305456483371,
+   "min_lufs": -47.316733432329826,
+   "max_lufs": -42.229427975846455,
+   "blocks": 332,
+   "pcm_sha256": "27b1d813a5d7bb19c36ae682b16a4d51d2aebc3d3c8c204177d7778840c201a2"
+  },
+  "e2": {
+   "start_s": 44.3,
+   "stretch_s": [
+    43.8,
+    77.3
+   ],
+   "samples": [
+    1931580,
+    3408930
+   ],
+   "range_lu": 5.735978125945721,
+   "min_lufs": -46.27934028645227,
+   "max_lufs": -40.54336216050655,
+   "blocks": 332,
+   "pcm_sha256": "e6f3a63203dd876460e96bdd65e42e8f33d5f8441a54b85be4330a459b5813a8"
+  },
+  "e3": {
+   "start_s": 77.8,
+   "stretch_s": [
+    77.3,
+    110.8
+   ],
+   "samples": [
+    3408930,
+    4886280
+   ],
+   "range_lu": 7.154825550944203,
+   "min_lufs": -46.719950070235264,
+   "max_lufs": -39.56512451929106,
+   "blocks": 332,
+   "pcm_sha256": "44a989ff1bbcd4571e7e26926a9baf89463d1a154b28a4eb5bde3756e0ae566f"
+  }
+ }
+}

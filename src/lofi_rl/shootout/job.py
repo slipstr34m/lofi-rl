@@ -7,7 +7,7 @@ with the ARGS `make submit JOB=jobs/shootout.sbatch ARGS='...'` passes: `--stage
 on `--leaders`, one `<slot>=<id>[+<id>...]` per band slot joined by `/`, leader first:
 
     --stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id>
-    --stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>
+    --stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>/swing=<id>/humanize=<id>/sax_variant=<id>/timing=<id>
 
 Day 2's keys take 3 ids (4 on a tie at third place) and its sax 2 (3 on a tie, 1 with the `final` cut); its kit takes
 1 id, or 2 with `--add R2r` (the bass re-listen, CD-54: the surviving kits, leader first; the bass is then the
@@ -15,19 +15,30 @@ default, bass_gu_acoustic, meanwhile):
 
     --stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>+<id>/bass=bass_gu_acoustic/sax=<id>+<id> --prior <job1> --add R2r
 
-Day 3 takes one id per slot, and also names `swing`, `humanize`, `sax_variant` and `timing` when a Day-2 pick is not
-the plan's default. Day 3 adds `--prior <job>+<job>`, `--repeats <stage>+...` and, if needed, `--rerun-s2 <sax
-id>`; a cut adds `--cut <name>+<name>`. ARGS hold no spaces, so they need no comma-safe `--export`.
+Day 3 plays the Day-2 picks everywhere (SHOOTOUTS.md section 4.5): one id per slot, the kit with its own bass (its
+R2r pairing, CD-54), and every variant slot named, `swing`, `humanize`, `sax_variant` and `timing`, so nothing rides
+on a default (a slot left out would take the plan's: swing_55, humanize_off, sax_plain, timing_grid). Day 3 adds
+`--prior <job1>+<job2>` (the jobs that built the Day-1 and Day-2 batches, whose renders the repeats show again),
+`--repeats <stage>+...` (the stages voted at least 2 days before the serving date, which Claude passes: the tally's
+`--serve-date`), `--serve-date YYYY-MM-DD`, that date (day 3 only, and required with `--repeats`: the draw records it
+and every Day-3 hidden manifest carries it as `serve_from`, so `make rate` serves no Day-3 batch before it, D-013's
+2 days) and, if the final picked the other finalist, `--rerun-s2 <sax id>`; a cut adds `--cut <name>+<name>`. The
+tally writes the whole line (section 7.9):
 
-1. Everything the job was given goes into `summary/leaders.json` first.
+    --stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>/swing=<id>/humanize=<id>/sax_variant=<id>/timing=<id> --prior <job1>+<job2> --repeats <stage>+<stage> --serve-date YYYY-MM-DD
+
+ARGS hold no spaces, so they need no comma-safe `--export`.
+
+1. Everything the job was given goes into `summary/leaders.json` first (`serve_date` only when given).
 2. `draw`: `python -m lofi_rl.shootout.batch draw` writes `summary/draw.json` (the maps, the order, the anchors and
    repeats, and the renders and palettes the job must make), from a seed drawn there and recorded only there.
 3. `measure`: the palette generator (section 7.8) with `--levels none`: the measuring palettes, in
    `summary/palettes/measure/`; from day 2 on with the draw too (its band, and each stage palette a matched clip
    plays: CD-53).
 4. `levels`: the levels tool (section 7.1), with the draw (every clip's own fader, its sour copies' texts
-   included: CD-52; from day 2 on every bus a clip matches, on its own palette: CD-53) and with `--prior` the first
-   prior job's levels.json (its drift keys, and each instrument's move from it).
+   included: CD-52; from day 2 on every bus a clip matches, on its own palette: CD-53; on day 3 the anchor's sour
+   copy matched to its round-mates' sax on its rain palette) and with `--prior` the first prior job's levels.json
+   (its drift keys, and each instrument's move from it).
 5. `palettes`: the generator again, with the measured trims and faders and the draw: `summary/palettes/<key>.yaml`
    for every palette the draw asks for, each clip of an instrument stage its own.
 6. `render`: every clip, `--jobs` at a time with 1 worker each (`python -m lofi_rl.shootout.render`).
@@ -54,6 +65,7 @@ from importlib.util import find_spec
 from pathlib import Path
 
 from lofi_rl.palette import ROOT
+from lofi_rl.ui.manifest import serve_from_date
 
 from .draw import DrawError, day_band, parse_leaders
 from .plan import PLAN, PlanError, day_name, day_number, load_plan
@@ -80,6 +92,8 @@ def _args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--leaders", default=None)
     p.add_argument("--prior", default="", help="earlier lofi-shootout job ids, joined by +")
     p.add_argument("--repeats", default="", help="stages whose rounds may come back, joined by +")
+    p.add_argument("--serve-date", default=None, metavar="YYYY-MM-DD",
+                   help="day 3: the first day its batches may be served (required with --repeats; D-013's 2 days)")
     p.add_argument("--rerun-s2", default=None)
     p.add_argument("--cut", default="", help="cut-list names joined by +")
     p.add_argument("--add", default="", help="optional stages joined by + (day 2: R2r, the bass re-listen, CD-54)")
@@ -117,6 +131,7 @@ def check(a: argparse.Namespace) -> dict:
     if a.rerun_s2 and day_number(a.stage) != plan.rerun_day:
         raise JobError("--rerun-s2: the S2 re-run comes only on "
                        + (day_name(plan.rerun_day) if plan.rerun_day else "no day"))
+    serve = serve_date(a.serve_date, plan, a.stage, repeats)
     cuts = sorted(c.id for c in plan.cuts)
     unknown = [c for c in cut if c not in cuts]
     if unknown:
@@ -126,10 +141,32 @@ def check(a: argparse.Namespace) -> dict:
     except (DrawError, PlanError) as err:
         raise JobError(str(err)) from err
     runs = a.runs or a.run.parent
-    return {"schema": LEADERS_SCHEMA, "stage": a.stage, "leaders": {k: list(v) for k, v in leaders.items()},
-            "prior": prior, "prior_runs": [str(runs / f"shootout-{j}") for j in prior], "repeats": repeats,
-            "rerun_s2": a.rerun_s2, "cut": cut, "add": add, "jobs": a.jobs, "plan": str(a.plan),
-            "plan_sha256": plan.sha256}
+    doc = {"schema": LEADERS_SCHEMA, "stage": a.stage, "leaders": {k: list(v) for k, v in leaders.items()},
+           "prior": prior, "prior_runs": [str(runs / f"shootout-{j}") for j in prior], "repeats": repeats,
+           "rerun_s2": a.rerun_s2, "cut": cut, "add": add, "jobs": a.jobs, "plan": str(a.plan),
+           "plan_sha256": plan.sha256}
+    if serve is not None:                       # only when given, so a day-1 or day-2 leaders.json keeps its form
+        doc["serve_date"] = serve
+    return doc
+
+
+def serve_date(text: str | None, plan, stage: str, repeats: list[str]) -> str | None:
+    """`--serve-date`, checked: a date (YYYY-MM-DD) on the repeats' day only, and given whenever `--repeats` is, since
+    a repeat comes at least `controls.repeats.min_days_after` days after its first showing's vote (D-013) and the
+    batches carry the date (`serve_from`) that `make rate` waits for."""
+    if text is None:
+        if repeats:
+            raise JobError(f"--repeats needs --serve-date YYYY-MM-DD, the day {day_name(plan.repeat_day)} will be "
+                           f"served: a repeat comes at least {plan.controls['repeats']['min_days_after']} days after "
+                           "its first showing's vote (D-013), and make rate serves no Day-3 batch before that date")
+        return None
+    if day_number(stage) != plan.repeat_day:
+        raise JobError(f"--serve-date: only {day_name(plan.repeat_day)}, the repeats' day, is served from a date")
+    try:
+        serve_from_date(text)
+    except ValueError:
+        raise JobError(f"--serve-date {text!r} is not a date (YYYY-MM-DD)") from None
+    return text
 
 
 def commands(a: argparse.Namespace, doc: dict) -> list[tuple[str, list[str]]]:
@@ -142,6 +179,8 @@ def commands(a: argparse.Namespace, doc: dict) -> list[tuple[str, list[str]]]:
         draw += ["--prior", *(str(Path(r) / "summary" / "batches.json") for r in doc["prior_runs"])]
     if doc["repeats"]:
         draw += ["--repeats", "+".join(doc["repeats"])]
+    if doc.get("serve_date"):
+        draw += ["--serve-date", doc["serve_date"]]
     if a.rerun_s2:
         draw += ["--rerun-s2", a.rerun_s2]
     if doc["cut"]:

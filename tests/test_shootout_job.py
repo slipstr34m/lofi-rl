@@ -20,7 +20,8 @@ from lofi_rl.shootout.plan import load_plan
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "jobs" / "shootout.sbatch"
 DAY3 = ["--stage", "day3", "--leaders", "keys=fp_fm_ep1/kit=kit_swirly/bass=bass_fp_finger_yr/sax=sax_mtg_tenor",
-        "--prior", "13640001+13640002", "--repeats", "K1+R1+S1", "--rerun-s2", "sax_gu_alto", "--cut", "w1-two"]
+        "--prior", "13640001+13640002", "--repeats", "K1+R1+S1", "--serve-date", "2026-11-03", "--rerun-s2",
+        "sax_gu_alto", "--cut", "w1-two"]
 
 
 def _sbatch(name: str) -> str:
@@ -59,6 +60,7 @@ def test_the_runner_writes_every_argument_into_leaders_json_and_lists_the_stages
     assert doc["leaders"] == {"keys": ["fp_fm_ep1"], "kit": ["kit_swirly"], "bass": ["bass_fp_finger_yr"],
                               "sax": ["sax_mtg_tenor"]}
     assert doc["repeats"] == ["K1", "R1", "S1"] and doc["rerun_s2"] == "sax_gu_alto" and doc["cut"] == ["w1-two"]
+    assert doc["serve_date"] == "2026-11-03"
     assert doc["prior_runs"] == [str(tmp_path / "runs" / f"shootout-{j}") for j in ("13640001", "13640002")]
     out = capsys.readouterr().out
     steps = [l.split(":", 1)[0] for l in out.splitlines() if re.match(r"^(draw|measure|levels|palettes|render|build):", l)]
@@ -68,7 +70,7 @@ def test_the_runner_writes_every_argument_into_leaders_json_and_lists_the_stages
     assert f"batch draw --plan {job.PLAN} --stage day3 --summary {s}" in lines["draw"]
     assert f"--prior {tmp_path}/runs/shootout-13640001/summary/batches.json " \
            f"{tmp_path}/runs/shootout-13640002/summary/batches.json" in lines["draw"]
-    assert "--repeats K1+R1+S1" in lines["draw"] and "--rerun-s2 sax_gu_alto" in lines["draw"]
+    assert "--repeats K1+R1+S1 --serve-date 2026-11-03" in lines["draw"] and "--rerun-s2 sax_gu_alto" in lines["draw"]
     assert "--cut w1-two" in lines["draw"] and "--seed" not in lines["draw"]
     # from day 2 on the measuring palettes follow the draw: its band, and each matched clip's palette (CD-53)
     assert lines["measure"].endswith(f"lofi_rl.shootout.palettes --plan {job.PLAN} --stage day3 --levels none "
@@ -84,20 +86,39 @@ def test_the_runner_writes_every_argument_into_leaders_json_and_lists_the_stages
            f"--draw {s}/draw.json" in lines["build"]
 
 
+def test_the_serving_date_reaches_the_draw_and_days_1_and_2_keep_their_leaders_json(tmp_path, capsys):
+    # spec-F1 (2026-11-01 review): job 3's batches carry the date they may first be served, from its --serve-date
+    # through the draw (repeats.serve_date) to every hidden manifest (serve_from); a day-3 job with no repeat may
+    # name one too, and the other days' leaders.json have no such key
+    run = tmp_path / "runs" / "shootout-13640005"
+    base = ["--run", str(run), "--inbox", str(tmp_path / "inbox"), "--stage", "day3", "--leaders", DAY3[3]]
+    assert job.main([*base, "--serve-date", "2026-11-04", "--dry-run"]) == 0
+    assert json.loads((run / "summary" / "leaders.json").read_text())["serve_date"] == "2026-11-04"
+    draw_line = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("draw: "))
+    assert draw_line.endswith("--serve-date 2026-11-04") and "--repeats" not in draw_line
+    one = tmp_path / "runs" / "shootout-13640006"
+    assert job.main(["--run", str(one), "--inbox", str(tmp_path / "inbox"), "--stage", "day1", "--dry-run"]) == 0
+    assert "serve_date" not in json.loads((one / "summary" / "leaders.json").read_text())
+    assert "--serve-date" not in capsys.readouterr().out
+
+
 ARGPARSE = ("unrecognized arguments", "the following arguments are required", "invalid choice", "expected one argument",
             "not allowed with")
 
 
-def test_every_stage_command_is_one_its_tool_takes(tmp_path, capsys, monkeypatch):
+@pytest.mark.parametrize("stage", ["day1", "day3"])
+def test_every_stage_command_is_one_its_tool_takes(tmp_path, capsys, monkeypatch, stage):
     # Each stage runs a tool's own CLI in a fresh process, so a flag the tool does not take, or a folder one stage
     # writes and the next does not read, would only show on the cluster. 2026-10-31 dry run: the generator was
     # called without --stage, with --draw on the measuring run and --out one level too deep. Here each command
     # line goes through its tool's main() (inputs missing, so each stops at its own checks, never at argparse), and
-    # the folders chain: measure -> levels -> palettes -> render -> build.
+    # the folders chain: measure -> levels -> palettes -> render -> build. Day 3 passes every argument job 3 can
+    # take (--prior, --repeats, --serve-date, --rerun-s2, --cut) on to the draw.
     from lofi_rl.shootout import batch, levels, palettes, render
     monkeypatch.setenv("LOFI_ASSETS", str(tmp_path / "no-assets"))     # the generator stops at its source check
+    more = DAY3[2:] if stage == "day3" else []
     a = job._args(["--run", str(tmp_path / "runs" / "shootout-1"), "--inbox", str(tmp_path / "inbox"), "--stage",
-                   "day1", "--seed", "0000000000000001"])
+                   stage, *more, "--seed", "0000000000000001"])
     steps = dict(job.commands(a, job.check(a)))
     tools = {"draw": batch, "measure": palettes, "levels": levels, "palettes": palettes, "render": render,
              "build": batch}
@@ -114,8 +135,10 @@ def test_every_stage_command_is_one_its_tool_takes(tmp_path, capsys, monkeypatch
     assert arg["palettes"]["--levels"] == arg["levels"]["--out"] and arg["render"]["--palettes"] == arg["palettes"]["--out"]
     assert arg["render"]["--draw"] == arg["palettes"]["--draw"] == arg["build"]["--draw"] == arg["levels"]["--draw"]
     assert arg["levels"]["--draw"] == arg["draw"]["--summary"] + "/draw.json", "the levels see every clip drawn"
-    assert arg["build"]["--renders"] == arg["render"]["--out"] and "--draw" not in arg["measure"]
-    assert {arg[n]["--stage"] for n in ("draw", "measure", "levels", "palettes", "build")} == {"day1"}
+    assert arg["build"]["--renders"] == arg["render"]["--out"] and ("--draw" in arg["measure"]) == (stage != "day1")
+    assert {arg[n]["--stage"] for n in ("draw", "measure", "levels", "palettes", "build")} == {stage}
+    if stage == "day3":
+        assert arg["draw"]["--serve-date"] == "2026-11-03" and arg["draw"]["--repeats"] == "K1+R1+S1"
 
 
 @pytest.mark.parametrize("args,match", [
@@ -124,6 +147,12 @@ def test_every_stage_command_is_one_its_tool_takes(tmp_path, capsys, monkeypatch
     (["--stage", "day2", "--leaders", "keys"], "leaders"),
     (["--stage", "day1", "--repeats", "K1"], "repeats"),
     (["--stage", "day1", "--repeats", "K1/R1"], "repeats"),
+    # D-013's 2 days (2026-11-01 review, spec-F1): the repeats come with the date the batches may first be served
+    (["--stage", "day3", "--leaders", DAY3[3], "--prior", "1+2", "--repeats", "K1"], "--repeats needs --serve-date"),
+    (["--stage", "day2", "--leaders", "keys=gu_tine_ep+fp_fm_ep1+gu_organ/kit=kit_swirly/bass=bass_fp_finger_yr/"
+      "sax=sax_mtg_tenor+sax_gu_alto", "--serve-date", "2026-11-03"], "only day3, the repeats' day"),
+    *[(["--stage", "day3", "--leaders", DAY3[3], "--prior", "1+2", "--repeats", "K1", "--serve-date", bad],
+       "is not a date") for bad in ("Nov 3", "2026-11-31", "20261103", "2026-W45-2", "2026-11-3")],
 ])
 def test_bad_job_arguments_stop_before_anything_runs(tmp_path, capsys, args, match):
     rc = job.main(["--run", str(tmp_path / "run"), "--inbox", str(tmp_path / "inbox"), *args, "--dry-run"])

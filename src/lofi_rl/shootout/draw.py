@@ -14,7 +14,9 @@ What is drawn, per day:
    that clip's candidate; on day 3 each repeat group shows one round of a `--prior` batch again, tiles
    reversed, never the first round served of a stage [CD-24], and only from the stages `repeats` names;
 3. on day 3 the split of the pool (W1, W2, the S2 re-run, the anchor, the repeats) into the two mix batches of
-   about equal planned length;
+   about equal planned length: the greedy split (longest round first onto the shorter batch), redrawn up to 500
+   times until both batches can be ordered, and when none can, the first in a drawn order of every split whose
+   lengths are within the longest round of each other that both order (`_split_all`);
 4. the order of the rounds in each batch [CD-22]: no two consecutive rounds on one loop, and a design round first.
    An optional stage the job adds (`--add R2r`, CD-54) opens its batch: its rounds come first, in a drawn order,
    then the batch's own, in a drawn order, the two parts joined under the same rule.
@@ -35,7 +37,10 @@ the stage palette `<stage>[_<kit>]_<option>`; its `level` names the bus, the opt
 on, every clip of a stage that names `match` (plan.yaml) plays its own palette too (CD-53), named the same way, and
 its `level` names those buses and its case, which the level tool measures on the clip's own stage palette and text;
 a vamp's text is named by the vamp (`<loop>.<vamp>`, palette `v_<loop id>_<vamp>`). Every other stage (Day 3's
-rain) plays one palette per option.
+rain) plays one palette per option, but an anchor's sour copy there plays its own (2026-11-01 review): `<base>_<loop
+id>_sour`, whose `level` is `{buses: [sax], case: <loop>.sour, target: round}`, so the level tool gives it the sax
+fader that puts its sax where its round-mates' sits (the band sax at its median fader on the round's own rain
+palette), not at S* + T: the sour text changes only the sax notes, and so its sax loudness.
 
 Sound claims: none.
 """
@@ -49,6 +54,7 @@ from pathlib import Path
 from typing import Any
 
 from lofi_rl.prng import GOLDEN, MASK, below, splitmix64
+from lofi_rl.ui.manifest import serve_from_date
 
 from .plan import (BAND_SLOTS, SLOT_BUS, SLOT_LIST, Batch, Plan, PlanError, Stage, apply_adds, apply_cuts, day_name,
                    day_number, substitute)
@@ -58,7 +64,8 @@ SCHEMA = "lofi-rl/shootout-draw/1"
 BARS = 8
 MATCHED = tuple(SLOT_BUS)       # band slots whose option is an instrument: each clip takes its own fader (CD-52)
 ORDER_TRIES = 4000              # random orders tried before the exhaustive search
-SPLIT_TRIES = 500
+SPLIT_TRIES = 500               # greedy splits of a pool tried before the search of every split (_split_all)
+SPLIT_ALL_MAX = 22              # rounds a search of every split takes (2**22 sets); Day 3 has at most 19
 
 
 class DrawError(ValueError):
@@ -334,6 +341,10 @@ def _clip(ctx: _Ctx, stage: Stage, loop_id: str, option: str, band: Mapping[str,
                  else {"bus": stage.bus, "variant": option, "case": case})       # CD-52: its candidate's 9-loop runs
         spec = {**spec, "base": key, "level": level}
         key = "_".join([key, loop_id.lower()] + ([] if variant == "base" else [variant]))
+    elif sour:                                  # Day 3's rain: the sour copy's own sax fader, matched to its round
+        level = {"buses": ["sax"], "case": f"{lp.name}.{variant}", "target": "round"}
+        spec = {**spec, "base": key, "level": level}
+        key = "_".join([key, loop_id.lower(), variant])
     if ctx.palettes.setdefault(key, spec) != spec:
         raise DrawError(f"palette {key} is asked for with two different bands")
     register = plan.candidates[pal_band["sax"]].register if pal_band.get("sax") else None
@@ -493,7 +504,9 @@ def _prior_clip(ctx: _Ctx, pr: Prior, c: Mapping) -> dict:
     pal = run_dir / "summary" / "palettes" / f"{entry['palette']}.yaml" if entry else None
     if entry is None or not pal.is_file():
         raise DrawError(f"render {rid} of {run_dir} was purged and cannot be made again (no draw entry or palette)")
-    new = f"prior.{run_dir.name}.{rid}"
+    # named by the job id alone: the run folder's word "shootout" is the public manifest's mode, and a hidden name
+    # holding it trips the builder's leak guard (batch.public_leaks)
+    new = f"prior.{run_dir.name.removeprefix('shootout-')}.{rid}"
     ctx.renders[new] = {**entry, "palette_path": str(pal), "expect_pcm_sha256": c["pcm_sha256"]}
     return {**clip, "render": new}
 
@@ -507,7 +520,7 @@ def _read_draw(run_dir: Path) -> dict:
 
 def _split(rounds: list[dict], names: Sequence[str], rng: Rng) -> dict[str, list[dict]]:
     """The pool split into the batches by planned length (longest first onto the shorter batch, ties drawn),
-    redrawn until every batch can open with a design round and be ordered."""
+    redrawn until every batch has a design round (`_split_batches` redraws it until both can be ordered)."""
     for _ in range(SPLIT_TRIES):
         pool = rng.shuffle(list(rounds))
         pool.sort(key=lambda r: -round_seconds(len(r["clips"]), r["bpm"]))
@@ -523,12 +536,100 @@ def _split(rounds: list[dict], names: Sequence[str], rng: Rng) -> dict[str, list
     raise DrawError(f"could not split {len(rounds)} rounds into {list(names)} with a design round in each")
 
 
+def _may_order(rounds: Sequence[Mapping]) -> bool:
+    """What any order under CD-22 needs (`order_rounds`: a design round first, no two consecutive rounds on one
+    loop): a design round; no loop holding more than half the rounds, rounded up; and where an odd number of rounds
+    has a loop holding exactly that many, a design round on that loop, since its rounds must take every odd place
+    and so open the batch. Necessary conditions only: a part that fails one cannot be ordered."""
+    m = len(rounds)
+    by_loop: dict[str, list[Mapping]] = {}
+    for r in rounds:
+        by_loop.setdefault(r["loop"], []).append(r)
+    cap = (m + 1) // 2
+    return any(r["kind"] == "none" for r in rounds) and all(
+        len(rs) < cap or (len(rs) == cap and (m % 2 == 0 or any(r["kind"] == "none" for r in rs)))
+        for rs in by_loop.values())
+
+
+def _split_batches(b: Batch, name: str, pool: list[dict], seed: int) -> list[dict]:
+    """A split pool's batches (day 3), in the plan's order of `b.names`: the greedy split of `_split`, redrawn up to
+    SPLIT_TRIES times until every batch can be ordered [CD-22] (section 2.4's planner), and only when none can, the
+    search of every split (`_split_all`). A redraw whose part fails `_may_order` goes on to the next without trying
+    to order it (order_rounds would refuse it), and the order streams are keyed per batch, so a draw that passes
+    the redraws is the one the loop gave before the search existed."""
+    names = list(b.names)
+    rng = Rng.keyed(seed, "split", name)
+    for _ in range(SPLIT_TRIES):
+        try:
+            parts = _split(pool, names, rng)
+        except DrawError:                   # no greedy split puts a design round in each batch: search them all
+            break
+        if not all(_may_order(parts[x]) for x in names):
+            continue
+        try:
+            return [_batch_doc(b, x, parts[x], Rng.keyed(seed, "order", x)) for x in names]
+        except DrawError:
+            continue
+    return _split_all(b, name, pool, seed)
+
+
+def _split_all(b: Batch, name: str, pool: list[dict], seed: int) -> list[dict]:
+    """Every split of a pool into its two batches whose planned lengths are within the longest round's of each
+    other and whose parts both pass `_may_order`, tried in an order drawn from the seed (`split-all`) until both
+    parts can be ordered [CD-22]. Each round goes to the batch its bit names (pool order), so a seed gives one
+    draw. DrawError only when no split can be ordered."""
+    names = list(b.names)
+    n = len(pool)
+    if len(names) != 2 or not 0 < n <= SPLIT_ALL_MAX:
+        raise DrawError(f"no split of {name} can be ordered ({n} rounds into {names}, and a search of every split "
+                        f"covers two batches and at most {SPLIT_ALL_MAX} rounds)")
+    secs = [round_seconds(len(r["clips"]), r["bpm"]) for r in pool]
+    full = (1 << n) - 1
+    design = sum(1 << i for i, r in enumerate(pool) if r["kind"] == "none")
+    on_loop: dict[str, int] = {}
+    for i, r in enumerate(pool):
+        on_loop[r["loop"]] = on_loop.get(r["loop"], 0) | 1 << i
+    loops = list(on_loop.values())
+
+    def may_order(part: int) -> bool:                   # _may_order on a set of the pool's rounds
+        k = part.bit_count()
+        cap = (k + 1) // 2
+        for lm in loops:
+            c = (part & lm).bit_count()
+            if c > cap or (c == cap and k % 2 and not part & lm & design):
+                return False
+        return bool(part & design)
+
+    total = [0.0] * (full + 1)                          # planned seconds of every set of rounds
+    for m in range(1, full + 1):
+        low = m & -m
+        total[m] = total[m ^ low] + secs[low.bit_length() - 1]
+    longest = max(secs)
+    cands = [m for m in range(1, full) if abs(total[m] - total[full ^ m]) <= longest and may_order(m)
+             and may_order(full ^ m)]
+    rng = Rng.keyed(seed, "split-all", name)
+    for i in range(len(cands)):                        # a drawn order, one Fisher-Yates step per split tried
+        j = i + rng.below(len(cands) - i)
+        cands[i], cands[j] = cands[j], cands[i]
+        m = cands[i]
+        parts = {names[0]: [r for k, r in enumerate(pool) if m >> k & 1],
+                 names[1]: [r for k, r in enumerate(pool) if not m >> k & 1]}
+        try:
+            return [_batch_doc(b, x, parts[x], Rng.keyed(seed, "order", x)) for x in names]
+        except DrawError:
+            continue
+    raise DrawError(f"no split of {name} can be ordered: none of its {len(cands)} splits within the longest round "
+                    "of equal length")
+
+
 def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ...]] | None = None,
          priors: Sequence[Prior] = (), repeats: Sequence[str] = (), rerun_s2: str | None = None,
-         cuts: Sequence[str] = (), adds: Sequence[str] = ()) -> dict:
+         cuts: Sequence[str] = (), adds: Sequence[str] = (), serve_date: str | None = None) -> dict:
     """The day's draw as draw.json holds it. Raises DrawError (or PlanError) before anything is written. `adds`
     names the optional stages the job adds (`--add R2r`, CD-54); draw.json's `plan` records them as `adds` (only
-    when there are some, so a draw without them keeps its old form)."""
+    when there are some, so a draw without them keeps its old form). `serve_date` (YYYY-MM-DD, the repeats' day
+    only: the job's --serve-date) is the first day the batches may be served, recorded as `repeats.serve_date` (only
+    when given) for the batch builder, which writes it into every hidden manifest as `serve_from` (D-013's gap)."""
     leaders = dict(leaders or {})
     n = day_number(day)
     day = day_name(n)
@@ -549,6 +650,13 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
         raise DrawError("repeats need the --prior batches they repeat")
     if rerun_s2 and n != plan.rerun_day:
         raise DrawError("the S2 re-run comes only on " + (day_name(plan.rerun_day) if plan.rerun_day else "no day"))
+    if serve_date is not None:
+        if n != plan.repeat_day:
+            raise DrawError(f"a serving date goes with the repeats, which come only on {day_name(plan.repeat_day)}")
+        try:
+            serve_from_date(serve_date)
+        except ValueError:
+            raise DrawError(f"--serve-date {serve_date!r} is not a date (YYYY-MM-DD)") from None
     stages = list(plan.stages_of(n))
     band = _day_band(plan, day, leaders, stages)
     if rerun_s2 and rerun_s2 not in plan.band_options["sax"]:
@@ -559,7 +667,10 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
     band_of: dict[str, dict] = {}
     run_stages = [(st, st.id, band) for st in stages]
     if rerun_s2:
-        rerun_band = {**band, "sax": rerun_s2}
+        # section 4.4: S2 again on the other finalist, with its variant slots at their Day-2 values (warm off and
+        # grid, CD-19), not the Day-3 band's picks, so a clip differs from its round-mates in its own option only
+        fixed = plan.days[plan.stages[plan.rerun_stages[0]].day].fixed
+        rerun_band = {**band, "sax": rerun_s2, "sax_variant": fixed["sax_variant"], "timing": fixed["timing"]}
         run_stages += [(replace(plan.stages[s], day=n), s, rerun_band) for s in plan.rerun_stages]
     for st, sid, b in run_stages:
         if sid in maps:
@@ -586,17 +697,7 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
         pool = [r for s in stage_ids for r in by_stage[s]]
         pool += _anchors(ctx, b, name, pool, band_of, seed)
         pool += _repeats(ctx, priors, repeats, lambda g: Rng.keyed(seed, "repeat", g))
-        rng = Rng.keyed(seed, "split", name)
-        for _ in range(SPLIT_TRIES):
-            parts = _split(pool, list(b.names), rng)
-            try:
-                docs = [_batch_doc(b, x, parts[x], Rng.keyed(seed, "order", x)) for x in b.names]
-                break
-            except DrawError:
-                continue
-        else:
-            raise DrawError(f"no split of {name} can be ordered")
-        batches += docs
+        batches += _split_batches(b, name, pool, seed)
     batches.sort(key=lambda d: (d["date"], d["name"]))
     plan_doc = {"path": str(plan.path), "sha256": plan.sha256, "cuts": list(plan.applied_cuts)}
     if plan.applied_adds:
@@ -605,7 +706,8 @@ def draw(plan: Plan, day: str, *, seed: int, leaders: Mapping[str, tuple[str, ..
         "schema": SCHEMA, "v": 1, "stage": day, "seed": f"{seed & MASK:016x}",
         "plan": plan_doc,
         "leaders": {k: list(v) for k, v in sorted(leaders.items())}, "band": band,
-        "repeats": {"stages": list(repeats), "prior": [str(p.run_dir) for p in priors]},
+        "repeats": {"stages": list(repeats), "prior": [str(p.run_dir) for p in priors],
+                    **({"serve_date": serve_date} if serve_date is not None else {})},
         "rerun_s2": rerun_s2,
         "maps": {sid: maps[sid] for sid in maps},
         "batches": batches,

@@ -3,6 +3,7 @@
     python -m lofi_rl.shootout.tally --votes data/votes --inbox inbox [--batch <name> ...] [--out <dir>]
         [--report <file.md>] [--plan shootouts/plan.yaml] [--config configs/rating.yaml] [--levels <levels.json> ...]
         [--runs runs] [--day2-cuts none|<cut>+<cut> [--day2-cuts-by <his words, date>]]
+        [--serve-date YYYY-MM-DD] [--day3-cuts none|<cut>+<cut> [--day3-cuts-by <his words, date>]]
 
 It reads each shootout batch's vote log (`<votes>/<batch>.jsonl`, the rating page's events: docs/RATING.md Part 2)
 and its manifests (`<inbox>/<date>/<batch>/`), reruns `ui.audit.aggregate` on each batch, and writes
@@ -20,12 +21,17 @@ across its batches (section 8):
 - ties [CD-39]: BW, then more bests, then fewer worsts; on a single-winner choice the default if it is among the
   tied, otherwise Shresth's word;
 - repeats scored for agreement (implied pairs, the audit's figure, pooled with a Wilson 95 % interval) and left out
-  of the counts [CD-47]; position-of-best counts pooled by clip count over the shootout batches (descriptive);
+  of the counts [CD-47], except a repeat voted fewer calendar days after its first showing's vote than D-013's
+  `controls.repeats.min_days_after` (each vote's date in its own offset), which goes to `too_soon` and is not
+  scored; position-of-best counts pooled by clip count over the shootout batches (descriptive);
 - rounds flagged by section 3, from the hidden manifests' levels: a round whose candidates' bus loudness (`bus_lufs`)
   spreads over 1.0 LU, over 0.5 LU for the timing variants [CD-26], and a vamp round whose keys (`bus_lufs`) or bass
   (`bass_lufs`) loudness spreads over 1.0 LU [CD-27]; from Day 2 on every other bus a stage matches too
-  (`<bus>_lufs`, CD-53: R3a's sax, keys and bass, R3b's keys and bass), at its stage's limit; with --levels, every
-  trim or fader a job's drift check moved by more than 0.1 dB.
+  (`<bus>_lufs`, CD-53: R3a's sax, keys and bass, R3b's keys and bass), at its stage's limit; on Day 3 a W1 round
+  whose excerpts' beds, measured in the finished renders relative to their music (`bed_lu`), spread over 1.0 LU (W2's
+  level is its candidate), and a W1 or W2 anchor round whose sax as rendered (`sax_lufs`: its sour copy plays its own
+  fader, matched to its round-mates') spreads over 1.0 LU; with --levels, every trim or fader a job's drift check
+  moved by more than 0.1 dB.
 
 Section 8's rules are the functions `keys_to_k2`, `kits_after_r1`, `bass_pairings`, `relisten_bass` (CD-54),
 `sax_to_final` and `day2_cut` (after Day 1), `keys_survivors`, `sax_final`, `warmth`, `timing`, `swing`, `humanize`,
@@ -38,7 +44,13 @@ compares its drift keys with job 1's (section 3); `--add R2r` when the bass is u
 carries the surviving kits, leader first, and the bass slot the default meanwhile); and `--cut`, from the minutes of
 the Day-2 plan the draw will play with those leaders (`draw.day_minutes`), or, with `--day2-cuts`, from Shresth's
 word on Day 2's cuts, which overrides the list: job 2 runs his cuts, the S1 rule keeps the final unless he cuts it,
-and the list's cuts stay in the report as advice. A case the spec does not decide raises
+and the list's cuts stay in the report as advice. After Day 2 they make job 3's line the same way (`_day3`): the
+Day-2 picks as `--leaders`, every variant slot named, from the rules and job 2's pulled summary/leaders.json (what
+job 2 ran: its kits, the sax S2 ran on, its adds and cuts); `--prior` job 1 and job 2; `--repeats`, the stages whose
+design rounds were all voted at least two days before the serving date Claude gives with --serve-date
+(`first_votes`); `--serve-date` itself, which job 3 records and writes into every Day-3 hidden manifest as
+`serve_from`, so `make rate` serves no Day-3 batch before it; `--rerun-s2` when the final picks the other finalist;
+and Day 3's cut (`day3_cut`, or his word with --day3-cuts). A case the spec does not decide raises
 `RuleGap`, which names the section; the tally records it and lists it with everything else that needs Shresth's
 word. A batch with no votes is reported as such, never as zeros. A seeded draw (CD-41, CD-18, a provisional leader) is keyed by the stage's
 standing vote ids, so it is fixed once the votes exist and the private logs reproduce it.
@@ -69,8 +81,8 @@ from lofi_rl.ui.serve import ROOT as REPO
 from lofi_rl.ui.serve import ConfigError, _inside, load_config
 from lofi_rl.ui.votes import active_votes, atomic_write, read_all, read_events
 
-from .draw import DrawError, Rng, day_band, day_minutes, parse_leaders
-from .plan import BAND_SLOTS, BUS_SLOT, MIX_ORDER, PLAN, Plan, PlanError, load_plan
+from .draw import DrawError, Rng, day_band, day_minutes, parse_leaders, round_seconds
+from .plan import BAND_SLOTS, BUS_SLOT, MIX_ORDER, PLAN, Plan, PlanError, apply_adds, apply_cuts, load_plan
 
 SCHEMA = "lofi-rl/shootout-tally/1"
 BATCH_SCHEMA = "lofi-rl/shootout-tally-batch/1"
@@ -79,9 +91,12 @@ MATCHED_LU = 1.0              # section 3 step 8: an instrument round's candidat
 TIMING_LU = 0.5               # section 3 "Not matched": the variants that move notes in time [CD-26]
 TIMING_SLOTS = frozenset({"swing", "humanize", "timing"})
 UNMATCHED_SLOTS = frozenset({"bed", "rain"})            # rain: the level is the candidate
+BED_SLOT = "bed"              # W1: the excerpt is the candidate at one level, so its beds are compared like a bus
 MOVE_DB = 0.1                 # section 3 "Drift between jobs": a trim or fader that moves more is listed
 DAY2_PUSHES_MIN = 30.0        # section 2.7 cut list: Day 2's two pushes of 15 minutes
 DAYS12_MIN = 55.0             # section 2.7 cut list: P section 7's "about 55 min" for Nov 3-4
+DAY3_MIN = 30.0               # section 2.7: "Day 3 is cut only if r x its plan would pass 30"
+LEADERS_SCHEMA = "lofi-rl/shootout-leaders/1"            # a job's summary/leaders.json (lofi_rl.shootout.job)
 DAY1_STAGES = ("K1", "R1", "R2", "S1")
 RELISTEN = "R2r"              # Day 2's bass re-listen (CD-54): the optional stage the Day-1 proposal adds with --add
 WORD = "Shresth's word"       # the record of --day2-cuts when --day2-cuts-by gives no words
@@ -475,16 +490,17 @@ def day2_cut(plan: Plan, day1_minutes: float, *, counts: Mapping[str, int] | Non
     return doc
 
 
-def decided_cuts(plan: Plan, cuts: Sequence[str]) -> list[str]:
-    """Shresth's word on Day 2's cuts (the CLI's --day2-cuts; [] for none): Day-2 cuts of the plan, each named
-    once, returned in the list's order (section 2.7). TallyError otherwise."""
-    day2 = [c.id for c in sorted((c for c in plan.cuts if c.day == 2), key=lambda c: c.order)]
-    bad = [c for c in cuts if c not in day2]
+def decided_cuts(plan: Plan, cuts: Sequence[str], day: int = 2) -> list[str]:
+    """Shresth's word on a day's cuts (the CLI's --day2-cuts or --day3-cuts; [] for none): cuts of that day of the
+    plan, each named once, returned in the list's order (section 2.7). TallyError otherwise."""
+    ids = [c.id for c in sorted((c for c in plan.cuts if c.day == day), key=lambda c: c.order)]
+    bad = [c for c in cuts if c not in ids]
     if bad:
-        raise TallyError(f"--day2-cuts {bad}: not Day-2 cuts of the plan ({'+'.join(day2)}; 'none' for no cut)")
+        raise TallyError(f"--day{day}-cuts {bad}: not Day-{day} cuts of the plan ({'+'.join(ids)}; 'none' for no "
+                         "cut)")
     if len(set(cuts)) != len(cuts):
-        raise TallyError(f"--day2-cuts names a cut twice: {'+'.join(cuts)}")
-    return [c for c in day2 if c in cuts]
+        raise TallyError(f"--day{day}-cuts names a cut twice: {'+'.join(cuts)}")
+    return [c for c in ids if c in cuts]
 
 
 def _counted_best(rd: Round) -> dict | None:
@@ -886,7 +902,9 @@ def flag_rules(plan: Plan, stage: str) -> list[tuple[str, float, str]]:
     st = plan.stages.get(stage.removesuffix(RERUN))
     if st is None:
         return [("bus_lufs", MATCHED_LU, "bus")]
-    if st.fills in UNMATCHED_SLOTS:
+    if st.fills == BED_SLOT:      # W1 (section 4.5): every excerpt at delta 18, the bed measured in the render
+        return [("bed_lu", MATCHED_LU, "bed")]
+    if st.fills in UNMATCHED_SLOTS:                                  # W2: the level is the candidate
         return []
     limit = TIMING_LU if st.fills in TIMING_SLOTS else MATCHED_LU    # CD-26; instruments (CD-52), S2a, the vamps
     buses = list(st.match) or (["keys", "bass"] if st.fills is None else [st.bus])   # the vamps: keys and bass (CD-27)
@@ -895,9 +913,15 @@ def flag_rules(plan: Plan, stage: str) -> list[tuple[str, float, str]]:
 
 
 def round_levels(plan: Plan, rd: Round) -> tuple[list[dict], list[dict]]:
-    """(flags, spreads) of one round from its hidden manifest's level fields."""
+    """(flags, spreads) of one round from its hidden manifest's level fields. A Day-3 rain anchor round adds its sax
+    (`sax_lufs`, at MATCHED_LU): its sour copy plays its own sax fader, matched to its round-mates' (2026-11-01
+    review), where the music of a rain design round is one by construction."""
     flags, spreads = [], []
-    for name, limit, bus in flag_rules(plan, rd.stage):
+    rules = flag_rules(plan, rd.stage)
+    st = plan.stages.get(rd.stage.removesuffix(RERUN))
+    if rd.kind == "anchor" and st is not None and st.fills in UNMATCHED_SLOTS:
+        rules = rules + [("sax_lufs", MATCHED_LU, "sax")]
+    for name, limit, bus in rules:
         vals = [i.get(name) for i in rd.infos]
         where = {"batch": rd.batch, "round": rd.id, "number": rd.number, "kind": rd.kind, "stage": rd.stage,
                  "slot": rd.slot, "loop": rd.loop, "bus": bus, "field": name, "limit_lu": limit}
@@ -931,16 +955,28 @@ def levels_moved(paths: Sequence[Path]) -> list[dict]:
     return out
 
 
-def repeats_doc(rounds: Sequence[Round], logs: Mapping[str, list[dict]], heard_min: int) -> dict:
+def _vote_day(ts) -> date | None:
+    """The calendar day of a vote's timestamp, in its own offset (as `first_votes` reads it), or None."""
+    try:
+        return datetime.fromisoformat(ts).date()
+    except (TypeError, ValueError):
+        return None
+
+
+def repeats_doc(rounds: Sequence[Round], logs: Mapping[str, list[dict]], heard_min: int, min_days: int) -> dict:
     """CD-47: each shootout repeat against its first showing (looked up in every log, as the audit does), on implied
     pairs, pooled with a Wilson 95 % interval. Both sides carry their heard bars OR-ed over every attempt of their
     round, each in its own batch's log (D-013 as amended; ui.audit.aggregate merges the same way). Repeats never
-    enter the counts."""
+    enter the counts. D-013 pre-registers a repeat at least `min_days` days after its first showing
+    (controls.repeats.min_days_after): a repeat whose standing vote falls fewer calendar days after its first
+    showing's (each vote's date in its own offset) goes to `too_soon`, one without a readable date on either side to
+    `undated`, and neither is scored (`days_after` on every row whose first showing was found)."""
     originals: dict[str, dict] = {}
     for b in sorted(logs):
         merged = heard_over_attempts(logs[b])
         originals.update({k: with_merged_heard(v, merged) for k, v in active_votes(logs[b]).items()})
     rows, agree, compared, pending = [], 0, 0, 0
+    too_soon, undated = [], []
     for rd in rounds:
         if rd.kind != "repeat":
             continue
@@ -951,15 +987,26 @@ def repeats_doc(rounds: Sequence[Round], logs: Mapping[str, list[dict]], heard_m
         row = {"batch": rd.batch, "round": rd.id, "stage": rd.stage, "slot": rd.slot, "of": rd.of,
                "of_batch": first.get("batch") if first else None, "found": first is not None}
         if first is not None:
-            a, n = agreement("shootout", first, rd.vote.raw, heard_min)
-            agree, compared = agree + a, compared + n
-            row.update(agree=a, compared=n)
+            was, now = _vote_day(first.get("ts")), _vote_day(rd.vote.ts)
+            row["days_after"] = (now - was).days if was and now else None
+            if row["days_after"] is None:
+                undated.append(row)
+            elif row["days_after"] < min_days:
+                too_soon.append(row)
+            else:
+                a, n = agreement("shootout", first, rd.vote.raw, heard_min)
+                agree, compared = agree + a, compared + n
+                row.update(agree=a, compared=n)
         rows.append(row)
     lo, hi = wilson(agree, compared)
     return {"rule": "CD-47", "rounds": len(rows) + pending, "voted": len(rows), "pending": pending,
-            "found": sum(r["found"] for r in rows), "missing": sum(not r["found"] for r in rows), "agree": agree,
-            "compared": compared, "p": agree / compared if compared else None, "ci95": [lo, hi], "rows": rows,
-            "caveat": REPEAT_CAVEAT}
+            "found": sum(r["found"] for r in rows), "missing": sum(not r["found"] for r in rows),
+            "min_days_after": min_days, "scored": sum("compared" in r for r in rows),
+            "too_soon": [{k: r[k] for k in ("batch", "round", "stage", "of", "of_batch", "days_after")}
+                         for r in too_soon],
+            "undated": [{k: r[k] for k in ("batch", "round", "stage", "of", "of_batch")} for r in undated],
+            "agree": agree, "compared": compared, "p": agree / compared if compared else None, "ci95": [lo, hi],
+            "rows": rows, "caveat": REPEAT_CAVEAT}
 
 
 def position_doc(audits: Mapping[str, dict]) -> dict:
@@ -977,25 +1024,36 @@ def position_doc(audits: Mapping[str, dict]) -> dict:
     return {"descriptive": True, "batches": sorted(audits), "rows": rows}
 
 
-def first_votes(rounds: Sequence[Round], plan: Plan) -> dict:
-    """Section 2.5, for job 3's --repeats: each stage's first vote date, and whether it is at least
-    `min_days_after` days before the plan's repeat day (the plan's date; if the days slipped, Claude reads it
-    against the real one)."""
+def first_votes(rounds: Sequence[Round], plan: Plan, serve: date | None = None) -> dict:
+    """Section 2.5, for job 3's --repeats: per stage of the earlier days, the dates of its design rounds' standing
+    votes (the logs' own timestamps, each in its own offset), first and last, and whether every one of its rounds
+    was voted at least `min_days_after` days before Day 3 is served: `serve` (the CLI's --serve-date), or the plan's
+    repeat day when none is given (`against` says which). A repeat may show any design round of the stage but the
+    first served, so the stage is eligible only when its last vote is old enough and every design round has one."""
     rep = plan.controls["repeats"]
-    day3 = date.fromisoformat(plan.days[plan.repeat_day].date)
-    out = {}
+    when = serve or date.fromisoformat(plan.days[plan.repeat_day].date)
+    dates: dict[str, list[date]] = {}
+    design: dict[str, int] = {}
     for rd in rounds:
-        if rd.kind != "none" or rd.vote is None or not rd.vote.ts:
+        if rd.kind != "none" or (plan.stages.get(rd.stage) and plan.stages[rd.stage].day >= plan.repeat_day):
+            continue
+        design[rd.stage] = design.get(rd.stage, 0) + 1
+        if rd.vote is None or not rd.vote.ts:
             continue
         try:
-            d = datetime.fromisoformat(rd.vote.ts).date()
+            dates.setdefault(rd.stage, []).append(datetime.fromisoformat(rd.vote.ts).date())
         except ValueError:
             continue
-        cur = out.get(rd.stage)
-        if cur is None or d < cur:
-            out[rd.stage] = d
-    return {s: {"first_vote": d.isoformat(), "days_before": (day3 - d).days,
-                "eligible": (day3 - d).days >= rep["min_days_after"]} for s, d in sorted(out.items())}
+    out = {}
+    for s in sorted(design):
+        ds = dates.get(s, [])
+        first, last = (min(ds), max(ds)) if ds else (None, None)
+        days = (when - last).days if last else None
+        out[s] = {"first_vote": first.isoformat() if first else None, "last_vote": last.isoformat() if last else None,
+                  "rounds": design[s], "voted": len(ds), "days_before": days,
+                  "eligible": bool(ds) and len(ds) == design[s] and days >= rep["min_days_after"],
+                  "against": when.isoformat(), "serve_date": serve is not None}
+    return out
 
 
 # ------------------------------------------------------------------------------------------------ the tally
@@ -1074,17 +1132,25 @@ def _note_pick(needs: list[dict], key: str, label: str, pick: Mapping) -> None:
 def tally(votes_dir: Path, inbox: Path, *, plan: Plan, batches: Sequence[str] | None = None, heard_min: int = 1,
           toss_min: int = 1, budget_min: float = 60.0, levels: Sequence[Path] = (), today: date | None = None,
           runs: Path | None = None, day2_cuts: Sequence[str] | None = None,
-          day2_cuts_by: str | None = None) -> tuple[dict, dict[str, dict]]:
+          day2_cuts_by: str | None = None, serve_date: date | None = None, day3_cuts: Sequence[str] | None = None,
+          day3_cuts_by: str | None = None) -> tuple[dict, dict[str, dict]]:
     """The tally of every shootout batch in `inbox` (or the named ones): (shootouts.json, {batch: <batch>.json}).
     `heard_min` and `toss_min` default to configs/rating.yaml's heard.min_bars and toss_min_bars, 1 (D-013 as
     amended; the CLI reads the config), over every attempt of a round. `runs` holds the pulled job summaries
     (runs/shootout-<job>/summary/): the job that built the Day-1 batches is job 2's --prior (section 3, drift).
     `day2_cuts` is Shresth's word on Day 2's cuts ([] for none), `day2_cuts_by` his words and their date: job 2's
-    line then carries his cuts, not the cut list's (section 2.7)."""
+    line then carries his cuts, not the cut list's (section 2.7). `serve_date` is the day Day 3 will be served (the CLI's
+    --serve-date): job 3's --repeats name the stages whose rounds were all voted at least two days before it (section
+    2.5), and job 3's ARGS wait for it. `day3_cuts` and `day3_cuts_by` are Shresth's word on Day 3's cuts, as for
+    Day 2."""
     if day2_cuts is not None:
         day2_cuts = decided_cuts(plan, list(day2_cuts))
     elif day2_cuts_by is not None:
         raise TallyError("--day2-cuts-by goes with --day2-cuts")
+    if day3_cuts is not None:
+        day3_cuts = decided_cuts(plan, list(day3_cuts), day=3)
+    elif day3_cuts_by is not None:
+        raise TallyError("--day3-cuts-by goes with --day3-cuts")
     votes_dir, inbox = Path(votes_dir), Path(inbox)
     found, problems = find_batches(inbox)
     names = list(batches) if batches else sorted(found)
@@ -1134,6 +1200,10 @@ def tally(votes_dir: Path, inbox: Path, *, plan: Plan, batches: Sequence[str] | 
     proposal = _day2(plan, stages, rows, by_stage, audits, {n: loaded[n].status for n in names}, rules, needs,
                      built=built, runs=runs, day2_cuts=day2_cuts, day2_cuts_by=day2_cuts_by)
     _later(plan, stages, rows, by_stage, rules, needs)
+    eligibility = first_votes(rounds, plan, serve_date)
+    proposal.update(_day3(plan, stages, by_stage, audits, {n: loaded[n].status for n in names}, rules, needs,
+                          eligibility, built=built, runs=runs, serve_date=serve_date, day3_cuts=day3_cuts,
+                          day3_cuts_by=day3_cuts_by))
     pooled = {}
     for name, a, b in POOLS:                             # BW over K1 + K2 (CD-40); combined S1 + final BW (CD-18)
         if (stages.get(a) or {}).get("voted") and (stages.get(b) or {}).get("voted"):
@@ -1155,12 +1225,12 @@ def tally(votes_dir: Path, inbox: Path, *, plan: Plan, batches: Sequence[str] | 
         "pooled": pooled,
         "micro_sessions": [{**g, "batches": sorted(g["batches"])} for _, g in sorted(
             weights.items(), key=lambda kv: (str(kv[0][0]), kv[0][1] or 0))],
-        "repeats": repeats_doc(rounds, logs, heard_min),
+        "repeats": repeats_doc(rounds, logs, heard_min, plan.controls["repeats"]["min_days_after"]),
         "position_of_best": position_doc(audits),
         "flags": flags,
         "largest_spread": sorted(largest.values(), key=lambda s: (s["stage"], s["bus"])),
         "levels_moved": levels_moved(levels),
-        "first_votes": first_votes(rounds, plan),
+        "first_votes": eligibility,
         "rules": rules,
         "proposal": proposal,
         "needs_word": needs,
@@ -1314,6 +1384,193 @@ def _day2(plan: Plan, stages: Mapping[str, dict], rows: Mapping[str, dict], by_s
                      "kits": kits["survivors"],
                      "pairings": {k: p["bass"] for k, p in bass["pairings"].items()},
                      "relisten": relisten if adds else None}}
+
+
+# ------------------------------------------------------------------------------------------------ after Day 2
+def job_leaders(runs: Path | None, job: str) -> dict | None:
+    """A pulled job's summary/leaders.json (everything it was given: --leaders, --add, --cut, --prior), or None."""
+    if runs is None:
+        return None
+    path = Path(runs) / f"shootout-{job}" / "summary" / "leaders.json"
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(doc, dict) or doc.get("schema") != LEADERS_SCHEMA or not isinstance(doc.get("leaders"), dict):
+        return None
+    return {**doc, "path": str(path)}
+
+
+def repeat_minutes(plan: Plan, by_stage: Mapping[str, Sequence[Round]], eligible: Sequence[str]) -> dict:
+    """The plan estimate of Day 3's repeats (section 2.7, "drawn"): per repeat group with an eligible stage, the mean
+    of `round_seconds` over the design rounds a repeat may show (every round of its eligible stages but the first
+    one served of each, CD-24), since the draw picks one at job time."""
+    out = {}
+    for group, members in plan.repeat_groups.items():
+        pool = []
+        for s in members:
+            if s not in eligible:
+                continue
+            design = sorted((rd for rd in by_stage.get(s, []) if rd.kind == "none"), key=lambda rd: (rd.batch, rd.number))
+            pool += [round_seconds(len(rd.infos), plan.loop_named(rd.loop).brief.bpm) for rd in design[1:]]
+        if pool:
+            out[group] = sum(pool) / len(pool)
+    return {"groups": {g: round(s / 60.0, 2) for g, s in out.items()}, "seconds": sum(out.values()),
+            "minutes": round(sum(out.values()) / 60.0, 1)}
+
+
+def day3_cut(plan: Plan, minutes12: float, plan12: float, repeats_s: float, rerun_s: float, *,
+             decided: Sequence[str] | None = None, by: str | None = None) -> dict:
+    """Section 2.7, Day 3: cut only if r x its plan would pass 30 minutes, first W1 down to 2 rounds (`w1-two`), then
+    W2 (`w2-two`). r is Days 1-2's audit minutes over their plans (Day 1's batches, Day 2's as job 2 drew it: a
+    choice the spec left open, since its r was read after Day 1); Day 3's plan is the drawn plan's estimate of the
+    rain rounds and the anchor (`draw.day_minutes`), the repeats' (`repeat_minutes`) and an S2 re-run's rounds. Each
+    cut saves the drop it makes in that estimate. `decided` is Shresth's word on Day 3's cuts, as for Day 2."""
+    r = minutes12 / plan12 if plan12 else 0.0
+
+    def p3(cuts: Sequence[str]) -> float:
+        return (day_minutes(plan, 3, cuts=cuts)["seconds"] + repeats_s + rerun_s) / 60.0
+
+    base = p3([])
+    cuts, m = [], base
+    for c in sorted((c for c in plan.cuts if c.day == 3), key=lambda c: c.order):
+        if r * m <= DAY3_MIN:
+            break
+        cuts.append(c.id)
+        m = p3(cuts)
+    doc = {"rule": "section 2.7, Day 3 (CD-50)", "days12_minutes": round(minutes12, 1), "days12_plan": round(plan12, 1),
+           "r": round(r, 4), "day3_plan": round(base, 1), "repeats_minutes": round(repeats_s / 60.0, 1),
+           "rerun_minutes": round(rerun_s / 60.0, 1), "cuts": cuts, "saves_min": round(base - m, 1),
+           "day3_minutes": round(r * m, 1), "fits": r * m <= DAY3_MIN, "decided": None}
+    if decided is not None:
+        md = p3(list(decided))
+        doc["decided"] = {"cuts": list(decided), "by": by or WORD, "saves_min": round(base - md, 1),
+                          "day3_minutes": round(r * md, 1), "fits": r * md <= DAY3_MIN}
+    return doc
+
+
+def _day3(plan: Plan, stages: Mapping[str, dict], by_stage: Mapping[str, list[Round]], audits: Mapping[str, dict],
+          batches: Mapping[str, str], rules: dict, needs: list[dict], eligibility: Mapping[str, dict], *,
+          built: Mapping[str, Sequence[str]] | None, runs: Path | None, serve_date: date | None,
+          day3_cuts: Sequence[str] | None, day3_cuts_by: str | None) -> dict:
+    """Job 3's ARGS (section 7.7) from the Day-1 and Day-2 votes and job 2's pulled leaders.json, once every round of
+    the Day-1 and Day-2 batches has a vote and the after-Day-2 rules have run:
+    - `--leaders`, one id per slot and every variant slot named (section 4.5 "the Day-2 picks everywhere"): the keys
+      leader over K1 + K2 (CD-40); the kit job 2 ran as the R1 leader (its leaders.json, Shresth's confirmed word)
+      with that kit's bass (from its R2r rounds when job 2 added R2r, CD-54; else the R2 pairing job 2 played); the
+      sax final's winner (job 2's S1 leader when it cut the final); the S2a warmth, the S2b timing, the R3a swing
+      (advisory: the default unless Shresth names another, CD-13) and the R3b humanize;
+    - `--prior`: the jobs whose pulled summaries built the Day-1 and Day-2 batches;
+    - `--repeats`: the stages every design round of which was voted at least two days before `serve_date` (section
+      2.5, `first_votes`), in plan order; a group with none gets no repeat;
+    - `--serve-date`: `serve_date`, which job 3 writes into every Day-3 hidden manifest (`serve_from`), so `make
+      rate` serves no Day-3 batch before it (job 3 refuses --repeats without it);
+    - `--rerun-s2`: the final's winner when it is not the sax job 2 ran S2 on (its first sax id, section 4.4);
+    - `--cut`: `day3_cut`'s, or Shresth's word (`day3_cuts`).
+    The status is "ready" only with a serving date and nothing blocking."""
+    day12 = [n for b in plan.batches if b.day in (1, 2) for n in b.names]
+    day2 = [n for b in plan.batches if b.day == 2 for n in b.names]
+    unfinished = [n for n in day12 if batches.get(n) != "complete"]
+    if unfinished:
+        return {"day3": {"status": "incomplete", "waiting_for": unfinished}}
+    built = built or {}
+    jobs1 = sorted({j for n in day12 if n not in day2 for j in built.get(n) or []}, key=int)
+    jobs2 = sorted({j for n in day2 for j in built.get(n) or []}, key=int)
+    where = f"under {runs}" if runs is not None else "(no runs folder given)"
+    if len(jobs2) != 1 or len(jobs1) != 1:
+        what = ("job 3's ARGS: no pulled summary " + where + " built the Day-1 and the Day-2 batches, one job each "
+                f"(found {jobs1 or 'none'} and {jobs2 or 'none'}; runs/shootout-<job>/summary/batches.json, from make "
+                "pull): job 3 needs both as --prior, and job 2's leaders.json")
+        needs.append({"stage": "day3", "blocking": True, "what": what})
+        return {"day3": {"status": "blocked", "raised": [what]}}
+    j2 = job_leaders(runs, jobs2[0])
+    if j2 is None or j2.get("stage") != "day2":
+        what = f"job 3's ARGS: runs/shootout-{jobs2[0]}/summary/leaders.json (what job 2 ran) is missing or not job 2's"
+        needs.append({"stage": "day3", "blocking": True, "what": what})
+        return {"day3": {"status": "blocked", "raised": [what]}}
+    ran = {k: tuple(v) for k, v in j2["leaders"].items()}
+    adds, cuts2 = list(j2.get("add") or []), list(j2.get("cut") or [])
+    p2 = apply_cuts(apply_adds(plan, adds), cuts2)
+    want = [s.id for s in p2.stages_of(2)]
+    waiting = [s for s in want if not (stages.get(s) or {}).get("ready")]
+    if waiting:
+        return {"day3": {"status": "incomplete", "waiting_for_stages": waiting}}
+    raised = [f"{k}: {rules[k]['raised']}" for k in (*DAY1_STAGES, *want) if "raised" in (rules.get(k) or {})]
+    if raised:
+        return {"day3": {"status": "blocked", "raised": raised}}
+    notes, blocking = [], []
+    kit = ran["kit"][0]
+    r1 = ((rules.get("R1") or {}).get("leader") or {}).get("pick")
+    if r1 is not None and r1 != kit:
+        notes.append(f"job 2 ran {kit} as the R1 leader, and the tally reads {r1}: Day 3 plays job 2's (Shresth's "
+                     "confirmed band)")
+    if RELISTEN in adds:
+        pairings = {k: p["bass"] for k, p in rules[RELISTEN]["pairings"].items()}
+        bass = pairings[kit]
+    else:
+        pairings = {k: p["bass"] for k, p in ((rules.get("R2") or {}).get("pairings") or {}).items()}
+        bass = ran["bass"][0]
+    s2_on = ran["sax"][0]
+    if "S1f" in want:
+        f = rules["S1f"]
+        sax = f["winner"] or s2_on
+        if f["winner"] is None:
+            blocking.append(f"the sax final is tied ({f['tied']}): Shresth's word names Day 3's sax (section 8 Sax)")
+    else:
+        sax = s2_on
+    rerun = sax if sax != s2_on else None
+    leaders = {"keys": (rules["K2"]["leader"]["pick"],), "kit": (kit,), "bass": (bass,), "sax": (sax,),
+               "swing": (rules["R3a"]["pick"],), "humanize": (rules["R3b"]["pick"]["pick"],),
+               "sax_variant": (rules["S2a"]["pick"]["pick"],), "timing": (rules["S2b"]["pick"]["pick"],)}
+    if rerun:
+        notes.append(f"the final picks {sax}, not {s2_on}, on whom job 2 ran S2: S2 re-runs on Day 3 (--rerun-s2 "
+                     f"{sax}), and the rain rounds play the S2 picks of Day 2, which render the same night")
+    text = leaders_string(leaders)
+    parsed = parse_leaders(text)
+    if parsed != leaders:
+        raise TallyError(f"the --leaders string {text!r} does not read back as {leaders}")
+    eligible = [s for s in plan.stages if (eligibility.get(s) or {}).get("eligible")]
+    no_repeat = [g for g, members in plan.repeat_groups.items() if not any(s in eligible for s in members)]
+    repeats = repeat_minutes(plan, by_stage, eligible)
+    rerun_s = (sum(round_seconds(len(sl.tiles), plan.loops[sl.loop].brief.bpm) for s in plan.rerun_stages
+                   for sl in plan.stages[s].slots) if rerun else 0.0)
+    minutes12 = sum(audits[n]["time"]["minutes"] for n in day12 if n in audits)
+    plan12 = (sum(b.est_min_plan for b in plan.batches if b.day == 1)
+              + day_minutes(plan, 2, {"keys": len(ran["keys"]), "sax": len(ran["sax"])}, cuts2, adds)["seconds"] / 60.0)
+    cut = day3_cut(plan, minutes12, plan12, repeats["seconds"], rerun_s, decided=day3_cuts, by=day3_cuts_by)
+    rules["day3_cut"] = cut
+    cuts3 = cut["cuts"] if cut["decided"] is None else cut["decided"]["cuts"]
+    if cut["decided"] is None and not cut["fits"]:
+        notes.append(f"Day 3 does not fit even with every cut (r = {cut['r']}): {cut['day3_minutes']} min (section 2.7)")
+    try:
+        band = day_band(plan, "day3", parsed, cuts3)
+    except (DrawError, PlanError) as err:
+        raise TallyError(f"the proposal {text!r} fails the Day-3 band check: {err}") from err
+    prior = sorted({*jobs1, *jobs2}, key=int)
+    if serve_date is None:
+        blocking.append("job 3's --repeats need the date Day 3 will be served (--serve-date): a repeat comes at least "
+                        "two days after its round was voted (section 2.5)")
+    for g in no_repeat:
+        notes.append(f"no stage of the repeat group {g} was voted at least 2 days before the serving date: it gets no "
+                     "repeat (section 2.5)")
+    for n in notes:
+        needs.append({"stage": "day3", "blocking": False, "what": n})
+    for b in blocking:
+        needs.append({"stage": "day3", "blocking": True, "what": b})
+    args = (f"--stage day3 --leaders {text} --prior {'+'.join(prior)}"
+            + (f" --repeats {'+'.join(eligible)}" if eligible else "")
+            + (f" --serve-date {serve_date.isoformat()}" if serve_date else "")      # the batches' serve_from
+            + (f" --rerun-s2 {rerun}" if rerun else "") + (f" --cut {'+'.join(cuts3)}" if cuts3 else ""))
+    status = "ready" if not blocking else "needs_serve_date" if serve_date is None and len(blocking) == 1 else "blocked"
+    return {"day3": {"status": status, "leaders": text, "prior": prior, "repeats": eligible, "no_repeat": no_repeat,
+                     "serve_date": serve_date.isoformat() if serve_date else None, "rerun_s2": rerun, "cut": cuts3,
+                     "args": args, "blocking": blocking, "notes": notes,
+                     "submit": f"make submit JOB=jobs/shootout.sbatch ARGS='{args}'",
+                     "job2": {"job": jobs2[0], "leaders": {k: list(v) for k, v in ran.items()}, "add": adds,
+                              "cut": cuts2, "file": j2["path"]},
+                     "check": {"parse_leaders": {k: list(v) for k, v in parsed.items()}, "day_band": band},
+                     "pairings": pairings, "keys": list(rules["K2"]["survivors"]),
+                     "repeat_minutes": repeats["minutes"]}}
 
 
 def _later(plan: Plan, stages: Mapping[str, dict], rows: Mapping[str, dict], by_stage: Mapping[str, list[Round]],
@@ -1531,9 +1788,12 @@ def report_md(doc: dict, out_dir: str | None = None) -> str:
     if r["voted"]:
         lo, hi = r["ci95"]
         L.append(f"Repeats (CD-47): {r['agree']} of {r['compared']} implied pairs agree "
-                 f"(p {r['p']:.3f}, Wilson 95 % {lo:.3f}-{hi:.3f}) over {r['found']} repeat(s); {r['missing']} first "
+                 f"(p {r['p']:.3f}, Wilson 95 % {lo:.3f}-{hi:.3f}) over {r['scored']} repeat(s); {r['missing']} first "
                  f"showing(s) not found. {r['caveat']}" if r["compared"] else
                  f"Repeats (CD-47): {r['voted']} voted, no implied pair to compare. {r['caveat']}")
+        if r["too_soon"] or r["undated"]:         # D-013: at least min_days_after days after the first showing
+            L.append(f"Left out of the pairs: {len(r['too_soon'])} repeat(s) voted under {r['min_days_after']} days "
+                     f"after their first showing (D-013) and {len(r['undated'])} with a vote date that cannot be read.")
     else:                         # nothing here says which rounds come back or when (RATING.md: never told)
         L.append("Repeats (CD-47): none voted yet.")
     pb = doc["position_of_best"]["rows"]
@@ -1675,6 +1935,19 @@ def _rules_md(doc: dict) -> list[str]:
         elif k == "W2":
             L.append(f"- Rain level: {_pick_text(r['pick'])}" + ("; `rain_none` leads" if r["rain_none_leads"] else "")
                      + ".")
+    p3 = (doc["proposal"].get("day3") or {})
+    if p3.get("args"):              # the ARGS name the eligible stages, never a round (RATING.md: he is never told)
+        c = R.get("day3_cut") or {}
+        d = c.get("decided")
+        cut = (f"; Day 3's plan {_n(c['day3_plan'])} min, at r {c['r']:.3f} {_n(c['day3_minutes'])} min, cuts "
+               f"{', '.join((d or c)['cuts']) or 'none'}" + (f" ({d['by']})" if d else "") if c else "")
+        L += ["", f"After Day 2 (job 3, {p3['status'].replace('_', ' ')}): `--leaders {p3['leaders']}`, "
+                  f"`--prior {'+'.join(p3['prior'])}`" + (f", `--rerun-s2 {p3['rerun_s2']}`" if p3["rerun_s2"] else "")
+              + cut + ".", "", f"    {p3['submit']}", "",
+              "Checked: the string reads back through `draw.parse_leaders`, and `draw.day_band` builds the Day-3 band "
+              f"from it: {', '.join(f'{k} `{v}`' for k, v in p3['check']['day_band'].items() if v)}."]
+    elif p3.get("status") not in (None, "incomplete"):
+        L += ["", f"After Day 2 (job 3): not made ({p3['status']})."]
     return L
 
 
@@ -1728,9 +2001,20 @@ def main(argv: list[str] | None = None) -> int:
                         "(section 2.7): none, or Day-2 cut ids joined by +")
     p.add_argument("--day2-cuts-by", default=None, metavar="TEXT",
                    help="his words and their date, recorded with --day2-cuts (default: \"Shresth's word\")")
+    p.add_argument("--serve-date", default=None, metavar="YYYY-MM-DD",
+                   help="the day Day 3 will be served: job 3's --repeats name the stages voted at least 2 days before "
+                        "it (section 2.5)")
+    p.add_argument("--day3-cuts", default=None, metavar="none|<cut>+<cut>",
+                   help="Shresth's word on Day 3's cuts (section 2.7): none, or Day-3 cut ids joined by +")
+    p.add_argument("--day3-cuts-by", default=None, metavar="TEXT", help="his words and their date, with --day3-cuts")
     a = p.parse_args(argv)
     day2_cuts = None if a.day2_cuts is None else [] if a.day2_cuts == "none" else a.day2_cuts.split("+")
+    day3_cuts = None if a.day3_cuts is None else [] if a.day3_cuts == "none" else a.day3_cuts.split("+")
     try:
+        try:
+            serve = None if a.serve_date is None else date.fromisoformat(a.serve_date)
+        except ValueError:
+            raise TallyError(f"--serve-date {a.serve_date!r} is not a date (YYYY-MM-DD)") from None
         if not a.votes.is_dir():
             raise TallyError(f"--votes {a.votes} is not a folder")
         if not a.inbox.is_dir():
@@ -1742,7 +2026,8 @@ def main(argv: list[str] | None = None) -> int:
         doc, batch_docs = tally(a.votes, a.inbox, plan=plan, batches=a.batch or None,
                                 heard_min=cfg["heard"]["min_bars"], toss_min=cfg["heard"]["toss_min_bars"],
                                 budget_min=cfg["daily_budget_minutes"], levels=a.levels, runs=a.runs,
-                                day2_cuts=day2_cuts, day2_cuts_by=a.day2_cuts_by)
+                                day2_cuts=day2_cuts, day2_cuts_by=a.day2_cuts_by, serve_date=serve,
+                                day3_cuts=day3_cuts, day3_cuts_by=a.day3_cuts_by)
         written = write_outputs(doc, batch_docs, out, report)
     except (TallyError, ConfigError, PlanError, DrawError, ManifestError, OSError) as err:
         print(f"error: {err}", file=sys.stderr)
@@ -1753,6 +2038,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"stage {sid}: {s['status'].replace('_', ' ')} ({s['voted']} of {s['design_rounds']} design rounds)")
     p2 = doc["proposal"]["day2"]
     print(f"day 2 proposal: {p2['status']}" + (f": {p2['args']}" if p2["status"] == "ready" else ""))
+    p3 = doc["proposal"].get("day3") or {}
+    print(f"day 3 proposal: {p3.get('status')}" + (f": {p3['args']}" if p3.get("args") else ""))
     c = doc["rules"].get("cut") or {}
     if c.get("decided") is not None:
         print(f"day 2 cuts: {'+'.join(c['decided']['cuts']) or 'none'}, by {c['decided']['by']} (the cut list read "

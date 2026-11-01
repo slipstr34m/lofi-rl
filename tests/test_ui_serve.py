@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from lofi_rl.ui.manifest import HIDDEN_NAME, PUBLIC_NAME, build_demo, load_batch
+from lofi_rl.ui.manifest import HIDDEN_NAME, PUBLIC_NAME, ManifestError, build_demo, load_batch
 from lofi_rl.ui.serve import (ROOT, ConfigError, RatingApp, VotesDirError, load_config, main, make_server,
                               prepare_votes_dir, resolve_batch)
 
@@ -444,6 +444,46 @@ def test_the_oldest_unfinished_batch_is_served_by_default(tmp_path):
     assert resolve_batch(None, inbox, votes) == b
     assert resolve_batch("b-old", inbox, votes) == a
     assert resolve_batch(str(b), inbox, votes) == b
+
+
+def test_a_batch_is_not_served_before_its_serve_from(tmp_path, monkeypatch, capsys):
+    # 2026-11-01 review (spec-F1): a Day-3 shootout batch names the first day it may be served (`serve_from`: its
+    # repeats come at least 2 days after their first showing's vote, D-013), and `make pull` brings it in earlier.
+    # Until that day the default passes over it and naming it is refused with the date; from that day it is served.
+    from datetime import date
+
+    from lofi_rl.ui import serve
+    inbox, votes = tmp_path / "inbox", tmp_path / "votes"
+    votes.mkdir()
+    a = build_demo(inbox / "2026-11-03" / "b-early", "triage", rounds=2, **FAST)
+    b = build_demo(inbox / "2026-11-04" / "b-later", "triage", rounds=2, **FAST)
+    for d in (a, b):
+        hid = d / HIDDEN_NAME
+        hid.write_text(json.dumps({**json.loads(hid.read_text()), "serve_from": "2026-11-05"}))
+    assert load_batch(a)[1].serve_from == date(2026, 11, 5), "the hidden manifest still loads, check included"
+    c = build_demo(inbox / "2026-11-06" / "b-plain", "triage", rounds=2, **FAST)
+    day = date(2026, 11, 4)
+    assert resolve_batch(None, inbox, votes, today=day) == c
+    for name in ("b-early", str(b)):
+        with pytest.raises(ManifestError, match="is not served before 2026-11-05 .*today is 2026-11-04"):
+            resolve_batch(name, inbox, votes, today=day)
+    shutil.rmtree(c)
+    with pytest.raises(ManifestError, match="later: b-early from 2026-11-05, b-later from 2026-11-05"):
+        resolve_batch(None, inbox, votes, today=day)
+    on = date(2026, 11, 5)
+    assert resolve_batch(None, inbox, votes, today=on) == a and resolve_batch("b-later", inbox, votes, today=on) == b
+    # make rate on the laptop's own date (the CLI): refused the day before, with the date named
+    monkeypatch.setenv("LOFI_VOTES", str(votes))
+    monkeypatch.setenv("LOFI_INBOX", str(inbox))
+    monkeypatch.setattr(serve, "date", type("D", (date,), {"today": classmethod(lambda cls: day)}))
+    assert main(["--no-browser"]) == 2 and "later: b-early from 2026-11-05" in capsys.readouterr().err
+    assert main([str(a), "--no-browser"]) == 2 and "is not served before 2026-11-05" in capsys.readouterr().err
+    hid = a / HIDDEN_NAME
+    hid.write_text(json.dumps({**json.loads(hid.read_text()), "serve_from": "Nov 5"}))
+    with pytest.raises(ManifestError, match="serve_from 'Nov 5' is not a date"):
+        resolve_batch(str(a), inbox, votes, today=on)
+    with pytest.raises(ManifestError, match="serve_from 'Nov 5' is not a date"):
+        load_batch(a)
 
 
 def test_cli_errors(batch, tmp_path, monkeypatch, capsys):

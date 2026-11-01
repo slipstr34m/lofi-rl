@@ -27,7 +27,11 @@
 #   make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>/bass=<id>/sax=<id>+<id> --prior <job1>'
 #   with the bass undecided (SHOOTOUTS.md CD-54: R2r, the bass re-listen, on the two surviving kits, leader first):
 #   make submit JOB=jobs/shootout.sbatch ARGS='--stage day2 --leaders keys=<id>+<id>+<id>/kit=<id>+<id>/bass=bass_gu_acoustic/sax=<id>+<id> --prior <job1> --add R2r'
-#   make submit JOB=jobs/shootout.sbatch ARGS='--stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id> --prior <job1>+<job2> --repeats <stage>+... [--rerun-s2 <sax id>] [--cut <name>+...]'
+#   Day 3, the Day-2 picks with every variant slot named, both prior jobs, the repeats' stages and the serving date
+#   (the tally's line; --repeats needs --serve-date, which every Day-3 hidden manifest carries as serve_from, so
+#   make rate serves no Day-3 batch before it, D-013's 2 days):
+#   make submit JOB=jobs/shootout.sbatch ARGS='--stage day3 --leaders keys=<id>/kit=<id>/bass=<id>/sax=<id>/swing=<id>/humanize=<id>/sax_variant=<id>/timing=<id> --prior <job1>+<job2> --repeats <stage>+... --serve-date YYYY-MM-DD [--rerun-s2 <sax id>] [--cut <name>+...]'
+#   Day 3 needs the rain at 44.1 kHz under $LOFI_ASSETS (derived/rain/, pinned in shootouts/rain_excerpts.json).
 # Results: $REMOTE_SCR/runs/shootout-<job>/summary/ (draw.json, leaders.json, levels.json, palettes/, renders.json,
 # batches.json, and summary/stages.json: each stage's exit code and wall time) and $REMOTE_SCR/inbox/<date>/<batch>/;
 # make pull brings back both, never the renders.

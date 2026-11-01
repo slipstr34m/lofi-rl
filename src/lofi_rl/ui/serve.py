@@ -18,6 +18,10 @@ Routes
 Loads no model: the only imports beyond the standard library are yaml and lofi_rl.ui.
 
     python -m lofi_rl.ui.serve [inbox/<date>/<batch>] [--port 8596] [--no-browser]
+
+A batch whose hidden manifest names `serve_from` (a Day-3 shootout batch: its repeats come at least 2 days after
+their first showing's vote, D-013) is not served before that day, local date: the default choice passes over it,
+and naming it is refused with the date.
 """
 from __future__ import annotations
 
@@ -30,6 +34,7 @@ import stat
 import sys
 import traceback
 import webbrowser
+from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -37,7 +42,7 @@ from urllib.parse import unquote, urlsplit
 import yaml
 
 from lofi_rl.ui.audit import aggregate
-from lofi_rl.ui.manifest import BATCH_RE, ManifestError, load_batch, load_public
+from lofi_rl.ui.manifest import BATCH_RE, HIDDEN_NAME, ManifestError, load_batch, load_public, serve_from_date
 from lofi_rl.ui.votes import (DEVICE_RE, Conflict, EventError, LogBusy, Ledger, derive, read_all,
                               read_events)
 
@@ -501,20 +506,48 @@ def batch_done(batch_dir, votes_dir) -> bool | None:
     return derive(m, events).done
 
 
-def resolve_batch(arg, inbox, votes) -> Path:
+def serve_from(batch_dir) -> date | None:
+    """The first day a batch may be served: its hidden manifest's `serve_from`, or None (none named, or no readable
+    hidden manifest, which RatingApp then refuses). ManifestError for a `serve_from` that is not a date."""
+    path = Path(batch_dir) / HIDDEN_NAME
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    try:
+        return serve_from_date(data.get("serve_from")) if isinstance(data, dict) else None
+    except ValueError as err:
+        raise ManifestError([str(err)], path) from None
+
+
+def resolve_batch(arg, inbox, votes, today: date | None = None) -> Path:
+    """The batch to serve: `arg` (a folder, or a batch name under the inbox), or the oldest unfinished batch in the
+    inbox. A batch whose `serve_from` is after `today` (default: the local date) is passed over by default and
+    refused by name."""
+    today = today or date.today()
     if arg:
         p = Path(arg).expanduser()
-        if p.is_dir():
-            return p
-        if BATCH_RE.fullmatch(str(arg)):
-            hits = sorted(q.parent for q in Path(inbox).glob(f"*/{arg}/manifest.json"))
-            if len(hits) == 1:
-                return hits[0]
-        raise ManifestError([f"no batch folder {arg!r} (give inbox/<date>/<batch>)"])
+        if not p.is_dir():
+            hits = (sorted(q.parent for q in Path(inbox).glob(f"*/{arg}/manifest.json"))
+                    if BATCH_RE.fullmatch(str(arg)) else [])
+            if len(hits) != 1:
+                raise ManifestError([f"no batch folder {arg!r} (give inbox/<date>/<batch>)"])
+            p = hits[0]
+        when = serve_from(p)
+        if when is not None and when > today:
+            raise ManifestError([f"{p.name} is not served before {when.isoformat()} (its serve_from); today is "
+                                 f"{today.isoformat()}"])
+        return p
+    later = []
     for b in find_batches(inbox):
         if batch_done(b, votes) is False:
+            when = serve_from(b)
+            if when is not None and when > today:
+                later.append(f"{b.name} from {when.isoformat()}")
+                continue
             return b
-    raise ManifestError([f"nothing to rate: no unfinished batch in {inbox}"])
+    raise ManifestError([f"nothing to rate: no unfinished batch in {inbox}"
+                         + (f" is served today ({today.isoformat()}); later: {', '.join(later)}" if later else "")])
 
 
 # ----------------------------------------------------------------------------- CLI
@@ -522,7 +555,8 @@ def resolve_batch(arg, inbox, votes) -> Path:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m lofi_rl.ui.serve",
                                  description="Serve the rating page for one batch on 127.0.0.1.")
-    ap.add_argument("batch", nargs="?", help="inbox/<date>/<batch> (default: the oldest unfinished batch)")
+    ap.add_argument("batch", nargs="?", help="inbox/<date>/<batch> (default: the oldest unfinished batch that "
+                                             "may be served today)")
     ap.add_argument("--port", type=int, help="default: port in configs/rating.yaml (8596)")
     ap.add_argument("--config", default=str(CONFIG_PATH))
     ap.add_argument("--no-browser", action="store_true", help="do not open the page in a browser")

@@ -11,7 +11,8 @@ test module.
   `lanes`).
 - `synthetic_base`: shootouts/palettes/base.yaml with every SoundFont replaced by a tiny_sf2 under `assets`.
 - `synthetic_levels`: a levels file shaped like the level tool's, with made-up trims and faders, and a made-up clip
-  fader (CD-52) for every variant on every reference loop and on every loop's sour copy.
+  fader (CD-52) for every variant on every reference loop and on every loop's sour copy; `synthetic_levels_day2`
+  adds a made-up own fader per matched clip (CD-53), a Day-3 rain anchor's sour copy at its round-mates' sax.
 - `fake_flac`, `fake_render`, `fake_renders`: what `lofi_rl.shootout.render` writes and the batch builder reads, with
   no audio: `record.json` (the same keys as a real record, `tests/test_shootout_e2e.py` compares them),
   `manifest.json` (n and audio_sha256) and `render.flac`, a FLAC STREAMINFO header with no audio frames. The rating
@@ -156,16 +157,30 @@ def synthetic_levels_day2(index_path: Path, base: Path, draw_doc: dict, out: Pat
         for bus in cfg["buses"]:
             inst = cfg["instruments"][bus]
             target = S_STAR + TARGET_LU[bus]
+            F_med = doc["variants"][inst]["F"]
+            Ls = {c.name: round(-31.0 - 0.13 * k + 0.37 * j, 2) for j, c in enumerate(cases_of[key])}
             recs = {}
             for j, c in enumerate(cases_of[key]):
-                L, off = round(-31.0 - 0.13 * k + 0.37 * j, 2), round(0.001 * ((k + j) % 7 - 3), 3)
+                L, off = Ls[c.name], round(0.001 * ((k + j) % 7 - 3), 3)
+                if cfg.get("target") == "round":         # Day 3's rain anchor: the sour copy at its round-mates' sax
+                    ref = c.loop if c.variant != "base" else c.name
+                    goal = Ls[ref] + F_med
+                    F = F_med if c.name == ref else round(goal - L, 2)
+                    off = 0.0 if c.name == ref else off
+                    recs[c.name] = {"L": L, "F": F, "lufs": goal + off, "target_lufs": goal, "off_lu": off,
+                                    "lu": goal + off - S_STAR, "tried": 1, "instrument": inst,
+                                    "t": doc["variants"][inst]["t"], "median_F": F_med, "median_lufs": L + F_med,
+                                    "median_off_lu": L + F_med - goal, "target": "round", "reference": ref}
+                    continue
                 recs[c.name] = {"L": L, "F": round(target - L, 2), "lufs": target + off, "target_lufs": target,
                                 "off_lu": off, "lu": target + off - S_STAR, "tried": 1, "instrument": inst,
-                                "t": doc["variants"][inst]["t"], "median_F": doc["variants"][inst]["F"],
+                                "t": doc["variants"][inst]["t"], "median_F": F_med,
                                 "median_lufs": target + 0.5 * ((j % 3) - 1), "median_off_lu": 0.5 * ((j % 3) - 1)}
-            buses[bus] = {"instrument": inst, "t": doc["variants"][inst]["t"], "median_F": doc["variants"][inst]["F"],
-                          "target_lufs": target, "cases": recs}
-        configs[key] = {"stage": cfg["stage"], "option": cfg["option"], "buses": buses}
+            buses[bus] = {"instrument": inst, "t": doc["variants"][inst]["t"], "median_F": F_med,
+                          "target_lufs": None if cfg.get("target") == "round" else target, "cases": recs,
+                          **({"target": "round"} if cfg.get("target") == "round" else {})}
+        configs[key] = {"stage": cfg["stage"], "option": cfg["option"], "buses": buses,
+                        **({"target": "round"} if cfg.get("target") == "round" else {})}
     doc["configs"] = configs
     out.write_text(json.dumps(doc, indent=1))
     return out
@@ -235,6 +250,13 @@ def fake_render(renders_dir: Path, rid: str, entry: dict, *, status: str = "ok",
         "bed_lufs": None, "sax_range": [51, 72], "expect_pcm_sha256": entry.get("expect_pcm_sha256"),
         "level": level,
     })
+    if entry["bus"] == "bed":       # a Day-3 rain clip (lofi_rl.shootout.render.bed_record): its bed and its music
+        delta = {"rain_d24": 24.0, "rain_d30": 30.0, "rain_none": None}.get(entry["option"], 18.0)
+        bed = None if delta is None else {"src": "rain", "delta_lu": delta, "start_s": 150.4, "xfade_s": 1.0,
+                                          "xfade_samples": 44100, "lufs_source": -40.0, "gain_db": 2.0 - delta,
+                                          "lufs": -20.0 - delta, "bed_lu": 0.5 - delta}
+        rec.update(bed=bed, bed_lufs=None if bed is None else bed["lufs"], music_lufs=-20.0,
+                   pre_limiter_sha256=_sha(f"music|{entry['loop']}|{entry['text']}"))
     if status == "ok":
         flac = fake_flac(d / "render.flac", n if n is not None else n_ok, salt=rid)
         rec["flac_sha256"] = hashlib.sha256(flac.read_bytes()).hexdigest()

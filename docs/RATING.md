@@ -122,7 +122,10 @@ imported) and `src/lofi_rl/ui/static/{index.html,app.js,audio.js}` (vanilla JS, 
 
 `python -m lofi_rl.ui.serve [batch] [--port N] [--no-browser]` is what `make rate` runs (`LOFI_NO_BROWSER=1`
 also skips the browser). Without a batch it serves the oldest `inbox/*/*/manifest.json` whose rounds are not all
-voted. Tests and demos always pass temp folders; nothing under `data/` or `inbox/` is touched by them.
+voted, passing over a batch whose hidden `serve_from` is later than today's local date; a batch named before its
+`serve_from` is refused with the date (2026-11-01: `make pull` brings Day 3's shootout batches in as soon as job 3
+ends, and their repeats come at least 2 days after the first showings' votes, D-013). Tests and demos always pass
+temp folders; nothing under `data/` or `inbox/` is touched by them.
 
 ### A batch folder
 
@@ -173,6 +176,9 @@ inbox/2026-11-03/b1103-keys/
 - `kind`: `none`, `repeat` (needs `of`, the round id of the first showing, which must differ from this round's
   id), `anchor` (needs `anchor_clip`, the opaque id of the broken copy), or `heldout`.
 - Shootouts need a `category` (batch or round) and an `option` per clip.
+- `serve_from` (optional, top level): `YYYY-MM-DD`, the first day the batch may be served; `make rate` passes over
+  the batch before that day and refuses it by name. The shootout builder writes it into every Day-3 batch from job
+  3's `--serve-date` (docs/SHOOTOUTS.md §2.5, §7.7). Anything but such a date is an error.
 - Leak check: no round id, clip id or file name may contain 10 hex digits in a row of a real clip id, or any
   word of 3+ letters from the hidden values or brief id (short all-hex words are skipped, since random ids
   contain them by chance). The note may name the category but not an option.

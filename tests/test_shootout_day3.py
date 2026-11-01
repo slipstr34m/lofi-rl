@@ -1,0 +1,569 @@
+"""Day 3, job 3 (docs/SHOOTOUTS.md sections 4.5, 7.2, 7.6-7.8): the rain rounds W1 and W2 on the Day-2 picks, the
+anchor and the five repeats, through the generator, the level tool, the render record and the batch builder.
+
+Everything runs on synthetic assets in tmp_path (tests/helpers_shootout.py: tiny SoundFonts and kit archives, a
+one-second noise file standing in for the converted rain) and on fake renders; the laptop dry run of section 7.7
+renders the real thing. Sound claims: none."""
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import date
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+import soundfile as sf
+
+from helpers_shootout import (FILE_KITS, PLAN_PATH, ROOT, fake_renders, kit_archive, synthetic_base,
+                              synthetic_levels_day2)
+from lofi_rl.palette import load_palette
+from lofi_rl.render.loudness import lufs
+from lofi_rl.render.wavio import pcm_sha256
+from lofi_rl.shootout import render as R
+from lofi_rl.shootout.batch import BuildError, build, public_leaks, _stage_options
+from lofi_rl.shootout.draw import draw, load_prior, parse_leaders, write_draw
+from lofi_rl.shootout.levels import run_levels
+from lofi_rl.shootout.palettes import RAIN_SOURCE, GenerateError, generate, yaml_load
+from lofi_rl.shootout.plan import load_plan
+from lofi_rl.ui.manifest import load_batch
+
+PLAN = load_plan(PLAN_PATH)
+# The Day-2 picks as job 3 takes them (section 7.7): one id per instrument slot and every variant slot named
+LEADERS3 = ("keys=gu_tine_ep/kit=kit_virtuosity/bass=bass_vsco2_pizz/sax=sax_mtg_alto/swing=swing_55/"
+            "humanize=humanize_off/sax_variant=sax_plain/timing=timing_lag")
+DAY2 = parse_leaders("keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/"
+                     "bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor")
+STAGES = ["K1", "R1", "R2", "S1", "R2r", "R3a", "R3b", "S1f", "S2a", "S2b", "K2", "V"]
+EXCERPTS = {"e1": 150.4, "e2": 44.3, "e3": 77.8}
+DELTA = {"rain_d18": 18.0, "rain_d24": 24.0, "rain_d30": 30.0}
+
+
+def rain_record(assets: Path, folder: Path) -> Path:
+    """A one-second stand-in for the converted rain under `assets`, and an excerpt record pinning it, shaped like
+    lofi_rl.convert.rain_excerpts' (the generator reads only its source and each excerpt's start_s)."""
+    wav = assets / "derived" / "rain" / "rain44.wav"
+    wav.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(wav), np.random.default_rng(1).standard_normal((44100, 2)).astype(np.float32) * 0.05, 44100,
+             subtype="FLOAT")
+    doc = {"schema": "lofi-rl/rain-excerpts/1", "tool": "python -m lofi_rl.convert.rain_excerpts",
+           "parameters": {"n": 3, "warmup_s": 0.5, "loop_s": 32.0, "xfade_s": 1.0, "stretch_s": 33.5,
+                          "block_s": 0.4, "hop_s": 0.1},
+           "source": {"asset_path": "derived/rain/rain44.wav", "sha256": hashlib.sha256(wav.read_bytes()).hexdigest(),
+                      "license": "CC0 1.0", "url": "https://example.invalid/rain",
+                      "converted_from": {"path": "assets/big/rain/rain48.wav", "sha256": "0" * 64, "sr": 48000},
+                      "attribution": None},
+           "excerpts": {k: {"start_s": v} for k, v in EXCERPTS.items()}}
+    path = folder / "rain_excerpts.json"
+    path.write_text(json.dumps(doc, indent=1))
+    return path
+
+
+@pytest.fixture(scope="module")
+def env3(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("day3")
+    assets = tmp / "assets"
+    base = synthetic_base(tmp, assets)
+    for kit in FILE_KITS:
+        kit_archive(assets, kit)
+    rain = rain_record(assets, tmp)
+    doc = draw(PLAN, "day3", seed=0xD3, leaders=parse_leaders(LEADERS3))
+    path = write_draw(doc, tmp / "draw.json")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("LOFI_ASSETS", str(assets))
+        measure = generate(PLAN_PATH, tmp / "palettes", stage="day3", levels=None, base=base, draw=path, rain=rain)
+        levels = synthetic_levels_day2(tmp / "palettes" / "measure" / "index.json", base, doc, tmp / "levels.json")
+        lv = json.loads(levels.read_text())
+        levels.write_text(json.dumps(dict(lv, stage="day3")))
+        stage = generate(PLAN_PATH, tmp / "palettes", stage="day3", levels=levels, base=base, draw=path, rain=rain)
+    return {"tmp": tmp, "assets": assets, "base": base, "rain": rain, "draw": doc, "draw_path": path,
+            "measure": measure, "levels": levels, "stage": stage, "out": tmp / "palettes"}
+
+
+@pytest.fixture(autouse=True)
+def assets_env(request, monkeypatch):
+    if "env3" in request.fixturenames:
+        monkeypatch.setenv("LOFI_ASSETS", str(request.getfixturevalue("env3")["assets"]))
+
+
+def flat(node, prefix=""):
+    if isinstance(node, dict):
+        out = {}
+        for k, v in node.items():
+            out.update(flat(v, f"{prefix}{k}."))
+        return out or {prefix[:-1]: {}}
+    if isinstance(node, list):
+        out = {}
+        for i, v in enumerate(node):
+            out.update(flat(v, f"{prefix}{i}."))
+        return out or {prefix[:-1]: []}
+    return {prefix[:-1]: node}
+
+
+# ------------------------------------------------------------------------------------- the generator (7.8)
+def anchor_of(doc: dict) -> tuple[dict, dict, str]:
+    """The draw's Day-3 anchor round, its sour clip's palette spec and that palette's key."""
+    (r,) = [r for b in doc["batches"] for r in b["rounds"] if r["kind"] == "anchor"]
+    (key,) = [doc["renders"][c["render"]]["palette"] for c in r["clips"] if c["render"].endswith(".sour")]
+    return r, doc["palettes"][key], key
+
+
+def test_day3_measures_the_day2_picks_again_and_only_the_anchors_rain_palette(env3):
+    # section 3 "Drift between jobs": job 3 measures every instrument it plays, the level anchors first, and no bed in
+    # a measuring run. The rain design rounds match nothing (section 3 "Not matched"); the anchor's sour copy is
+    # matched to its round-mates' sax (2026-11-01 review), so its rain palette, and it alone, is a measuring config:
+    # the rain palette itself at trims and faders 0, measured on the sax (`target: round`)
+    idx = env3["measure"].index
+    assert set(idx["variants"]) == {"gu_tine_ep", "kit_virtuosity", "bass_vsco2_pizz", "sax_mtg_alto"} | \
+        set(PLAN.levels.anchors.values())
+    assert [r["run"] for r in idx["runs"]] == ["m1", "m2"]
+    for r in idx["runs"]:
+        d = yaml_load((env3["out"] / "measure" / r["file"]).read_text())
+        assert d["bed"] is None and RAIN_SOURCE not in d["sources"]
+    _, spec, key = anchor_of(env3["draw"])
+    assert spec["level"]["target"] == "round" and key == f"{spec['base']}_{spec['level']['case'][:2]}_sour"
+    (cfg,) = idx["configs"].values()
+    assert list(idx["configs"]) == [spec["base"]] and (cfg["buses"], cfg["target"]) == (["sax"], "round")
+    stage = {p["id"]: p for p in env3["stage"].index["palettes"]}[spec["base"]]
+    assert cfg["settings"] == stage["settings"] and cfg["instruments"] == stage["instruments"]
+    d = yaml_load((env3["out"] / "measure" / cfg["file"]).read_text())
+    assert d["bed"] == stage["bed"] and d["mix"]["bus_gain_db"] == {b: 0.0 for b in d["mix"]["bus_gain_db"]}
+
+
+def test_each_rain_palette_is_the_day2_band_at_its_median_faders_with_its_own_bed(env3):
+    lv = json.loads(env3["levels"].read_text())["variants"]
+    by_id = {p["id"]: p for p in env3["stage"].index["palettes"]}
+    _, spec, sour = anchor_of(env3["draw"])
+    assert sorted(by_id) == sorted(env3["draw"]["palettes"]) and sorted(set(by_id) - {sour}) == [
+        "w1_excerpt_e1", "w1_excerpt_e2", "w1_excerpt_e3", "w2_rain_d18", "w2_rain_d24", "w2_rain_d30", "w2_rain_none"]
+    # the anchor's sour copy: its rain palette with the sax fader the levels file gives it, everything else the same
+    s, base = by_id.pop(sour), by_id[spec["base"]]
+    case = json.loads(env3["levels"].read_text())["configs"][base["id"]]["buses"]["sax"]["cases"][spec["level"]["case"]]
+    assert s["fader_db"] == {**base["fader_db"], "sax": case["F"]} and s["fader_db"]["sax"] != base["fader_db"]["sax"]
+    assert {k: s[k] for k in ("trim_db", "settings", "instruments", "bed")} == \
+        {k: base[k] for k in ("trim_db", "settings", "instruments", "bed")}
+    assert s["level"]["target"] == "round" and s["level"]["buses"]["sax"]["F"] == case["F"]
+    a, b = (flat(yaml_load((env3["out"] / x["file"]).read_text())) for x in (s, base))
+    assert {k for k in a.keys() | b.keys() if a.get(k) != b.get(k)} == {"id", "mix.bus_gain_db.sax"}
+    rain = json.loads(env3["rain"].read_text())
+    for key, e in by_id.items():
+        assert e["instruments"] == {"sax": "sax_mtg_alto", "keys": "gu_tine_ep", "bass": "bass_vsco2_pizz",
+                                    "drums": "kit_virtuosity"}
+        for bus, inst in e["instruments"].items():                 # the band's t and median F: the frozen values
+            assert (e["trim_db"][bus], e["fader_db"][bus]) == (lv[inst]["t"], lv[inst]["F"]), (key, bus)
+        option = key.split("_", 1)[1]
+        own = option if key.startswith("w2_") else "rain_d18"
+        excerpt = option.removeprefix("excerpt_") if key.startswith("w1_") else "e1"
+        want = None if own == "rain_none" else {"src": RAIN_SOURCE, "start_s": EXCERPTS[excerpt], "xfade_s": 1.0,
+                                                "delta_lu": DELTA[own]}
+        d = yaml_load((env3["out"] / e["file"]).read_text())
+        assert d["bed"] == e["bed"] == want, key
+        # the Day-2 picks' settings, then the bed variants with the stage's own option last (band_settings)
+        stage_band = "rain_d18" if key.startswith("w1_") else "excerpt_e1"
+        assert e["settings"] == ["swing_55", "humanize_off", "sax_plain", "timing_lag", stage_band, option], key
+        assert d["sax_expr"]["timing"] == "lag" and d["groove"]["swing"] == {"default": 0.55}
+        assert d["groove"]["humanize"] == "off" and d["mix"]["sax_warm"] is False and d["sax_expr"]["enabled"]
+        if want is None:
+            assert RAIN_SOURCE not in d["sources"], "no bed, no rain source"
+        else:
+            src = d["sources"][RAIN_SOURCE]
+            assert (src["path"], src["sha256"], src["mode"], src["license"]) == \
+                (rain["source"]["asset_path"], rain["source"]["sha256"], "fetch", "CC0 1.0")
+        pal = load_palette(env3["out"] / e["file"], verify=True)       # every source hashed, the rain file's too
+        assert (pal.bed is None) == (want is None)
+    assert env3["stage"].index["rain"]["sha256"] == hashlib.sha256(env3["rain"].read_bytes()).hexdigest()
+
+
+def test_within_each_rain_round_the_palettes_differ_only_in_the_bed(env3):
+    # section 2.1: one thing only. The music is the same in every clip of a rain round (the band, its faders and the
+    # loop text); only the bed, its source and the palette's name differ
+    doc = env3["draw"]
+    rounds = [r for b in doc["batches"] for r in b["rounds"] if r["kind"] == "none"]
+    assert sorted(r["stage"] for r in rounds) == ["W1"] * 3 + ["W2"] * 4
+    for r in rounds:
+        clips = [doc["renders"][c["render"]] for c in r["clips"]]
+        assert len({c["text"] for c in clips}) == 1
+        docs = [flat(yaml_load((env3["out"] / f"{c['palette']}.yaml").read_text())) for c in clips]
+        for i, a in enumerate(docs):
+            for b in docs[i + 1:]:
+                diff = {k for k in a.keys() | b.keys() if a.get(k, "<absent>") != b.get(k, "<absent>")}
+                assert diff and all(k == "id" or k == "bed" or k.startswith(("bed.", f"sources.{RAIN_SOURCE}"))
+                                    for k in diff), (r["slot"], sorted(diff)[:6])
+
+
+def test_a_missing_or_changed_rain_file_or_an_unknown_excerpt_stops_the_generator(env3, tmp_path, monkeypatch):
+    args = dict(stage="day3", levels=None, base=env3["base"], draw=env3["draw_path"])
+    gone = tmp_path / "gone.json"
+    doc = json.loads(env3["rain"].read_text())
+    gone.write_text(json.dumps({**doc, "source": {**doc["source"], "asset_path": "derived/rain/none.wav"}}))
+    with pytest.raises(GenerateError, match="is missing"):
+        generate(PLAN_PATH, tmp_path / "a", rain=gone, **args)
+    other = tmp_path / "other.json"
+    other.write_text(json.dumps({**doc, "source": {**doc["source"], "sha256": "1" * 64}}))
+    with pytest.raises(GenerateError, match="does not match"):
+        generate(PLAN_PATH, tmp_path / "b", rain=other, **args)
+    two = tmp_path / "two.json"
+    two.write_text(json.dumps({**doc, "excerpts": {"e1": {"start_s": 1.0}, "e2": {"start_s": 2.0}}}))
+    with pytest.raises(GenerateError, match="'e3' is not one of the picker's"):
+        generate(PLAN_PATH, tmp_path / "c", stage="day3", levels=env3["levels"], base=env3["base"],
+                 draw=env3["draw_path"], rain=two)
+    assert not (tmp_path / "a").exists() and not (tmp_path / "b").exists() and not (tmp_path / "c" / "index.json").exists()
+
+
+def test_a_bed_before_day3_is_refused(env3, tmp_path):
+    doc = draw(PLAN, "day2", seed=0xD2, leaders=DAY2, adds=["R2r"])
+    key = next(iter(doc["palettes"]))
+    doc["palettes"][key]["band"]["rain"] = "rain_d24"
+    path = write_draw(doc, tmp_path / "draw.json")
+    with pytest.raises(GenerateError, match="the rain comes on day 3"):
+        generate(PLAN_PATH, tmp_path / "p", stage="day2", levels=None, base=env3["base"], draw=path)
+
+
+def test_the_s2_rerun_is_measured_and_written_as_on_day2(env3, tmp_path):
+    # section 4.4: when the final picks the other finalist, S2a and S2b run again on Day 3 with it, each clip its own
+    # sax fader as on Day 2 (CD-53), beside the rain palettes. Its variant slots are Day 2's (plan.yaml days.2.fixed:
+    # sax_plain, timing_grid), not the band's picks: the warmth options at grid timing and the timings at warm off
+    # (section 4.4, CD-19), so a band picking warm on and lag (as here) reaches the rain palettes only
+    leaders = parse_leaders(LEADERS3.replace("sax_variant=sax_plain", "sax_variant=sax_warm_on"))
+    assert (leaders["sax_variant"], leaders["timing"]) == (("sax_warm_on",), ("timing_lag",))
+    doc = draw(PLAN, "day3", seed=0xD3, leaders=leaders, rerun_s2="sax_mtg_tenor")
+    day2 = draw(PLAN, "day2", seed=0xD2, leaders=DAY2, adds=["R2r"])
+    fixed = PLAN.days[2].fixed
+    for stage, own, other in (("S2a", "sax_variant", "timing"), ("S2b", "timing", "sax_variant")):
+        bands = [p["band"] for p in doc["palettes"].values() if p["stage"] == stage]
+        assert len(bands) == 9 and {b["sax"] for b in bands} == {"sax_mtg_tenor"}
+        assert {b[other] for b in bands} == {fixed[other]}, stage          # S2a at timing_grid, S2b at sax_plain
+        assert {b[own] for b in bands} == set(PLAN.stages[stage].options), stage
+        was = [p["band"] for p in day2["palettes"].values() if p["stage"] == stage]
+        assert {(b[own], b[other]) for b in bands} == {(b[own], b[other]) for b in was}, "as on Day 2"
+    rain = [p["band"] for p in doc["palettes"].values() if p["stage"] in ("W1", "W2")]
+    assert rain and {(b["sax"], b["sax_variant"], b["timing"]) for b in rain} == \
+        {("sax_mtg_alto", "sax_warm_on", "timing_lag")}
+    path = write_draw(doc, tmp_path / "draw.json")
+    m = generate(PLAN_PATH, tmp_path / "palettes", stage="day3", levels=None, base=env3["base"], draw=path,
+                 rain=env3["rain"])
+    assert "sax_mtg_tenor" in m.index["variants"]
+    assert {c["stage"] for c in m.index["configs"].values()} >= {"S2a", "S2b"}
+    for c in m.index["configs"].values():
+        if c["stage"] in ("S2a", "S2b"):
+            assert c["settings"][:2] == ["swing_55", "humanize_off"] and c["option"] in c["settings"]
+            assert ("timing_grid" if c["stage"] == "S2a" else "sax_plain") in c["settings"], c
+    lv = synthetic_levels_day2(tmp_path / "palettes" / "measure" / "index.json", env3["base"], doc, tmp_path / "lv.json")
+    lv.write_text(json.dumps(dict(json.loads(lv.read_text()), stage="day3")))
+    st = generate(PLAN_PATH, tmp_path / "palettes", stage="day3", levels=lv, base=env3["base"], draw=path,
+                  rain=env3["rain"])
+    s2 = [p for p in st.index["palettes"] if p["stage"] in ("S2a", "S2b") and p.get("level")]
+    assert len(s2) == 18 and {p["instruments"]["sax"] for p in s2} == {"sax_mtg_tenor"}
+    assert all(p.get("bed", None) is None for p in s2)
+    for p in s2:                                   # the palettes written: Day 2's slots, each clip's own option
+        variant, timing = (p["option"], "timing_grid") if p["stage"] == "S2a" else ("sax_plain", p["option"])
+        assert p["settings"] == ["swing_55", "humanize_off", variant, timing], p["id"]
+        d = yaml_load((tmp_path / "palettes" / p["file"]).read_text())
+        assert d["sax_expr"]["timing"] == timing.removeprefix("timing_"), p["id"]
+        assert d["mix"]["sax_warm"] is (variant == "sax_warm_on"), p["id"]
+        assert d["sax_expr"]["enabled"] is (variant != "sax_expr_off"), p["id"]
+    for p in st.index["palettes"]:
+        if p["stage"] in ("W1", "W2"):             # the rain palettes play the band's picks
+            assert p["settings"][2:4] == ["sax_warm_on", "timing_lag"], p["settings"]
+
+
+# ------------------------------------------------------------------------------------- the level tool (7.1)
+class HashBench:
+    """Made-up loudness for any (instrument, case), as tests/test_shootout_levels.py's HashBench."""
+
+    def __init__(self):
+        self.prepared, self.kept = [], {}
+
+    @staticmethod
+    def _u(*keys) -> float:
+        return int(hashlib.sha256("|".join(keys).encode()).hexdigest()[:8], 16) / 2 ** 32
+
+    def prepare(self, run, cases, buses):
+        self.prepared.append(run.id)
+
+    def input_lufs(self, run, case, bus):
+        return -45.0 + 6.0 * self._u("P", run.instruments[bus], case.name)
+
+    def chain_lufs(self, run, case, bus, trim, keep=False):
+        out = -40.0 + 8.0 * self._u("L", run.instruments[bus], case.name) + trim
+        if keep:
+            self.kept[(run.id, case.name, bus)] = out
+        return out
+
+    def post_lufs(self, run, case, bus, fader):
+        return self.kept[(run.id, case.name, bus)] + fader
+
+    def release(self, run):
+        pass
+
+
+def test_the_level_tool_measures_the_day3_band_against_job_1_and_the_anchor_on_its_rain_palette(env3, tmp_path):
+    # the band against job 1 (section 3 "Drift between jobs"), and the anchor's sour copy on its own rain palette
+    # (2026-11-01 review): the loop's text, the round-mates' sax at the median F, and the sour text at the fader that
+    # puts its sax within CLIP_FIX_LU of theirs, F + L(loop) - L(loop.sour) here (HashBench is linear)
+    doc = run_levels(PLAN_PATH, ROOT / "shootouts" / "loops", env3["out"] / "measure", "day3", draw=env3["draw_path"],
+                     bench=HashBench(), stamp="a1b2c3d 0 0")
+    assert set(doc["variants"]) == set(env3["measure"].index["variants"]) and doc["flags"] == []
+    r, spec, _ = anchor_of(env3["draw"])
+    loop = r["loop"]
+    (cfg,) = doc["configs"].values()
+    sax = cfg["buses"]["sax"]
+    assert list(doc["configs"]) == [spec["base"]] and cfg["target"] == sax["target"] == "round"
+    assert sorted(sax["cases"]) == [loop, f"{loop}.sour"] and sax["instrument"] == "sax_mtg_alto"
+    F = doc["variants"]["sax_mtg_alto"]["F"]
+    ref, sour = sax["cases"][loop], sax["cases"][f"{loop}.sour"]
+    assert (ref["F"], ref["reference"], sour["reference"]) == (F, loop, loop) and sax["t"] == doc["variants"]["sax_mtg_alto"]["t"]
+    assert sour["target_lufs"] == pytest.approx(ref["L"] + F) and abs(sour["lufs"] - (ref["L"] + F)) <= 0.005
+    assert sour["F"] == round(F + ref["L"] - sour["L"], 2) and sour["tried"] == 1
+    (rd,) = doc["rounds"]
+    assert (rd["kind"], rd["slot"], rd["target"]) == ("anchor", r["slot"], "round")
+    assert rd["before_lu"] == pytest.approx(abs(sour["L"] - ref["L"])) and rd["after_lu"] <= 0.005
+    prior = tmp_path / "job1.json"
+    prior.write_text(json.dumps(dict(doc, stage="day1", drift={**doc["drift"], "stamp": "job 1"})))
+    again = run_levels(PLAN_PATH, ROOT / "shootouts" / "loops", env3["out"] / "measure", "day3",
+                       draw=env3["draw_path"], prior=prior, bench=HashBench(), stamp="a1b2c3d 0 0")
+    assert again["reused"] is False and again["prior"]["changed"] == ["stamp"]
+    assert all(r["moved_db"] == {"t": 0.0, "F": 0.0} for r in again["variants"].values())
+
+
+def test_the_anchor_rounds_sax_spread_after_matching_is_at_most_0_2_lu(env3, tmp_path):
+    # 2026-11-01 review: Day 3 played the anchor's sour copy at the band's median sax fader, so its sax sat 0.18-1.65
+    # LU from its round-mates' (L4 the most; the dry run's renders), where Days 1 and 2 matched their anchors to
+    # about 0.01 LU. Through the level tool (made-up loudness: HashBench), the generator, render records carrying
+    # that loudness at each palette's fader, the batch builder and the tally, the anchor round's sax spread in the
+    # hidden manifests is at most 0.2 LU (CLIP_FIX_LU here), from a spread at the median fader over 0.2 LU
+    from lofi_rl.shootout import tally as T
+    lv = run_levels(PLAN_PATH, ROOT / "shootouts" / "loops", env3["out"] / "measure", "day3", draw=env3["draw_path"],
+                    bench=HashBench(), stamp="a1b2c3d 0 0")
+    levels = tmp_path / "levels.json"
+    levels.write_text(json.dumps(lv))
+    st = generate(PLAN_PATH, tmp_path / "palettes", stage="day3", levels=levels, base=env3["base"],
+                  draw=env3["draw_path"], rain=env3["rain"])
+    pal = {p["id"]: p for p in st.index["palettes"]}
+    doc = env3["draw"]
+    r, spec, key = anchor_of(doc)
+    cases = lv["configs"][spec["base"]]["buses"]["sax"]["cases"]
+    (rd,) = lv["rounds"]
+    assert rd["before_lu"] > 0.2, "the median fader leaves the sour copy's sax apart from its round's"
+    run = tmp_path / "runs" / "shootout-301"
+    fake_renders(doc, run / "renders")
+    for c in r["clips"]:                         # each clip's sax as the level tool measured its text, at its fader
+        p = pal[doc["renders"][c["render"]]["palette"]]
+        L = cases[f"{r['loop']}.sour" if c["render"].endswith(".sour") else r["loop"]]["L"]
+        path = run / "renders" / c["render"] / "record.json"
+        rec = json.loads(path.read_text())
+        rec["buses"]["sax"] = {"lufs": L, "fader_db": p["fader_db"]["sax"], "trim_db": p["trim_db"]["sax"],
+                               "post_lufs": L + p["fader_db"]["sax"]}
+        path.write_text(json.dumps(rec))
+    build(doc, run / "renders", tmp_path / "inbox", summary_dir=run / "summary", plan=PLAN)
+    votes = tmp_path / "votes"
+    votes.mkdir()
+    tal, _ = T.tally(votes, tmp_path / "inbox", plan=PLAN)
+    (spread,) = [s for s in tal["largest_spread"] if s["bus"] == "sax"]
+    assert (spread["kind"], spread["slot"], spread["field"]) == ("anchor", r["slot"], "sax_lufs")
+    assert spread["spread_lu"] <= 0.2 and spread["spread_lu"] <= 0.005 + 1e-9
+    assert not [f for f in tal["flags"] if f["field"] == "sax_lufs"]
+    hid = [h for d in sorted((tmp_path / "inbox").glob("*/*")) for h in load_batch(d)[1].rounds.values()
+           if h.kind == "anchor"]
+    (info,) = [x for h in hid for oid, x in h.clips.items() if oid == h.anchor_clip]
+    assert info["sax_fader_db"] == pal[key]["fader_db"]["sax"] == cases[f"{r['loop']}.sour"]["F"]
+    assert info["palette"].startswith(f"{key}@")
+
+
+# ------------------------------------------------------------------------------------- the render record (7.7)
+def test_a_bed_clips_record_carries_its_bed_measured_in_the_render_and_its_music():
+    rng = np.random.default_rng(5)
+    music = (rng.standard_normal((2, 44100 * 3)) * 0.1).astype(np.float32)
+    bed = (rng.standard_normal((2, 44100 * 3)) * 0.1 * 10 ** (-18 / 20)).astype(np.float32)
+    report = {"src": "rain", "delta_lu": 18.0, "start_s": 150.4, "xfade_s": 1.0, "xfade_samples": 44100,
+              "lufs_source": -30.0, "gain_db": -2.0, "lufs": -32.0}
+    got = R.bed_record({"bed": report, "music_lufs": -14.2}, music + bed, music, music)
+    assert got["bed"]["bed_lu"] == pytest.approx(lufs(bed, 44100) - lufs(music, 44100), abs=1e-9)
+    assert {k: v for k, v in got["bed"].items() if k != "bed_lu"} == report
+    assert got["music_lufs"] == -14.2 and got["pre_limiter_sha256"] == pcm_sha256(music)
+    assert R.bed_record({"bed": None, "music_lufs": -14.0}, music, music, music)["bed"] is None
+    # through the driver's record: a bed stage's clip gets the fields, any other stage's record keeps its keys
+    compiled = SimpleNamespace(sax=SimpleNamespace(notes=()), kit="dusty")
+    man = {"buses": {b: {"lufs": -20.0, "gain_db": 0.0} for b in ("sax", "keys", "bass", "drums")}, "n": 3, "sr": 44100,
+           "loudness": {"lufs": -14.0, "true_peak_dbtp": -1.5, "gain_db": 3.0}, "audio_sha256": "a" * 64,
+           "music_sha256": "b" * 64, "loop": {"canon_sha256": "c" * 64, "compiled_sha256": "d" * 64},
+           "gates": {"G1-G6": "pass", "G7": "pass"}, "bed": report, "music_lufs": -14.2,
+           "schema": "lofi-rl/render/1", "chain": {}, "brief": {"bpm": 76, "tonic": 9, "mode": "aeolian", "energy": "low"},
+           "palette": {"id": "w1_excerpt_e1", "sha256": "e" * 64}}
+    r = SimpleNamespace(manifest=man, compiled=compiled, audio=music + bed, music=music, pre_limiter=music)
+    pal = SimpleNamespace(id="w1_excerpt_e1", sha256="e" * 64, kits={"dusty": SimpleNamespace(
+        lanes={"kick": SimpleNamespace(db=0.0)})}, mix=SimpleNamespace(buses={b: () for b in ("sax", "keys", "bass")}))
+    entry = {"loop": "l1_melancholy_low", "brief": {"bpm": 76}, "stage": "W1", "option": "excerpt_e1", "what": "x",
+             "bus": "bed", "variant": "base", "palette": "w1_excerpt_e1"}
+    rec = R._record("W1.l1_melancholy_low.excerpt_e1", entry, pal, "ok", None, r, "f" * 64, 3)
+    assert rec["bed"]["delta_lu"] == 18.0 and rec["bed_lufs"] == -32.0 and rec["music_lufs"] == -14.2
+    other = R._record("S1.l1.x", {**entry, "bus": "sax", "stage": "S1"}, pal, "ok", None, r, "f" * 64, 3)
+    assert set(other) == set(R.RECORD_KEYS)
+
+
+# ------------------------------------------------------------------------------------- the batches (7.6)
+def _days(tmp: Path) -> list:
+    """Day 1 and Day 2 built from fake renders (the priors the repeats read), as job 1 and job 2 left them."""
+    priors = []
+    for name, day, seed, kw in (("shootout-201", "day1", 21, {}), ("shootout-202", "day2", 22,
+                                                                   {"leaders": DAY2, "adds": ["R2r"]})):
+        run = tmp / "runs" / name
+        doc = draw(PLAN, day, seed=seed, **kw)
+        write_draw(doc, run / "summary" / "draw.json")
+        for key in doc["palettes"]:
+            pal = run / "summary" / "palettes" / f"{key}.yaml"
+            pal.parent.mkdir(parents=True, exist_ok=True)
+            pal.write_text(f"# stand-in for palette {key}\n")
+        fake_renders(doc, run / "renders")
+        build(doc, run / "renders", tmp / "inbox", summary_dir=run / "summary", plan=PLAN, check=False)
+        priors.append(load_prior(run / "summary" / "batches.json"))
+    return priors
+
+
+def test_day3_batches_record_each_rain_clips_bed_and_music_and_hold_the_five_repeats(tmp_path):
+    priors = _days(tmp_path)
+    doc = draw(PLAN, "day3", seed=23, leaders=parse_leaders(LEADERS3), priors=priors, repeats=STAGES,
+               serve_date="2026-11-03")
+    assert doc["repeats"]["serve_date"] == "2026-11-03"
+    run = tmp_path / "runs" / "shootout-203"
+    fake_renders(doc, run / "renders")
+    folders = build(doc, run / "renders", tmp_path / "inbox", summary_dir=run / "summary", plan=PLAN)
+    assert [f.name for f in folders] == ["b1106-1-mix", "b1106-2-mix"]
+    kinds, groups = [], []
+    for d in folders:
+        m, h = load_batch(d)
+        pub = json.loads((d / "manifest.json").read_text())
+        hid = json.loads((d / "manifest.hidden.json").read_text())
+        # spec-F1: every Day-3 batch says when it may first be served, at the top of its hidden manifest only
+        assert hid["serve_from"] == "2026-11-03" and h.serve_from == date(2026, 11, 3) and "serve_from" not in pub
+        assert list(hid) == ["v", "batch", "category", "serve_from", "rounds"]
+        assert public_leaks(pub, hid, _stage_options(PLAN, {i["stage"] for r in hid["rounds"].values()
+                                                             for i in r["clips"].values()})) == []
+        for r in m.rounds:
+            hr = h.rounds[r.id]
+            kinds.append(hr.kind)
+            infos = [hr.clips[c] for c in r.ids]
+            if hr.kind == "repeat":
+                groups.append(PLAN.stages[infos[0]["stage"]].repeat_group)
+                continue
+            assert infos[0]["stage"] in ("W1", "W2")
+            for x in infos:
+                assert {"music_lufs", "bed_lu", "bus_lufs"} <= set(x) and x["fader_db"] is None
+                assert (x["bed_lu"] is None) == (x["option"] == "rain_none") == (x["bus_lufs"] is None)
+    assert sorted(kinds) == ["anchor"] + ["none"] * 7 + ["repeat"] * 5
+    assert sorted(groups) == sorted(PLAN.repeat_groups), "one repeat per group (section 2.5)"
+
+
+def test_the_draw_cli_takes_the_repeats_only_with_their_serving_date(tmp_path, capsys):
+    # spec-F1 (2026-11-01 review): only the tally knew the serving date, so job 3's batches went into the inbox with
+    # nothing to stop `make rate` serving them a day after their first showings' votes. The draw takes --repeats
+    # only with --serve-date and records it (repeats.serve_date), which the builder writes into each hidden manifest
+    from lofi_rl.shootout.batch import main as batch_main
+    priors = _days(tmp_path)
+    base = ["draw", "--plan", str(PLAN_PATH), "--stage", "day3", "--leaders", LEADERS3, "--prior",
+            *(str(p.run_dir / "summary" / "batches.json") for p in priors), "--repeats", "K1+V", "--seed",
+            "00000000000000d3"]
+    assert batch_main([*base, "--summary", str(tmp_path / "a")]) == 2
+    assert "--repeats needs --serve-date" in capsys.readouterr().err and not (tmp_path / "a").exists()
+    assert batch_main([*base, "--summary", str(tmp_path / "b"), "--serve-date", "2026-11-03"]) == 0
+    doc = json.loads((tmp_path / "b" / "draw.json").read_text())
+    assert doc["repeats"]["serve_date"] == "2026-11-03" and doc["repeats"]["stages"] == ["K1", "V"]
+    assert batch_main([*base, "--summary", str(tmp_path / "c"), "--serve-date", "3 Nov"]) == 2
+    assert "is not a date" in capsys.readouterr().err
+    none = draw(PLAN, "day3", seed=0xD3, leaders=parse_leaders(LEADERS3))
+    assert "serve_date" not in none["repeats"], "a draw without one keeps its form"
+
+
+def test_a_rain_round_whose_clips_play_different_music_is_refused(tmp_path):
+    doc = draw(PLAN, "day3", seed=24, leaders=parse_leaders(LEADERS3))
+    rid = next(c["render"] for b in doc["batches"] for r in b["rounds"] if r["kind"] == "none" for c in r["clips"])
+    run = tmp_path / "runs" / "shootout-9"
+    fake_renders(doc, run / "renders")
+    rec_path = run / "renders" / rid / "record.json"
+    rec = json.loads(rec_path.read_text())
+    rec_path.write_text(json.dumps(dict(rec, pre_limiter_sha256="0" * 64)))
+    with pytest.raises(BuildError, match="must play the same music"):
+        build(doc, run / "renders", tmp_path / "inbox", summary_dir=run / "summary", plan=PLAN)
+    assert not (tmp_path / "inbox").exists() or not any((tmp_path / "inbox").iterdir())
+
+
+def test_a_purged_first_showing_made_again_builds_and_its_name_leaks_nothing(tmp_path):
+    # A render scratch purged is made again from its first job's palette under `prior.<job>.<render>`; the run
+    # folder's word "shootout" (the public manifest's mode) is not in that name, so the leak guard passes
+    priors = _days(tmp_path)
+    doc = draw(PLAN, "day3", seed=25, leaders=parse_leaders(LEADERS3), priors=priors, repeats=["K2"])
+    rep = next(r for b in doc["batches"] for r in b["rounds"] if r["kind"] == "repeat")
+    first = rep["clips"][0]
+    old = Path(first["run_dir"]) / "renders" / first["render"]
+    keep = (old / "render.flac").read_bytes()
+    (old / "render.flac").unlink()
+    try:
+        doc2 = draw(PLAN, "day3", seed=25, leaders=parse_leaders(LEADERS3), priors=priors, repeats=["K2"])
+    finally:
+        (old / "render.flac").write_bytes(keep)
+    rep2 = next(r for b in doc2["batches"] for r in b["rounds"] if r["kind"] == "repeat")
+    new = rep2["clips"][0]["render"]
+    assert new == f"prior.202.{first['render']}" and "shootout" not in new
+    run = tmp_path / "runs" / "shootout-204"
+    fake_renders(doc2, run / "renders")
+    for c in rep2["clips"]:                     # the render made again equals its first showing (same pcm, same FLAC)
+        if c["render"].startswith("prior."):
+            src = Path(priors[1].run_dir) / "renders" / c["render"].split(".", 2)[2]
+            dst = run / "renders" / c["render"]
+            (dst / "render.flac").write_bytes((src / "render.flac").read_bytes())
+            rec = json.loads((dst / "record.json").read_text())
+            rec.update(clip=c["expect"]["clip"], pcm_sha256=c["expect"]["pcm_sha256"],
+                       flac_sha256=c["expect"]["flac_sha256"])
+            (dst / "record.json").write_text(json.dumps(rec))
+            man = json.loads((dst / "manifest.json").read_text())
+            (dst / "manifest.json").write_text(json.dumps(dict(man, audio_sha256=rec["pcm_sha256"])))
+    folders = build(doc2, run / "renders", tmp_path / "inbox3", summary_dir=run / "summary", plan=PLAN)
+    assert len(folders) == 2
+
+
+# ------------------------------------------------------------------------------------- the split (section 2.4)
+def split_rows(doc: dict) -> list:
+    """What the split and the order decide: each batch's rounds in order, as kind, stage, slot, loop and renders."""
+    return [[b["name"], [[r["kind"], r["stage"], r["slot"], r["loop"], [c["render"] for c in r["clips"]]]
+                         for r in b["rounds"]]] for b in doc["batches"]]
+
+
+def test_every_seed_splits_day_3_and_a_seed_the_redraws_order_keeps_its_batches(tmp_path, monkeypatch):
+    # 2026-11-01 review (spec-F3): the greedy split's 500 redraws differ only in ties, so on some seeds none of the
+    # few splits they try could be ordered under CD-22 and the draw failed (9 of 300 seeds with every repeat and
+    # both Day-3 cuts, 82 of 300 with both cuts and no repeat), though balanced orderable splits existed. The
+    # redraws stand: every seed they order keeps the batches main 4020a9d drew (tests/golden/day3_split.json, the
+    # same seeds and priors); only the seeds they cannot order search every split within the longest round of equal
+    # length, in a drawn order, and each of those now draws.
+    from lofi_rl.shootout import draw as D
+    from lofi_rl.shootout.draw import round_seconds
+    golden = json.loads((ROOT / "tests" / "golden" / "day3_split.json").read_text())
+    priors = _days(tmp_path)
+    searched = []
+    search = D._split_all
+    monkeypatch.setattr(D, "_split_all", lambda *a, **kw: searched.append(a[1]) or search(*a, **kw))
+    leaders = parse_leaders(LEADERS3)
+    for name, cfg in golden["configs"].items():
+        rows, fell = [], []
+        for k in range(golden["n"]):
+            searched.clear()
+            doc = draw(PLAN, "day3", seed=golden["seed0"] + k, leaders=leaders, priors=priors if cfg["repeats"] else [],
+                       repeats=cfg["repeats"], cuts=cfg["cuts"])
+            kinds = sorted(r["kind"] for b in doc["batches"] for r in b["rounds"])
+            assert kinds == sorted(["anchor"] + ["none"] * cfg["design_rounds"]
+                                   + ["repeat"] * (5 if cfg["repeats"] else 0)), (name, k)
+            if not searched:
+                rows.append([k, split_rows(doc)])
+                continue
+            fell.append(k)
+            assert searched == ["mix"]
+            secs = [[round_seconds(len(r["clips"]), r["bpm"]) for r in b["rounds"]] for b in doc["batches"]]
+            assert [b["name"] for b in doc["batches"]] == ["b1106-1-mix", "b1106-2-mix"]
+            assert abs(sum(secs[0]) - sum(secs[1])) <= max(secs[0] + secs[1]), (name, k)
+            for b in doc["batches"]:                     # CD-22: a design round first, no loop twice in a row
+                rs = b["rounds"]
+                assert rs[0]["kind"] == "none" and all(x["loop"] != y["loop"] for x, y in zip(rs, rs[1:])), (name, k)
+        assert fell == cfg["unordered"], name
+        assert hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest() == cfg["sha256"], name
+    assert sum(len(c["unordered"]) for c in golden["configs"].values()) == 91

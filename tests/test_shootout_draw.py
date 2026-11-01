@@ -168,8 +168,11 @@ def test_the_anchor_imitates_a_sax_round_with_one_sour_clip(draws):
         if "level" in np_:          # CD-52: the sour copy is its own clip, matched on its own text
             assert sp["band"] == np_["band"] and sp["base"] == np_["base"] and ren["palette"] == normal["palette"] + "_sour"
             assert sp["level"] == {**np_["level"], "case": np_["level"]["case"] + ".sour"}
-        else:                       # a stage whose option is not an instrument keeps the clip's palette
-            assert ren["palette"] == normal["palette"]
+        else:                       # Day 3's rain (2026-11-01 review): its own palette, its sax matched to its round
+            lid = PLAN.loop_named(a["loop"]).id.lower()
+            assert day == "day3" and ren["palette"] == f"{normal['palette']}_{lid}_sour"
+            assert sp["band"] == np_["band"] and sp["base"] == normal["palette"]
+            assert sp["level"] == {"buses": ["sax"], "case": f"{a['loop']}.sour", "target": "round"}
         others = [c["render"] for c in a["clips"] if c is not sour[0]]
         assert set(others) <= {c["render"] for c in src[0]["clips"]}       # the other clips reuse their renders
 
@@ -194,7 +197,8 @@ def test_every_clip_of_an_instrument_stage_plays_its_own_palette_named_for_its_l
     # whose bus fader `level` names (the bus, the option, and the case it is measured on: the loop, or
     # loop.<variant> for a changed text such as an anchor's sour copy). CD-53 (Day 2 on): every clip of a stage that
     # names `match` plays its own palette too, its level naming those buses and its case (the vamps' texts by their
-    # vamp). Other stages (Day 3's rain) keep one palette per option.
+    # vamp). Other stages (Day 3's rain) keep one palette per option, but for the anchor's sour copy, whose sax is
+    # matched to its round (2026-11-01 review).
     for (day, s), doc in draws.items():
         seen = []
         for rid, ren in doc["renders"].items():
@@ -215,10 +219,16 @@ def test_every_clip_of_an_instrument_stage_plays_its_own_palette_named_for_its_l
                 assert ren["palette"] == "_".join([spec["base"], *tail]), (day, rid)
                 assert spec["band"][st.fills] == ren["option"]
                 seen.append(ren["palette"])
+            elif ren["variant"] == "sour":
+                assert day == "day3" and spec["level"] == {"buses": ["sax"], "case": case, "target": "round"}
+                assert ren["palette"] == "_".join([spec["base"], *tail]), (day, rid)
+                seen.append(ren["palette"])
             else:
                 assert "level" not in spec and "base" not in spec, (day, rid)
         assert len(seen) == len(set(seen)), (day, s, "one palette per clip")
-        assert (len(seen) == len(doc["renders"])) == (day != "day3") and bool(seen) == (day != "day3")
+        assert (len(seen) == len(doc["renders"])) == (day != "day3") and len(seen) >= 1
+        assert day != "day3" or seen == [ren["palette"] for r, ren in doc["renders"].items() if r.endswith(".sour")] \
+            == [k for k, x in doc["palettes"].items() if "level" in x], "Day 3: the sour copy's palette only"
 
 
 def test_palettes_carry_the_day_band_and_stage_texts_their_substitution(draws):
@@ -289,6 +299,9 @@ def test_cuts_shrink_day2_and_leave_the_other_stages_draws_alone():
     ("day1", {"repeats": ["K1"]}, "repeats come only on day3"),
     ("day3", {"leaders": DAY3, "repeats": ["K1"]}, "need the --prior"),
     ("day3", {"leaders": DAY3, "rerun_s2": "sax_tuba"}, "not one of the saxes"),
+    ("day2", {"leaders": DAY2, "serve_date": "2026-11-03"}, "come only on day3"),
+    ("day3", {"leaders": DAY3, "serve_date": "2026-11-31"}, "is not a date"),
+    ("day3", {"leaders": DAY3, "serve_date": "2026-W45-2"}, "is not a date"),
 ])
 def test_bad_job_arguments_are_refused_before_anything_is_written(day, kw, match):
     with pytest.raises(DrawError, match=match):
@@ -313,6 +326,32 @@ def test_order_rounds_and_the_listening_estimate():
     assert [x["loop"] for x in ok] == ["a", "b", "a"] and ok[0]["kind"] == "none"
     assert round(round_seconds(4, 76), 1) == 83.8 and round(round_seconds(2, 90), 1) == 40.0
     assert est_minutes(ok) == round(3 * round_seconds(2, 90) / 60, 1)
+
+
+def test_may_order_is_exactly_whether_some_order_meets_cd22():
+    # The split's check before it orders a part (2026-11-01 review, spec-F3): a part it passes over has no order
+    # under CD-22 at all, and every part it keeps is one order_rounds orders. Every part of up to 6 rounds on 3
+    # loops, each a design round or a repeat, against every permutation.
+    from itertools import permutations, product
+
+    from lofi_rl.shootout.draw import _may_order
+
+    def meets(p) -> bool:
+        return bool(p) and p[0][1] == "none" and all(a[0] != b[0] for a, b in zip(p, p[1:]))
+    parts = 0
+    for m in range(7):
+        for loops in product("abc", repeat=m):
+            if list(loops) != sorted(loops):
+                continue
+            for kinds in product(("none", "repeat"), repeat=m):
+                some = any(meets(p) for p in set(permutations(zip(loops, kinds))))
+                part = [{"loop": lp, "kind": k, "bpm": 90, "clips": [1, 2]} for lp, k in zip(loops, kinds)]
+                assert _may_order(part) is some, (loops, kinds)
+                if some:
+                    got = order_rounds(part, Rng(m))
+                    assert meets([(r["loop"], r["kind"]) for r in got]) and len(got) == m
+                parts += 1
+    assert parts == 2815
 
 
 # ------------------------------------------------------------------------- CD-54: the bass re-listen, R2r
