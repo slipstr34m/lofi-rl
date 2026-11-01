@@ -13,6 +13,7 @@ import pytest
 
 from helpers_compile import (EXAMPLE_BRIEF, ROOT, compiled, dev_palette, loop_of, loop_text, palette_with,
                              passing_fixtures, spec_sample, spec_sax_pitches)
+from helpers_voicing import added
 from lofi_rl.brief import Brief
 from lofi_rl.compile.compiler import CompileError, compile_loop, lane_clock
 from lofi_rl.compile.humanize import Humanize, loop_seed
@@ -87,10 +88,12 @@ def _check(c, loop, brief):
     for nt in c.keys.notes:
         chord = bars.chords[nt.step // 16]
         root = root_pc(chord.numeral, brief.tonic)
-        # V2 R3: quartal may add a 9th, 11th or 13th of the brief's mode that the chord's table lacks; the other
-        # styles take only chord tones, never the root (R4). Nothing outside chord + mode, ever.
+        # V2.1 R3: quartal may add the quality's available tensions that are in the brief's mode (the voicing
+        # oracle's `added`); the other styles take only chord tones, never the root (R4). Nothing outside chord +
+        # mode, ever.
         if loop.keys.voicing == "quartal":
-            extra = {(root + t) % 12 for t in (1, 2, 3, 5, 6, 8, 9)} & mode
+            extra = {(root + t) % 12 for t in added(chord.quality, chord.numeral, brief.mode)}
+            assert extra <= mode, (chord, extra)
         else:
             extra = set()
             assert nt.pitch % 12 != root, (chord, nt)

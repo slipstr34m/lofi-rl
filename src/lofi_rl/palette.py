@@ -5,9 +5,11 @@ is strict: every key is required and unknown keys are refused, so the file's sha
 render depends on (the manifest records it). Licences (docs/DECISIONS.md D-012): every source has a sha256
 and a licence; mode `commit` takes only CC0, public domain, permissive and CC BY licences, so a
 non-commercial, restricted or unrecognized one must be mode `fetch`; a CC-BY source names its attribution.
-`load_palette(..., verify=True)` also checks each source file against its sha256 and every SoundFont
-preset the palette names against the file's preset headers. A mode-commit path is repo-relative; a mode-fetch
-path lies under `assets_root` (`Palette.assets_dir`: `$LOFI_ASSETS`, or <root>/assets/big while it is unset).
+`load_palette(..., verify=True)` also checks each source file against its sha256, every SoundFont
+preset the palette names against the file's preset headers, and that each SoundFont voice has a zone for every
+note the compiler may send it (`sf2_coverage`, docs/SHOOTOUTS.md §7.5). A mode-commit path is repo-relative; a
+mode-fetch path lies under `assets_root` (`Palette.assets_dir`: `$LOFI_ASSETS`, or <root>/assets/big while it is
+unset).
 
 Numbers that feed sample positions (swing, offsets, lags) are kept as exact `Fraction`s of the decimal
 written in the file, so the timeline never depends on binary floating point.
@@ -366,9 +368,75 @@ class Palette:
                 problems.append(f"{where}: bank {bank} prog {prog} is not a preset of source {src}")
         return problems
 
+    def note_cells(self) -> list[tuple[str, str, int, int, frozenset[tuple[int, int]]]]:
+        """(where, source, bank, prog, cells) of every SoundFont voice, in a fixed order: the (key, velocity)
+        cells the compiler may send it (docs/SHOOTOUTS.md §7.5).
+
+        - each sax: its `play` range (the octave fit folds every note into it) at every velocity of its clip,
+          sax_expr.velocity min..max, and the flat base velocity it plays with expression off (COMPILER.md §3.5);
+        - each keys voice: keys 48-72, where every voicing lies (theory.voicing.KEYS_RANGE), at its `vel` values;
+        - each kit bass: keys 28-43 (compile.bass.BASS_RANGE) at its `vel` values;
+        - each SoundFont one-shot: its note at its `vel`.
+        With humanize on for the keys or bass lane, each `vel` value v widens to rnd(v (1 - h))..rnd(v (1 + h)),
+        h = groove.humanize_vel, since a humanized strike plays v times its velocity factor (COMPILER.md §3.6)."""
+        # Imported here: compile.bass imports compile.humanize, which imports this module.
+        from lofi_rl.compile.bass import BASS_RANGE
+        from lofi_rl.theory.voicing import KEYS_RANGE
+        v = self.sax_expr.velocity
+        sax_vels = set(range(v.min, v.max + 1)) | {v.base}
+        out = [(f"sax.{k}", s.src, s.bank, s.prog, _grid(range(s.play[0], s.play[1] + 1), sax_vels))
+               for k, s in self.sax.items()]
+        keys = range(KEYS_RANGE[0], KEYS_RANGE[1] + 1)
+        out += [(f"keys.{k}", s.src, s.bank, s.prog, _grid(keys, self._velocities("keys", s.vel)))
+                for k, s in self.keys.items()]
+        for name, kit in self.kits.items():
+            b = kit.bass
+            out.append((f"kits.{name}.bass", b.src, b.bank, b.prog,
+                        _grid(range(BASS_RANGE[0], BASS_RANGE[1] + 1), self._velocities("bass", b.vel))))
+            for lane in LANES:
+                for layer in LAYERS:
+                    out += [(f"kits.{name}.lanes.{lane}.{layer}[{i}]", s.src, s.bank, s.prog,
+                             frozenset({(s.note, s.vel)}))
+                            for i, s in enumerate(kit.lanes[lane].layers[layer]) if s.file is None]
+        return out
+
+    def _velocities(self, lane: str, vel: Mapping[str, int]) -> set[int]:
+        g = self.groove
+        if g.humanize == "off" or lane not in g.humanize_lanes:
+            return set(vel.values())
+        out: set[int] = set()
+        for v in vel.values():
+            lo, hi = _round_half_up(v * (1 - g.humanize_vel)), _round_half_up(v * (1 + g.humanize_vel))
+            out.update(range(max(1, lo), min(127, hi) + 1))
+        return out
+
+    def verify_coverage(self, root: Path = ROOT) -> list[str]:
+        """Notes the compiler may send (`note_cells`) that a voice's SoundFont preset has no zone for: FluidSynth
+        would play them silent. Each problem lists the missing (key, velocity) cells. Empty when all good; run it
+        on files whose sha256 and presets already passed."""
+        problems: list[str] = []
+        masks: dict[tuple[str, int, int], tuple[int, ...] | None] = {}
+        for where, src, bank, prog, want in self.note_cells():
+            key = (src, bank, prog)
+            if key not in masks:
+                try:
+                    masks[key] = _coverage_masks(self.source_path(src, root), bank, prog)
+                except (OSError, PaletteError) as err:
+                    masks[key] = None
+                    problems.append(f"{where}: {err}")
+                    continue
+            got = masks[key]
+            if got is None:
+                continue
+            missing = sorted(c for c in want if not got[c[0]] >> c[1] & 1)
+            if missing:
+                problems.append(f"{where}: source {src} bank {bank} prog {prog} has no zone for {_cells_text(missing)}")
+        return problems
+
 
 def load_palette(path: Path | str, *, verify: bool = True, root: Path = ROOT) -> Palette:
-    """Load and validate a palette file. `verify` also hashes every source file (missing = error)."""
+    """Load and validate a palette file. `verify` also hashes every source file (missing = error), checks every
+    SoundFont preset it names, and checks that each voice can sound every note the compiler may send it."""
     path = Path(path)
     data = path.read_bytes()
     try:
@@ -377,7 +445,7 @@ def load_palette(path: Path | str, *, verify: bool = True, root: Path = ROOT) ->
         raise PaletteError(f"{path}: not a UTF-8 YAML document ({err})") from err
     pal = parse_palette(doc, str(path), hashlib.sha256(data).hexdigest())
     if verify:
-        problems = pal.verify_sources(root) or pal.verify_presets(root)
+        problems = pal.verify_sources(root) or pal.verify_presets(root) or pal.verify_coverage(root)
         if problems:
             raise PaletteError("; ".join(problems))
     return pal
@@ -391,36 +459,178 @@ def _file_sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def sf2_presets(path: Path) -> frozenset[tuple[int, int]]:
-    """(bank, program) of every preset in a SoundFont 2 file, from its pdta/phdr chunk (SoundFont 2.04 §7.2).
-
-    Bank 128 holds the drum kits. Walks the RIFF chunks and seeks past the sample data, so it reads a few
-    hundred kB of any bank. A file that is not one, or is cut short, raises PaletteError."""
+def _pdta(path: Path, wanted: tuple[bytes, ...]) -> dict[bytes, bytes]:
+    """The `wanted` sub-chunks of a SoundFont 2 file's pdta list (SoundFont 2.04 §7), by id. Walks the RIFF chunks
+    and seeks past the sample data, so it reads a few hundred kB of any bank. A file that is not one, is cut short
+    or lacks one of them raises PaletteError."""
+    found: dict[bytes, bytes] = {}
     with Path(path).open("rb") as f:
         try:
             riff, size, form = struct.unpack("<4sI4s", f.read(12))
             if riff != b"RIFF" or form != b"sfbk":
                 raise PaletteError(f"{path} is not a SoundFont 2 file (no RIFF sfbk header)")
             end = 8 + size
-            while f.tell() + 8 <= end:
+            while f.tell() + 8 <= end and len(found) < len(wanted):
                 cid, csize = struct.unpack("<4sI", f.read(8))
                 body = f.tell()
                 if cid == b"LIST" and f.read(4) == b"pdta":
                     while f.tell() + 8 <= body + csize:
                         sid, ssize = struct.unpack("<4sI", f.read(8))
-                        if sid == b"phdr":
+                        if sid in wanted and sid not in found:
                             data = f.read(ssize)
-                            if ssize % 38 or len(data) != ssize or ssize < 76:
-                                raise PaletteError(f"{path}: malformed phdr chunk of {ssize} bytes")
-                            # 38-byte records: name[20], preset, bank, bag index, 3 reserved dwords; the
-                            # last one is the EOP terminator.
-                            return frozenset((bank, prog) for _, prog, bank, *_ in
-                                             struct.iter_unpack("<20sHHHIII", data[:-38]))
-                        f.seek(ssize + (ssize & 1), 1)
+                            if len(data) != ssize:
+                                raise PaletteError(f"{path} is cut short: its {sid.decode()} chunk has "
+                                                   f"{len(data)} of {ssize} bytes")
+                            found[sid] = data
+                            f.seek(ssize & 1, 1)
+                        else:
+                            f.seek(ssize + (ssize & 1), 1)
                 f.seek(body + csize + (csize & 1))
         except struct.error as err:
             raise PaletteError(f"{path} is cut short: {err}") from err
-    raise PaletteError(f"{path} has no pdta/phdr chunk")
+    missing = [w.decode() for w in wanted if w not in found]
+    if missing:
+        raise PaletteError(f"{path} has no pdta/{', pdta/'.join(missing)} chunk")
+    return found
+
+
+def _count(data: bytes, size: int, what: str, path: Path) -> int:
+    """Records in a pdta sub-chunk of `size`-byte records, its terminal record included."""
+    if len(data) % size or len(data) < size:
+        raise PaletteError(f"{path}: malformed {what} chunk of {len(data)} bytes")
+    return len(data) // size
+
+
+def sf2_presets(path: Path) -> frozenset[tuple[int, int]]:
+    """(bank, program) of every preset in a SoundFont 2 file, from its pdta/phdr chunk (SoundFont 2.04 §7.2).
+
+    Bank 128 holds the drum kits. A file that is not one, or is cut short, raises PaletteError."""
+    data = _pdta(path, (b"phdr",))[b"phdr"]
+    if len(data) % 38 or len(data) < 76:
+        raise PaletteError(f"{path}: malformed phdr chunk of {len(data)} bytes")
+    # 38-byte records: name[20], preset, bank, bag index, 3 reserved dwords; the last is the EOP terminator.
+    return frozenset((bank, prog) for _, prog, bank, *_ in struct.iter_unpack("<20sHHHIII", data[:-38]))
+
+
+_KEY_RANGE, _VEL_RANGE, _INSTRUMENT, _SAMPLE_ID = 43, 44, 41, 53     # SoundFont 2.04 §8.1.2 generator ids
+
+
+def _zone_ranges(path: Path, bags: range, bag: bytes, gen: bytes, terminal: int, limit: int,
+                 what: str) -> list[tuple[int, int, int, int, int]]:
+    """(key lo, key hi, velocity lo, velocity hi, index) of each zone of one preset or instrument that names an
+    instrument or a sample (its `terminal` generator), read as FluidSynth 2.6.1 reads them (sffile.c, defsfont.c):
+    - a keyRange counts only as its zone's first generator, a velRange only after nothing or a keyRange (SoundFont
+      2.04 §8.1.2); generators after the terminal one are dropped;
+    - the first zone, when it has no terminal generator, is the global zone: every later zone starts from its
+      ranges (0-127 without one) and overrides them with its own; a later zone with no terminal is discarded.
+    Measured with FluidSynth 2.6.1 on 2026-10-31: an instrument global zone's keyRange and a preset global zone's
+    velRange silence notes outside them, and a keyRange written after a pan is ignored."""
+    n_bags, n_gens = len(bag) // 4, len(gen) // 4
+    default = (0, 127, 0, 127)
+    out = []
+    for z, b in enumerate(bags):
+        if b + 1 >= n_bags:
+            raise PaletteError(f"{path}: a {what} names zone {b} of {n_bags - 1}")
+        g0, g1 = struct.unpack_from("<H", bag, 4 * b)[0], struct.unpack_from("<H", bag, 4 * b + 4)[0]
+        if not g0 <= g1 <= n_gens:
+            raise PaletteError(f"{path}: a {what} zone's generators {g0}..{g1} are outside its {n_gens}")
+        klo, khi, vlo, vhi = default
+        level, index = 0, None
+        for g in range(g0, g1):
+            oper, amount = struct.unpack_from("<HH", gen, 4 * g)
+            if oper == _KEY_RANGE:
+                if level == 0:
+                    klo, khi, level = amount & 0xFF, amount >> 8, 1
+            elif oper == _VEL_RANGE:
+                if level <= 1:
+                    vlo, vhi, level = amount & 0xFF, amount >> 8, 2
+            elif oper == terminal:
+                index = amount
+                break
+            else:
+                level = 2
+        if index is None:
+            if z == 0:
+                default = (klo, khi, vlo, vhi)
+            continue
+        if index >= limit:
+            raise PaletteError(f"{path}: a {what} zone names {'instrument' if terminal == _INSTRUMENT else 'sample'} "
+                               f"{index} of {limit}")
+        out.append((klo, khi, vlo, vhi, index))
+    return out
+
+
+def _coverage_masks(path: Path, bank: int, prog: int) -> tuple[int, ...]:
+    """Per key 0-127, a bit mask of the velocities 0-127 at which preset (bank, prog) sounds a zone."""
+    ch = _pdta(path, (b"phdr", b"pbag", b"pgen", b"inst", b"ibag", b"igen", b"shdr"))
+    phdr, inst = ch[b"phdr"], ch[b"inst"]
+    n_presets = _count(phdr, 38, "phdr", path) - 1
+    n_inst = _count(inst, 22, "inst", path) - 1
+    n_samples = _count(ch[b"shdr"], 46, "shdr", path) - 1
+    for c, size in ((b"pbag", 4), (b"pgen", 4), (b"ibag", 4), (b"igen", 4)):
+        _count(ch[c], size, c.decode(), path)
+    for i in range(n_presets):
+        p, b, bag0 = struct.unpack_from("<HHH", phdr, 38 * i + 20)
+        if (b, p) == (bank, prog):
+            bag1 = struct.unpack_from("<H", phdr, 38 * (i + 1) + 24)[0]
+            break
+    else:
+        raise PaletteError(f"{path}: bank {bank} prog {prog} is not a preset of this SoundFont")
+    masks = [0] * 128
+    for klo, khi, vlo, vhi, j in _zone_ranges(path, range(bag0, bag1), ch[b"pbag"], ch[b"pgen"], _INSTRUMENT,
+                                              n_inst, "preset"):
+        ib0, ib1 = struct.unpack_from("<H", inst, 22 * j + 20)[0], struct.unpack_from("<H", inst, 22 * j + 42)[0]
+        for ilo, ihi, jlo, jhi, _ in _zone_ranges(path, range(ib0, ib1), ch[b"ibag"], ch[b"igen"], _SAMPLE_ID,
+                                                  n_samples, "instrument"):
+            k0, k1 = max(klo, ilo), min(khi, ihi, 127)
+            v0, v1 = max(vlo, jlo), min(vhi, jhi, 127)
+            if k0 <= k1 and v0 <= v1:
+                bits = (1 << (v1 + 1)) - (1 << v0)
+                for k in range(k0, k1 + 1):
+                    masks[k] |= bits
+    return tuple(masks)
+
+
+def sf2_coverage(path: Path | str, bank: int, prog: int) -> frozenset[tuple[int, int]]:
+    """The (key, velocity) cells, 0-127 each, at which preset (bank, prog) of a SoundFont 2 file sounds a sample:
+    where one of its preset zones and one of that zone's instrument zones both hold, with global zones read as
+    FluidSynth 2.6.1 reads them (`_zone_ranges`). A missing preset, or a file that is not a SoundFont or is
+    malformed, raises PaletteError."""
+    masks = _coverage_masks(Path(path), bank, prog)
+    return frozenset((k, v) for k, m in enumerate(masks) if m for v in range(128) if m >> v & 1)
+
+
+def _grid(keys: range, vels: set[int]) -> frozenset[tuple[int, int]]:
+    return frozenset((k, v) for k in keys for v in vels)
+
+
+def _round_half_up(x: Fraction) -> int:
+    return int((x + Fraction(1, 2)) // 1)
+
+
+def _runs(values: list[int]) -> str:
+    """Sorted integers as runs: '52, 80, 96', '60-112' or '48-49, 97-104'."""
+    runs: list[list[int]] = []
+    for v in values:
+        if runs and runs[-1][1] == v - 1:
+            runs[-1][1] = v
+        else:
+            runs.append([v, v])
+    return ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in runs)
+
+
+def _cells_text(cells: list[tuple[int, int]]) -> str:
+    """Sorted (key, velocity) cells as key runs that miss the same velocities: 'keys 44-47 at velocity 60-112'."""
+    by_key: dict[int, list[int]] = {}
+    for k, v in cells:
+        by_key.setdefault(k, []).append(v)
+    groups: list[list] = []
+    for k, vels in by_key.items():
+        if groups and groups[-1][1] == k - 1 and groups[-1][2] == vels:
+            groups[-1][1] = k
+        else:
+            groups.append([k, k, vels])
+    return "; ".join(f"{f'key {a}' if a == b else f'keys {a}-{b}'} at velocity {_runs(vels)}" for a, b, vels in groups)
 
 
 # ----------------------------------------------------------------------------------------- checking

@@ -1,10 +1,12 @@
-"""Keys voicings: instrument.md section 3, Voicings, as amended by voicing rules V2 (docs/COMPILER.md,
-"Amendment V2 to instrument.md §3 Voicings"). voicing.py is checked against tests/helpers_voicing.py, an oracle
+"""Keys voicings: instrument.md section 3, Voicings, as amended by voicing rules V2.1 (docs/COMPILER.md §9,
+"Amendment V2.1 to instrument.md §3 Voicings"). voicing.py is checked against tests/helpers_voicing.py, an oracle
 that never reads voicing.py's templates:
 - R1-R6 over every mode x numeral (borrowed ones included) x quality x style at every tonic, with every candidate
   set equal to the oracle's; R7 in rootless, shell and spread, and the quartal coincidences counted;
 - the quartal oracle itself against every pitch set in C3-C5, for a sample of chords;
 - the voice-leading choice against a brute force over the oracle's candidates, for a sample of vamps;
+- V2.1's three changes: avoid notes over the bass, available tensions, and vamps that move (R8), the last over every
+  vamp of the vocabulary;
 - the section 3 rules V2 leaves alone: inversions, drop-2, rule 2, the cost and its ties."""
 import ast
 from fractions import Fraction
@@ -15,8 +17,8 @@ from pathlib import Path
 import pytest
 
 import helpers_voicing
-from helpers_voicing import (added, avoids, colour, cost48, dropped, guide, inverted, is_stack, mode_pcs, named,
-                             normal, note_names, oracle_candidates, oracle_vamp, placed, quartal_stacks,
+from helpers_voicing import (added, avoids, best_pair, colour, cost48, dropped, guide, inverted, is_stack, mode_pcs,
+                             named, normal, note_names, oracle_candidates, oracle_vamp, placed, quartal_stacks,
                              register_ok, root_of, rootless_template, sharp9_above_third, shell_template)
 from lofi_rl.dsl.ast import Chord
 from lofi_rl.dsl.vocab import MODES, NUMERALS, QUALITIES, VOICINGS
@@ -188,8 +190,8 @@ def test_r7_quartal_coincidences_are_counted():
                     if cands[a] & cands[b]:
                         shared += 1
                         pairs[a, b] = pairs.get((a, b), 0) + 1
-    assert (cases, shared) == (36036, 2430)
-    assert pairs[("7", "9")] == pairs[("m7", "m11")] == pairs[("maj7", "maj9")] == 240 and len(pairs) == 13
+    assert (cases, shared) == (36036, 1683)
+    assert pairs[("7", "9")] == pairs[("m7", "m11")] == 240 and pairs[("maj7", "maj9")] == 237 and len(pairs) == 8
     same = sum(bool(quartal_stacks(a, n, m)) and quartal_stacks(a, n, m) == quartal_stacks(b, n, m)
                for m in MODES for n in NUMERALS for a, b in combinations(QUALITIES, 2))
     assert same == 0, "no two qualities share every stack in any mode"
@@ -197,11 +199,15 @@ def test_r7_quartal_coincidences_are_counted():
 
 def test_quartal_falls_back_to_rootless_when_no_stack_fits():
     # m7b5 has one stack, 11-b7-b3-b5 [5, 10, 15, 18], and its 11 and b5 are 13 semitones apart (R6), so m7b5 is
-    # voiced rootless in every mode. Each m9 stack spans 16 semitones, so on roots B, C and C# none fits C3-C5.
+    # voiced rootless in every mode. m9's other stacks hold a 9 and a b3 13 semitones apart, except b7-b3-13-9
+    # [10, 15, 21, 26] (V2.1: the m7 family adds a 13, never a b13), so m9 is voiced rootless where the mode has no
+    # 13 above the root, and on roots B, C and C# where it has, since that stack spans 16 semitones. Without the 13,
+    # maj9 keeps 9-5-7-3 and 9-#11-7-3 [2, 7 or 6, 11, 16], which span 14 and fit no root A.
     falls = 0
     for mode in MODES:
         for numeral in NUMERALS:
-            assert quartal(QUALITY["m7b5"], chord_scale(numeral, mode)) == ((5, 10, 15, 18),)
+            scale = chord_scale(numeral, mode)
+            assert quartal(QUALITY["m7b5"], scale) == ((5, 10, 15, 18),)
             for q in QUALITIES:
                 for tonic in range(12):
                     root = root_of(numeral, tonic)
@@ -209,8 +215,11 @@ def test_quartal_falls_back_to_rootless_when_no_stack_fits():
                         falls += 1
                         assert _candidates(root, q, "quartal", numeral, mode) == candidates(root, q, "rootless"), \
                             (mode, numeral, q, tonic)
-                        assert q == "m7b5" or (q == "m9" and root in (11, 0, 1)), (mode, numeral, q, tonic)
-    assert falls == 3 * 11 * 12 + 3 * 11 * 3 == 495
+                        thirteen = 9 in scale
+                        assert (q == "m7b5" or (q == "m9" and (not thirteen or root in (11, 0, 1)))
+                                or (q == "maj9" and not thirteen and root == 9)), (mode, numeral, q, tonic)
+    no_13 = sum(9 not in chord_scale(n, m) for m in MODES for n in NUMERALS)
+    assert no_13 == 14 and falls == 3 * 11 * 12 + (12 * no_13 + 3 * (33 - no_13)) + no_13 == 396 + 225 + 14
     with pytest.raises(ValueError, match="mode"):
         candidates(2, "m9", "quartal")
 
@@ -241,16 +250,16 @@ def test_the_example_vamp_voicing_is_pinned():
 SHOOTOUT_AT_D = {
     "Aruarian": ["G3 D4 F#4 | G3 B3 C#4 F#4", "G3 D4 F#4 | G3 C#4 F#4", "D3 G3 F#4 | C#3 G3 B3 F#4",
                  "D3 G3 C#4 F#4 | E3 G3 C#4 F#4"],
-    "Royal-half": ["B3 D4 F#4 | A3 C#4 E4", "B3 F#4 | A3 E4", "F#3 D4 B4 | E3 C#4 A4", "F#3 B3 E4 A4 | F#3 B3 E4 A4"],
+    "Royal-half": ["B3 D4 F#4 | A3 C#4 E4", "B3 F#4 | A3 E4", "F#3 D4 B4 | E3 C#4 A4", "C#4 F#4 B4 | C#4 E4 A4"],
     "Two-of-us": ["B3 D4 F#4 | Bb3 C#4 E4", "B3 F#4 | Bb3 E4", "F#3 D4 B4 | E3 C#4 Bb4", "F#3 B3 E4 | F#3 Bb3 E4"],
     "Lift": ["F#3 C#4 E4 | A3 B3 F#4", "F#3 C#4 E4 | A3 B3 F#4", "E3 C#4 F#4 | F#3 B3 A4",
              "E3 A3 C#4 F#4 | F#3 B3 E4 A4"],
     "i-IV": ["F3 C4 E4 | F3 A3 B3 E4", "F3 C4 E4 | F3 B3 E4", "F3 E4 C5 | F3 B3 E4 A4", "C3 F3 B3 E4 | D3 F3 B3 E4"],
     "Pulse": ["F3 C4 E4 | A3 B3 F4", "F3 C4 E4 | A3 B3 F4", "F3 E4 C5 | A3 F4 B4", "C3 F3 B3 E4 | F3 B3 E4 A4"],
-    "Step": ["E4 F4 G4 C5 | D4 G4 B4", "C4 F4 G4 | D4 G4", "G3 E4 F4 C5 | G3 D4 B4", "D3 G3 C4 F4 | D3 G3 C4 F4"],
+    "Step": ["E4 F4 G4 C5 | D4 G4 B4", "C4 F4 G4 | D4 G4", "G3 E4 F4 C5 | G3 D4 B4", "D3 G3 C4 F4 | D3 G3 B3 E4"],
     "Float": ["F3 C4 E4 | G3 B3 E4", "C4 E4 F4 | B3 E4", "F3 E4 C5 | G3 E4 B4", "C3 F3 B3 E4 | D3 G3 B3 E4"],
-    "Drift": ["F3 C4 E4 | F3 A3 D4", "F3 C4 E4 | A3 D4", "F3 E4 C5 | F3 D4 A4", "C3 F3 Bb3 E4 | C3 F3 A3 D4"],
-    "Plagal": ["F3 C4 E4 | A3 Bb3 F4", "F3 C4 E4 | A3 Bb3 F4", "F3 E4 C5 | F3 Bb3 A4", "C3 F3 Bb3 E4 | F3 Bb3 E4 A4"],
+    "Drift": ["F3 C4 E4 | F3 A3 D4", "F3 C4 E4 | A3 D4", "F3 E4 C5 | F3 D4 A4", "F3 C4 E4 | F3 A3 D4"],
+    "Plagal": ["F3 C4 E4 | A3 Bb3 F4", "F3 C4 E4 | A3 Bb3 F4", "F3 E4 C5 | F3 Bb3 A4", "F3 C4 E4 | F3 Bb3 E4 A4"],
     "Backdoor": ["Bb3 F4 A4 | Bb3 D4 E4 A4", "Bb3 F4 A4 | Bb3 E4 A4", "F3 Bb3 A4 | E3 Bb3 D4 A4",
                  "F3 Bb3 E4 A4 | G3 Bb3 E4 A4"],
     "Rise": ["F3 A3 D4 | E3 A3 Bb3 D4", "D3 A3 | E3 A3 Bb3", "F3 D4 A4 | E3 Bb3 D4 A4", "A3 D4 G4 | Bb3 E4 A4"],
@@ -262,6 +271,99 @@ def test_the_shootout_vamps_at_tonic_2_are_pinned():
         for style, want in zip(VOICINGS, SHOOTOUT_AT_D[name]):
             va, vb = voice_vamp(Chord(*a), Chord(*b), 2, mode, style)
             assert f"{note_names(va)} | {note_names(vb)}" == want, (name, style)
+
+
+# ------------------------------------------------------------------- voicing rules V2.1 (docs/COMPILER.md §9)
+# Each change answers a finding of the review of V2 (workflow wf_b54901ca-e65): TH-1, TH-2, and TH-3 with R1.
+PHRYGIAN_M7 = (("ionian", "III"), ("dorian", "II"), ("aeolian", "V"))    # the diatonic m7 chords over a phrygian mode
+
+
+def test_v21_avoid_notes_count_the_bass_root():
+    # TH-1: the bass always plays the root, so an added tension a semitone above it is an avoid note even when the keys
+    # leave the root out. Under V2 the phrygian m7 chords took that b9: Step's IIm7 at tonic 2 was D3 G3 C4 F4,
+    # b7-b3-b13-b9 over E.
+    assert not avoids({1, 3, 10}, "m7") and not avoids({1, 3, 7, 10}, "m7")     # b9 over the bass, root held or not
+    assert avoids({2, 3, 10}, "m7") and avoids({1, 4, 10}, "7b9")               # a 9; 7b9 names its b9
+    assert not avoids({1, 2, 4, 10}, "7b9") and not avoids({4, 5, 10}, "7")     # 9 over a held b9; 11 over the 3rd
+    for mode, numeral in PHRYGIAN_M7:
+        assert 1 in chord_scale(numeral, mode)
+        for q in ("m7", "m9", "m11"):
+            for tonic in range(12):
+                root = root_of(numeral, tonic)
+                for v in _candidates(root, q, "quartal", numeral, mode):
+                    assert (root + 1) % 12 not in {p % 12 for p in v}, (mode, numeral, q, tonic, note_names(v))
+    for mode in MODES:
+        for numeral in NUMERALS:
+            for q in QUALITIES:
+                for stack in quartal(QUALITY[q], chord_scale(numeral, mode)):
+                    assert q == "7b9" or 1 not in {x % 12 for x in stack}, (mode, numeral, q, stack)
+
+
+# V2.1 R3's available tensions, as the rule names them: a quartal stack adds only these, and only those in the mode.
+TENSION = {"b9": 1, "9": 2, "#9": 3, "11": 5, "#11": 6, "b13": 8, "13": 9}
+AVAILABLE = {**dict.fromkeys(("maj7", "maj9", "maj7#11"), "9 #11 13"), **dict.fromkeys(("7", "9", "13"), "9 13"),
+             "7b9": "b9 9 13", "7#9": "9 #9 13",          # a dominant's b9 or #9 only when the symbol names it
+             **dict.fromkeys(("m7", "m9", "m11"), "9 11 13"), "m7b5": "11 b13", "dim7": "", "7sus": "9 13"}
+
+
+def test_v21_quartal_adds_only_the_quality_s_available_tensions():
+    # TH-2: V2 added any 9th, 11th or 13th of the mode, so borrowed chords took the mode's neighbours of their own
+    # tones. At tonic C in hopeful, against Imaj7, bVImaj7 was G3 C4 E4 (7-3-b13: E against its Eb) and IVm7 was
+    # B3 Eb4 Ab4 (#11-b7-b3).
+    assert set(AVAILABLE) == set(QUALITIES)
+    for mode in MODES:
+        for numeral in NUMERALS:
+            scale = mode_pcs(numeral, mode)
+            for q in QUALITIES:
+                allowed_ = {TENSION[t] for t in AVAILABLE[q].split()} & scale
+                assert added(q, numeral, mode) == allowed_ - named(q), (mode, numeral, q)
+                for stack in quartal(QUALITY[q], chord_scale(numeral, mode)):
+                    assert {x % 12 for x in stack} <= named(q) | allowed_, (mode, numeral, q, stack)
+    assert all({x % 12 for x in s} <= {0, 3, 6, 9} for m in MODES for n in NUMERALS
+               for s in quartal(QUALITY["dim7"], chord_scale(n, m))), "dim7 adds nothing"
+    imaj7 = Chord("I", "maj7")
+    for chord, foreign in ((Chord("bVI", "maj7"), {1, 3, 8}), (Chord("bIII", "maj7"), {1, 3, 8}),
+                           (Chord("IV", "m7"), {6, 8})):
+        root = root_of(chord.numeral, 0)
+        _, v = voice_vamp(imaj7, chord, 0, "ionian", "quartal")
+        assert not {(p - root) % 12 for p in v} & foreign, (chord, note_names(v))
+
+
+def test_v21_the_vamp_moves_whenever_some_candidate_pair_differs():
+    # TH-3 and R1: the cost is least when nothing moves, so under V2 both chords often played the same keys pitches and
+    # only the bass moved: 29 of the 576 (shootout vamp, style, tonic) cases, all quartal (at tonic 2 Royal-half was
+    # F#3 B3 E4 A4 twice), and span1_dotted.ls.
+    for name, (mode, a, b) in SHOOTOUT.items():
+        for style in VOICINGS:
+            for tonic in range(12):
+                va, vb = voice_vamp(Chord(*a), Chord(*b), tonic, mode, style)
+                assert va != vb, (name, style, tonic, note_names(va))
+    # The cheapest pair that differs wins, though the equal pair costs less. Two equal one-candidate sets leave no
+    # other pair.
+    c, e = (60, 64, 67), (48, 52, 55)
+    assert pair_cost(c, c) < pair_cost(e, c) and choose([c, e], [c]) == (e, c) == best_pair([c, e], [c])
+    assert choose([c], [c]) == (c, c) == best_pair([c], [c])
+
+
+def test_v21_no_vamp_of_the_vocabulary_repeats_a_voicing_unless_it_has_no_other_pair():
+    # R1's sweep: every unordered pair of distinct chords (11 numerals x 14 qualities) at every tonic, and in every mode
+    # for quartal (the other styles do not read the mode). Only two chords whose candidate sets meet can repeat one
+    # voicing; under V2 every such pair did: rootless 480, shell 540, spread 480 and quartal 22,612 cases.
+    chords = [(n, q) for n in NUMERALS for q in QUALITIES]
+    met, repeats = {}, {}
+    for style in VOICINGS:
+        for mode in (MODES if style == "quartal" else ("dorian",)):
+            for tonic in range(12):
+                cands = {(n, q): _candidates(root_of(n, tonic), q, style, n, mode) for n, q in chords}
+                sets = {c: set(v) for c, v in cands.items()}
+                for x, y in combinations(chords, 2):
+                    if sets[x] & sets[y]:
+                        met[style] = met.get(style, 0) + 1
+                        va, vb = choose(cands[x], cands[y])
+                        if va == vb:
+                            assert sets[x] == sets[y] == {va}, (style, mode, tonic, x, y, note_names(va))
+                            repeats[style] = repeats.get(style, 0) + 1
+    assert met == {"rootless": 480, "shell": 540, "spread": 480, "quartal": 11294} and repeats == {}, (met, repeats)
 
 
 # ------------------------------------------------------------------- section 3 rules that V2 leaves unchanged
@@ -281,14 +383,18 @@ def test_rule_2_rejects_low_clusters_and_minor_ninths():
 
 
 def test_ties_break_lexicographically():
+    # Brute force over the pairs that move (V2.1 R8): two different voicings.
+    def brute(xs, ys):
+        return min(((x, y) for x in xs for y in ys if x != y), key=lambda p: (pair_cost(*p), p))
+
     a = [(60, 64, 67), (48, 52, 55)]
-    b = [(60, 64, 67)]
-    assert choose(a, b) == ((60, 64, 67), (60, 64, 67))
+    b = [(60, 65, 69)]
+    assert choose(a, b) == ((60, 64, 67), (60, 65, 69))   # the cheaper pair, though (48, 52, 55) sorts first
     sym = [(55, 59, 62), (58, 62, 65)]                  # mirror images around 60: equal cost against each other
     assert pair_cost(sym[0], sym[1]) == pair_cost(sym[1], sym[0])
-    assert choose(sym, sym) == min(((x, y) for x in sym for y in sym), key=lambda p: (pair_cost(*p), p))
+    assert choose(sym, sym) == (sym[0], sym[1]) == brute(sym, sym)
     mixed = [(55, 60, 64), (50, 55, 60, 65), (59, 65)]  # 3, 4 and 2 notes: one exact scale for every pair
-    assert choose(mixed, mixed) == min(((x, y) for x in mixed for y in mixed), key=lambda p: (pair_cost(*p), p))
+    assert choose(mixed, mixed) == brute(mixed, mixed)
 
 
 def test_voice_leading_pairs_outer_voices_for_unequal_sizes():

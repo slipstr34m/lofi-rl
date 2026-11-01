@@ -309,7 +309,7 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
 - **The CLI** takes about 2.2 s wall per fixture, interpreter start included.
 - All six fixtures converged in 1 iteration (§8).
 
-## 8. Fixture renders (CLI, `dev_gu`, wistful, mid, 82 BPM, tonic 2; this laptop, 2026-10-31, after voicing rules V2)
+## 8. Fixture renders (CLI, `dev_gu`, wistful, mid, 82 BPM, tonic 2; this laptop, 2026-10-31, after voicing rules V2.1)
 
 | fixture | N | LUFS | true peak (dBTP) | pcm_sha256 |
 |---|---|---|---|---|
@@ -318,7 +318,7 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
 | leniency_lower_x.ls | 1,032,576 | −14.007 | −1.496 | `013093004a1dd7d4c1fda80925dacbcd10417c004ff4ebaea40c8f3f89858b87` |
 | one_bar_base.ls | 1,032,576 | −14.028 | −1.494 | `31fdfbaa4f5fd6dfd2e6af69e26972dc14d5e0c0ea43c98d6a0e309f7705cb6f` |
 | shaker_edits.ls | 1,032,576 | −14.038 | −1.494 | `93a0baa3067fa0b1cbb738f58c2f2f4512dd8847d9c9d15f5a6853747f845a19` |
-| span1_dotted.ls | 1,032,576 | −14.028 | −1.495 | `86d6b1fd5c310f1aed45680bac174dc3311a75908601042f918bbc45a75d8ea0` |
+| span1_dotted.ls | 1,032,576 | −14.008 | −1.495 | `71fec47349295cad00a5c98874673d51780433396c33d8dc0fb20c6850abfc54` |
 
 `example_leniency.ls` parses to the same AST as `example.ls`, so their renders are identical. These are laptop
 hashes; the cluster's are canonical (docs/kit/LESSONS.md 38). None of these clips has had an ear check.
@@ -326,6 +326,8 @@ hashes; the cluster's are canonical (docs/kit/LESSONS.md 38). None of these clip
   Each change is in the keys stem alone: the bass, sax and drum stem hashes are the same as before. Before V2,
   `example.ls` rendered to `6061a4a3…`, `leniency_lower_x.ls` to `ec884f97…`, `shaker_edits.ls` to `bf8b4f1e…` and
   `span1_dotted.ls` to `703079f8…`.
+- **Voicing rules V2.1** (docs/COMPILER.md §9) changed only `span1_dotted.ls`, the one quartal fixture, through its
+  keys stem alone: under V2 it rendered to `86d6b1fd…` at −14.028 LUFS and −1.495 dBTP.
 
 ## 9. Choices the spec left open
 Each is pinned by a test and can be changed.
@@ -394,6 +396,10 @@ Each is pinned by a test and can be changed.
 - **Golden entries added 2026-10-31.** The determinism job should also record `example.ls|melancholy|low|87|9`
   and `oneshots|dev_gu|jazz` for each cluster key (the one-shot test runs in the default suite and records under
   `LOFI_RECORD_GOLDEN` like the renders).
+- **Re-record after voicing rules V2.1.** The Linux key came from `lofi-render-check` 13632135, under V2. V2.1
+  (docs/COMPILER.md §9) changed `span1_dotted.ls|wistful|mid|82|2` on the laptop key, so that Linux entry is stale
+  until the next render check records it. The other 7 render cases compile to the same events as under V2 (equal
+  `CompiledLoop` digests), so their entries stand.
 - **Fetch-mode sources** (every shootout palette; §1, Where the palette's files are). Two pieces are outside the
   renderer and not done:
   - done: `scripts/job_env.sh` exports `LOFI_ASSETS=${LOFI_ASSETS:-$REMOTE_KEEP/assets}`;

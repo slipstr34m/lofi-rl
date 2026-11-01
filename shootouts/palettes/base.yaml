@@ -1,0 +1,243 @@
+# Shootout base palette (docs/SHOOTOUTS.md §7.8). Every shootout palette is this file with one candidate's block, its
+# trim and its fader changed (§2.1 "one thing only"), written by `python -m lofi_rl.shootout.palettes`.
+# - The band is the dev band (CD-7) under the shootout names (CD-1): keys `ep` = GU Tine EP 4, kit `dusty` = GU Jazz
+#   kit 32 with GU Acoustic Bass 32, sax `tenor` = GU Tenor 66. There are no aliases: palette.py refuses an alias that
+#   is also a palette name, and the loops name `ep` and `dusty` themselves.
+# - groove, sax_expr, chords, voicings, the bus targets, the chains, the master, bed and loudness are dev_gu's
+#   (palettes/dev_gu.yaml, sha256 b2e4a340...), pinned here from job 1 to the freeze (§3, "Drift between jobs").
+# - Each pitched bus chain (sax, keys, bass) starts with its trim slot, [Gain, {gain_db: trim}] (CD-51); at 0 dB it
+#   leaves the output bit-identical. A kit's trim goes on its lanes' db instead, and every fader on bus_gain_db.
+# - sources: every candidate's SoundFont (§4), pinned in assets/MANIFEST.yaml. The §7.4 kit archives are added by
+#   the generator from their importer outputs.
+# Sound claims: none. It is not a shootout result and is never frozen.
+id: shootout_base
+frozen: null
+sr: 44100
+assets_root: $LOFI_ASSETS
+
+sources:
+  gu:
+    path: assets/soundfonts/generaluser-gs/GeneralUser-GS.sf2
+    sha256: 9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe
+    license: GeneralUser GS License v2.0 (permissive; use, modification and redistribution allowed)
+    mode: commit
+    url: https://github.com/mrbumpy409/GeneralUser-GS
+    converted_from: null
+    attribution: null
+  jrhodes3d_mono:
+    path: converted/jrhodes3d-mono.sf2
+    sha256: d662cb23ac788849ff56bccbafd7f9d7d7214aa3c70404d0c559ca93a8b587e1
+    license: "CC BY-NC 4.0 (an adaptation of the samples): non-commercial, never committed or shared"
+    mode: fetch
+    url: null
+    converted_from: jrhodes3d/jRhodes3d-mono-no-xfade.sfz
+    attribution: jRhodes3d (1977 Rhodes Mark I, mono samples) by Jeff Learman, CC BY-NC 4.0; converted from SFZ to SF2
+  fp_fm_piano_1:
+    path: "freepats-fm-piano-1/x/FM-Piano1 SF2-20190916/FM-Piano1 20190916.sf2"
+    sha256: 5bbf457fa4ec98b1007fcae75f8e2f7ab39dbddea7a5f49c974059a5efdf7af4
+    license: CC0 1.0
+    mode: fetch
+    url: https://github.com/freepats/fm-piano1/releases/download/2019-09-16/FM-Piano1-SF2-20190916.7z
+    converted_from: null
+    attribution: FreePats FM Synthesized Piano 1, recorded by Roberto from the Hexter DX7 model
+  gsullivan_wurlitzer:
+    path: converted/gsullivan-wurlitzer.sf2
+    sha256: aab58d9cc609c23e72b2719e7b7b7cec6a7d7dab0264639d362c97fc8a7cac82
+    license: "CC BY 3.0 (Greg Sullivan; SFZ mapping by kinwie): attribution required, see assets/ATTRIBUTION.md"
+    mode: fetch
+    url: null
+    converted_from: gsullivan-epianos/Wurlitzer EP200/Wurlitzer EP200.sfz
+    attribution: Wurlitzer EP200 samples by Greg Sullivan, SFZ mapping by kinwie / SFZ Instruments, CC BY 3.0
+  fp_upright_kw:
+    path: freepats-upright-piano-kw/x/UprightPianoKW-SF2-20220221/UprightPianoKW-20220221.sf2
+    sha256: d9f5157720963671906727ca2e12b3293fd822c831bb0de477dd1c5f3ad37108
+    license: CC0 1.0
+    mode: fetch
+    url: https://freepats.zenvoid.org/Piano/UprightPianoKW/UprightPianoKW-SF2-20220221.7z
+    converted_from: null
+    attribution: FreePats Upright Piano KW, a Kawai upright recorded by Gonzalo and Roberto
+  vcsl_upright_knight:
+    path: converted/vcsl-upright-knight.sf2
+    sha256: 151ea259a8727bb0b207dcc0607fc665c7c924f8017ef30bc03c2e59158a585a
+    license: CC0 1.0
+    mode: fetch
+    url: null
+    converted_from: vcsl/Chordophones/Zithers/Upright Piano, Knight.sfz
+    attribution: VCSL Upright Piano, Knight, sampled by Simon Dalzell of Ivy Audio
+  fp_fsbs_jazz_guitar:
+    path: "freepats-fsbs-jazz-guitar/x/EGuitarFSBS-jazz bridge small SF2-20260807/EGuitarFSBS-jazz bridge small 20260807.sf2"
+    sha256: 1baca0ebb66627bbd4c08d4137c41728253588ce85504ed5148f06ea7c000d22
+    license: CC0 1.0
+    mode: fetch
+    url: https://github.com/freepats/electric-guitar-FSBS-jazz/releases/download/2026-08-07/EGuitarFSBS-jazz-bridge-small-SF2-20260807.7z
+    converted_from: null
+    attribution: FreePats FSBS Electric Guitar Clean 2 (jazz), bridge pickup
+  vsco2_contrabass_pizz:
+    path: converted/vsco2-contrabass-pizz.sf2
+    sha256: 27f341aba7a608ac6689a19016c493a17d0632649d9b1b67bc909dde5efb0c01
+    license: "CC0 1.0 (its readme asks for credit: Versilian Studios / Sam Gossner)"
+    mode: fetch
+    url: null
+    converted_from: vsco2-ce/ContrabassPizz.sfz
+    attribution: VSCO 2 Community Edition Solo Contrabass pizzicato, by Versilian Studios / Sam Gossner
+  fp_finger_bass_yr:
+    path: "freepats-finger-bass-yr/x/FingerBassYR SF2-20190930/FingerBassYR 20190930.sf2"
+    sha256: bd1332696f61c0cb254ce7f202fb6b945ff46ccb1dcdd62e345a50bde3afb165
+    license: CC0 1.0
+    mode: fetch
+    url: https://github.com/freepats/electric-bass-YR/releases/download/2019-09-30/FingerBassYR-SF2-20190930.7z
+    converted_from: null
+    attribution: FreePats Finger Bass YR, samples by Andrea Biasior with edits by Roberto
+  fp_tenor_sax:
+    path: freepats-tenor-sax/x/TenorSaxophone-SF2-20200717/TenorSaxophone-20200717.sf2
+    sha256: 3b4f4cdabe5c9a9825cd0dd1469a35117b86876256a089bba5f97d4abf1e9b46
+    license: CC0 1.0
+    mode: fetch
+    url: https://freepats.zenvoid.org/Reed/TenorSaxophone/TenorSaxophone-SF2-20200717.tar.bz2
+    converted_from: null
+    attribution: FreePats Tenor Saxophone, assembled and looped by Roberto from VCSL samples
+  weresax_alto:
+    path: converted/weresax-alto.sf2
+    sha256: d4f797497fcd4ea7b58e0d97eae8edac1da137300a41f83643c1d62a8b4f798c
+    license: CC0 1.0 (Weresax v1.003)
+    mode: fetch
+    url: null
+    converted_from: karoryfer-weresax/Programs/Sax.sfz
+    attribution: Weresax by Karoryfer Samples
+  mtg_tenor:
+    path: converted/mtg-tenor.sf2
+    sha256: 38fcf328b5aab04d388ce7235fad74748b0908275c74eab0dac8ccb3a5914e53
+    license: "CC BY 4.0 (SFZ mapping by kinwie) and CC BY 3.0 (samples by MTG, Universitat Pompeu Fabra): attribution required, see assets/ATTRIBUTION.md"
+    mode: fetch
+    url: null
+    converted_from: "mtg-solo-sax/MTG Solo Saxophones/MTG Tenor Sax (NL).sfz"
+    attribution: MTG Solo Saxophones, SFZ by kinwie / SFZ Instruments (CC BY 4.0), samples by MTG, Universitat Pompeu Fabra (CC BY 3.0)
+  mtg_alto:
+    path: converted/mtg-alto.sf2
+    sha256: 2b338b89a47b712ec84d5ffa8d33f22d37384838c744576bee68e34d903d30e6
+    license: "CC BY 4.0 (SFZ mapping by kinwie) and CC BY 3.0 (samples by MTG, Universitat Pompeu Fabra): attribution required, see assets/ATTRIBUTION.md"
+    mode: fetch
+    url: null
+    converted_from: "mtg-solo-sax/MTG Solo Saxophones/MTG Alto Sax (NL).sfz"
+    attribution: MTG Solo Saxophones, SFZ by kinwie / SFZ Instruments (CC BY 4.0), samples by MTG, Universitat Pompeu Fabra (CC BY 3.0)
+
+sax:
+  tenor: {src: gu, bank: 0, prog: 66, play: [44, 75], comfort: [48, 72], home: [50, 61]}   # GU "Tenor Sax"
+sax_lead: tenor
+
+keys:
+  ep: {src: gu, bank: 0, prog: 4, vel: {X: 96, x: 80, g: 52}}       # GU "Tine Electric Piano"
+
+kits:
+  dusty:                                                             # GU Jazz kit 32, as dev_gu's `jazz`
+    bass: {src: gu, bank: 0, prog: 32, vel: {X: 104, x: 88, g: 64}}  # GU "Acoustic Bass"
+    choke: [[ohat, hat], [ohat, ohat]]
+    lanes:
+      kick:
+        soft: [{src: gu, bank: 128, prog: 32, note: 36, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 36, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 36, vel: 112}]
+        pan: 0.0
+        db: 0.0
+      snare:
+        soft: [{src: gu, bank: 128, prog: 32, note: 38, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 38, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 38, vel: 112}]
+        pan: 0.0
+        db: 0.0
+      rim:
+        soft: [{src: gu, bank: 128, prog: 32, note: 37, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 37, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 37, vel: 112}]
+        pan: 0.0
+        db: 0.0
+      hat:
+        soft: [{src: gu, bank: 128, prog: 32, note: 42, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 42, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 42, vel: 112}]
+        pan: 0.0
+        db: 0.0
+      ohat:
+        soft: [{src: gu, bank: 128, prog: 32, note: 46, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 46, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 46, vel: 112}]
+        pan: 0.0
+        db: 0.0
+      shaker:
+        soft: [{src: gu, bank: 128, prog: 32, note: 82, vel: 48}]
+        med: [{src: gu, bank: 128, prog: 32, note: 82, vel: 80}]
+        hard: [{src: gu, bank: 128, prog: 32, note: 82, vel: 112}]
+        pan: 0.0
+        db: 0.0
+
+aliases: {}
+
+chords:
+  numerals: [I, bII, II, bIII, III, IV, V, bVI, VI, bVII, VII]
+  qualities: [maj7, maj9, "maj7#11", "7", "9", "13", 7sus, 7b9, "7#9", m7, m9, m11, m7b5, dim7]
+voicings: [rootless, shell, spread, quartal]
+
+groove:
+  swing: {default: 0.55}
+  offset_ms: {}
+  humanize: "off"
+  humanize_ms: 3.0
+  humanize_vel: 0.08
+  humanize_lanes: [kick, snare, rim, hat, ohat, shaker, bass, keys]
+  drum_gain: {X: 1.0, x: 0.71, g: 0.32}
+  metric_db:
+    lanes: [hat, shaker]
+    db: [0.0, -4.0, -2.0, -4.0, -1.0, -4.0, -2.0, -4.0, 0.0, -4.0, -2.0, -4.0, -1.0, -4.0, -2.0, -4.0]
+
+sax_expr:
+  enabled: true
+  timing: grid
+  lag_ms: 25.0
+  swing8: 0.6
+  bend_range: 2
+  bend_every_ms: 10.0
+  cc11_every_ms: 20.0
+  gap_ms: 15.0
+  scoop: {min_steps: 4, leap: 3, cents: -60.0, ms: 80.0}
+  vibrato: {min_steps: 8, start: 0.35, fade_ms: 300.0, cents: 18.0, rate_hz: 5.5}
+  cc11: {short: 110, long_steps: 8, long_base: 100, long_swell: 27, last: 80, last_share: 0.4}
+  velocity: {base: 92, bar_start: 8, beat3: 4, sixteenth: -10, phrase_start: 6, min: 60, max: 112}
+
+mix:
+  bus_gain_db: {sax: 0.0, drums: 0.0, bass: 0.0, keys: 0.0}        # the faders: written per palette (§3 step 5)
+  bus_target_lu: {sax: 0.0, drums: -1.5, bass: -3.0, keys: -6.0}
+  sax_warm: false
+  buses:
+    sax:
+      - [Gain, {gain_db: 0.0}]                                       # trim slot
+      - [HighpassFilter, {cutoff_frequency_hz: 140.0}]
+      - [PeakFilter, {cutoff_frequency_hz: 450.0, gain_db: -2.0, q: 1.0}]
+      - [Compressor, {threshold_db: -20.0, ratio: 3.0, attack_ms: 8.0, release_ms: 120.0}]
+      - [PeakFilter, {cutoff_frequency_hz: 2800.0, gain_db: 2.0, q: 0.8}]
+      - [Reverb, {room_size: 0.22, damping: 0.55, wet_level: 0.07, dry_level: 1.0, width: 1.0}]
+    sax_warm:
+      - [HighShelfFilter, {cutoff_frequency_hz: 4000.0, gain_db: -5.0, q: 0.70710678}]
+      - [LowpassFilter, {cutoff_frequency_hz: 9000.0}]
+      - [Reverb, {room_size: 0.35, damping: 0.7, wet_level: 0.12, dry_level: 1.0, width: 1.0}]
+    keys:
+      - [Gain, {gain_db: 0.0}]                                       # trim slot
+      - [HighpassFilter, {cutoff_frequency_hz: 120.0}]
+      - [PeakFilter, {cutoff_frequency_hz: 400.0, gain_db: -3.0, q: 0.70710678}]
+      - [Compressor, {threshold_db: -18.0, ratio: 2.0, attack_ms: 20.0, release_ms: 150.0}]
+      - [Reverb, {room_size: 0.3, damping: 0.5, wet_level: 0.1, dry_level: 1.0, width: 1.0}]
+    bass:
+      - [Gain, {gain_db: 0.0}]                                       # trim slot
+      - [HighpassFilter, {cutoff_frequency_hz: 30.0}]
+      - [PeakFilter, {cutoff_frequency_hz: 250.0, gain_db: -2.0, q: 0.70710678}]
+      - [Compressor, {threshold_db: -20.0, ratio: 4.0, attack_ms: 15.0, release_ms: 120.0}]
+    drums:
+      - [HighpassFilter, {cutoff_frequency_hz: 30.0}]
+      - [PeakFilter, {cutoff_frequency_hz: 350.0, gain_db: -2.5, q: 0.70710678}]
+      - [Compressor, {threshold_db: -16.0, ratio: 3.0, attack_ms: 10.0, release_ms: 80.0}]
+  master:
+    - [HighpassFilter, {cutoff_frequency_hz: 25.0}]
+    - [PeakFilter, {cutoff_frequency_hz: 300.0, gain_db: -1.5, q: 0.7}]
+    - [Compressor, {threshold_db: -12.0, ratio: 1.5, attack_ms: 30.0, release_ms: 200.0}]
+
+bed: null
+loudness: {lufs: -14.0, tol: 0.1, iters: 4, ceiling_dbtp: -1.0}

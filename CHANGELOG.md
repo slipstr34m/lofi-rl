@@ -4,15 +4,48 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ## Status
 - **SU used:** 563.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-10-31 15:20).
-- **Phase:** 0 is done. Smoke 13628361 printed `SMOKE_OK` on 2026-10-31, two days before the Nov 2 target. Phase 1 (instrument) is under way:
-  - committed: the rating page, the compiler + renderer, two reviews, voicing rules V2, the SFZ → SF2 converter and the shootout plan (`docs/SHOOTOUTS.md`);
+- **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
+  - committed: the rating page, the compiler + renderer, two reviews, voicing rules V2 and V2.1, the SFZ → SF2 converter, the shootout plan (`docs/SHOOTOUTS.md`) and the job-1 shootout tooling with per-clip level matching (CD-52);
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
-  - all 14 shootout sources and the rain file are on the laptop and the cluster;
-  - running: the job-1 shootout tooling (due Nov 2 evening) and V2.1 voicing refinements, in 4 worktree branches.
+  - all 14 shootout sources, the rain file and the two imported kits are on the laptop and the cluster;
+  - next: the Day-1 shootout render (`lofi-shootout`, registered at 240 SU) into `inbox/` for the Nov 3 listening.
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
   - base-model test v0 done: pass_not_copy 4.0 % against a 60 % bar, so grammar-constrained decoding comes first (D-016, D-019);
+  - constrained decoding built on `wt/constrained` and reviewed; its line-end and backend-record fixes are being built;
   - GRPO smoke 13632679 queued on an L40S.
-- **Waiting on Shresth:** `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords), due by Nov 4 morning.
+- **Waiting on Shresth:**
+  - whether Claude may re-register a changed job type of 500 SU or less (CLAUDE.md rule 6 reserves "any changed type" for him); the constrained base-model test needs `jobs/junk_rate.sbatch` re-registered;
+  - `docs/SHOOTOUTS.md` §11 question 2 (borrowed chords), due by Nov 4 morning.
+
+---
+
+## 2026-10-31 (17:20 PDT): shootout job-1 tooling merged; clips level-matched per round; constrained decoding built and reviewed
+
+**What was done**
+- **Job-1 shootout tooling** merged into main (`628a7c4`, branch `wt/integrate`): kit import, SF2 coverage check, resampler, levels tool, palette generator, blinded draw, batch builder, the `lofi-shootout` job, and voicing V2.1.
+- **Drum kits pinned** (`ae828ae`): `kit_virtuosity.tar` (sha256 `5ca78cde…`, 30,986,240 bytes) and `kit_swirly.tar` (`539f8ca9…`, 18,145,280 bytes), both CC0, in `assets/big/derived/kits/` and assets/MANIFEST.yaml. `make push-assets` copied them to the cluster; a checksum dry run found no differences.
+- **A level problem in the first Day-1 dry run.** Each candidate's fader came from its median over the 9 reference loops. On a round's own loop, candidates still sat up to 4.20 LU apart (R1.3), and 11 of 19 rounds were over 1.0 LU: enough for a louder clip to win a round. `kit_virtuosity` was also flagged 0.1007 LU off its target on L1.
+- **Quiet banks, not a bug.** The VSCO 2 pizz bass needs a +34.97 dB trim and the VCSL Knight upright +21.86 dB (the dry run's `levels.json`). Their source samples are recorded quietly, and the converter keeps their relative levels.
+- **Fix: per-clip level matching** (CD-52; workflow `wf_42fed076-caf`, branch `wt/levels2`, merged as `7601c61`).
+  - Each clip's varied-bus fader now comes from its candidate's own measured loudness on the round's loop. It is corrected up to 3 times to land within 0.005 LU, because a pure gain moves a quiet bus across the −70 LUFS gate. The frozen palette still takes the median fader.
+  - **Day-1 dry run** (laptop, seed `ee03040ac6568444`, values from the hidden manifests): per-round spread 0.0012–0.0091 LU, against 0.48–4.20 LU with median faders. The worst clip sits 0.0050 LU from its target.
+  - **Independent check** (a second agent with its own runs and meters): 5 of 5 checks pass: spreads re-measured from rebuilt stems, one change per round, median faders identical to `ae828ae`, no leaks, byte identity over five runs. Its own BS.1770 meter reads spreads up to 0.0747 LU (K1.5), still under the 0.2 LU limit, because pyloudnorm counts one extra partial 400 ms block at the end. Its corrections are applied: the WAVs are byte-identical too (wavio writes no PEAK chunk), and the Day-1 estimate widens to 3.9–10.9 min, 46–131 SU.
+  - **Suite:** 1717 passed, 1 skipped (`pytest -q` after the merge).
+- **`lofi-shootout` registered** by Claude at 240 SU (a new type, sha `12f706e7f61efe72`).
+- **Constrained decoding built** (workflow `wf_dfe6104c-2ce`, branch `wt/constrained` at `bc7b7ba`, not merged).
+  - A regex generated from the palette, for vLLM structured outputs: 2,931 characters for dev_gu, sha256 `bc3381e8…`. It is wired into the base-model test (a `CONSTRAINED` job arg) and a constrained GRPO smoke config.
+  - It accepts 6 of 6 gate-passing fixtures, 9 of 9 shootout loops and 98 of 98 v0 passes (as canonical text). It rejects all 389 v0 G1 completions.
+  - **Review** (three findings, each reproduced by a skeptic; none breaks the build spec as written, but all are worth fixing):
+    - **F1 (high):** v0 ends 8,062 of its 8,099 lines with two spaces before the newline (one Qwen3 token), and all 500 completions stop right after B's last item. The regex allows neither, so the model's top choice is masked at every line end. At the ends of A and B, the remaining choices include lengthening the phrase. The parser drops trailing spaces silently, so allowing them costs nothing.
+    - **F2 (medium):** the changed `jobs/junk_rate.sbatch` (sha `24005999…` → `2f867f2f…`) needs re-registering, and CLAUDE.md rule 6 reserves "any changed type" for Shresth. D-003 and §4 let Claude register types of 500 SU or less. I re-registered the changed `render_check` myself in `f89c8a4`; under rule 6 that needed his OK.
+    - **F3 (low):** the run records neither the structured-outputs backend vLLM used nor whether each completion is in the regex's language.
+
+**SU spent:** 0 since the last entry; the total stays 563.9.
+
+**Next:**
+- Render Day 1 on the cluster and pull it into `inbox/` for the Nov 3 listening.
+- Fix F1 and F3 on `wt/constrained`. Build prompt v2 as a second arm, since 78 of v0's 98 passes copied the example.
+- Pre-register both arms as D-020, get Shresth's answer on re-registering the junk-rate job, then run the constrained base-model test.
 
 ---
 

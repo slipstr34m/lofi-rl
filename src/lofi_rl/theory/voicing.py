@@ -1,5 +1,5 @@
 """Keys voicings and the voice-leading choice across the vamp: instrument.md section 3, Voicings, as amended by
-voicing rules V2 (docs/COMPILER.md §3.3 and "Amendment V2 to instrument.md §3 Voicings").
+voicing rules V2.1 (docs/COMPILER.md §3.3 and §9, "Amendment V2.1 to instrument.md §3 Voicings").
 
 Tones are semitones above the chord root. A quality's named tones are its table entry (theory.chords): root,
 third, fifth, seventh and extensions. Every voicing holds the third (the fourth for 7sus) and the seventh (R1),
@@ -8,22 +8,24 @@ and the top named extension plus the b5 of m7b5 and dim7 (R2). The styles (R4):
   m7b5's b5; with no extension, third-fifth-seventh;
 - shell: the third and the seventh, plus the top extension; b3-b5-b7 for m7b5 and b3-b5-bb7 for dim7;
 - spread: drop-2 of each inversion of the rootless voicing;
-- quartal: every stack of 3 or 4 tones drawn from the named tones and the brief's mode's tensions (9ths, 11ths,
-  13ths) that holds R1 and R2, adds no tension a semitone above a named tone it holds (R3), and has adjacent
-  intervals of 5 or 6 semitones, except at most one of 3 or 4. A chord with no quartal candidate is voiced
-  rootless.
+- quartal: every stack of 3 or 4 tones, drawn from the named tones and those of the quality's available tensions
+  that the brief's mode holds (R3, AVAILABLE_TENSIONS), that holds R1 and R2, adds no tension a semitone above the
+  root (which the bass plays) or above a named tone it holds (R3), and has adjacent intervals of 5 or 6 semitones,
+  except at most one of 3 or 4. A chord with no quartal candidate is voiced rootless.
 
-The choice (section 3, steps 1-4, unchanged by V2): every inversion at every octave inside C3-C5 (48-72) is a
-candidate (for quartal, every stack at every octave); a #9 under the third (R5), an interval of 2 semitones or
-less below 55, and a 13-semitone pair outside 7b9 are rejected; the pair minimizing VL(A->B) + VL(B->A) +
+The choice (section 3, steps 1-4, plus R8): every inversion at every octave inside C3-C5 (48-72) is a candidate
+(for quartal, every stack at every octave); a #9 under the third (R5), an interval of 2 semitones or less below
+55, and a 13-semitone pair outside 7b9 are rejected; among the pairs of two different voicings (R8: the vamp
+moves; only two equal one-candidate sets leave none), the pair minimizing VL(A->B) + VL(B->A) +
 0.25 (|muA - 60| + |muB - 60|) wins, ties broken by the lexicographically smallest (A, B). Costs are exact.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from fractions import Fraction
 from functools import lru_cache
 from math import lcm
+from types import MappingProxyType
 
 from lofi_rl.dsl.ast import Chord
 from lofi_rl.dsl.vocab import NUMERAL_SEMITONES, VOICINGS, scale_of
@@ -37,7 +39,17 @@ MINOR_NINTH = 13                # rejected unless the chord is 7b9
 MU_CENTER = 60
 MU_WEIGHT = Fraction(1, 4)
 PERFECT_FIFTH = 7               # only a perfect fifth goes under an extension (m7b5 keeps its b5)
-TENSIONS = (1, 2, 3, 5, 6, 8, 9)    # b9 9 #9 11 #11 b13 13: what a quartal stack may add, from the mode (R3)
+ROOT = 0                        # the bass always plays it, so R3's avoid-note rule counts it as held (V2.1)
+# V2.1 R3: the tensions a quartal stack may add, by family (chords.Quality.family), and only those in the brief's
+# mode. A dominant's b9 or #9 comes only with a symbol that names it (7b9, 7#9), as a chord tone.
+AVAILABLE_TENSIONS: Mapping[str, frozenset[int]] = MappingProxyType({
+    "maj": frozenset({2, 6, 9}),        # 9 #11 13
+    "dom": frozenset({2, 9}),           # 9 13
+    "min": frozenset({2, 5, 9}),        # 9 11 13
+    "half": frozenset({5, 8}),          # 11 b13
+    "dim": frozenset(),
+    "sus": frozenset({2, 9}),           # 9 13
+})
 FOURTHS = (5, 6)                # quartal: every adjacent interval ...
 THIRDS = (3, 4)                 # ... except at most one of these
 STACK_SIZES = (3, 4)
@@ -86,17 +98,20 @@ def shell(q: Quality) -> Voicing:
 
 
 def _avoids(held: frozenset[int], named: frozenset[int]) -> bool:
-    """R3's avoid-note rule: no added tension a semitone above a named tone the stack holds."""
-    return not any((t - 1) % 12 in held & named for t in held - named)
+    """R3's avoid-note rule (V2.1): no added tension a semitone above the root, which the bass always plays, or
+    above a named tone the stack holds."""
+    sounding = (held & named) | {ROOT}
+    return not any((t - 1) % 12 in sounding for t in held - named)
 
 
 @lru_cache(maxsize=None)
 def quartal(q: Quality, scale: frozenset[int]) -> tuple[Voicing, ...]:
-    """R4 quartal: every stack of 3 or 4 distinct tones from R3's tone set (the named tones, plus the tensions in
-    `scale`, the brief's mode above the root) that holds R1 and R2 and keeps the avoid-note rule. Adjacent
-    intervals are 5 or 6 semitones, except at most one of 3 or 4. Each stack starts in [0, 12); () if none."""
+    """R4 quartal: every stack of 3 or 4 distinct tones from R3's tone set (the named tones, plus the quality's
+    available tensions that are in `scale`, the brief's mode above the root) that holds R1 and R2 and keeps the
+    avoid-note rule. Adjacent intervals are 5 or 6 semitones, except at most one of 3 or 4. Each stack starts in
+    [0, 12); () if none."""
     named = frozenset(t % 12 for t in q.tones)
-    tones = named | {t for t in TENSIONS if t in scale}
+    tones = named | (AVAILABLE_TENSIONS[q.family] & scale)
     need = guide_tones(q) | colour(q)
     out = []
 
@@ -216,7 +231,8 @@ def pair_cost(a: Sequence[int], b: Sequence[int]) -> Fraction:
 
 
 def choose(cands_a: Sequence[Voicing], cands_b: Sequence[Voicing]) -> tuple[Voicing, Voicing]:
-    """The minimum-cost pair; ties go to the lexicographically smallest (A, B).
+    """The minimum-cost pair of two different voicings (R8, V2.1: the vamp moves), or the only pair there is when
+    both chords have the same single candidate; ties go to the lexicographically smallest (A, B).
 
     Costs compare as exact integers: pair_cost times S = 4 x lcm(the voicing sizes), 4 being MU_WEIGHT's
     denominator. S is the same for every pair, so the order and the ties are pair_cost's."""
@@ -231,13 +247,15 @@ def choose(cands_a: Sequence[Voicing], cands_b: Sequence[Voicing]) -> tuple[Voic
                 for v in cands]
 
     pa, pb = prepared(cands_a), prepared(cands_b)
-    _, a, b = min((factor * (_vl(sa, sb) + _vl(sb, sa)) + ca + cb, a, b) for a, sa, ca in pa for b, sb, cb in pb)
+    # A pair whose two voicings hold the same pitches sorts after every pair that moves, whatever its cost.
+    _, _, a, b = min((sa == sb, factor * (_vl(sa, sb) + _vl(sb, sa)) + ca + cb, a, b)
+                     for a, sa, ca in pa for b, sb, cb in pb)
     return a, b
 
 
 def voice_vamp(first: Chord, second: Chord, tonic: int, mode: str, style: str) -> tuple[Voicing, Voicing]:
-    """One voicing per vamp chord, kept for the whole loop (section 3, step 4). The brief's mode sets the
-    tensions a quartal stack may add (R3)."""
+    """One voicing per vamp chord, kept for the whole loop (section 3, step 4), the two different whenever they
+    can be (R8). The brief's mode sets the tensions a quartal stack may add (R3)."""
     return choose(candidates(root_pc(first.numeral, tonic), first.quality, style, chord_scale(first.numeral, mode)),
                   candidates(root_pc(second.numeral, tonic), second.quality, style,
                              chord_scale(second.numeral, mode)))
