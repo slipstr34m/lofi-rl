@@ -972,6 +972,43 @@ def test_an_r2r_best_that_never_played_leaves_its_kit_the_pooled_r2r_leader(tmp_
     assert (pv["bass"], pv["from"]) == (VS, "the pooled R2r leader") and "no counted best" in pv["why"]
 
 
+def test_three_r1_survivors_r2r_plays_the_leader_and_the_next_and_the_third_takes_the_pooled_leader(tmp_path):
+    """SHOOTOUTS.md 7.9 (CD-54): with three R1 survivors R2r plays the R1 leader (R2r.1 and R2r.3) and the next in
+    R1's order (R2r.2); the third plays no R2r round, a non-blocking item says so, and after Day 2 it takes the
+    pooled R2r leader."""
+    folders = _day(tmp_path, "day1", 0x596A)
+    box = {"root": tmp_path / "inbox", "folders": folders}
+    votes = tmp_path / "votes"
+    clock = vote_days(box, votes, choose=answers({"R1.1": (V, J), "R1.2": (V, W), "R1.3": (V, None)},
+                                                 by_kit=dict.fromkeys((V, J, W), (None, None))))
+    doc, _ = T.tally(votes, box["root"], plan=PLAN, runs=tmp_path / "runs")
+    r1, rl, p = doc["rules"]["R1"], doc["rules"]["R2"]["relisten"], doc["proposal"]["day2"]
+    assert r1["survivors"] == [V, J, W] and r1["tie_for_last"] and r1["dropped"] is None
+    assert rl["kits"] == [V, J] and rl["left_out"] == [W] and rl["rounds"] == {V: ["R2r.1", "R2r.3"], J: ["R2r.2"]}
+    assert parse_leaders(p["leaders"])["kit"] == (V, J) and p["add"] == ["R2r"]
+    assert any(n["stage"] == "R2" and not n["blocking"] and W in n["what"] and "play no R2r round" in n["what"]
+               for n in doc["needs_word"])
+    f2 = _day(tmp_path, "day2", 0x596E, leaders=parse_leaders(p["leaders"]), adds=p["add"])
+    vote(f2["b1104-1-groove"], votes, clock, answers({"R2r.1": (FP, GU), "R2r.3": (FP, VS), "R2r.2": (VS, GU)}))
+    d2, _ = T.tally(votes, box["root"], plan=PLAN, batches=[*DAY1, "b1104-1-groove"], runs=tmp_path / "runs")
+    r = d2["rules"]["R2r"]
+    assert list(r["pairings"]) == [V, J, W] and r["pooled_leader"]["pick"] == FP
+    pw = r["pairings"][W]
+    assert (pw["bass"], pw["from"], pw["why"], pw["slots"]) == (FP, "the pooled R2r leader", "it plays no R2r round", [])
+    assert r["pairings"][V]["bass"] == FP and r["pairings"][J]["bass"] == VS
+
+
+def test_r2r_plays_the_r1_leader_first_even_when_it_is_not_first_in_r1s_order():
+    """CD-54: R2r.1 and R2r.3 go to the R1 leader and R2r.2 to the next survivor in R1's order, wherever the leader
+    sits in that order: fully tied survivors are listed by id, and when the default (kit_gu_jazz, first by id) is not
+    among them a seeded draw names the provisional leader (CD-39), which need not be the first."""
+    undecided = {"pooled_leader": {"needs_word": False, "tied": []}, "pairings": {}}
+    for survivors in ([W, V], [W, V, J]):
+        rl = T.relisten_bass([], undecided, {"leader": {"pick": V}, "survivors": survivors}, PLAN, default=GU)
+        assert rl["adds"] and rl["kits"] == [V, W] and rl["left_out"] == survivors[2:], survivors
+        assert rl["rounds"] == {V: ["R2r.1", "R2r.3"], W: ["R2r.2"]} and rl["bass"] == GU
+
+
 def test_day2s_minutes_are_the_drawn_plans():
     """The cut list reads Day 2's minutes from the plan the draw will play (draw.day_minutes): every design round
     exactly as the draw builds it, each anchor at the mean of the rounds it may imitate; a 4-key K2, a 3-sax final
