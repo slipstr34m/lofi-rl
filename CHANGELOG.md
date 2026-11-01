@@ -21,6 +21,24 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-10-31 (23:05 PDT): heard rule and R2r merged; the real Day-1 tally matches Shresth's confirmation; gate file written
+
+**What was done**
+- **Merged `worktree-wf_5d8416c0-2da-1`** into main (`e0ebc8f`). Workflow `wf_5d8416c0-2da` had 7 agents: a builder, three reviewers, a judge, a fixer and a verifier.
+  - It covers the tally's heard rule (1 bar over every attempt) and R2r, the Day-2 bass re-listen (CD-54: `--add R2r`, two kits, leader/other/leader, matched on the bass bus).
+  - It adds `--day2-cuts`, so Shresth's word on cuts is a recorded tally input, and the cut list now runs on the drawn plan's minutes.
+  - **Review:** 9 findings, 5 kept and fixed. The verifier's verdict was ok.
+  - **Merge:** only CHANGELOG.md conflicted; its entries were interleaved newest first. Suite 2260 passed, 2 skipped.
+- **Ran the tally on the real Day-1 logs**, with `--day2-cuts none` attributed to Shresth. Its proposal equals what he confirmed: `--stage day2 --leaders keys=gu_tine_ep+gs_wurli_ep200+vcsl_upright_knight/kit=kit_virtuosity+kit_gu_jazz/bass=bass_gu_acoustic/sax=sax_mtg_alto+sax_mtg_tenor --prior 13635646 --add R2r`.
+  - Every option's heard, best, worst and BW equals the independent 1-bar recount (scratch `recount2.py`), and so does the 1 mark left out.
+  - Output: `data/votes/audit/` (private).
+- **`gates/GATE_palette.md`** now records Day 1: Shresth's words, the survivors, Day 2's job line, the four tables, escape hatches, flags (none), the anchor (caught), position of best and the private audit file paths (SHOOTOUTS.md §1 step 2).
+- **Next:** render Day 2 once D-020's jobs end and the mirror can be synced; then the scorer smoke.
+
+**SU spent:** 0.
+
+---
+
 ## 2026-10-31 (22:35 PDT): review fixes on the R2r branch: Shresth's word on the cuts as a tally input, and tests for rules no test held
 
 **What was done** (workflow `wf_5d8416c0-2da`, same branch `worktree-wf_5d8416c0-2da-1`; laptop only, nothing synced)
