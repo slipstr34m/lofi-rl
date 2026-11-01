@@ -21,6 +21,31 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-01 (12:55 PST): D-020 arm A (v1 + grammar) ran and is valid: pass_not_copy 355/500; arm B still queued
+
+**What was done**
+- **`lofi-junk-rate` 13640324** (arm A: `500 2026 1 v1`, `-p gpu`): A40 node b09-09. It started at 12:34:40 after 16.5 h queued and COMPLETED 0:0 in 00:05:10, 93.0 SU (`session_report.py`), `JUNK_RATE_OK`.
+- **Validity under both amendments** (scratch `d020_validity.py` over `runs/junk-13640324/summary/junk.json`): 21 of 21 checks pass.
+  - **Complete:** n = requested = 500, partial false, 0 unreadable lines, not stopped.
+  - **As registered:** model `cdbee75f`, seed 2026, v0's sampling; palette `b2e4a340`, matching generate; prompt v1 `7aceb2bc`, 500 rows matching, 0 example mismatches.
+  - **Constrained:** regex `1412f11f`, recorded and rebuilt; 500/500 stop completions in the language; 0 other finishes.
+  - **The regex's guarantees:** G1, G3, G4, G5 and crash all 0.
+  - **One mirror:** generate and score both stamp `commit=e63648541e02 dirty=0`, and that commit's 60 frozen files equal `docs/prereg/D-020_junk_path.txt`.
+- **Backend (recorded):** xgrammar requested, the pin accepted, xgrammar applied (source `llm_engine.vllm_config.structured_outputs_config.backend`). So vLLM 0.32.0's `LLM()` does take the `structured_outputs_config` keyword, which was UNVERIFIED before the run.
+- **Readouts** (same file):
+  - pass 494/500, ci95 [0.9741, 0.9945];
+  - **pass_not_copy 355/500, ci95 [0.6687, 0.7481]**, at or above the 300 bar;
+  - near-copies among passes 139; `copy.pass_not_quasi_copy` 216, ci95 [0.3893, 0.4758];
+  - failures: G6 6, nothing else;
+  - completion tokens p50 273, max 337, 0 truncated;
+  - the render step: 50 of 50 ear-check clips (passing non-copies), G7 0.
+- **Against v0** (D-019, the same briefs, seed and sampling, without the grammar): pass_not_copy went from 20/500 to 355/500.
+- **Decision:** none yet. D-020's rule is read only once both arms are valid. Arm B (13640325) is still PENDING.
+
+**SU spent:** 93.0. Total 996.0 (`session_report.py`).
+
+---
+
 ## 2026-11-01 (10:00 PST): Day 3 and the 30 keep3 drafts being built
 
 **What was done**
