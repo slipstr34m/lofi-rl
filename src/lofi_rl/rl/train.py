@@ -28,17 +28,31 @@ A training run (policy env, one GPU) builds TRL 1.17.1's GRPOTrainer with:
 - checkpoints every save_steps in --run-dir; --resume-from continues from one (its global step restarts the
   curriculum at the right weights even if TRL passes no trainer_state);
 - with a scorer ($LOFI_SCORER_SOCK), the run's scorer pin (scorer_pin_path): the versions and live terms its first
-  link's scorer reported, which every later link must find again (lofi_rl.scoring.client.read_pin).
-<summary>/run.json records the settings, versions, GPU, prompt token lengths, dropped optional fields and the
-outcome. Before the GPU work starts the run checks that every prompt fits max_prompt_length and the vLLM
-context, so nothing is silently cut.
+  link's scorer reported, which every later link must find again (lofi_rl.scoring.client.read_pin);
+- a masked config (`trainer_logprobs`, D-021 Part A; docs/GRPO.md §8), in this order, all before the model loads:
+  1. trl_probe.source_checks reads the installed TRL, vLLM and PEFT sources against the resolved GRPOConfig
+     (run.json trl_source_checks). A gating check (T1-T5) that is not "match", or a T2 path the mode cannot run under
+     (config.MASK_T2_PATHS), refuses the launch: status "refused", exit 2 (D-021: they fail closed with exit 2);
+  2. the mask's two halves over one vocabulary and one set of stop ids: lofi_rl.rl.masked.XgrammarReplay (xgrammar,
+     built as vLLM 0.32's backend builds it) and lofi_rl.grammar_mask.GrammarMask (the independent NFA), from the
+     snapshot's tokenizer, its config.json vocab_size and the EOS set below (vLLM's all_stop_token_ids);
+  3. the trainer class, masked.make_trainer_class(GRPOTrainer), which must override the three methods the mask
+     needs; GRPOTrainer is then built from it with mask_setup=, and T5's run-time half (trl_probe.lm_head_record on
+     the built PEFT model) refuses the launch the same way unless lm_head is not a LoRA target.
+  run.json records `masked` (mode, path, regex sha, vocab size, stop ids, the replay's and the NFA's records) and
+  `lm_head`; steps.jsonl carries each step's mask record under "mask" (StepLog).
+<summary>/run.json records the settings, versions, GPU, prompt token lengths, dropped optional fields, the code tree
+it imports (`code`: $LOFI_CODE and whether it is a snapshot) and the outcome. Before the GPU work starts the run checks
+that every prompt fits max_prompt_length and the vLLM context, so nothing is silently cut.
 
 --dry-run (laptop or cluster) validates the config, builds the prompts and prints the resolved settings of
 every profile as JSON, and scores tests/fixtures/loops/example.ls through the reward when lofi_rl.verify
 exists: the symbolic reward, with the copy penalty and the language count as the config sets them and the scorer
 off whatever $LOFI_SCORER_SOCK says (the report records whether it is set; the scorer is never contacted). It also
 records the prompt version, its template sha and every row's example id, and where the installed TRL (if any) defines
-its IS metric, read as text. It never imports torch, TRL, vLLM, transformers, PEFT or datasets
+its IS metric, read as text. A masked config adds `trainer_logprobs` and `masked`: the path its mode runs and
+trl_probe.source_checks against the settings every profile shares, with what a run would refuse on (on the laptop
+nothing is installed to read, so nothing matches). It never imports torch, TRL, vLLM, transformers, PEFT or datasets
 (tests/test_rl_train.py).
 """
 from __future__ import annotations
@@ -46,6 +60,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import faulthandler
+import hashlib
 import importlib
 import importlib.metadata
 import importlib.util
@@ -67,8 +82,8 @@ from typing import IO, Any
 from lofi_rl.brief import sample_briefs
 from lofi_rl.palette import Palette, load_palette
 from lofi_rl.rl import curriculum, trl_probe
-from lofi_rl.rl.config import (PROMPT_MODULES, ConfigError, RunConfig, detect_profile, fit_fields, load_config,
-                               resolve, structured_summary)
+from lofi_rl.rl.config import (MASK_GATING, MASK_T2_PATHS, PROMPT_MODULES, ConfigError, RunConfig, detect_profile,
+                               fit_fields, load_config, resolve, structured_summary)
 from lofi_rl.rl.copy_penalty import CopyPenalty
 from lofi_rl.rl.junk import STRUCTURED_BACKEND
 from lofi_rl.rl.reward import SERVER_TERMS, make_reward
@@ -81,7 +96,16 @@ EXAMPLE = ROOT / "tests" / "fixtures" / "loops" / "example.ls"
 STACK = ("torch", "transformers", "trl", "peft", "datasets", "vllm")      # the policy env's training stack
 ROLES = ("system", "user", "assistant")
 SCORER_PIN = "scorer_pin.json"
+SNAPSHOT_MARKER = ".lofi-snapshot"      # scripts/snapshot.py marks a job's code snapshot with it
+# the GRPOTrainer methods the masked subclass overrides (build spec §2 D): the replay check of every sampled id, the
+# step's record, and the log-probs of the old, reference and loss passes
+MASK_METHODS = ("_generate", "_generate_and_score_completions", "_get_per_token_logps_and_entropies")
 _HARD_EXIT = False
+
+
+class Refused(ConfigError):
+    """A masked launch that may not train: a source check did not match, the trainer class lacks the mask, or lm_head
+    is a LoRA target (D-021 Part A: they fail closed with exit 2). run.json says status "refused"."""
 
 
 # ------------------------------------------------------------------------------------------ prompts
@@ -199,6 +223,129 @@ def checkpoint_step(ckpt: Path | str) -> int:
     return step
 
 
+def code_record(root: Path = ROOT) -> dict[str, Any]:
+    """The code tree this process imports (D-021 M5): $LOFI_CODE (scripts/job_env.sh: the job's code snapshot), this
+    module's tree, and whether each holds scripts/snapshot.py's marker, so a run from the live mirror shows."""
+    env = os.environ.get("LOFI_CODE") or None
+    same = None
+    if env is not None:
+        try:
+            same = Path(env).resolve() == root.resolve()
+        except OSError:
+            same = False
+    return {"lofi_code": env, "lofi_code_snapshot": None if env is None else (Path(env) / SNAPSHOT_MARKER).is_file(),
+            "root": str(root), "root_is_lofi_code": same, "root_snapshot": (root / SNAPSHOT_MARKER).is_file()}
+
+
+# ------------------------------------------------------------------------------------------ the masked trainer
+def source_checks(args: Mapping[str, Any]) -> dict[str, Any]:
+    """trl_probe.source_checks(args=...) (D-021 M7: T1-T5 gate, V1 and V2 are recorded). It never raises by contract;
+    if it raises anyway, or is missing, the result is a record that does not match, so the launch is refused."""
+    try:
+        rec = trl_probe.source_checks(args=dict(args))
+        if not isinstance(rec, dict):
+            raise TypeError(f"returned {type(rec).__name__}, not a record")
+        return rec
+    except Exception as err:  # noqa: BLE001: a record that refuses the launch, never one that lets it train
+        return {"verdict": "not_matched", "path": None, "gating": list(MASK_GATING), "failed": ["source_checks"],
+                "error": f"trl_probe.source_checks: {type(err).__name__}: {err}"[:500]}
+
+
+def mask_refusals(mode: str, checks: Mapping[str, Any]) -> list[str]:
+    """Why a launch of `mode` may not train under these source checks; empty when it may. Every gating check (D-021's
+    T1-T5, plus any the record names) must read "match", the record's verdict too, and T2's path must be one the mode
+    runs under (config.MASK_T2_PATHS)."""
+    out: list[str] = []
+    if checks.get("error"):
+        out.append(str(checks["error"])[:300])
+    for name in dict.fromkeys(list(MASK_GATING) + list(checks.get("gating") or [])):
+        rec = checks.get(name)
+        verdict = rec.get("verdict") if isinstance(rec, Mapping) else None
+        if verdict != "match":
+            why = (rec.get("missing") or rec.get("error")) if isinstance(rec, Mapping) else None
+            out.append(f"{name} {verdict or 'absent'}" + (f" ({str(why)[:200]})" if why else ""))
+    if checks.get("verdict") != "match" and not out:
+        out.append(f"source_checks verdict {checks.get('verdict')!r}")
+    path = checks.get("path")
+    if path not in MASK_T2_PATHS[mode]:
+        out.append(f"T2 path {path!r}: trainer_logprobs {mode} runs only under {list(MASK_T2_PATHS[mode])}")
+    return out
+
+
+def shared_settings(cfg: RunConfig) -> dict[str, Any]:
+    """The resolved trainer settings every GPU profile shares: the sampling, IS and KL settings the source checks'
+    run-time halves read. The dry run runs on no particular card; a run passes its own GRPOConfig."""
+    resolved = [resolve(cfg, name) for name in cfg.profiles]
+    return {k: v for k, v in resolved[0].items() if all(k in r and r[k] == v for r in resolved[1:])}
+
+
+def lm_head_check(model: Any) -> dict[str, Any]:
+    """T5's run-time half on the PEFT model GRPOTrainer built (trl_probe.lm_head_record), as a record even when the
+    call raises or is missing (verdict "error", which refuses the launch)."""
+    try:
+        rec = trl_probe.lm_head_record(model)
+        if not isinstance(rec, dict):
+            raise TypeError(f"returned {type(rec).__name__}, not a record")
+        return rec
+    except Exception as err:  # noqa: BLE001
+        return {"verdict": "error", "error": f"trl_probe.lm_head_record: {type(err).__name__}: {err}"[:500]}
+
+
+def check_trainer_class(cls: Any, base: type) -> None:
+    """masked.make_trainer_class's class must be a subclass of TRL's GRPOTrainer that overrides every method the mask
+    needs (MASK_METHODS); otherwise the launch would train without the mask, so it is refused."""
+    if not (isinstance(cls, type) and issubclass(cls, base)):
+        raise Refused(f"masked.make_trainer_class returned {cls!r}, not a subclass of {base.__name__}")
+    inherited = [m for m in MASK_METHODS if getattr(cls, m, None) is getattr(base, m, None)]
+    if inherited:
+        raise Refused(f"{cls.__qualname__} inherits {inherited} from {base.__name__} unchanged: it would train "
+                      "without the grammar's mask")
+
+
+def snapshot_vocab_size(snap: Path | str) -> int:
+    """`vocab_size` of the snapshot's config.json: what vLLM 0.32 builds its xgrammar TokenizerInfo with
+    (model_config.get_vocab_size(); build spec §1, V2)."""
+    p = Path(snap) / "config.json"
+    try:
+        v = json.loads(p.read_text())["vocab_size"]
+    except (OSError, ValueError, KeyError) as err:
+        raise ConfigError(f"{p}: no readable vocab_size ({err}); the mask needs the model's vocabulary size") from err
+    if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+        raise ConfigError(f"{p}: vocab_size {v!r} is not a positive integer")
+    return v
+
+
+def build_mask(cfg: RunConfig, kw: Mapping[str, Any], snap: Path | str, tok: Any, eos: frozenset[int],
+               base: type) -> tuple[Any, type, dict[str, Any]]:
+    """The masked trainer's parts, before the model loads (module docstring, masked config 2-3): (MaskSetup, the
+    trainer class, run.json's `masked`). Cluster only: xgrammar is imported by masked.XgrammarReplay. MaskSetup
+    refuses a replay or an NFA built over another regex, vocabulary or stop-id set (D-021 M8)."""
+    from lofi_rl.grammar_mask import GrammarMask
+    from lofi_rl.rl.masked import MaskSetup, XgrammarReplay, make_trainer_class
+
+    so = cfg.structured_outputs
+    regex = kw.get(so["field"])                         # the very string GRPOConfig hands vLLM
+    sha = hashlib.sha256(str(regex).encode("utf-8")).hexdigest()
+    if regex != so["regex"] or sha != so["sha256"]:
+        raise ConfigError(f"the resolved {so['field']} is not the config's regex ({sha[:16]} vs {so['sha256'][:16]})")
+    snap = Path(snap)
+    vocab = snapshot_vocab_size(snap)
+    stop = tuple(sorted(eos))
+    if not stop:
+        raise ConfigError("no EOS id from the tokenizer or the generation config: the grammar has no stop ids")
+    replay = XgrammarReplay(regex, tok, vocab_size=vocab, stop_ids=stop)
+    nfa = GrammarMask.from_tokenizer_json(snap / "tokenizer.json", regex, vocab_size=vocab, stop_ids=stop)
+    cls = make_trainer_class(base)
+    check_trainer_class(cls, base)
+    setup = MaskSetup(mode=cfg.trainer_logprobs, regex=regex, regex_sha256=sha, vocab_size=vocab, stop_ids=stop,
+                      replay=replay, nfa=nfa, stats={})
+    rec = {**_jsonable(setup.record()), "vocab_from": str(snap / "config.json"),
+           "stop_ids_from": "the tokenizer's eos_token_id and the generation config's eos_token_id (vLLM's "
+                            "all_stop_token_ids)",
+           "tokenizer_json": str(snap / "tokenizer.json"), "trainer_class": f"{cls.__module__}.{cls.__qualname__}"}
+    return setup, cls, rec
+
+
 # ------------------------------------------------------------------------------------------ dry run
 def _reward_check(cfg: RunConfig, row: Mapping[str, Any], copy: CopyPenalty | None = None) -> dict[str, Any] | str:
     """Score tests/fixtures/loops/example.ls under the first row's brief, through the real reward path. The
@@ -221,6 +368,19 @@ def _reward_check(cfg: RunConfig, row: Mapping[str, Any], copy: CopyPenalty | No
             "p_copy", "copy_j", "copy_nearest", "example_id", "finish", "in_language")
     return {"text": str(EXAMPLE.relative_to(ROOT)), "brief_id": row["brief_id"], "reward": out[0],
             **{k: rec[k] for k in keep if k in rec}}
+
+
+def _masked_report(cfg: RunConfig) -> dict[str, Any]:
+    """The dry run's `masked`: the mode, the path it runs, the TRL forms it can run under, and the source checks
+    against the settings every profile shares, with what a launch would refuse on. Nothing here imports torch, TRL,
+    vLLM, PEFT, xgrammar or lofi_rl.rl.masked: the checks read source text (trl_probe)."""
+    checks = source_checks(shared_settings(cfg))
+    return {"mode": cfg.trainer_logprobs, "path_expected": cfg.mask_path,
+            "t2_paths": list(MASK_T2_PATHS[cfg.trainer_logprobs]), "source_checks": checks,
+            "source_checks_args": "the resolved settings every profile shares (a launch passes its GRPOConfig)",
+            "refusals": mask_refusals(cfg.trainer_logprobs, checks),
+            "mask": "built at run time from the snapshot's tokenizer.json and config.json vocab_size, with the EOS "
+                    "ids: lofi_rl.rl.masked.XgrammarReplay and lofi_rl.grammar_mask.GrammarMask"}
 
 
 def dry_run(cfg: RunConfig, out: IO[str] | None = None, prompts: Any = None) -> dict[str, Any]:
@@ -264,6 +424,8 @@ def dry_run(cfg: RunConfig, out: IO[str] | None = None, prompts: Any = None) -> 
         "backend_pin": None if cfg.structured_outputs is None
         else {"requested": STRUCTURED_BACKEND, "how": "lofi_rl.rl.trl_probe.BackendPin on vllm.LLM, at run time"},
         "trl_logp_metric": trl_probe.logp_metric_source(),
+        "trainer_logprobs": cfg.trainer_logprobs,
+        "masked": None if cfg.trainer_logprobs is None else _masked_report(cfg),
         "reward_check": _reward_check(cfg, rows[0], copy),
     }
     print(json.dumps(report, indent=1, ensure_ascii=False, default=str), file=out or sys.stdout)
@@ -277,13 +439,16 @@ class StepLog:
     checkpoint (kind "save") and TRL's end-of-training metrics (kind "train_end").
 
     TRL generates and scores a step's rollouts at global_step k and logs after the update, at k + 1, so the
-    record for step k + 1 carries reward stats[k]."""
+    record for step k + 1 carries reward stats[k]. With `mask_stats` (a masked config: the MaskSetup's stats, keyed
+    by the global step the masked trainer generated at) each step record also has "mask": mask_stats[k], at the same
+    offset; without it the records have no such key."""
 
     def __init__(self, path: Path | str, reward_stats: Mapping[int, Any] | None = None,
-                 clock: Callable[[], float] = time.time):
+                 clock: Callable[[], float] = time.time, mask_stats: Mapping[int, Any] | None = None):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.stats = reward_stats if reward_stats is not None else {}
+        self.mask = mask_stats
         self.clock = clock
         self.t_begin: float | None = None
         self._last: float | None = None
@@ -310,8 +475,11 @@ class StepLog:
             self._write({"kind": "train_end", "step": global_step, "t": self.clock(), "trl": logs})
             return
         t, dt = self._ends.get(global_step, (None, None))
-        self._write({"kind": "step", "step": global_step, "t": t, "step_s": dt, "trl": logs,
-                     "lofi": self.stats.get(global_step - 1)})
+        rec = {"kind": "step", "step": global_step, "t": t, "step_s": dt, "trl": logs,
+               "lofi": self.stats.get(global_step - 1)}
+        if self.mask is not None:
+            rec["mask"] = self.mask.get(global_step - 1)
+        self._write(rec)
 
 
 def _callback(base: type, log: StepLog):
@@ -343,8 +511,11 @@ def _jsonable(x: Any) -> Any:
 
 
 def _versions() -> dict[str, str | None]:
+    """run.json's `versions` (and the mask preflight's): the installed distributions of the training stack, accelerate
+    and xgrammar, the masked trainer's replay (lofi_rl.rl.masked.XgrammarReplay). xgrammar stays out of STACK, which
+    main() also checks the environment against."""
     out = {}
-    for name in STACK + ("accelerate",):
+    for name in STACK + ("accelerate", "xgrammar"):
         try:
             out[name] = importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
@@ -410,11 +581,13 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
         "summary_dir": str(summary_dir), "resume_from": str(resume_from) if resume_from else None,
         "job": job, "node": platform.node(), "stamp": stamp.read_text().strip() if stamp.is_file() else None,
         "versions": _versions(), "lora": dict(cfg.lora), "structured_outputs": structured_summary(cfg),
-        "trl_logp_metric": trl_probe.logp_metric_source(), "vllm_logprobs": trl_probe.vllm_logprobs_evidence()}
+        "trl_logp_metric": trl_probe.logp_metric_source(), "vllm_logprobs": trl_probe.vllm_logprobs_evidence(),
+        "trainer_logprobs": cfg.trainer_logprobs, "code": code_record()}
     _write_json(summary_dir / "run.json", man)
     steps: StepLog | None = None
     pin: trl_probe.BackendPin | None = None
     trainer = None
+    setup = None                                        # the masked trainer's MaskSetup (a masked config)
     try:
         if not torch.cuda.is_available():
             raise RuntimeError("torch sees no GPU")
@@ -448,6 +621,18 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
         _write_json(summary_dir / "run.json", man)
 
         args = GRPOConfig(output_dir=str(run_dir), **named, **kw)
+        trainer_cls, extra = GRPOTrainer, {}
+        if cfg.trainer_logprobs is not None:                # D-021 Part A, all before the model loads (docstring)
+            settings = args.to_dict()
+            man["grpo_config"] = _jsonable(settings)
+            man["trl_source_checks"] = checks = source_checks(settings)
+            _write_json(summary_dir / "run.json", man)
+            refusals = mask_refusals(cfg.trainer_logprobs, checks)
+            if refusals:
+                raise Refused("the source checks refuse the masked trainer: " + "; ".join(refusals))
+            setup, trainer_cls, man["masked"] = build_mask(cfg, kw, snap, tok, eos, GRPOTrainer)
+            extra = {"mask_setup": setup}
+            _write_json(summary_dir / "run.json", man)
         model = AutoModelForCausalLM.from_pretrained(snap, dtype=torch.bfloat16)
         model.config.use_cache = False                      # gradient checkpointing; vLLM generates
         spin = scorer_pin_path(run_dir, resume_from, scorer_pin)
@@ -455,16 +640,24 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
         reward = make_reward(cfg.palette_path(), summary_dir / "rewards.jsonl",
                              max_completion_length=kw["max_completion_length"], eos_token_ids=eos,
                              start_step=start_step, scorer_pin=spin, copy=copy, language=cfg.structured_outputs)
-        steps = StepLog(summary_dir / "steps.jsonl", reward_stats=reward.stats)
+        steps = StepLog(summary_dir / "steps.jsonl", reward_stats=reward.stats,
+                        mask_stats=None if setup is None else setup.stats)
         lora = LoraConfig(r=cfg.lora["r"], lora_alpha=cfg.lora["alpha"], lora_dropout=cfg.lora["dropout"],
                           target_modules=cfg.lora["target_modules"], bias="none", task_type="CAUSAL_LM")
         if cfg.structured_outputs is not None:              # the engine TRL builds asks for xgrammar, as junk's does
             pin = trl_probe.BackendPin.for_vllm(STRUCTURED_BACKEND)
-        trainer = GRPOTrainer(model=model, reward_funcs=[reward], args=args,
+        trainer = trainer_cls(model=model, reward_funcs=[reward], args=args,
                               train_dataset=datasets.Dataset.from_list(rows), processing_class=tok,
-                              peft_config=lora, callbacks=[_callback(TrainerCallback, steps)])
+                              peft_config=lora, callbacks=[_callback(TrainerCallback, steps)], **extra)
         if pin is not None:
             man["structured_outputs"]["backend"] = trl_probe.engine_record(trainer, pin)
+        if setup is not None:                               # T5's run-time half, on the PEFT model just built
+            man["lm_head"] = head = lm_head_check(trainer.model)
+            _write_json(summary_dir / "run.json", man)
+            if head.get("verdict") != "match":
+                why = head.get("error") or head.get("missing") or ""
+                raise Refused(f"T5 at run time: trl_probe.lm_head_record reads {head.get('verdict')!r}"
+                              + (f" ({str(why)[:200]})" if why else "") + ": lm_head must not be a LoRA target")
         try:
             trainable, total = trainer.model.get_nb_trainable_parameters()
             man["params"] = {"trainable": int(trainable), "total": int(total)}
@@ -475,10 +668,17 @@ def train(cfg: RunConfig, *, run_dir: Path, summary_dir: Path, resume_from: Path
 
         out = trainer.train(resume_from_checkpoint=str(resume_from) if resume_from else None)
         man.update(status="ok", final_global_step=int(trainer.state.global_step), train_metrics=_jsonable(out.metrics))
+    except Refused as e:                                    # a masked launch stopped by a check: exit 2 (main)
+        man.update(status="refused", error=f"{type(e).__name__}: {e}")
+        raise
     except BaseException as e:
         man.update(status="failed", error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-8000:])
         raise
     finally:
+        if setup is not None and isinstance(man.get("masked"), dict):
+            # the steps the trainer recorded, and the last record (a launch stopped by a MaskViolation never logs it)
+            man["masked"]["stats_steps"] = sorted(setup.stats)
+            man["masked"]["last_stats"] = _jsonable(setup.stats[max(setup.stats)]) if setup.stats else None
         if pin is not None:
             backend = man["structured_outputs"].get("backend")
             if backend is None or backend.get("engine") is None:     # read again, or record the pin's state alone

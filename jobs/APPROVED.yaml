@@ -8,6 +8,7 @@ jobs/env_scorer.sbatch: {sha: 948d77571a5bb968, max_su: 960, by: Shresth, date: 
 jobs/fetch.sbatch: {sha: 68298be22c7a752b, max_su: 720, by: Shresth, date: 2026-10-30}
 jobs/grpo_smoke.sbatch: {sha: 1dded12d386c7fab, max_su: 500, by: Claude, date: 2026-11-01}
 jobs/junk_rate.sbatch: {sha: 4a9d8685231fd573, max_su: 450, by: Claude, date: 2026-10-31}
+jobs/mask_preflight.sbatch: {sha: 87c428d71435c4f4, max_su: 320, by: Claude, date: 2026-11-02}
 jobs/render_check.sbatch: {sha: 6f3e8d4d00d3f64c, max_su: 360, by: Claude, date: 2026-10-31}
 jobs/scorer_smoke.sbatch: {sha: eaf0423e7072e564, max_su: 480, by: Claude, date: 2026-10-31}
 jobs/seam_diag.sbatch: {sha: b2034ede829361ba, max_su: 120, by: Claude, date: 2026-10-31}

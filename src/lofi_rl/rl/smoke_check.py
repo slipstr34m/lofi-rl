@@ -36,7 +36,9 @@ What the D-020 settings add to the report (docs/GRPO.md §5):
   completion_mask (trl_logp_metric.verdict "match"); otherwise the readout is unavailable, with the reason, and
   nothing is claimed. That check is TRL's half of D-020's definition: whether vLLM's reported log-probs include the
   grammar mask is unchecked (run.json vllm_logprobs), so with the grammar the rule carries that caveat unless every
-  launch's vllm_logprobs.checked is true (is_ratio's vllm_logprobs_checked records them). Every step of both
+  launch's vllm_logprobs.checked is true (is_ratio's vllm_logprobs_checked records them). Under the masked trainer
+  the caveat reads the other way (VLLM_CAVEAT_MASKED): log-probs taken before the bitmask would push TRL's value
+  toward -log Z, not under D-020's mean, and M10's ratio settles it. Every step of both
   launches counts (the resumed steps 6-10 are steps the smoke ran); the mean of the per-step values, and the
   token-weighted mean that D-020's "over every completion token" reads (weights: each step's completion tokens from
   rewards.jsonl, without the truncated completions when TRL's mask drops them), are both reported, and the 0.05
@@ -45,19 +47,45 @@ What the D-020 settings add to the report (docs/GRPO.md §5):
   prompt v2 (`configured`) whose two launches both showed the grammar applied (`grammar_shown`: each launch's
   in_language shows_grammar), since by D-020's Validity a constrained run that fails the in-language check decides
   nothing. An unavailable readout is a warning, not a failure.
+
+What a masked config (`trainer_logprobs`, D-021 Part A; docs/GRPO.md §8) adds at the final stage:
+- **d021**: D-021's gates M5-M12 as it registers them, each with its kind, value, bar, pass and source, read from
+  both launches' run.json (stamp, trl_source_checks, lm_head, masked) and steps.jsonl (TRL's metrics and each step's
+  mask record), and from this report's in_language, backend and is_ratio. Validity: M5 (one commit, dirty=0; and, in
+  the tree this module runs from, config.ROOT, which on the cluster is the job's read-only snapshot, every file of
+  docs/prereg/D-021_masked_smoke_path.txt at its frozen git blob and D-021's heading in docs/DECISIONS.md), M6
+  (GRPO_SMOKE_OK, the language counts, xgrammar pinned and applied), M7 (T1-T5 match, T5's run-time half too), M8
+  (no sampled token outside the mask, 32 old/ref/loss rows a step, no NFA mismatch, finite loss/KL/entropy, the path
+  named) and M10's first clause (token-weighted mask/neglogz >= 0.05; a step whose old pass had no valid token
+  weighs 0 and is listed as zero_weight). Measured: M9 (the token-weighted IS readout <= 0.05, every step read),
+  M10's ratio (M9 <= 0.25 x neglogz) and M11 (at every step the 32 IS weights' mean >= 0.3 and largest <= 0.25 of
+  their sum). Estimate-only: M12 (mean step_s <= 43.3 s; beside it, ungated, the mean of each mask timing and of
+  step_s net of the old pass's unmasked forward and the self-check).
+- **selfcheck_flags** (diagnostics, never gates): a launch whose first self-check is absent, failed, non-finite, or
+  puts the two log-prob paths more than 0.05 apart in mean |diff| or 1.0 at most. Each flag is printed as a warning,
+  and on a measured miss the follow-up adds that D-021's fp32 fix presupposes a numerical miss. The verdict never
+  reads them.
+- **The verdict**: `invalid` when a validity gate does not pass, or a measured gate cannot be decided (a check that
+  cannot decide counts as not passing, and a launch that could not measure measured nothing); `measured_miss` when
+  every validity gate passes and a measured gate misses; `pass` otherwise. M12 never changes it. The log prints
+  D021_PART_A <verdict> just before GRPO_SMOKE_OK or GRPO_SMOKE_FAILED, which stays last and keeps its meaning: the
+  D-021 gates never add to the smoke's failures (M6 reads them).
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
+import re
 import statistics
 from collections import Counter
-from pathlib import Path
+from collections.abc import Iterable
+from pathlib import Path, PurePosixPath
 from typing import Any
 
-from lofi_rl.rl.config import ROOT, ConfigError, RunConfig, load_config
+from lofi_rl.rl.config import MASK_GATING, ROOT, ConfigError, RunConfig, load_config
 
 DEFAULT_CONFIG = ROOT / "configs" / "grpo_smoke.yaml"
 ADAPTER = ("adapter_model.safetensors", "adapter_model.bin")
@@ -71,6 +99,41 @@ IS_DEFINITION = ("the mean, over every completion token of every step, of |log p
 VLLM_CAVEAT = ("vLLM's reported log-probs were not checked to be the masked sampler's pi_vLLM (run.json "
                "vllm_logprobs.checked is not true): if vLLM takes them before the grammar bitmask, TRL's value leaves "
                "out the mask's mismatch with the trainer and can understate D-020's mean")
+# The same unchecked record read under the masked trainer (D-021 Part A), whose log-probs are normalized over the
+# allowed set: unmasked vLLM log-probs would sit below them by each position's -log Z, so the gap would grow, not shrink
+VLLM_CAVEAT_MASKED = ("vLLM's reported log-probs were not checked to be the masked sampler's pi_vLLM (run.json "
+                      "vllm_logprobs.checked is not true): under the masked trainer, if vLLM takes them before the "
+                      "grammar bitmask, the trainer's masked log-probs exceed them by each position's -log Z, so TRL's "
+                      "value would approach the token-weighted -log Z (mask/neglogz) rather than understate D-020's "
+                      "mean; M10's ratio (M9 <= 0.25 x neglogz, smoke.json d021) settles it")
+# D-021 Part A's gates (docs/DECISIONS.md D-021, "Pre-registered gates for Part A"); M10 has two clauses of two kinds
+D021_VALIDITY = ("M5", "M6", "M7", "M8", "M10")             # M10 here is its first clause
+D021_MEASURED = ("M9", "M10_ratio", "M11")
+D021_ESTIMATE = ("M12",)
+NEGLOGZ_MIN = 0.05                  # M10, first clause: the trainer's token-weighted -log Z
+RATIO_OF_NEGLOGZ = 0.25             # M10, its ratio: M9 <= 0.25 x neglogz
+WEIGHT_MEAN_MIN = 0.3               # M11: the mean of a step's 32 IS weights
+WEIGHT_SHARE_MAX = 0.25             # M11: the largest weight's share of their sum
+STEP_S_MAX = 43.3                   # M12: 1.15 x 13657200's mean step_s, 37.63 s (D-021)
+BACKEND = "xgrammar"                # M6: pinned and applied in both launches (lofi_rl.rl.junk.STRUCTURED_BACKEND)
+FINITE_LOGS = ("loss", "kl", "entropy")                     # M8: TRL's logged loss, KL and entropy
+IS_WEIGHT_MEAN = "sampling/importance_sampling_ratio/mean"  # M11's stand-in, when T3 reads it as over sequences
+IS_WEIGHT_MAX = "sampling/importance_sampling_ratio/max"
+# M5's registration half (D-021: "this entry and the frozen path are committed and synced before the submit"), read
+# from the tree this module runs from (config.ROOT: on the cluster the job's read-only code snapshot)
+PREREG_LIST = "docs/prereg/D-021_masked_smoke_path.txt"     # "<git blob sha>  <path>" lines, as check_frozen.sh reads
+DECISIONS = "docs/DECISIONS.md"
+D021_HEADING = "## D-021"                                   # the line that starts D-021's entry starts with it
+BLOB_SHA = re.compile(r"[0-9a-f]{40}")                      # a blob id as git ls-tree and git hash-object print it
+MAX_LISTED = 10                                             # M5: problem examples kept per kind
+SNAPSHOT_MARKER = ".lofi-snapshot"                          # scripts/snapshot.py's marker (train.SNAPSHOT_MARKER)
+# M12's breakdown, recorded and never gated: the mask record's timings (lofi_rl.rl.masked.new_step_record). They
+# overlap: walk_s holds nfa_s, and old_s holds the old pass's unmasked_s and selfcheck_s, so they do not sum to step_s
+MASK_TIMING = ("walk_s", "nfa_s", "old_s", "ref_s", "loss_s", "unmasked_s", "selfcheck_s")
+# The self-check's flags are diagnostics, not D-021 gates: D-021 registers no bar for the self-check, and these never
+# change its verdict. 0.05 nats is D-020's IS bar, for scale; 1.0 is a whole nat at one position.
+SELFCHECK_MEAN_ABS_DIFF = 0.05
+SELFCHECK_MAX_ABS_DIFF = 1.0
 
 
 def _jsonl(path: Path, problems: list[str]) -> list[dict[str, Any]]:
@@ -375,7 +438,8 @@ def _is_readout(launches: dict[str, dict[str, Any]], cfg: RunConfig, warnings: l
         caveats.append(f"the mean of the per-step values ({plain:.6f}) and the token-weighted mean ({weighted:.6f}) "
                        "fall on two sides of 0.05")
     if cfg.structured_outputs is not None and not all(c is True for c in vllm_checked.values()):
-        caveats.append(VLLM_CAVEAT)
+        # D-020's reading for TRL's own trainer; under the masked trainer the unchecked record cuts the other way
+        caveats.append(VLLM_CAVEAT_MASKED if cfg.trainer_logprobs is not None else VLLM_CAVEAT)
     if not configured:
         says = "not D-020's reading: it is read in a GRPO smoke with the grammar and prompt v2"
     elif not grammar_shown:
@@ -383,6 +447,9 @@ def _is_readout(launches: dict[str, dict[str, Any]], cfg: RunConfig, warnings: l
                 "failed), so it decides nothing (D-020, Validity)")
         warnings.append("IS readout: the in-language check did not show the grammar applied in both launches, so the "
                         "0.05 rule decides nothing")
+    elif cfg.trainer_logprobs is not None:      # D-021 registered this reading as its M9; its verdict decides
+        says = (f"{'exceeds' if exceeds else 'at most'} 0.05 under the masked trainer: D-021 Part A reads it as M9 "
+                "(smoke.json d021), and D-021's verdict, not D-020's rule, says what follows")
     elif exceeds:
         says = "exceeds 0.05: by D-020 the grammar goes off for GRPO run 1, and run 1's start is registered again"
     else:
@@ -401,7 +468,656 @@ def _span(xs: list[int]) -> str:
     return f"{xs[0]}-{xs[-1]}" if xs == list(range(xs[0], xs[-1] + 1)) else str(xs)
 
 
-EXIT_MEANING = {"124": "timed out", "137": "killed after the timeout", "2": "config error", "3": "no policy env"}
+# ------------------------------------------------------------------------------------------ D-021 Part A
+D021_RULE = ("invalid: a validity gate (M5-M8, M10's first clause) did not pass, or a measured gate (M9, M10's ratio, "
+             "M11) could not be decided, so the launch measured nothing; measured_miss: every validity gate passed "
+             "and a measured gate missed; pass: every validity and measured gate passed. M12 is estimate-only: it "
+             "decides the run-1 estimate, never this verdict (D-021, Two kinds of miss)")
+D021_FOLLOWS = {
+    "pass": ("M5-M11 all pass: D-021 supersedes D-020's IS-half verdict, and the grammar is on for run 1 with the "
+             "masked trainer. Next, in D-021's order: D-020's official Phase-1 gate on the frozen palette"),
+    "measured_miss": ("a measured miss on a valid launch gets at most one re-run, with the one fix D-021 names "
+                      "(trainer_logprobs grammar_masked_fp32: the masked log-softmax in fp32 in all three passes), "
+                      "which applies only when M8 holds, as it did here; a measured miss after that re-run leaves "
+                      "D-020's verdict in force: the grammar is off for run 1, and Part B goes to Shresth"),
+    "invalid": ("an invalid launch measured nothing: its defect is fixed, the fix is recorded in D-021, and the smoke "
+                "runs again; a launch invalid twice goes to Shresth with the records"),
+}
+FP32_RERUN = ("this launch ran D-021's named fix (grammar_masked_fp32): if it is the one re-run after a measured "
+              "miss, D-020's verdict stands, the grammar is off for run 1, and Part B goes to Shresth")
+SELFCHECK_NOTE = ("the self-check disagrees with the path that ran, or could not compare it (d021.selfcheck_flags, "
+                  "diagnostics.selfcheck); D-021's fp32 fix presupposes a numerical miss (D-021, Two kinds of miss: "
+                  "\"It applies only when M8 holds, so the mask matched and the miss is numerical\"): read the "
+                  "self-check before the re-run is spent")
+
+
+def _g(x: Any) -> str:
+    """A number as the log prints it (6 significant digits); anything else as it is."""
+    return f"{x:.6g}" if isinstance(x, float) else str(x)
+
+
+def _gate(kind: str, ok: bool | None, value: Any, bar: str, source: str, reads: str,
+          reasons: list[str] | None = None, **details: Any) -> dict[str, Any]:
+    """One D-021 gate: ok is True (passes), False (misses) or None (cannot be decided: counts as not passing)."""
+    reasons = list(reasons or [])
+    more = len(reasons) - 30
+    return {"kind": kind, "pass": ok, "value": value, "bar": bar, "source": source, "reads": reads,
+            "reasons": reasons[:30] + ([f"... and {more} more"] if more > 0 else []), **details}
+
+
+def _verdict(rec: Any) -> str | None:
+    return rec.get("verdict") if isinstance(rec, dict) else None
+
+
+def _stamp(text: Any) -> dict[str, str] | None:
+    """make sync's .sync-stamp as run.json records it (`commit=… dirty=… diff=… at=…`), as a mapping."""
+    if not isinstance(text, str) or "commit=" not in text:
+        return None
+    return dict(tok.split("=", 1) for tok in text.split() if "=" in tok)
+
+
+def _count(v: Any) -> int | None:
+    """A count a mask record holds as an int, or as the list of what it counts (violations as (row, pos, token))."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v if v >= 0 else None
+    return len(v) if isinstance(v, (list, tuple)) else None
+
+
+def _meta(data: dict[str, dict[str, Any]], name: str) -> dict[str, Any]:
+    return (data.get(name) or {}).get("meta") or {}
+
+
+def _iter_steps(data: dict[str, dict[str, Any]], want: dict[str, list[int]]):
+    """(launch, step, its mask record or None, TRL's logs) for every step each launch should have trained."""
+    for name, steps in want.items():
+        by_step = {r.get("step"): r for r in (data.get(name) or {}).get("steps") or []}
+        for s in steps:
+            r = by_step.get(s) or {}
+            mask = r.get("mask")
+            yield name, s, mask if isinstance(mask, dict) else None, r.get("trl") or {}
+
+
+def git_blob_sha(data: bytes) -> str:
+    """The blob id `git hash-object` prints for a file's bytes: sha1 of b"blob <size>\\0" + the bytes. The repo has no
+    .gitattributes, so no filter changes the bytes git hashes."""
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def _registration(root: Path) -> tuple[dict[str, Any], list[str]]:
+    """M5's registration half, read from `root`, the tree this module runs from (on the cluster the job's read-only
+    code snapshot, which both launches imported): PREREG_LIST can be read and names at least one file; each of its
+    lines but blanks and # comments (check_frozen.sh skips the same) is "<git blob sha>  <path>", the path relative and
+    inside `root`, and the path's bytes hash to that blob; docs/DECISIONS.md has a line starting "## D-021". The
+    stamps' dirty=0 says the synced tree was the commit; this says the tree that ran holds the frozen path and the
+    entry. A file that cannot be read, a malformed line or another blob is a reason (fail closed)."""
+    rec: dict[str, Any] = {"root": str(root), "snapshot": (root / SNAPSHOT_MARKER).is_file(), "list": PREREG_LIST,
+                           "list_sha256": None, "files": 0, "matched": 0, "changed": [], "unreadable": [],
+                           "malformed": [], "decisions": DECISIONS, "d021_heading": None}
+    reasons: list[str] = []
+    counts = {"changed": 0, "unreadable": 0, "malformed": 0}
+
+    def note(kind: str, item: dict[str, Any]) -> None:
+        counts[kind] += 1
+        if len(rec[kind]) < MAX_LISTED:
+            rec[kind].append(item)
+
+    lines: list[str] | None = None
+    try:
+        raw = (root / PREREG_LIST).read_bytes()
+        rec["list_sha256"] = hashlib.sha256(raw).hexdigest()
+        lines = raw.decode("utf-8").splitlines()
+    except OSError as err:
+        reasons.append(f"cannot read the frozen path list {PREREG_LIST} ({err.strerror or err})")
+    except UnicodeDecodeError as err:
+        reasons.append(f"the frozen path list {PREREG_LIST} is not UTF-8 text ({err})")
+    for n, line in enumerate(lines or [], 1):
+        fields = line.split(None, 1)
+        if not fields or fields[0].startswith("#"):
+            continue
+        path = fields[1].strip() if len(fields) == 2 else ""
+        rel = PurePosixPath(path)
+        if not BLOB_SHA.fullmatch(fields[0]) or not path or rel.is_absolute() or ".." in rel.parts:
+            note("malformed", {"line": n, "text": line[:200]})
+            continue
+        rec["files"] += 1
+        try:
+            got = git_blob_sha((root / path).read_bytes())
+        except OSError as err:
+            note("unreadable", {"line": n, "path": path, "error": str(err.strerror or err)})
+            continue
+        if got == fields[0]:
+            rec["matched"] += 1
+        else:
+            note("changed", {"line": n, "path": path, "frozen": fields[0], "now": got})
+    rec.update({f"n_{k}": v for k, v in counts.items()})
+    if counts["malformed"]:
+        first = rec["malformed"][0]
+        reasons.append(f"{counts['malformed']} lines of {PREREG_LIST} are not '<git blob sha>  <path>' with a "
+                       f"relative path (first: line {first['line']}: {first['text']!r})")
+    if lines is not None and rec["files"] == 0:
+        reasons.append(f"{PREREG_LIST} names no file")
+    if counts["unreadable"]:
+        first = rec["unreadable"][0]
+        reasons.append(f"{counts['unreadable']} frozen files cannot be read in {root} (first: {first['path']}: "
+                       f"{first['error']})")
+    if counts["changed"]:
+        first = rec["changed"][0]
+        reasons.append(f"{counts['changed']} frozen files are not their frozen blob in {root} (first: {first['path']}: "
+                       f"frozen {first['frozen'][:12]}, now {first['now'][:12]})")
+    try:
+        text = (root / DECISIONS).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as err:
+        reasons.append(f"cannot read {DECISIONS} ({getattr(err, 'strerror', None) or err})")
+    else:
+        rec["d021_heading"] = next((l[:200] for l in text.splitlines() if l.startswith(D021_HEADING)), None)
+        if rec["d021_heading"] is None:
+            reasons.append(f"{DECISIONS} has no line starting {D021_HEADING!r}: D-021 is not in the tree that ran")
+    return rec, reasons
+
+
+M5_BAR = (f"both launches' stamps: one commit, dirty=0; in the tree that ran, every file {PREREG_LIST} names at its "
+          f"frozen blob, and {DECISIONS} holds D-021")
+M5_SOURCE = f"run.json stamp (a, b); {PREREG_LIST} and {DECISIONS} under config.ROOT (the job's snapshot)"
+
+
+def _m5(data: dict[str, dict[str, Any]], root: Path | None = None) -> dict[str, Any]:
+    """M5 (D-021: "this entry and the frozen path are committed and synced before the submit. Both launches' stamps
+    show that commit with dirty=0"): both launches' stamps show one commit with dirty=0 (the code tree each imported is
+    recorded beside), and the registration half holds (_registration) in `root`, by default config.ROOT as this module
+    reads it when it runs. It never raises (main() has no guard around check()): an error is a reason, and M5 fails."""
+    try:
+        stamps, reasons = {}, []
+        for n in ("a", "b"):
+            meta = _meta(data, n)
+            s = _stamp(meta.get("stamp"))
+            stamps[n] = None if s is None else {"commit": s.get("commit"), "dirty": s.get("dirty")}
+            if s is None:
+                reasons.append(f"launch {n}: run.json has no .sync-stamp ({meta.get('stamp')!r})")
+            elif s.get("dirty") != "0":
+                reasons.append(f"launch {n}: its stamp says dirty={s.get('dirty')}, not 0")
+        commits = sorted({str(s["commit"]) for s in stamps.values()
+                          if s and s.get("commit") not in (None, "", "none")})
+        if len(commits) != 1 and not reasons:
+            reasons.append(f"the launches' stamps name {commits or 'no commit'}, not one commit")
+        code = {n: _meta(data, n).get("code") for n in ("a", "b")}
+        reg, why = _registration(ROOT if root is None else root)
+        reasons += why
+        reads = (f"commit {commits[0] if len(commits) == 1 else commits}, dirty "
+                 + "/".join(str((stamps[n] or {}).get("dirty")) for n in ("a", "b"))
+                 + f"; frozen path: {reg['matched']} of {reg['files']} files at their blob (list sha256 "
+                 + f"{str(reg['list_sha256'])[:12]}), D-021 {'in' if reg['d021_heading'] else 'NOT in'} {DECISIONS}")
+        return _gate("validity", not reasons, stamps, M5_BAR, M5_SOURCE, reads, reasons, code=code, registration=reg)
+    except Exception as err:  # noqa: BLE001: M5 fails closed rather than stop the report
+        why = f"M5 could not be read ({type(err).__name__}: {err})"[:300]
+        return _gate("validity", False, None, M5_BAR, M5_SOURCE, why, [why], code=None, registration=None)
+
+
+def _m6(rep: dict[str, Any]) -> dict[str, Any]:
+    """M6: GRPO_SMOKE_OK; stop out_of_language 0, other.n 0, a stop completion in each launch; xgrammar pinned and
+    applied in both launches."""
+    reasons = []
+    if not rep.get("ok"):
+        reasons.append(f"the smoke failed (GRPO_SMOKE_FAILED; first: {str((rep.get('failures') or ['?'])[0])[:200]})")
+    lang = rep.get("in_language") or {}
+    stop_out, other = (lang.get("stop") or {}).get("out_of_language"), (lang.get("other") or {}).get("n")
+    if stop_out != 0:
+        reasons.append(f"{stop_out} stop completions are out of the regex's language, not 0")
+    if other != 0:
+        reasons.append(f"other.n is {other}, not 0")
+    stops = {n: (((lang.get("launches") or {}).get(n) or {}).get("stop") or {}).get("n") for n in ("a", "b")}
+    for n, k in stops.items():
+        if isinstance(k, bool) or not isinstance(k, int) or k < 1:
+            reasons.append(f"launch {n}: {k} stop completions, not at least 1")
+    want = {"requested": BACKEND, "pin_accepted": True, "backend": BACKEND, "applied": True}
+    backend = {n: {k: (((rep.get("backend") or {}).get(n)) or {}).get(k) for k in want} for n in ("a", "b")}
+    for n, b in backend.items():
+        if b != want:
+            reasons.append(f"launch {n}: backend {b}, not {want}")
+    value = {"smoke_ok": bool(rep.get("ok")), "stop_out_of_language": stop_out, "other_n": other, "stop_n": stops,
+             "backend": backend}
+    reads = (f"smoke {'ok' if rep.get('ok') else 'FAILED'}, stop out of language {stop_out}, other {other}, stop "
+             f"completions a {stops['a']} b {stops['b']}, xgrammar applied a {backend['a']['applied']} "
+             f"b {backend['b']['applied']}")
+    return _gate("validity", not reasons, value, "GRPO_SMOKE_OK; stop out_of_language 0, other.n 0, at least one stop "
+                 "completion a launch; xgrammar pinned and applied in both launches",
+                 "this report: ok, in_language, backend", reads, reasons)
+
+
+def _m7(data: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """M7: T1-T5 read "match" in both launches' run.json, T5's run-time half (lm_head) too; V1 and V2 recorded."""
+    per: dict[str, Any] = {}
+    reasons = []
+    for n in ("a", "b"):
+        meta = _meta(data, n)
+        checks = meta.get("trl_source_checks")
+        if not isinstance(checks, dict):
+            per[n] = None
+            reasons.append(f"launch {n}: run.json has no trl_source_checks")
+            continue
+        names = list(dict.fromkeys(list(MASK_GATING) + list(checks.get("gating") or [])))
+        verdicts = {t: _verdict(checks.get(t)) for t in names}
+        runtime = _verdict(meta.get("lm_head"))
+        per[n] = {"gating": verdicts, "T5_run_time": runtime, "verdict": checks.get("verdict"),
+                  "path": checks.get("path"), "recorded": {v: _verdict(checks.get(v)) for v in ("V1", "V2")}}
+        bad = [f"{t} {v}" for t, v in verdicts.items() if v != "match"]
+        if runtime != "match":
+            bad.append(f"T5 at run time (lm_head) {runtime}")
+        if checks.get("verdict") != "match" and not bad:
+            bad.append(f"source_checks verdict {checks.get('verdict')!r}")
+        if bad:
+            reasons.append(f"launch {n}: " + ", ".join(bad))
+    reads = "; ".join(f"{n}: " + ("no record" if p is None else
+                                  " ".join(f"{t} {v}" for t, v in p["gating"].items()) + f" T5rt {p['T5_run_time']}")
+                      for n, p in per.items())
+    return _gate("validity", not reasons, per, "T1-T5 match in both launches (T5's run-time half too); V1, V2 recorded",
+                 "run.json trl_source_checks and lm_head (a, b)", reads, reasons)
+
+
+def _one_vocabulary(name: str, masked: dict[str, Any]) -> list[str]:
+    """M8's "one vocabulary and one set of stop ids": the run's, and those the NFA's and the replay's records name
+    (the NFA's must name them; the replay's are compared where it names them)."""
+    want = {"vocab_size": masked.get("vocab_size"), "stop_ids": sorted(masked.get("stop_ids") or [])}
+    if isinstance(want["vocab_size"], bool) or not isinstance(want["vocab_size"], int) or not want["stop_ids"]:
+        return [f"launch {name}: run.json masked names no vocabulary size or stop ids ({want})"]
+    out = []
+    for part in ("nfa", "replay"):
+        rec = masked.get(part)
+        if not isinstance(rec, dict):
+            out.append(f"launch {name}: run.json masked has no {part} record")
+            continue
+        for key, val in want.items():
+            if key not in rec:
+                if part == "nfa":
+                    out.append(f"launch {name}: the NFA's record names no {key}")
+                continue
+            got = sorted(rec[key]) if key == "stop_ids" and isinstance(rec[key], (list, tuple)) else rec[key]
+            if got != val:
+                out.append(f"launch {name}: the {part}'s {key} {rec[key]!r} is not the run's {val!r}")
+    return out
+
+
+def _m8(data: dict[str, dict[str, Any]], want: dict[str, list[int]], cfg: RunConfig) -> dict[str, Any]:
+    """M8: no sampled token outside the mask over every completion (the replay walked all 32 of each step), 32 masked
+    rows in each of the old, ref and loss passes a step, no position where the NFA's allowed set differs from
+    xgrammar's, finite logged loss/KL/entropy, and the path named."""
+    from lofi_rl.rl.masked import UNREAD            # trl_sampling_mask before the replay's hook ran (a masked config
+    mode, path = cfg.trainer_logprobs, cfg.mask_path  # loads only with lofi_rl.rl.masked importable)
+    rows_want = cfg.prompts_per_step * cfg.trainer["num_generations"]
+    reasons: list[str] = []
+    tot = {"violations": 0, "nfa_mismatch": 0, "nfa_positions": 0, "completions": 0, "positions": 0,
+           "steps_with_record": 0, "trl_sampling_mask": 0}
+    paths, vocab = {}, {}
+    for n in want:
+        meta = _meta(data, n)
+        err = str(meta.get("error") or "")
+        if "MaskViolation" in err:
+            reasons.append(f"launch {n} stopped on a sampled token outside the mask: {err[:300]}")
+        if meta.get("trainer_logprobs") != mode:
+            reasons.append(f"launch {n}: run.json trainer_logprobs {meta.get('trainer_logprobs')!r}, not {mode!r}")
+        masked = meta.get("masked") if isinstance(meta.get("masked"), dict) else {}
+        paths[n] = masked.get("path")
+        if masked.get("path") != path:
+            reasons.append(f"launch {n}: run.json masked.path {masked.get('path')!r}, not {path!r} (the path {mode} "
+                           "runs)")
+        vocab[n] = {"vocab_size": masked.get("vocab_size"), "stop_ids": masked.get("stop_ids")}
+        reasons += _one_vocabulary(n, masked)
+    if len({json.dumps(v, sort_keys=True) for v in vocab.values()}) > 1:
+        reasons.append(f"the launches name two vocabularies or stop-id sets: {vocab}")
+    for n, s, mk, trl in _iter_steps(data, want):
+        bad = [k for k in FINITE_LOGS if _number(trl.get(k)) is None]
+        if bad:
+            reasons.append(f"launch {n} step {s}: logged {', '.join(bad)} not finite "
+                           f"({ {k: trl.get(k) for k in bad} })")
+        if mk is None:
+            reasons.append(f"launch {n} step {s}: no mask record")
+            continue
+        tot["steps_with_record"] += 1
+        v, nm, npos = _count(mk.get("violations")), _count(mk.get("nfa_mismatch")), _count(mk.get("nfa_positions"))
+        done, walked = _count(mk.get("completions")), _count(mk.get("positions"))
+        if done != rows_want or not walked or mk.get("trl_sampling_mask") == UNREAD:
+            reasons.append(f"launch {n} step {s}: the replay checked {mk.get('completions')!r} completions "
+                           f"({mk.get('positions')!r} tokens), not the step's {rows_want}")
+        tot["completions"] += done or 0
+        tot["positions"] += walked or 0
+        if v != 0:
+            reasons.append(f"launch {n} step {s}: violations {mk.get('violations')!r}, not 0 (first "
+                           f"{(mk.get('violation_examples') or [None])[:1]})")
+        if nm != 0:
+            reasons.append(f"launch {n} step {s}: nfa_mismatch {mk.get('nfa_mismatch')!r}, not 0 (first "
+                           f"{(mk.get('nfa_examples') or [None])[:1]})")
+        if not npos:
+            reasons.append(f"launch {n} step {s}: the NFA compared {mk.get('nfa_positions')!r} positions, so the "
+                           "independent check did not run")
+        tot["violations"] += v or 0
+        tot["nfa_mismatch"] += nm or 0
+        tot["nfa_positions"] += npos or 0
+        rows = mk.get("rows") if isinstance(mk.get("rows"), dict) else {}
+        got = {p: rows.get(p) for p in ("old", "ref", "loss")}
+        if got != dict.fromkeys(got, rows_want):
+            reasons.append(f"launch {n} step {s}: masked rows {got}, not {rows_want} in each pass")
+        if mk.get("path") != path:
+            reasons.append(f"launch {n} step {s}: the step ran path {mk.get('path')!r}, not {path!r}")
+        if mk.get("trl_sampling_mask") not in (None, UNREAD):        # TRL's own mask, ANDed in (expected none)
+            tot["trl_sampling_mask"] += 1
+    steps = sum(len(v) for v in want.values())
+    value = {**tot, "steps": steps, "rows_per_pass": rows_want, "path": paths, "vocabulary": vocab}
+    reads = (f"{tot['violations']} sampled tokens outside the mask over {tot['completions']} completions "
+             f"({tot['positions']} tokens), {tot['nfa_mismatch']} NFA mismatches over {tot['nfa_positions']} "
+             f"positions, mask records at {tot['steps_with_record']} of {steps} steps, path "
+             f"{'/'.join(str(paths.get(n)) for n in want)}")
+    return _gate("validity", not reasons, value, f"0 violations over every completion ({rows_want} a step); "
+                 f"{rows_want} old, {rows_want} ref and {rows_want} loss rows a step; 0 NFA mismatches over one "
+                 "vocabulary and one stop-id set; finite loss, KL and entropy; run.json names the path",
+                 "run.json masked (a, b); steps.jsonl mask and trl", reads, reasons)
+
+
+def _m9(rep: dict[str, Any], steps: int) -> dict[str, Any]:
+    """M9: the token-weighted mean, over every step of both launches, of TRL's IS metric (source verdict match) is at
+    most 0.05: this report's is_ratio, read only when every step has its value and its tokens."""
+    isr = rep.get("is_ratio") or {}
+    rows = isr.get("steps") or []
+    value = isr.get("token_weighted_mean")
+    reasons = []
+    if isr.get("value_source") != f"trl:{IS_METRIC}":
+        reasons.append(f"the IS readout is unavailable ({isr.get('reason')})")
+    unread = [(r.get("run"), r.get("step")) for r in rows if r.get("value") is None or r.get("tokens") is None]
+    if unread:
+        reasons.append(f"steps {unread} have no logged value or no token count, and M9 reads every step")
+    if len(rows) != steps:
+        reasons.append(f"the readout has {len(rows)} steps, not {steps}")
+    if value is None and not reasons:
+        reasons.append("no token-weighted mean")
+    ok = None if reasons else value <= IS_THRESHOLD
+    reads = (f"token-weighted {_g(value)} over {len(rows)} steps (mean of steps {_g(isr.get('mean_of_steps'))}); "
+             f"bar <= {IS_THRESHOLD}")
+    return _gate("measured", ok, value, f"<= {IS_THRESHOLD}", f"is_ratio.token_weighted_mean (TRL's {IS_METRIC}; "
+                 f"source verdicts {isr.get('verdicts')})", reads, reasons, mean_of_steps=isr.get("mean_of_steps"),
+                 by_launch=isr.get("by_launch"))
+
+
+def _zero_weight(mk: dict[str, Any]) -> bool:
+    """A step whose old pass had no valid position: every completion was truncated, so mask_truncated_completions
+    zeroed them all, and the trainer left neglogz None and added 0 tokens (masked.MaskedPasses.logps). Its weight in
+    the token-weighted -log Z is 0, as it is in M9. Only that exact record (ints where it counts, no non-finite
+    difference) weighs 0; an absent or ill-typed one stays missing."""
+    nonfinite = mk.get("neglogz_nonfinite")
+    return (mk.get("neglogz") is None
+            and type(mk.get("neglogz_tokens")) is int and mk["neglogz_tokens"] == 0
+            and type(mk.get("tokens")) is int and mk["tokens"] == 0
+            and (nonfinite is None or (type(nonfinite) is int and nonfinite == 0)))
+
+
+def _m10(data: dict[str, dict[str, Any]], want: dict[str, list[int]],
+         m9: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """M10, both clauses: the trainer's token-weighted -log Z (each step's mask/neglogz weighted by its
+    neglogz_tokens) is at least 0.05 (validity), and M9 is at most 0.25 times it (measured). A step with no valid
+    old-pass token weighs 0 and is listed (zero_weight); a step with tokens but no value is missing."""
+    num = den = 0.0
+    missing, zero = [], []
+    for n, s, mk, _ in _iter_steps(data, want):
+        mk = mk or {}
+        if _zero_weight(mk):
+            zero.append((n, s))
+            continue
+        z, t = _number(mk.get("neglogz")), mk.get("neglogz_tokens")
+        if z is None or isinstance(t, bool) or not isinstance(t, int) or t < 0:
+            missing.append((n, s))
+            continue
+        num += z * t
+        den += t
+    reasons = [f"steps {missing} have no neglogz or neglogz_tokens"] if missing else []
+    if not missing and den <= 0:
+        reasons.append("no valid completion token in any step's old pass")
+    value = num / den if not reasons else None
+    first = _gate("validity", None if value is None else value >= NEGLOGZ_MIN, value, f">= {NEGLOGZ_MIN}",
+                  "steps.jsonl mask: neglogz weighted by neglogz_tokens, every step of both launches (a step with no "
+                  "valid old-pass token weighs 0)",
+                  f"token-weighted -log Z {_g(value)} over {int(den)} tokens"
+                  + (f" ({len(zero)} zero-weight steps: no valid old-pass token)" if zero else "")
+                  + f"; bar >= {NEGLOGZ_MIN}", reasons,
+                  clause="first (validity)",
+                  tokens=int(den), zero_weight=zero)
+    m9v = m9["value"] if m9["pass"] is not None else None
+    why = ([] if m9v is not None else ["M9 could not be decided"]) + ([] if value is not None else
+                                                                        ["mask/neglogz could not be read"])
+    bound = None if value is None else RATIO_OF_NEGLOGZ * value
+    ratio = _gate("measured", None if why else m9v <= bound, None if why or value == 0 else m9v / value,
+                  f"M9 <= {RATIO_OF_NEGLOGZ} x neglogz" + ("" if bound is None else f" = {bound:.6g}"),
+                  "M9's value and M10's -log Z",
+                  f"M9 {_g(m9v)} against {RATIO_OF_NEGLOGZ} x -log Z = {_g(bound)}", why, clause="the ratio (measured)",
+                  m9=m9v, neglogz=value,
+                  settles=("D-020's caveat (is_ratio's vLLM caveat): had vLLM taken its log-probs before the mask, "
+                           "M9 would equal -log Z and this would fail (D-021, M10)"))
+    return first, ratio
+
+
+def _weights(w: Any, n: int) -> list[float] | None:
+    if not isinstance(w, (list, tuple)) or len(w) != n:
+        return None
+    vals = [_number(x) for x in w]
+    return None if any(v is None for v in vals) else vals
+
+
+def _mean_share(vals: list[float]) -> tuple[float | None, float | None]:
+    """(mean, largest / sum) of a step's IS weights; the share is None when they sum to 0."""
+    if not vals:
+        return None, None
+    total = sum(vals)
+    return total / len(vals), (max(vals) / total if total > 0 else None)
+
+
+def _m11(data: dict[str, dict[str, Any]], want: dict[str, list[int]], cfg: RunConfig) -> dict[str, Any]:
+    """M11: at every step the mean of the 32 per-sequence IS weights TRL applied (mask record seq_weights) is at
+    least 0.3, and the largest is at most 0.25 of their sum. The non-truncated rows' values are reported beside it,
+    not gated. TRL's logged ratio mean and max stand in for a step without seq_weights only when both launches' T3
+    reads that mean as over sequences (share = max / (32 x mean), D-021's table)."""
+    n_want = cfg.prompts_per_step * cfg.trainer["num_generations"]
+    t3 = {n: (_meta(data, n).get("trl_source_checks") or {}).get("T3") for n in want}
+    over_sequences = bool(t3) and all(isinstance(r, dict) and r.get("ratio_mean_over") == "sequences"
+                                      for r in t3.values())
+    rows, reasons = [], []
+    for n, s, mk, trl in _iter_steps(data, want):
+        row: dict[str, Any] = {"run": n, "step": s}
+        w = _weights((mk or {}).get("seq_weights"), n_want)
+        stand_mean, stand_max = _number(trl.get(IS_WEIGHT_MEAN)), _number(trl.get(IS_WEIGHT_MAX))
+        if w is not None:
+            mean, share = _mean_share(w)
+            row.update(source="mask.seq_weights", n=len(w), mean=mean, max=max(w), sum=sum(w), max_share=share)
+            valid = (mk or {}).get("seq_valid")
+            if isinstance(valid, (list, tuple)) and len(valid) == len(w):
+                vm, vs = _mean_share([x for x, v in zip(w, valid) if v is True])
+                row["non_truncated"] = {"n": sum(1 for v in valid if v is True), "mean": vm, "max_share": vs}
+            raw = _weights((mk or {}).get("seq_weights_raw"), n_want)
+            if raw is not None:
+                row["zeroed"] = sum(1 for a, b in zip(w, raw) if a == 0 and b != 0)   # TRL's mask set them to 0
+        elif over_sequences and stand_mean is not None and stand_max is not None:
+            row.update(source=f"trl:{IS_WEIGHT_MEAN} and max (T3: a mean over sequences)", n=n_want, mean=stand_mean,
+                       max=stand_max, max_share=stand_max / (n_want * stand_mean) if stand_mean > 0 else None)
+        else:
+            row.update(source=None, mean=None, max_share=None, **{"pass": None})
+            reasons.append(f"launch {n} step {s}: no {n_want} finite seq_weights in its mask record"
+                           + ("" if over_sequences else ", and T3 does not read TRL's ratio mean as over sequences, "
+                              "so TRL's metric cannot stand in"))
+            rows.append(row)
+            continue
+        ok = row["mean"] >= WEIGHT_MEAN_MIN and row["max_share"] is not None and row["max_share"] <= WEIGHT_SHARE_MAX
+        row["pass"] = ok
+        if not ok:
+            reasons.append(f"launch {n} step {s}: mean {row['mean']:.4g}, largest share {row['max_share']}")
+        rows.append(row)
+    decided = [r for r in rows if r["pass"] is not None]
+    ok = None if not rows or len(decided) != len(rows) else all(r["pass"] for r in rows)
+    shares = [r["max_share"] for r in decided if r["max_share"] is not None]
+    nt = [r["non_truncated"] for r in rows if "non_truncated" in r]
+    value = {"steps": len(rows), "passing": sum(1 for r in rows if r["pass"] is True),
+             "min_mean": min((r["mean"] for r in decided), default=None), "max_share": max(shares, default=None),
+             "zero_sum_steps": sum(1 for r in decided if r["max_share"] is None),
+             "non_truncated": {"min_mean": min((x["mean"] for x in nt if x["mean"] is not None), default=None),
+                               "max_share": max((x["max_share"] for x in nt if x["max_share"] is not None),
+                                                default=None)}}
+    reads = (f"{value['passing']} of {len(rows)} steps pass (bar: mean >= {WEIGHT_MEAN_MIN}, largest share <= "
+             f"{WEIGHT_SHARE_MAX}); lowest mean {_g(value['min_mean'])}, largest share {_g(value['max_share'])}")
+    return _gate("measured", ok, value, f"every step: mean of the {n_want} weights >= {WEIGHT_MEAN_MIN}, largest <= "
+                 f"{WEIGHT_SHARE_MAX} x their sum", "steps.jsonl mask.seq_weights (TRL's applied per-sequence "
+                 "weights)", reads, reasons, steps=rows)
+
+
+def _timing_breakdown(rep: dict[str, Any], data: dict[str, dict[str, Any]],
+                      want: dict[str, list[int]]) -> dict[str, Any]:
+    """M12's breakdown, never gated: per mask timing field the mean over the steps that record it, and the mean of
+    step_s - unmasked_s - selfcheck_s over the steps that record all three. The old pass's unmasked forward (for M10's
+    -log Z) and the launch's self-check are smoke-only costs that D-021's "the mask adds under 1 s a step" did not
+    count, so the net mean is the one the lofi-grpo estimate can be redone from."""
+    step_s = {(r.get("run"), r.get("step")): _number(r.get("step_s")) for r in rep.get("steps") or []}
+    per: dict[str, list[float]] = {f: [] for f in MASK_TIMING}
+    net: list[float] = []
+    for n, s, mk, _ in _iter_steps(data, want):
+        t = (mk or {}).get("timing")
+        got = {f: _number(t.get(f)) if isinstance(t, dict) else None for f in MASK_TIMING}
+        for f, v in got.items():
+            if v is not None:
+                per[f].append(v)
+        whole, unmasked, selfcheck = step_s.get((n, s)), got["unmasked_s"], got["selfcheck_s"]
+        if whole is not None and unmasked is not None and selfcheck is not None:
+            net.append(whole - unmasked - selfcheck)
+    return {"what": "steps.jsonl mask.timing, the mean over steps of each field; they overlap (walk_s holds nfa_s, "
+                    "old_s holds unmasked_s and selfcheck_s), so they do not sum to step_s",
+            "mask_timing": {f: {"mean_s": statistics.fmean(v) if v else None, "steps": len(v)} for f, v in per.items()},
+            "step_s_net": {"of": "step_s - unmasked_s - selfcheck_s", "mean_s": statistics.fmean(net) if net else None,
+                           "steps": len(net)}}
+
+
+def _m12(rep: dict[str, Any], data: dict[str, dict[str, Any]], want: dict[str, list[int]]) -> dict[str, Any]:
+    """M12 (estimate-only): the mean step_s over every step of both launches is at most 43.3 s. The mask's timings
+    and step_s net of the smoke-only costs are recorded beside it (breakdown) and decide nothing."""
+    steps = sum(len(v) for v in want.values())
+    vals = [r["step_s"] for r in rep.get("steps") or [] if _number(r.get("step_s")) is not None]
+    reasons = [] if len(vals) == steps else [f"{len(vals)} of {steps} steps have a step time"]
+    mean = statistics.fmean(vals) if vals else None
+    ok = None if reasons or mean is None else mean <= STEP_S_MAX
+    return _gate("estimate-only", ok, mean, f"<= {STEP_S_MAX} s (1.15 x smoke 13657200's 37.63 s)",
+                 "steps.jsonl step_s (a, b)", f"mean step {_g(mean)} s over {len(vals)} steps; bar <= {STEP_S_MAX} s",
+                 reasons,
+                 decides=("only the run-1 estimate: over the bar, the lofi-grpo estimate is redone before the ask; "
+                          "the job's SU is read from sacct"),
+                 breakdown=_timing_breakdown(rep, data, want))
+
+
+def _agreement(pairs: list[tuple[str, int, Any, Any]]) -> dict[str, Any]:
+    """How many (launch, step, the reward's count, the trainer's count) pairs agree, with the first that do not."""
+    known = [(n, s, a, b) for n, s, a, b in pairs if isinstance(a, int) and isinstance(b, int)]
+    return {"steps_compared": len(known), "agree": sum(1 for *_, a, b in known if a == b),
+            "differ": [{"run": n, "step": s, "reward": a, "trainer": b} for n, s, a, b in known if a != b][:10]}
+
+
+def _diagnostics(rep: dict[str, Any], data: dict[str, dict[str, Any]], want: dict[str, list[int]]) -> dict[str, Any]:
+    """Recorded beside the gates, never gated: per step the reward's token counts against the trainer's (the old
+    pass's valid positions; the tokens the replay walked), the first self-check of each launch, and the mask's shape
+    (forced share, largest allowed set, cache misses, non-finite masked log-probs)."""
+    valid = {(r.get("run"), r.get("step")): r.get("tokens") for r in (rep.get("is_ratio") or {}).get("steps") or []}
+    every = {(n, k + 1): t for n in want for k, (t, _) in
+             _step_tokens((data.get(n) or {}).get("rewards") or [], drop_truncated=False).items() if isinstance(k, int)}
+    pairs_valid, pairs_walked = [], []
+    selfcheck: dict[str, Any] = {}
+    forced, k_max, misses, nonfinite = [], [], 0, 0
+    for n, s, mk, _ in _iter_steps(data, want):
+        if mk is None:
+            continue
+        pairs_valid.append((n, s, valid.get((n, s)), mk.get("tokens")))
+        pairs_walked.append((n, s, every.get((n, s)), mk.get("positions")))
+        nf = mk.get("nonfinite")
+        nonfinite += sum(_count(v) or 0 for v in nf.values()) if isinstance(nf, dict) else (_count(nf) or 0)
+        if mk.get("selfcheck") is not None and n not in selfcheck:
+            own = mk["selfcheck"] if isinstance(mk["selfcheck"], dict) else {"record": mk["selfcheck"]}
+            # `step` as this report counts steps (steps.jsonl); the record's own is the global step it ran at
+            selfcheck[n] = {**own, "step": s, "global_step": own.get("step")}
+        if _number(mk.get("forced_share")) is not None:
+            forced.append(mk["forced_share"])
+        if _number(mk.get("k_max")) is not None:
+            k_max.append(mk["k_max"])
+        misses += _count(mk.get("cache_miss")) or 0
+    return {"token_counts": {"what": "rewards.jsonl completion tokens (truncated ones out) against the old pass's "
+                                     "valid positions (mask.tokens)", **_agreement(pairs_valid)},
+            "replay_positions": {"what": "rewards.jsonl completion tokens (every completion) against the tokens the "
+                                         "replay checked (mask.positions)", **_agreement(pairs_walked)},
+            "selfcheck": selfcheck, "forced_share_mean_of_steps": statistics.fmean(forced) if forced else None,
+            "k_max": max(k_max, default=None), "cache_miss": misses, "nonfinite_masked_logps": nonfinite}
+
+
+def _selfcheck_flags(selfcheck: Any, want: Iterable[str]) -> list[str]:
+    """One flag for each launch in `want` whose first self-check (diagnostics.selfcheck) is absent or failed, lacks
+    its masked or unmasked comparison, has non-finite or no finite differences, or puts the path that ran and the
+    other path further apart than SELFCHECK_MEAN_ABS_DIFF (mean |diff|) or SELFCHECK_MAX_ABS_DIFF (max |diff|).
+    Never gated, and the verdict never reads it: the self-check is the one run-time comparison of the path that ran
+    with an independent computation on the same rows, so a flag says a miss may not be the numerical one that D-021's
+    fp32 fix presupposes."""
+    out = []
+    for n in want:
+        rec = selfcheck.get(n) if isinstance(selfcheck, dict) else None
+        if not isinstance(rec, dict):
+            out.append(f"launch {n}: no self-check record (the launch's first old pass with a valid row runs it)")
+            continue
+        bad = []
+        if rec.get("error"):
+            bad.append(f"it failed ({str(rec['error'])[:200]})")
+        for part in ("masked", "unmasked"):
+            st = rec.get(part)
+            if not isinstance(st, dict):
+                bad.append(f"no {part} comparison")
+                continue
+            if _count(st.get("nonfinite")) != 0:
+                bad.append(f"{part}: non-finite differences {st.get('nonfinite')!r}, not 0")
+            mean, top = _number(st.get("mean_abs_diff")), _number(st.get("max_abs_diff"))
+            if mean is None or top is None:
+                bad.append(f"{part}: no finite difference compared (mean |diff| {st.get('mean_abs_diff')!r}, "
+                           f"max {st.get('max_abs_diff')!r})")
+                continue
+            if mean > SELFCHECK_MEAN_ABS_DIFF:
+                bad.append(f"{part}: mean |diff| {mean:.6g} > {SELFCHECK_MEAN_ABS_DIFF}")
+            if top > SELFCHECK_MAX_ABS_DIFF:
+                bad.append(f"{part}: max |diff| {top:.6g} > {SELFCHECK_MAX_ABS_DIFF}")
+        if bad:
+            out.append(f"launch {n} step {rec.get('step')} ({rec.get('ran')} against {rec.get('against')}): "
+                       + "; ".join(bad))
+    return out
+
+
+def d021_block(rep: dict[str, Any], data: dict[str, dict[str, Any]], cfg: RunConfig,
+               want: dict[str, list[int]]) -> dict[str, Any]:
+    """smoke.json's `d021` (module docstring): every gate, the verdict and what D-021 says follows it, the diagnostics
+    and the self-check's flags. `rep` is this report with its base verdict (ok) already set; `want` the steps each
+    launch should have trained."""
+    steps = sum(len(v) for v in want.values())
+    gates = {"M5": _m5(data), "M6": _m6(rep), "M7": _m7(data), "M8": _m8(data, want, cfg), "M9": _m9(rep, steps)}
+    gates["M10"], gates["M10_ratio"] = _m10(data, want, gates["M9"])
+    gates["M11"] = _m11(data, want, cfg)
+    gates["M12"] = _m12(rep, data, want)
+    not_valid = [g for g in D021_VALIDITY if gates[g]["pass"] is not True]
+    undecided = [g for g in D021_MEASURED if gates[g]["pass"] is None]
+    missed = [g for g in D021_MEASURED if gates[g]["pass"] is False]
+    verdict = "invalid" if not_valid or undecided else "measured_miss" if missed else "pass"
+    order = [g for g in gates if g in D021_VALIDITY + D021_MEASURED]
+    diagnostics = _diagnostics(rep, data, want)
+    flags = _selfcheck_flags(diagnostics["selfcheck"], want)     # read after the verdict, which never sees them
+    follows = D021_FOLLOWS[verdict]
+    if verdict == "measured_miss" and cfg.trainer_logprobs == "grammar_masked_fp32":
+        follows = f"{follows}; {FP32_RERUN}"
+    if verdict == "measured_miss" and flags:
+        follows = f"{follows}; {SELFCHECK_NOTE}"
+    return {"entry": "docs/DECISIONS.md D-021, Part A: the pre-registered gates M5-M12", "mode": cfg.trainer_logprobs,
+            "path": cfg.mask_path, "kinds": {"validity": list(D021_VALIDITY), "measured": list(D021_MEASURED),
+                                             "estimate-only": list(D021_ESTIMATE)},
+            "gates": gates, "verdict": verdict,
+            "not_passing": [g for g in order if gates[g]["pass"] is not True],
+            "undecided": [g for g in gates if gates[g]["pass"] is None],
+            "estimate": {"M12": gates["M12"]["pass"]}, "rule": D021_RULE, "follows": follows,
+            "selfcheck_flags": flags, "diagnostics": diagnostics}
+
+
+EXIT_MEANING = {"124": "timed out", "137": "killed after the timeout", "3": "no policy env",
+                "2": "config error, or a masked launch refused by a check: run.json's status says which"}
 
 
 def check(run: Path, stage: str, cfg: RunConfig, exit_codes: dict[str, str] | None = None) -> dict[str, Any]:
@@ -467,6 +1183,11 @@ def check(run: Path, stage: str, cfg: RunConfig, exit_codes: dict[str, str] | No
              and all((i.get("in_language") or {}).get("shows_grammar") is True for i in infos))
     rep["is_ratio"] = _is_readout(ran, cfg, warnings, grammar_shown=shown) if stage == "final" else None
     rep["failures"], rep["warnings"], rep["ok"] = problems, warnings, not problems
+    if cfg.trainer_logprobs is not None:    # D-021's verdict, beside the smoke's own (M6 reads `ok`), never inside it
+        want = {"a": list(range(1, max_steps + 1)), "b": list(range(resume + 1, max_steps + 1))}
+        rep["d021"] = d021_block(rep, data, cfg, want) if stage == "final" else None
+        for flag in (rep["d021"] or {}).get("selfcheck_flags") or []:      # rep["warnings"] is this list
+            warnings.append(f"D-021 self-check (a diagnostic, not a gate): {flag}")
     return rep
 
 
@@ -511,9 +1232,18 @@ def main(argv: list[str] | None = None) -> int:
         rule = ratio.get("rule") or {}
         print(f"[smoke] IS readout ({ratio['value_source']}): mean of steps {ratio.get('mean_of_steps')}, "
               f"token-weighted {ratio.get('token_weighted_mean')}; rule: {rule.get('says', ratio.get('reason'))}")
+    d021 = rep.get("d021")
+    for gid, g in ((d021 or {}).get("gates") or {}).items():
+        word = {True: "pass", None: "undecided"}.get(g["pass"], "fail" if g["kind"] == "validity" else "miss")
+        print(f"[smoke] D-021 {gid} ({g['kind']}): {word}: {g['reads']}"
+              + (f"; {g['reasons'][0]}" if g["reasons"] and g["pass"] is not True else ""))
+    if d021:
+        print(f"[smoke] D-021 follows: {d021['follows']}")
     for w in rep["warnings"]:
         print(f"[smoke] warning: {w}")
     print(f"[smoke] report: {out / 'smoke.json'}")
+    if d021:                                # just before the last line, which stays GRPO_SMOKE_OK or _FAILED
+        print(f"D021_PART_A {d021['verdict']}" + (f": {', '.join(d021['not_passing'])}" if d021["not_passing"] else ""))
     tag = "FIRST_RUN" if a.stage == "first" else "GRPO_SMOKE"
     if rep["ok"]:
         print(f"{tag}_OK")

@@ -1,0 +1,84 @@
+# GRPO smoke of D-021 Part A, the grammar-masked trainer (docs/DECISIONS.md D-021; docs/GRPO.md §8):
+# configs/grpo_smoke_v2_grammar.yaml with one key added and every other setting that file's (D-020's run-1 settings:
+# prompt v2, the grammar, the copy penalty; tests/test_rl_train.py pins it).
+# - `trainer_logprobs: grammar_masked`: the trainer takes its old, reference and loss log-probs over the grammar's
+#   allowed set at every completion position, the set vLLM's xgrammar bitmask allowed when it sampled that token
+#   (lofi_rl.rl.masked). The path is `support_ids`: TRL 1.17.1's own sampling_mask carries the set and its kernel
+#   normalizes over it. src/lofi_rl/rl/config.py refuses the key without `structured_outputs`.
+# - Before the model loads, lofi_rl.rl.trl_probe.source_checks reads the installed TRL, vLLM and PEFT sources (T1-T5
+#   gate, V1 and V2 are recorded); a gating check that does not match, or a TRL form the mode cannot run under, stops
+#   the launch with exit 2 (status "refused" in run.json). After GRPOTrainer is built, T5's run-time half checks that
+#   lm_head is not a LoRA target, with the same exit.
+# - smoke.json gains a `d021` block: M5-M12 as D-021 registers them, with their kind (validity, measured,
+#   estimate-only), and the verdict invalid, measured_miss or pass; the log prints D021_PART_A <verdict> before its
+#   last line, GRPO_SMOKE_OK or GRPO_SMOKE_FAILED.
+# The job is unchanged: jobs/grpo_smoke.sbatch takes any configs/grpo_smoke*.yaml, so its registered sha
+# 1dded12d386c7fab (at most 500 SU) stands. It runs on an L40S, as smoke 13657200 did, so the numerics compare:
+#   make submit JOB=jobs/grpo_smoke.sbatch OVR='--gres=gpu:l40s:1 --constraint=l40s' ARGS='configs/grpo_smoke_v2_grammar_masked.yaml'
+# D-021 freezes its code path in docs/prereg/D-021_masked_smoke_path.txt, with .sync-freeze set, until it ends.
+run: grpo-smoke
+model:                                   # D-006; the pin jobs/fetch.sbatch cached (lofi_rl.smoke.QWEN)
+  repo: Qwen/Qwen3-4B-Instruct-2507
+  revision: cdbee75f17c01a7cc42f958dc650907174af0554
+palette: palettes/dev_gu.yaml            # until palettes/lofi_rain_v1.yaml is frozen (D-017)
+prompt: v2                               # D-020: prompt v2 with the grammar won (pass_not_copy 446/500 against 355/500)
+structured_outputs: loopscript_regex     # the regex: lofi_rl.grammar.loopscript_regex(palette)
+trainer_logprobs: grammar_masked         # D-021 Part A: the trainer's log-probs under the grammar's mask
+copy_penalty:                            # taste_pipeline §5: 0 at J 0.6, linear to 0.3 at J >= 0.8 (character 5-grams)
+  pool: []                               # the seed pool's .ls files or directories, once it exists
+briefs:                                  # brief.sample_briefs(seed, count, start): one dataset row per brief
+  seed: 596                              # training stream; held-out and dev briefs must use other seeds
+  count: 40                              # 10 steps x 4 prompts: no brief repeats within the smoke
+  start: 0
+prompts_per_step: 4                      # x num_generations 8 = 32 completions per optimizer step
+lora: {r: 16, alpha: 32, dropout: 0.0, target_modules: all-linear}
+
+trainer:
+  learning_rate: 1.0e-5                  # constant after 3 warmup steps (taste.md C4); 1e-5 would read as text
+  lr_scheduler_type: constant_with_warmup
+  warmup_steps: 3
+  max_steps: 10
+  num_generations: 8
+  num_iterations: 1
+  max_completion_length: 512
+  mask_truncated_completions: true
+  beta: 0.04                             # KL to the adapter-off base (no-collapse is pre-registered)
+  loss_type: dapo
+  scale_rewards: batch                   # group-std scaling amplifies RM noise in near-identical groups
+  temperature: 1.0                       # T 1, top_p 1, top_k 0: no IS bias (taste.md C2)
+  top_p: 1.0
+  top_k: 0
+  use_vllm: true
+  vllm_mode: colocate
+  max_prompt_length: 3072                # optional: TRL 0.2x defaulted to 512 and cut longer prompts on the left
+  vllm_max_model_length: 4096            # optional: otherwise vLLM may size its KV cache for the 262k context
+  save_strategy: steps
+  save_steps: 5
+  save_only_model: false                 # keep optimizer, scheduler and RNG state: the relaunch resumes from them
+  logging_steps: 1
+  bf16: true
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs: {use_reentrant: false}
+  remove_unused_columns: false           # the reward reads the brief, brief_id and example_id columns
+  log_completions: false                 # the reward's rewards.jsonl already has every completion
+  report_to: none                        # no telemetry or credentials from compute nodes
+  seed: 596
+
+profiles:                                # chosen by the GPU's memory (the largest min_gib it meets), or --gpu-profile
+  a100-80gb:
+    min_gib: 70
+    per_device_train_batch_size: 8
+    gradient_accumulation_steps: 4
+    vllm_gpu_memory_utilization: 0.25
+    vllm_enable_sleep_mode: false
+  48gb:                                  # L40S or A40 (jobs/grpo_smoke.sbatch, OVR)
+    min_gib: 40
+    per_device_train_batch_size: 4
+    gradient_accumulation_steps: 8
+    vllm_gpu_memory_utilization: 0.30
+    vllm_enable_sleep_mode: true
+
+optional_fields: [max_prompt_length, vllm_max_model_length, vllm_enable_sleep_mode, log_completions]
+
+smoke:
+  resume_from_step: 5

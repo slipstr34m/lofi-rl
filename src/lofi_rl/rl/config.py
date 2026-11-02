@@ -24,6 +24,14 @@ The copy penalty (taste_pipeline §5; lofi_rl.rl.copy_penalty): the optional top
 turns it on, against every example the run's prompt version can show plus the LoopScript files the pool lists (`.ls`
 files, or directories of them; the seed pool, later). A config without the key has no copy penalty, so its rewards
 are byte for byte what they were.
+
+The masked trainer (D-021 Part A; docs/GRPO.md §8): the optional top-level `trainer_logprobs` names how the trainer
+takes its log-probs under the grammar. Its values, and the log-prob path each runs (RunConfig.mask_path: support_ids,
+the grammar's allowed set handed to TRL as its sampling_mask; fill, the override's own fp32 log-softmax with a finite
+fill), are lofi_rl.rl.masked's TRAINER_LOGPROBS and path_for, imported (never copied) when a config sets the key, so a
+config without it never imports that module; if the module cannot be imported, the config is refused. It is refused
+without `structured_outputs`, since the mask is the grammar's. MASK_T2_PATHS names the forms of TRL's log-prob method
+(trl_probe.source_checks' T2 path) each value can run under.
 """
 from __future__ import annotations
 
@@ -41,8 +49,14 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 TOP_REQUIRED = ("run", "model", "palette", "briefs", "prompts_per_step", "lora", "trainer", "profiles",
                 "optional_fields")
-TOP_OPTIONAL = ("smoke", "structured_outputs", "prompt", "copy_penalty")
+TOP_OPTIONAL = ("smoke", "structured_outputs", "prompt", "copy_penalty", "trainer_logprobs")
 STRUCTURED_BUILDERS = ("loopscript_regex",)                 # functions of lofi_rl.grammar: palette -> regex
+# trainer_logprobs value -> the forms of TRL's _get_per_token_logps_and_entropies (source_checks' T2 path) it can run
+# under (D-021 Part A; build spec §1). `grammar_masked` runs path support_ids, handing TRL the grammar's allowed set as
+# its sampling_mask, so it needs TRL's own support form. `grammar_masked_fp32` (D-021's named fix for a measured miss)
+# runs path fill, the override's own fp32 log-softmax, and calls TRL's method only unmasked: either matched form serves
+MASK_T2_PATHS = MappingProxyType({"grammar_masked": ("support_ids",), "grammar_masked_fp32": ("support_ids", "fill")})
+MASK_GATING = ("T1", "T2", "T3", "T4", "T5")    # D-021 M7: the source checks a masked launch needs "match" from
 STRUCTURED_FIELD = "vllm_structured_outputs_regex"          # the TRL GRPOConfig field the regex goes into
 PROMPT_MODULES = MappingProxyType({"v1": "lofi_rl.prompt", "v2": "lofi_rl.prompt_v2"})   # `prompt:` -> its template
 DEFAULT_PROMPT = "v1"
@@ -103,6 +117,17 @@ class RunConfig:
     prompt: str = DEFAULT_PROMPT                    # `prompt:`, a key of PROMPT_MODULES
     # {"pool": (paths as written, ...)} when the config sets `copy_penalty`; None (no copy penalty) otherwise
     copy_penalty: Mapping[str, Any] | None = None
+    # `trainer_logprobs:`, a value of lofi_rl.rl.masked.TRAINER_LOGPROBS (the masked trainer); None: TRL's own
+    trainer_logprobs: str | None = None
+
+    @property
+    def mask_path(self) -> str | None:
+        """The log-prob path the masked trainer runs (lofi_rl.rl.masked.path_for), or None without `trainer_logprobs`.
+        The module imported when the config loaded, since a config with the key loads only then."""
+        if self.trainer_logprobs is None:
+            return None
+        from lofi_rl.rl.masked import path_for
+        return path_for(self.trainer_logprobs)
 
     def palette_path(self, root: Path = ROOT) -> Path:
         p = Path(self.palette)
@@ -229,6 +254,7 @@ def load_config(path: Path | str) -> RunConfig:
         raise ConfigError(f"prompt {version!r} is not one of {list(PROMPT_MODULES)} (the template the rows are built "
                           "with: v1 lofi_rl.prompt, v2 lofi_rl.prompt_v2)")
     copy = _copy_penalty(doc["copy_penalty"]) if "copy_penalty" in doc else None
+    logprobs = _trainer_logprobs(doc["trainer_logprobs"], builder) if "trainer_logprobs" in doc else None
 
     cfg = RunConfig(
         path=str(path), sha256=hashlib.sha256(data).hexdigest(), run=str(doc["run"]),
@@ -236,7 +262,8 @@ def load_config(path: Path | str) -> RunConfig:
         brief_seed=briefs["seed"], brief_count=briefs["count"], brief_start=briefs["start"], prompts_per_step=pps,
         lora=MappingProxyType(dict(lora)), trainer=MappingProxyType(dict(trainer)),
         profiles=MappingProxyType({n: MappingProxyType(dict(p)) for n, p in profiles.items()}),
-        optional_fields=frozenset(optional), resume_step=resume, prompt=version, copy_penalty=copy)
+        optional_fields=frozenset(optional), resume_step=resume, prompt=version, copy_penalty=copy,
+        trainer_logprobs=logprobs)
     if not cfg.palette_path().is_file():
         raise ConfigError(f"palette {cfg.palette} does not exist")
     _check_pool(cfg)
@@ -270,6 +297,32 @@ def _copy_penalty(block: Any) -> Mapping[str, Any]:
     if len(set(pool)) != len(pool):
         raise ConfigError(f"copy_penalty.pool {pool!r} lists a path twice")
     return MappingProxyType({"pool": tuple(pool)})
+
+
+def _trainer_logprobs(value: Any, builder: str | None) -> str:
+    """`trainer_logprobs: <value>`: a value of lofi_rl.rl.masked.TRAINER_LOGPROBS, with `structured_outputs` set (the
+    mask is the grammar's). The tuple is imported here, only for a config that sets the key; a module that cannot be
+    imported refuses the config, so no run takes a mode nobody defined."""
+    if builder is None:
+        raise ConfigError(f"trainer_logprobs {value!r} needs structured_outputs: the masked trainer applies the "
+                          "grammar's allowed sets, and an unconstrained config has none (D-021 Part A)")
+    try:
+        from lofi_rl.rl.masked import TRAINER_LOGPROBS, path_for
+    except ImportError as err:
+        raise ConfigError(f"trainer_logprobs {value!r}: lofi_rl.rl.masked, which defines its values "
+                          f"(TRAINER_LOGPROBS) and their paths (path_for), cannot be imported ({err})") from err
+    if not isinstance(value, str) or value not in TRAINER_LOGPROBS:
+        raise ConfigError(f"trainer_logprobs {value!r} is not one of {list(TRAINER_LOGPROBS)} "
+                          "(lofi_rl.rl.masked.TRAINER_LOGPROBS)")
+    try:
+        path_for(value)
+    except Exception as err:  # noqa: BLE001: a value without a path never reaches a run
+        raise ConfigError(f"trainer_logprobs {value!r}: lofi_rl.rl.masked.path_for names no path for it "
+                          f"({err})") from err
+    if value not in MASK_T2_PATHS:
+        raise ConfigError(f"trainer_logprobs {value!r}: config.MASK_T2_PATHS names no TRL form it runs under "
+                          f"(it has {sorted(MASK_T2_PATHS)}): say which before a run takes it")
+    return value
 
 
 def _check_pool(cfg: RunConfig, root: Path = ROOT) -> None:
