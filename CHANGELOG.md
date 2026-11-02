@@ -3,26 +3,57 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 1481.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-01 19:25 PST).
+- **SU used:** 1481.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-01 20:50 PST).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
     - Days 1 and 2 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended);
-    - Day 3 (rain W1/W2, five repeats, an anchor) is built and merged (`6dad45d`), to be served from 2026-11-03;
-  - **keep3 drafts:** 30 drafts (3 personas × 10 briefs), the draft palette and the `lofi-drafts` job are built on a branch (workflow `wf_6930ad87-bf9`), to be checked and merged;
+    - Day 3 (rain W1/W2, five repeats, an anchor) is rendered and is served from 2026-11-03;
+  - **keep3:** Shresth kept 10 of the 30 drafts, with no redrafts (`gates/GATE_palette.md`);
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
   - all 14 shootout sources, the rain file, its 44.1 kHz conversion and the two imported kits are on the laptop and the cluster.
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
-  - **D-020 is decided:** both arms are valid and pass, and **prompt v2 with the grammar** wins (pass_not_copy 446/500 against 355/500; the CIs do not overlap). An independent check agrees;
-  - **before GRPO run 1** (D-020's list):
-    - a prompt-version key;
-    - the copy penalty;
-    - the backend pin and in-language count on the GRPO path;
-    - the grammar-lever measurements (v2 without the grammar; the IS ratio under it);
-    - a GRPO smoke with the grammar and v2;
-  - **scorer server** merged (`5d36898`); its cluster smoke 13651611 is queued on an L40S;
-  - **GRPO smoke 13632679** passed (`GRPO_SMOKE_OK`: 10 steps, then a resume from step 5; 280.7 SU).
-- **Waiting on Shresth:** nothing right now. Day 3 and the keep3 batch come to him when they are rendered.
-- **Jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job, so syncs no longer wait for jobs.
+  - **D-020:** prompt v2 with the grammar won (pass_not_copy 446/500 against 355/500). Its grammar lever then turned the grammar off for run 1, because the GRPO smoke's mean |log IS ratio| was 0.1538 > 0.05 (13657200). So run 1's start is registered again.
+  - **Run 1's start, redrafted:** `docs/design/run1_start.md` (D-021, PROPOSED). It keeps the grammar with a masked trainer, decided by one smoke on the registered smoke job; the SFT warm-start is the fallback. **It waits for Shresth.**
+  - **built:**
+    - the prompt-version key, the copy penalty, and the backend pin with the in-language count;
+    - the scorer server (smoke 13651611, `SCORER_SMOKE_OK`);
+    - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
+  - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
+- **Waiting on Shresth:** a yes or no on run 1's start (D-021, Part A first). Day 3 listening opens Nov 3.
+
+---
+
+## 2026-11-01 (21:55 PST): run 1's start redrafted for Shresth: keep the grammar with a masked trainer, one smoke decides; the SFT warm-start as the fallback
+
+**What was done**
+- **Workflow `wf_76128e23-f1d`:** three independent proposals for run 1's start, after D-020 turned the grammar off: a self-distilled SFT warm-start, a curated SFT warm-start and a masked trainer.
+  - A judge scored them 6.0, 6.2 and 6.7 and synthesized them.
+  - A pre-registration referee listed 7 major and 13 minor problems and revised the draft.
+- **The draft:** `docs/design/run1_start.md` (D-021, PROPOSED). Its sources are in `docs/design/run1_start_proposals.md`.
+  - **Part A:** keep prompt v2 and the grammar. The trainer applies the grammar's mask to its own logits in the old, reference and loss passes, so π_trainer is the masked distribution vLLM samples from.
+    - One smoke on the registered `lofi-grpo-smoke` type decides it: at most 500 SU, where 13657200 cost 243.0.
+    - It reads D-020's own measure with its 0.05 bar unchanged, plus fidelity and IS-weight gates.
+    - A measured miss leaves D-020's verdict in force.
+  - **Part B, only if Part A fails:** the SFT warm-start on a Claude-written corpus (the 10 kept drafts plus 180 new loops). After that come edit-mode rollouts, then stop (D-016's order).
+  - **Also:**
+    - brief streams fixed in `docs/prereg/` before any step-0 sample;
+    - a copy pool without model output;
+    - part-level copy and within-cell diversity readouts, with alarms;
+    - STOP rules.
+- **Numbers re-read from the files** (the evidence the ask rests on):
+  - **The gap at step 1** (learning rate 0.0, so vLLM and the trainer held the same weights): 0.1146 with the grammar (13657200) and 0.0087 without it (13632679). So the mask is the cause (`runs/grpo-smoke-*/summary/*/steps.jsonl`).
+  - **IS weights:** TRL's per-step mean IS weight was 0.0010–0.0814 with the grammar and 0.6981–1.0272 without it. The grammar run's updates were scaled nearly to zero.
+  - **Without the grammar**, v2 fails syntax in 397 of 500 loops (13656050, G1 + G2 + G5), which the SFT path would have to cure.
+  - **Step 0 under the grammar** copies the shown example's sax lines: A or B verbatim in 421 of 500 (arm B, `junk.json` `verbatim_passing`).
+  - **Inside a cell** it is near-duplicated: the nearest-neighbour J5 has median 0.9377, and 448 of 500 are at 0.8 or more (recomputed from `completions.jsonl`). Both of these hold for either part, and the draft adds readouts for them.
+- **Nothing runs** before Shresth answers.
+
+**SU spent:** 0.
+
+**Next:**
+- Shresth's yes or no on Part A.
+- **On a yes:** D-021 goes into DECISIONS.md with his words; then the masked trainer is built on the laptop with tests; then the smoke runs.
+- **On a no:** Part B is registered in full and comes to him.
 
 ---
 
