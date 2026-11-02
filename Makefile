@@ -6,7 +6,12 @@ include kit.env
 RSYNC := /opt/homebrew/bin/rsync
 SSH := $(CURDIR)/scripts/ssh_cluster.sh
 RS := $(RSYNC) -az -e $(SSH)
-SYNC := $(RS) --delete --max-delete=200 --exclude-from=.rsyncignore
+# -c: a same-size edit within the synced file's mtime second is still sent (rsync's quick check would skip it,
+# and keep skipping it on every later sync)
+SYNC := $(RS) -c --delete --max-delete=200 --exclude-from=.rsyncignore
+# The two control files go last, always (-I): the mirror's stamp and manifest change only after its tree did
+# (submit.sh checks the stamp, scripts/snapshot.py checks every file against the manifest).
+CTRL := --exclude=/.sync-stamp --exclude=/.sync-manifest
 PY := .venv/bin/python
 HOST := $(KIT_CLUSTER_HOST)
 
@@ -19,8 +24,10 @@ sync: ## push the code to the cluster mirror (rsync --delete; refuses to delete 
 	@$(RSYNC) --version | head -1 | grep -q 'version 3\.' || { echo "GNU rsync 3.x required: brew install rsync"; exit 1; }
 	@scripts/check_frozen.sh
 	@scripts/stamp.sh > .sync-stamp
-	@set -o pipefail; $(SYNC) -n -i ./ $(HOST):$(REMOTE_PROJ)/ | scripts/check_deletes.sh
-	@$(SYNC) ./ $(HOST):$(REMOTE_PROJ)/
+	@RSYNC=$(RSYNC) python3 scripts/snapshot.py manifest
+	@set -o pipefail; $(SYNC) $(CTRL) -n -i ./ $(HOST):$(REMOTE_PROJ)/ | scripts/check_deletes.sh
+	@$(SYNC) $(CTRL) ./ $(HOST):$(REMOTE_PROJ)/
+	@$(RS) -I .sync-stamp .sync-manifest $(HOST):$(REMOTE_PROJ)/
 	@echo "synced $$(cut -d' ' -f1-3 .sync-stamp) -> $(REMOTE_PROJ)"
 
 pull: ## pull run summaries (runs/<run>/summary/, structure kept) and inbox clips; never deletes locally

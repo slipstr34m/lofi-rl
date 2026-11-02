@@ -13,7 +13,7 @@ start of every session.
 | Where | Role | Allowed | Never |
 |---|---|---|---|
 | **Laptop (this machine)** | source of truth | edit code, git, GitHub, `.env` secrets, rating UI, listening, Claude Code workflows that write seed loops (no API key), `pytest -q` and preview renders | training, render farms, anything that takes a GPU |
-| **Discovery login node** (`scripts/remote.sh`) | dispatcher | the budget guard (via `make submit`), `squeue`, `sacct`, `sinfo`, `scontrol show`, `sprio`, `myaccount`, `myquota`, `module avail/spider`, `rsync`, `ls`, `tail`, `cat`, `mkdir` (`make init`), `python3 scripts/session_report.py` | compute > 1 min CPU, GPU work, `pip install`, builds, `git` |
+| **Discovery login node** (`scripts/remote.sh`) | dispatcher | the budget guard (via `make submit`), `squeue`, `sacct`, `sinfo`, `scontrol show`, `sprio`, `myaccount`, `myquota`, `module avail/spider`, `rsync`, `ls`, `tail`, `cat`, `mkdir` (`make init`), `python3 scripts/session_report.py`, `python3 scripts/snapshot.py make` (via `make submit`), `python3 scripts/snapshot.py prune <key>` (only when Shresth asks; it refuses a snapshot a queued or running job uses) | compute > 1 min CPU, GPU work, `pip install`, builds, `git` |
 | **Discovery compute nodes** (Slurm jobs only) | execution target | env builds, renders, scoring, GRPO, scaling runs | `git`, secrets, anything not launched from `jobs/` |
 
 The cluster holds a **mirror** of this repo at `$REMOTE_PROJ`, pushed by rsync. It has no git history and
@@ -25,7 +25,7 @@ Paths on Discovery (all in `kit.env`). Verified with `myquota` on 2026-10-30: `/
 this account; `/project2` does.
 
 - `REMOTE_PROJ=/project2/anakano_429/shresthr/lofi-rl`: the code mirror. Sync runs with `--delete`, so never put state here.
-- `REMOTE_KEEP=/project2/anakano_429/shresthr/lofi-rl-keep`: persistent state outside the mirror. It holds the envs, the tools (uv, FluidSynth), the votes backup, checkpoints, fetched assets and the guard's `submissions.log`.
+- `REMOTE_KEEP=/project2/anakano_429/shresthr/lofi-rl-keep`: persistent state outside the mirror. It holds the envs, the tools (uv, FluidSynth), the votes backup, checkpoints, fetched assets, the guard's `submissions.log` and the jobs' code snapshots (`snap/`).
 - `REMOTE_SCR=/scratch1/shresthr/lofi-rl`: logs, runs, renders, inbox, caches, `HF_HOME`. Scratch is purged periodically, so anything worth keeping is pulled or copied to `$REMOTE_KEEP`.
 - Home (`/home1/shresthr`) is small: nothing large goes there. `/project2/anakano_429` is 1 TB shared by the whole class.
 
@@ -54,7 +54,7 @@ Host discovery discovery.usc.edu
 
 ## 3. Sync
 
-- `make sync` writes `.sync-stamp`, then dry-runs `rsync --delete --exclude-from=.rsyncignore` through `scripts/check_deletes.sh`. The check refuses protected deletions or more than 200. Then it syncs to `$REMOTE_PROJ`. It needs GNU rsync 3.x (`/opt/homebrew/bin/rsync`); macOS `/usr/bin/rsync` is openrsync.
+- `make sync` writes `.sync-stamp` and `.sync-manifest` (the sha256 of every file it sends), then dry-runs `rsync --delete --exclude-from=.rsyncignore` through `scripts/check_deletes.sh`. The check refuses protected deletions or more than 200. Then it syncs the tree to `$REMOTE_PROJ`, and the stamp and manifest last. It needs GNU rsync 3.x (`/opt/homebrew/bin/rsync`); macOS `/usr/bin/rsync` is openrsync.
 - `make pull` brings back `runs/<run>/summary/**`, keeping its structure (never flattened), and `inbox/` from `$REMOTE_SCR`. It never deletes on the laptop.
 
 `.rsyncignore`, kept in sync with `tests/test_privacy.py`: `.git/ .env* *.key *.pem .venv/ node_modules/ __pycache__/ .pytest_cache/ .DS_Store data/ inbox/ runs/ ckpt/ assets/big/ *.wav *.flac *.mp3 *.pt *.bin *.safetensors jobs/submissions.log`
@@ -77,8 +77,8 @@ Rules:
   - logs to `/scratch1/%u/lofi-rl/logs/%x_%j.out`;
   - sources `scripts/job_env.sh` with `MODE=policy|scorer|tools`;
   - has a header stating partition, resources, walltime and **worst-case SU** (GPU 8 SU/min each; CPU 1 SU/core-min; memory 1 SU per 4 GB-min).
-- **Submission.** Only `make submit JOB=jobs/x.sbatch`, which runs `scripts/submit.sh` (the mirror must match the committed laptop code), which runs `scripts/sbatch_guard.sh` on the cluster.
-- **SU budget.** Target **1,000,000 SU**, hard stop **1,200,000**, in `config/budget.yaml`. The guard counts used + reserved + projected SU and fails closed. Past the target it needs `PAST_TARGET_OK=<date of Shresth's OK>`. After each job, log the actual SU in the CHANGELOG (`sacct -j <id> --format=JobID,Elapsed,AllocTRES`, or `python3 scripts/session_report.py`). This is the class's shared allocation: be frugal, and say so at the Nakano meeting.
+- **Submission.** Only `make submit JOB=jobs/x.sbatch`, which runs `scripts/submit.sh` (the mirror must match the committed laptop code), which runs `scripts/sbatch_guard.sh` on the cluster from a read-only, hash-checked snapshot of the mirror (`$REMOTE_KEEP/snap/<commit>-<manifest sha>/`, made by `scripts/snapshot.py`). The job runs that snapshot's code, so a sync never changes a queued or running job. A chain link resubmits from its snapshot, so it keeps the code, `budget.yaml` and `APPROVED.yaml` it was submitted under; STOP and `scancel` are its brakes. Snapshots are deleted only with `python3 scripts/snapshot.py prune <key>`, which refuses one that a queued or running job uses.
+- **SU budget.** Target **1,000,000 SU**, hard stop **1,200,000**, in `config/budget.yaml`. The guard counts used + reserved + projected SU and fails closed. Past the target it needs `PAST_TARGET_OK=<date of Shresth's OK> make submit ...` (a chain's later links inherit it). After each job, log the actual SU in the CHANGELOG (`sacct -j <id> --format=JobID,Elapsed,AllocTRES`, or `python3 scripts/session_report.py`). This is the class's shared allocation: be frugal, and say so at the Nakano meeting.
 - **Job-type registry** (`jobs/APPROVED.yaml`).
   - The guard refuses (exit 4, `NEEDS_APPROVAL`) any job type that is unregistered, has changed since approval (sha of its `#SBATCH` and non-comment lines), or is projected above its `max_su`.
   - Claude registers types whose max is ≤ 500 SU itself (`make approve JOB=... MAX=... BY=Claude`), new or changed (Shresth, 2026-10-31: "Yes, up to 500 SU"). Each re-registration goes in the CHANGELOG.
@@ -90,7 +90,7 @@ Rules:
 - **Two uv venvs** in `$REMOTE_KEEP/envs/`, each synced from a lock compiled on the laptop (`uv pip compile requirements/<env>.in --python-version 3.12 --python-platform x86_64-manylinux_2_28`):
   - `policy` (`jobs/env_policy.sbatch`): vLLM 0.32.0, TRL 1.17.1, transformers 5.19, and torch as vLLM pins it.
   - `scorer` (`jobs/env_scorer.sbatch`): torch 2.8, transformers 4.43.4 (MERT's remote code breaks on ≥ 4.44), laion_clap 1.1.7, audiobox_aesthetics 0.0.4, pedalboard 0.9.26, pyloudnorm 0.2.0, mido, pretty_midi.
-  - The project itself is never installed; jobs get `PYTHONPATH=$REMOTE_PROJ/src`.
+  - The project itself is never installed; jobs get `PYTHONPATH=<their snapshot>/src` (`$LOFI_CODE`).
 - **Tools.** `jobs/tools.sbatch` builds `$REMOTE_KEEP/opt/tools` from conda-forge: python 3.12, uv, and **FluidSynth 2.6.1**. Discovery has no module for it, and the laptop pins the same version (`brew pin fluid-synth`). Jobs call `$REMOTE_KEEP/opt/bin/fluidsynth`, a wrapper that drops `LD_LIBRARY_PATH` (LESSONS 8).
 - **Builds** run on `main`, with a `timeout` on every step (LESSONS 4), and end with an import walk of every module (LESSONS 43).
 - **Models** are downloaded anonymously into `$HF_HOME` by `jobs/fetch.sbatch`: ungated repos only, at pinned revisions. Compute nodes have outbound network (LESSONS 11).

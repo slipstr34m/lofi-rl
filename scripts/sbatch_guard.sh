@@ -18,8 +18,11 @@
 #      the new job's tasks would exceed max_concurrent_jobs (each array task is a job), when the
 #      job asks for more GPU nodes than max_gpu_nodes_per_job, when its time limit exceeds
 #      max_job_hours, when its name lacks job_name_prefix (the ledger would not count it), or when
-#      its --output directory does not exist and cannot be created (the job would die with no log),
-#   6. otherwise calls sbatch and appends a line to jobs/submissions.log (git-ignored).
+#      its --output or --error directory does not exist and cannot be created (the job would die with no log),
+#      when it would run in a read-only submit directory (a code snapshot, scripts/snapshot.py) with a missing
+#      or relative --output, a relative --error or a --chdir elsewhere, or when the ledger is not writable,
+#   6. otherwise calls sbatch and appends a line to the ledger: $GUARD_LOG, by default $REMOTE_KEEP/submissions.log
+#      (kit.env), else jobs/submissions.log (git-ignored).
 # It FAILS CLOSED: if sacct or squeue errors, or a spec cannot be parsed, nothing is submitted.
 #
 # SU ACCOUNTING — verified 2026-10-25 against CARC docs and the cluster itself (LESSONS #1-2):
@@ -41,7 +44,9 @@ set -euo pipefail
 
 GUARD_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUDGET="${BUDGET_FILE:-$GUARD_DIR/config/budget.yaml}"
-LOG="${GUARD_LOG:-$GUARD_DIR/jobs/submissions.log}"
+# The ledger lives in $REMOTE_KEEP (kit.env): outside the --delete mirror and the read-only code snapshots.
+_KEEP=$( { sed -n 's/^REMOTE_KEEP=//p' "$GUARD_DIR/kit.env" | head -1; } 2>/dev/null || true)
+LOG="${GUARD_LOG:-${_KEEP:+$_KEEP/submissions.log}}"; LOG="${LOG:-$GUARD_DIR/jobs/submissions.log}"
 SBATCH_BIN="${SBATCH_BIN:-sbatch}"          # tests override these with stubs
 SACCT_BIN="${SACCT_BIN:-sacct}"
 SQUEUE_BIN="${SQUEUE_BIN:-squeue}"
@@ -255,6 +260,7 @@ MPG=$(getopt_val mem-per-gpu)
 ARRAY=$(getopt_val array a)
 JOBNAME=$(getopt_val job-name J)
 OUTPUT=$(getopt_val output o)
+ERROR=$(getopt_val error e)
 EXCLUSIVE=$(all_opts | grep -cE '^--exclusive(=.*)?$' || true)
 TASKS=1
 if [ -n "$ARRAY" ]; then TASKS=$(py_su tasks "$ARRAY" 2>/dev/null) || die "cannot parse --array '$ARRAY'"; fi
@@ -332,15 +338,30 @@ if [ "$GPUS_PER_NODE" -gt 0 ] && [ "$NODES" -gt "$MAX_GPU_NODES" ]; then die "${
 if [ $(( ACTIVE + TASKS )) -gt "$MAX_JOBS" ]; then die "${ACTIVE} jobs already running/pending + ${TASKS} new > max_concurrent_jobs=${MAX_JOBS} (every array task is a job)"; fi
 "$PY" -c "import sys; sys.exit(0 if $AFTER <= $MAX_SUS else 1)" || die "used ${USED} + reserved ${RESERVED} + projected ${PROJECTED} = ${AFTER} SU would exceed max_project_sus=${MAX_SUS}"
 "$PY" -c "import sys; sys.exit(0 if $AFTER <= $MAX_SUS*$WARN_FRAC else 1)" || echo "sbatch_guard: WARNING — past ${WARN_FRAC} of the SU cap" >&2
-# SLURM does not create the --output directory: a job whose log dir is missing dies without a trace
-if [ -n "$OUTPUT" ]; then
-  LOGDIR=$(dirname "$(printf '%s' "$OUTPUT" | sed "s/%u/${USER}/g")")
+# sbatch runs in $PWD, which becomes the job's submit directory. For make submit that is a read-only code snapshot
+# (scripts/snapshot.py): SLURM's default log (slurm-%j.out there) or a relative --output/--error could not be
+# written, and the job would die without a log. A --chdir elsewhere would also hide the job from prune's in-use
+# check (squeue %Z), so it must stay in the snapshot.
+CHDIR=$(getopt_val chdir D)
+if [ -f "$PWD/.lofi-snapshot" ] || [ ! -w "$PWD" ]; then
+  case "$OUTPUT" in /*) ;; *) die "--output '${OUTPUT:-<unset>}' is not an absolute path: in its read-only submit directory ($PWD) the job could not write its log";; esac
+  case "$ERROR" in ''|/*) ;; *) die "--error '${ERROR}' is not an absolute path: in its read-only submit directory ($PWD) the job could not write it";; esac
+  if [ -n "$CHDIR" ] && [ "$(cd "$CHDIR" 2>/dev/null && pwd -P)" != "$(pwd -P)" ]; then
+    die "--chdir '$CHDIR' moves the job out of its code snapshot $PWD"
+  fi
+fi
+# SLURM does not create the --output/--error directory: a job whose log dir is missing dies without a trace
+for _LOGF in "$OUTPUT" "$ERROR"; do
+  [ -n "$_LOGF" ] || continue
+  LOGDIR=$(dirname "$(printf '%s' "$_LOGF" | sed "s/%u/${USER}/g")")
   case "$LOGDIR" in
     /*%*|[!/]*) ;;   # a pattern left in the directory part, or a relative path: nothing to check
     *) [ -d "$LOGDIR" ] || mkdir -p "$LOGDIR" 2>/dev/null \
          || die "log directory ${LOGDIR} does not exist and cannot be created: the job would die without a log";;
   esac
-fi
+done
+# The ledger must be writable before anything is queued: a submission it misses is a job the SU log never saw
+{ mkdir -p "$(dirname "$LOG")" && : >> "$LOG"; } 2>/dev/null || die "cannot write the ledger ${LOG}: nothing submitted"
 
 # ---------- 4b. job-type registry and the soft SU target ----------
 # A job type runs only if jobs/APPROVED.yaml lists it with the sha of its #SBATCH + non-comment lines

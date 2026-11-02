@@ -51,6 +51,7 @@ def _submit_repo(tmp_path):
     remote.chmod(remote.stat().st_mode | stat.S_IXUSR)
     (repo / "jobs").mkdir()
     (repo / "jobs" / "x.sbatch").write_text("#!/bin/bash\n")
+    (repo / ".gitignore").write_text(".sync-stamp\n.sync-manifest\n")   # as in the repo: else every stamp is dirty
     _git(repo, "init", "-q", "-b", "main")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "init")
@@ -58,8 +59,9 @@ def _submit_repo(tmp_path):
 
 
 def _submit(repo, *args, **env):
+    clean = {k: v for k, v in os.environ.items() if k not in ("PAST_TARGET_OK", "ALLOW_DIRTY")}
     return subprocess.run(["bash", str(repo / "scripts" / "submit.sh"), *args], cwd=repo, capture_output=True, text=True,
-                          env=dict(os.environ, **env))
+                          env=dict(clean, **env))
 
 
 def test_submit_needs_a_matching_sync_and_clean_tree(tmp_path):
@@ -70,8 +72,16 @@ def test_submit_needs_a_matching_sync_and_clean_tree(tmp_path):
     (repo / ".sync-stamp").write_text(stamp)
     p = _submit(repo, "-t", "00:20:00", "jobs/x.sbatch", "arg one")
     assert p.returncode == 0, p.stderr
-    assert "; GUARD_LOG=/keep/submissions.log scripts/sbatch_guard.sh -t 00:20:00 jobs/x.sbatch arg\\ one" in p.stdout
+    guard = 'cd "$snap" && GUARD_LOG=/keep/submissions.log scripts/sbatch_guard.sh -t 00:20:00 jobs/x.sbatch arg\\ one'
+    assert guard in p.stdout
     assert "[ \"$m\" = " in p.stdout and "exit 3; }" in p.stdout, "the mirror's own stamp is checked on the cluster"
+    now = (repo / ".sync-stamp").read_text().split()[:3]
+    snap = "snap=$(SNAP_ROOT=/keep/snap python3 scripts/snapshot.py make --expect " + "\\ ".join(now) + ") || exit 3;"
+    assert p.stdout.index("[ \"$m\" = ") < p.stdout.index(snap) < p.stdout.index(guard), "stamp, snapshot, then guard"
+    assert 'case "$snap" in /keep/snap/?*) ;;' in p.stdout, "only a path under the snapshot root is submitted from"
+    assert "PAST_TARGET_OK" not in p.stdout
+    p = _submit(repo, "jobs/x.sbatch", PAST_TARGET_OK="2026-12-01 Shresth")
+    assert "&& PAST_TARGET_OK=2026-12-01\\ Shresth GUARD_LOG=/keep/submissions.log scripts/sbatch_guard.sh" in p.stdout
     (repo / "jobs" / "x.sbatch").write_text("#!/bin/bash\necho changed\n")     # uncommitted edit
     p = _submit(repo, "jobs/x.sbatch")
     assert p.returncode == 3, "a dirty tree no longer matches the synced stamp"
@@ -79,6 +89,31 @@ def test_submit_needs_a_matching_sync_and_clean_tree(tmp_path):
                                                      text=True).stdout)
     assert _submit(repo, "jobs/x.sbatch").returncode == 3 and "commit first" in _submit(repo, "jobs/x.sbatch").stderr
     assert _submit(repo, "jobs/x.sbatch", ALLOW_DIRTY="1").returncode == 0
+
+
+def test_stamp_counts_untracked_files_as_dirty(tmp_path):
+    """make sync ships untracked files too, so a job could import one: they make the stamp dirty, like an edit."""
+    repo = _submit_repo(tmp_path)
+    stamp = lambda: subprocess.run(["bash", str(repo / "scripts" / "stamp.sh")], capture_output=True, text=True).stdout
+    assert " dirty=0 diff=- " in stamp()
+    (repo / ".sync-stamp").write_text("ignored by .gitignore\n")
+    assert " dirty=0 diff=- " in stamp()
+    (repo / "new.py").write_text("X = 1\n")
+    first = stamp()
+    assert " dirty=1 " in first
+    (repo / "new.py").write_text("X = 2\n")
+    assert " dirty=1 " in stamp() and stamp().split()[2] != first.split()[2], "the diff hash covers untracked content"
+
+
+def test_stamp_survives_a_nested_repo_a_dangling_symlink_and_a_symlink_to_a_dir(tmp_path):
+    repo = _submit_repo(tmp_path)
+    stamp = lambda: subprocess.run(["bash", str(repo / "scripts" / "stamp.sh")], capture_output=True, text=True)
+    (repo / "vendored").mkdir()
+    _git(repo / "vendored", "init", "-q")                              # git lists an untracked nested repo as 'vendored/'
+    (repo / "dangling.py").symlink_to("missing.py")
+    (repo / "dirlink").symlink_to("jobs")
+    p = stamp()
+    assert p.returncode == 0 and " dirty=1 " in p.stdout and len(p.stdout.split()[2]) == len("diff=") + 12, p.stderr
 
 
 def _frozen(repo, *args):
@@ -118,4 +153,5 @@ def test_check_frozen_refuses_a_sync_that_changes_a_frozen_file(tmp_path):
 def test_make_sync_runs_the_freeze_check_first():
     text = (ROOT / "Makefile").read_text()
     sync = text[text.index("\nsync:"):text.index("\n\n", text.index("\nsync:"))]
-    assert sync.index("scripts/check_frozen.sh") < sync.index("scripts/stamp.sh > .sync-stamp") < sync.index("$(SYNC) ./")
+    assert sync.index("scripts/check_frozen.sh") < sync.index("scripts/stamp.sh > .sync-stamp") \
+        < sync.index("$(SYNC) $(CTRL) ./")

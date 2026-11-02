@@ -20,6 +20,7 @@ assets/big/
 
 # --- sync bookkeeping ---
 .sync-stamp
+.sync-manifest
 .sync-freeze
 jobs/submissions.log
 
@@ -42,3 +43,4 @@ dist/
 .claude-run.lock
 .claude/worktrees/
 .claude/check-batch.txt
+node_modules/

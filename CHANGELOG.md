@@ -22,7 +22,60 @@ Newest entry first. Every number cites the file or command output it was read fr
   - **scorer server** merged (`5d36898`); its cluster smoke 13651611 is queued on an L40S;
   - **GRPO smoke 13632679** passed (`GRPO_SMOKE_OK`: 10 steps, then a resume from step 5; 280.7 SU).
 - **Waiting on Shresth:** nothing right now. Day 3 and the keep3 batch come to him when they are rendered.
-- **Before GRPO run 1, also:** jobs import the mirror live, so a sync during a running job changes its code. A multi-day GRPO chain needs a per-job code snapshot (job_env.sh), so that syncs can go on while it runs.
+- **Jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job, so syncs no longer wait for jobs.
+
+---
+
+## 2026-11-01 (21:40 PST): jobs run from a read-only code snapshot, so syncs no longer wait for jobs
+
+**What was done**
+- **The problem.** Jobs imported the mirror live (`PYTHONPATH=$REMOTE_PROJ/src`), so a `make sync` changed the code of every queued or running job. D-020 first forbade syncs and then froze a code path (`.sync-freeze`). That held up other cluster work for hours (the second amendment).
+- **`scripts/snapshot.py`** (new; standard library only):
+  - **`make sync`:**
+    - writes `.sync-manifest`, the sha256 of every file rsync sends, taken from rsync's own dry-run list;
+    - refuses synced files that git ignores, and refuses a tree that changed after its stamp;
+    - syncs the tree with `-c`, then sends `.sync-stamp` and `.sync-manifest` last, with `-I`.
+  - **`make submit`:** after the mirror's stamp check, `python3 scripts/snapshot.py make --expect <laptop fields>` runs on the login node.
+    - It builds `$REMOTE_KEEP/snap/<commit>-<manifest sha12>/`: exactly the manifest's files, each hash-checked and read-only. Each file is stored once in `.objects/` and hard-linked.
+    - The guard then runs inside that directory. It becomes the job's `SLURM_SUBMIT_DIR`, and `job_env.sh` imports its `src/` (`LOFI_CODE`). The job header says `(snapshot)`, or `NO SNAPSHOT` for a job run from the mirror.
+  - **Refusals (exit 3):**
+    - a mirror file that does not match the manifest while its object is not stored yet (a stored object wins, with a warning);
+    - a stamp that is not the one the manifest lists;
+    - a stamp that is not the laptop's: a sync from elsewhere that landed in between.
+  - **Reuse:** a reused snapshot is re-checked against its manifest, a file the manifest does not list is refused, and its modes are repaired. A damaged stored object is replaced.
+  - **Deleting:** `snapshot.py prune <key>` is the only way, and only when Shresth asks. It moves the snapshot aside, re-checks squeue, refuses a snapshot a queued or running job uses, and deletes only the objects no snapshot links to.
+- **Around it:**
+  - **the guard:**
+    - its ledger defaults to `$REMOTE_KEEP/submissions.log` (kit.env) and must be writable before sbatch runs;
+    - when sbatch would run in a read-only submit directory, it refuses a missing or relative `--output`, a relative `--error` and a `--chdir` elsewhere;
+  - `stamp.sh` counts untracked files as dirty, since rsync sends them. It hashes symlinks and nested repos by name, so they cannot crash it;
+  - `PAST_TARGET_OK` now passes through `make submit`;
+  - `node_modules/` is git-ignored, as rsync already excludes it;
+  - CLAUDE.md §1, §3, §4 and §5 and kit.env now describe the snapshot.
+- **Reviews.**
+  - **First round** (`wf_21bb3a78-960`): three lenses, each verified by a skeptic, gave 25 verdicts, 20 of them real.
+    - The major one: VAST shows a hidden `.snapshot` directory inside every directory of `/project2` (`ls -ld` on the login node). The first marker name collided with it, so every submit would have been refused. The marker is now `.lofi-snapshot`.
+    - The others: a stamp/manifest pairing race; the stamp check not tied to the snapshot; shared objects with no re-check and no prune; the ledger's path in a snapshot; rsync's quick check; signals; `PAST_TARGET_OK`; docs.
+  - **Second round** (`wf_767487fe-c31`): it checked each fix by re-running the first round's experiments.
+    - Blocker found: the guard keyed its new log rule on its own directory, not sbatch's. The guard tests, run from a snapshot (as `render_check` and `smoke_env` run `pytest`), failed 34 of 56.
+    - Also found: stamp.sh crashing on a nested repo or a dangling symlink; prune missing `--chdir` jobs and racing a submit; git-ignored files shipping as dirty=0.
+    - All are fixed and tested.
+- **Not done (deferred): env drift.** A queued job can start after an env rebuild and run old code on new packages. The fix is for env builds to record their lock's sha and for `job_env.sh` to compare it. That changes `jobs/env_*.sbatch`, types over 500 SU, so it waits for their next change and Shresth's OK.
+- **D-020's `.sync-freeze`** is no longer needed for jobs submitted with `make submit`. `check_frozen.sh` stays.
+
+**Numbers**
+- **What `make sync` sends:** 362 files, 36.9 MB at the start of this work, of which 32.3 MB is `GeneralUser-GS.sf2` (rsync `--list-only` on the laptop). With this change it is 366 files, 37.1 MB (`snapshot.py manifest` in the check below).
+- **Login node:** Python 3.11.9, rsync 3.1.3. `/project2` is `pool1.vast.carc.usc.edu:/vastdata` over NFS, 100 G used of 932 G (`df -h`). VAST keeps daily snapshots at 12:05 UTC (`.snapshot/snapshot_2026-11-01_12_05_00_UTC`).
+- **Tests:** 2,532 passed, 3 skipped (TRL is not on the laptop) on the laptop. The non-laptop suite run inside a real read-only snapshot of this tree: 2,487 passed, 47 skipped and 1 failed. The failure is `test_junk.py::test_render_writes_one_pass_flacs_for_real`, a cluster-marked test that fails the same way in the writable repo on the laptop (1 of 2 clips), so the snapshot is not the cause.
+
+**Failed approaches and why**
+- The first marker name, `.snapshot`, is a hidden directory on VAST (above).
+- rsync's quick check skips a same-size edit made within the synced file's mtime second, and keeps skipping it on every later sync. A test caught it; `-c` fixes it.
+- The first in-snapshot log rule was keyed on the guard's own directory (above).
+
+**SU spent:** 0. Total 1481.9 (`session_report.py`, 20:50 PST).
+
+**Next:** commit, push and sync. Then build the first real snapshot on the login node (`snapshot.py make`), to check hard links and modes on VAST. Then run 1's start goes to Shresth (the next entry).
 
 ---
 

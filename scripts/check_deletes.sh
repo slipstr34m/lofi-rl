@@ -13,7 +13,7 @@ while IFS= read -r line; do
       p=${p#"${p%%[![:space:]]*}"}
       n=$((n + 1))
       case "$p" in
-        data/*|.venv*|opt/*|ckpt/*|logs/*|hf/*|assets/big/*|votes/*|.sync-stamp|jobs/submissions.log) bad+=("$p");;
+        data/*|.venv*|opt/*|ckpt/*|logs/*|hf/*|assets/big/*|votes/*|.sync-stamp|.sync-manifest|jobs/submissions.log) bad+=("$p");;
       esac;;
   esac
 done
