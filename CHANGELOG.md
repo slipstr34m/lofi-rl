@@ -3,7 +3,7 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 1238.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-01 16:35 PST).
+- **SU used:** 1481.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-01 19:25 PST).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
     - Days 1 and 2 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended);
@@ -23,6 +23,24 @@ Newest entry first. Every number cites the file or command output it was read fr
   - **GRPO smoke 13632679** passed (`GRPO_SMOKE_OK`: 10 steps, then a resume from step 5; 280.7 SU).
 - **Waiting on Shresth:** nothing right now. Day 3 and the keep3 batch come to him when they are rendered.
 - **Before GRPO run 1, also:** jobs import the mirror live, so a sync during a running job changes its code. A multi-day GRPO chain needs a per-job code snapshot (job_env.sh), so that syncs can go on while it runs.
+
+---
+
+## 2026-11-01 (19:30 PST): GRPO smoke with the grammar and v2 passed, but its IS gap (0.154) turns the grammar off for run 1
+
+**What was done**
+- **`lofi-grpo-smoke` 13657200** (`configs/grpo_smoke_v2_grammar.yaml`, L40S b18-16, mirror `7f1328d`): it started at 18:59:14 after 2.9 h queued and COMPLETED 0:0 in 00:12:09, 243.0 SU, `GRPO_SMOKE_OK`.
+  - **Training:** 10 steps, then a resume from step 5. Steps took 35.5–39.9 s. Reward means ran 0.219–0.308 with the copy penalty on; KL ended at 0.0018–0.0026.
+  - **Grammar applied:** 480 of 480 stop completions are in the regex's language (`1412f11f`). xgrammar was pinned, accepted and applied on `trainer.vllm_generation.llm` in both launches.
+  - **Copy penalty:** P_copy mean 0.172 in launch a, with 289 of 320 penalized and 31 at J ≥ 0.8; mean 0.164 in launch b.
+- **D-020's IS readout** (`smoke.json` `is_ratio`):
+  - TRL 1.17.1's metric matches the definition in its source (sha256 `28f815d8…`, lines 2980–2989).
+  - The token-weighted mean is **0.1538**: per step 0.105–0.257, mean of steps 0.1564. **Above 0.05.**
+  - Smoke 13632679, v1 without the grammar, logged 0.0044–0.0091 per step (mean 0.0071, `runs/grpo-smoke-13632679/summary/*/steps.jsonl`).
+- **Verdict** (recorded in D-020): the grammar goes off for GRPO run 1, and run 1's start must be registered again. With the parse-failure half at 397/500, the next step is CLAUDE.md §9's next Phase-1 fallback: an SFT warm-start. It is drafted for Shresth's OK before any job.
+- **Freeze lifted:** `.sync-freeze` was removed, since 13657200 has ended.
+
+**SU spent:** 243.0. Total 1481.9 (`session_report.py`).
 
 ---
 
