@@ -23,6 +23,28 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-02 (12:20 PST): the masked trainer's CPU preflight passed (13673141, 25.1 SU); the masked smoke submitted (13673180)
+
+**What was done**
+- **`lofi-mask-preflight` 13673141** ran on `main` (a01-17, AMD EPYC 7513), from snapshot `ae7d3bf6e1eb-068f2ec9aad0`. It COMPLETED 0:0 in 00:01:34 (`sacct`) and printed `MASK_PREFLIGHT_OK`. Numbers from `runs/mask-preflight-13673141/summary/preflight.json`:
+  - **Versions:** torch 2.13.0, transformers 5.19.0, TRL 1.17.1, PEFT 0.21.2, vLLM 0.32.0, xgrammar 0.2.8.
+  - **Source checks:** T1-T5, V1 and V2 `match` on the installed packages, path `support_ids`, no refusals.
+  - **The NFA against xgrammar's real bitmask.** Both are built as a launch builds them: vocab 151,936, stop ids 151643 and 151645 (the matcher's own override reads the same).
+    - They agree at every position: 253,177 along the tokenizer's ids of 989 in-language texts (prompt v2's 9 and D-020's 980), 562,097 one character per token, and 45,129 along 400 random walks (all 400 ended on a stop id). That is 0 mismatches and 0 refusals.
+    - xgrammar took about 36-38 µs a position, so a 32-completion step's replay is under 1 s (an estimate from this rate).
+  - **TRL's support path on the tiny Qwen3** (3 vocabulary tiles, 21 valid positions):
+    - The masked log-probs agree with a float64 masked log-softmax to 1.7e-7, and with the fill form to 2.4e-7. The gradients agree to 4.2e-7 (at a scale of 1.70).
+    - The compact packing, the GPU's, equals the non-compact one to 2.4e-7.
+    - A support one column off misses by 2.54.
+  - **The trainer's glue:** the adapter state reads enabled, disabled inside `disable_adapter()`, then enabled again. T5's run-time half reads `match`. Rows are 4/4/4 over the old, reference and loss passes, and −log Z agrees with float64 to 1.3e-7.
+- **The masked smoke is submitted:** `lofi-grpo-smoke` 13673180, from the same snapshot (`ae7d3bf`), on an L40S, at most 500 SU. `.sync-freeze` names `docs/prereg/D-021_masked_smoke_path.txt` until the smoke ends. It was PENDING (Priority) at 12:17.
+
+**SU spent:** 25.1 (13673141: 94 s at 16 SU/min). The guard read 1,506.9 used before the smoke.
+
+**Next:** when 13673180 ends, `make pull`, then read the d021 block of `runs/grpo-smoke-13673180/summary/smoke.json` (M5-M12) and record it here and in D-021.
+
+---
+
 ## 2026-11-02 (12:15 PST): D-021 decided; the grammar-masked trainer built, reviewed twice and fixed; its CPU preflight registered
 
 **What was done**
