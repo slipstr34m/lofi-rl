@@ -3,7 +3,7 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 1095.0 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-01 13:10 PST).
+- **SU used:** 1238.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-01 16:35 PST).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
     - Days 1 and 2 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended);
@@ -23,6 +23,28 @@ Newest entry first. Every number cites the file or command output it was read fr
   - **GRPO smoke 13632679** passed (`GRPO_SMOKE_OK`: 10 steps, then a resume from step 5; 280.7 SU).
 - **Waiting on Shresth:** nothing right now. Day 3 and the keep3 batch come to him when they are rendered.
 - **Before GRPO run 1, also:** jobs import the mirror live, so a sync during a running job changes its code. A multi-day GRPO chain needs a per-job code snapshot (job_env.sh), so that syncs can go on while it runs.
+
+---
+
+## 2026-11-01 (16:40 PST): v2 without the grammar: 397/500 syntax failures, so the grammar stays on; the freeze moves to the GRPO smoke
+
+**What was done**
+- **`lofi-junk-rate` 13656050** (`500 2026 0 v2`, `-p gpu`): A40 node b09-11. It started at 16:10:26 after 2.7 h queued and COMPLETED 0:0 in 00:04:29, 80.7 SU, `JUNK_RATE_OK`.
+- **Checks:** all pass:
+  - complete: 500 = requested, not partial, not stopped;
+  - as registered: model `cdbee75f`, seed 2026, v0's sampling, palette `b2e4a340`, prompt v2 `127e3094` with 500 rows matching and 0 example mismatches;
+  - no grammar;
+  - generate and score both stamp `commit=7f1328d3dc6f dirty=0`, and that commit's 60 frozen files equal `docs/prereg/D-020_junk_path.txt`.
+- **Readouts** (`runs/junk-13656050/summary/junk.json`):
+  - failures G1 397, G4 2, G6 23;
+  - **G1 + G2 + G5 = 397 of 500 (79.4 %)**;
+  - pass 78/500, ci95 [0.1268, 0.1904]; pass_not_copy 64/500, ci95 [0.1015, 0.1601];
+  - 0 truncated;
+  - top G1 detail: a per-bar edit given two grids (`@3 rim takes at most 1 grid(s)`, 96 times).
+- **D-020's grammar lever, its parse-failure half** (recorded in D-020): 397 exceeds 100, so **the grammar stays on** for GRPO. For contrast, with the grammar, arm B passed 500/500.
+- **The freeze moves:** `.sync-freeze` now names `docs/prereg/D-020_grpo_smoke_path.txt`. It lists 57 files: the import closure of the GRPO smoke's code (train, smoke_check, trl_probe, copy_penalty, reward, the verifiers, prompt_v2, the grammar and so on), plus its job, config, palette and env scripts. It holds until smoke 13657200, which carries the lever's IS-ratio half, ends.
+
+**SU spent:** 80.7. Total 1238.9 (`session_report.py`).
 
 ---
 

@@ -288,3 +288,7 @@ no GRPO had run.
       - The grammar stays on for GRPO only if that count exceeds 100, which is 20 %.
       - "Mean |log IS ratio|" means the mean, over every completion token of every step, of |log π_vLLM(token) − log π_trainer(token)|, in a GRPO smoke with the grammar and v2. TRL's own metric may stand in for it only if its definition in the TRL 1.17.1 source is checked to be this one. The grammar goes off if the mean exceeds 0.05.
       - If either reading turns the grammar off, the start of run 1 is registered here again.
+- **Grammar lever, the parse-failure half, 2026-11-01:** `lofi-junk-rate` 13656050 (`500 2026 0 v2`, A40 b09-11, 80.7 SU; `runs/junk-13656050/summary/junk.json`). It ran complete, as registered and without the grammar, from mirror `7f1328d`, whose 60 frozen files equal the list.
+  - **G1 + G2 + G5 = 397 of 500 (79.4 %)** (G1 397, G2 0, G5 0), above the 100 the rule names. **The grammar stays on for GRPO** on this half.
+  - Without the grammar, v2's pass is 78/500 and pass_not_copy 64/500. The commonest G1 detail is a per-bar edit given two grids (`@3 rim` 96).
+  - **The other half:** the mean |log IS ratio| ≤ 0.05 is read from GRPO smoke 13657200 (grammar + v2). Its code path is frozen in `docs/prereg/D-020_grpo_smoke_path.txt` until it ends.
