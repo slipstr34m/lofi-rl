@@ -13,13 +13,61 @@ Newest entry first. Every number cites the file or command output it was read fr
   - all 14 shootout sources, the rain file, its 44.1 kHz conversion and the two imported kits are on the laptop and the cluster.
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
   - **D-020:** prompt v2 with the grammar won (pass_not_copy 446/500 against 355/500). Its grammar lever then turned the grammar off for run 1, because the GRPO smoke's mean |log IS ratio| was 0.1538 > 0.05 (13657200). So run 1's start is registered again.
-  - **Run 1's start, redrafted:** `docs/design/run1_start.md` (D-021, PROPOSED). It keeps the grammar with a masked trainer, decided by one smoke on the registered smoke job; the SFT warm-start is the fallback. **It waits for Shresth.**
+  - **D-021, decided** (Shresth, 2026-11-02: "A: fix first"): keep the grammar with a masked trainer, decided by one smoke on the registered smoke job; the SFT warm-start is the fallback. The masked trainer is built, reviewed and fixed. Its CPU preflight (`lofi-mask-preflight`) runs before the smoke.
   - **built:**
     - the prompt-version key, the copy penalty, and the backend pin with the in-language count;
     - the scorer server (smoke 13651611, `SCORER_SMOKE_OK`);
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
-- **Waiting on Shresth:** a yes or no on run 1's start (D-021, Part A first). Day 3 listening opens Nov 3.
+- **Waiting on Shresth:** nothing now. Day 3 listening opens Nov 3.
+
+---
+
+## 2026-11-02 (12:15 PST): D-021 decided; the grammar-masked trainer built, reviewed twice and fixed; its CPU preflight registered
+
+**What was done**
+- **Shresth's answer.** Asked "Which start should run 1 take?" after a plain-words overview, he answered "A: fix first".
+  - D-021 is now in docs/DECISIONS.md with his words.
+  - `docs/design/run1_start.md` says it is decided and points there.
+- **The installed libraries, read.** The policy env's TRL 1.17.1, vLLM 0.32.0, xgrammar 0.2.8 and PEFT Python sources were copied read-only from the cluster to the session scratchpad. They are never committed.
+  - TRL's `_get_per_token_logps_and_entropies` never forms logits. It hands a `sampling_mask` to its fused LM head as `support_ids`, and the kernel normalizes each token's log-prob over that set (`trl/trainer/grpo_trainer.py:1557-1567`).
+  - So D-021's T2 alternative is the path: the trainer passes the grammar's allowed sets as that support, in the old, reference and loss passes.
+- **Built** (workflow `wf_7d4fb65d-37e`: five builders on disjoint files, from a lead spec):
+  - **`src/lofi_rl/grammar_mask.py`:** D-021's independent NFA, standard library only.
+    - M2: 980 of 980 completions, 250,939 tokens walked, 0 violations.
+    - M3: 20 with no stop id, the same 20 with both stop ids, 25, and 8 (`tests/test_grammar_mask.py`).
+  - **`src/lofi_rl/rl/masked.py`:**
+    - `make_trainer_class` builds LofiGRPOTrainer, with three overrides: the mask in `_get_per_token_logps_and_entropies`, the xgrammar replay in `_generate`, and the step record in `_generate_and_score_completions`.
+    - Also XgrammarReplay (built as vLLM 0.32's backend builds its matcher), the fill form, and the per-step records.
+  - **`src/lofi_rl/rl/trl_probe.py`:** T1-T5, V1 and V2, as AST reads that fail closed. Run against the copies with 13657200's `grpo_config`: all match, path `support_ids`. Mutating each check's target line in scratch copies flipped exactly that check (13 of 13).
+  - **The wiring:**
+    - `trainer_logprobs` in config.py;
+    - train.py's masked path: the source checks before the model loads (exit 2 on a refusal), T5's run-time half, and the `mask` field in steps.jsonl;
+    - smoke_check's `d021` block for M5-M12;
+    - `configs/grpo_smoke_v2_grammar_masked.yaml`. The job is unchanged (sha `1dded12d386c7fab`).
+  - **Item 1's brief streams:** `docs/prereg/brief_streams_v1.json`, built by `python -m lofi_rl.brief_streams`, with 8 draw seeds per brief. The twin counts of D-021 (8, 4, 15) hold.
+- **Reviewed** (workflow `wf_f679a796-62c`: five lenses, each with a skeptic). No blocker. The confirmed findings are fixed (workflow `wf_3e90d5ad-779`):
+  - M5 now checks, in the job's own snapshot, every file of the frozen path list and the D-021 entry. It passes on the laptop tree: 73 of 73 files.
+  - M10 weighs a step 0 when every completion was truncated.
+  - Self-check flags (diagnostics, never gates) and M12's timing breakdown.
+  - The masked IS caveat, and the xgrammar version and the matcher's stop ids in run.json.
+  - The preflight widened to more token boundaries, the GPU's compact packing across vocabulary tiles, and the trainer's glue on real objects.
+- **Registered:** `jobs/mask_preflight.sbatch` (`lofi-mask-preflight`, CPU on `main`, 8 CPU and 32 GB for 20 min), sha `87c428d71435c4f4`, max 320 SU, by Claude (CLAUDE.md §4).
+  - It runs, on the policy env, what the laptop cannot: the source checks, the NFA against xgrammar's real bitmask over D-020's 980 completions and 400 random walks, TRL's support path on a tiny Qwen3, and the trainer's glue.
+  - It decides nothing D-021 registered. A failure there is fixed before the smoke is submitted.
+- **D-021 amended** before its first job (DECISIONS.md, "Amended 2026-11-02"). It records:
+  - the T2 path and its checks, and the three overrides;
+  - the entropy and KL readings, and the fp32 fix's arithmetic;
+  - where the mask comes from, the hook, the extra old-pass forward and the record names;
+  - how smoke_check reads the gates, the preflight and its SU, item 1 as built, and the re-read counts.
+- **Frozen path:** `docs/prereg/D-021_masked_smoke_path.txt`, 73 files: the import closure of train and smoke_check, plus the job, config, palette, env scripts and fixture. `.sync-freeze` names it from the smoke's submit until the smoke ends.
+- **Tests:** 2,956 passed, 3 skipped (the full suite after the fixes; the 3 need TRL).
+
+**SU spent:** 0.
+
+**Next:**
+- `make sync`, then submit the preflight: `make submit JOB=jobs/mask_preflight.sbatch`.
+- **On MASK_PREFLIGHT_OK:** set `.sync-freeze`, then submit the masked smoke on an L40S: `make submit JOB=jobs/grpo_smoke.sbatch OVR='--gres=gpu:l40s:1 --constraint=l40s' ARGS='configs/grpo_smoke_v2_grammar_masked.yaml'`. Then read M5-M12 from its smoke.json.
 
 ---
 

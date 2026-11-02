@@ -1,8 +1,8 @@
-# Run 1's start, registered again: draft D-021 (PROPOSED, awaiting Shresth)
+# Run 1's start, registered again: D-021 (decided 2026-11-02)
 
-**Status:** a proposal. Nothing in it runs before Shresth answers. On his yes it moves to `docs/DECISIONS.md`
-as D-021 with his words, and its laptop work starts. On his no, Part B (the SFT warm-start) is registered in full
-and comes to him first.
+**Status:** decided. Shresth answered "A: fix first" on 2026-11-02, so the entry below is now D-021 in
+`docs/DECISIONS.md`, which is the record: amendments go there, never here. This file keeps the draft as he approved
+it, and how it was drafted.
 
 **How it was drafted** (workflow `wf_76128e23-f1d`, 2026-11-01):
 - Three independent proposals, one per angle: a self-distilled SFT warm-start (`rft`), a curated SFT warm-start
