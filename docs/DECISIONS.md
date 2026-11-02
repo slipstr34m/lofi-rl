@@ -292,3 +292,9 @@ no GRPO had run.
   - **G1 + G2 + G5 = 397 of 500 (79.4 %)** (G1 397, G2 0, G5 0), above the 100 the rule names. **The grammar stays on for GRPO** on this half.
   - Without the grammar, v2's pass is 78/500 and pass_not_copy 64/500. The commonest G1 detail is a per-bar edit given two grids (`@3 rim` 96).
   - **The other half:** the mean |log IS ratio| ≤ 0.05 is read from GRPO smoke 13657200 (grammar + v2). Its code path is frozen in `docs/prereg/D-020_grpo_smoke_path.txt` until it ends.
+- **Grammar lever, the IS-ratio half, 2026-11-01:** `lofi-grpo-smoke` 13657200 (`configs/grpo_smoke_v2_grammar.yaml`: prompt v2, the grammar, the copy penalty), L40S b18-16, 243.0 SU, `GRPO_SMOKE_OK`. Results: `runs/grpo-smoke-13657200/summary/smoke.json`.
+  - **The grammar was applied:** 480 of 480 stop completions are in the regex's language. xgrammar was pinned and read back on TRL's engine (`trainer.vllm_generation.llm`).
+  - **TRL 1.17.1's `sampling/sampling_logp_difference/mean`** was checked in its installed source (`trainer/grpo_trainer.py`, sha256 `28f815d8…`, lines 2980–2989). It is the mean over completion-masked tokens of |old_per_token_logps − sampling_per_token_logps|, which is D-020's definition on the trainer's side.
+  - **Mean |log IS ratio| = 0.1538** (token-weighted over 15 steps of both launches; per step 0.105–0.257). That is above 0.05. Smoke 13632679, v1 without the grammar, had 0.0044–0.0091 per step.
+  - **Caveat** (the smoke's own): vLLM's log-probs were not shown to be taken after the grammar's mask. If they are taken before it, the true value is higher, not lower.
+  - **Verdict:** by this entry's rule, **the grammar goes off for GRPO run 1**. The parse-failure half (397 > 100) would keep it on, but the IS half turns it off. So this entry's constrained result does not carry over, and **run 1's start is registered again**, in a later entry, before any run-1 job.
