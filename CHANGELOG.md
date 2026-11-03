@@ -3,7 +3,7 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 1481.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-01 20:50 PST).
+- **SU used:** 1,785.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-03 09:18 PST).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
     - Days 1 and 2 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended);
@@ -13,13 +13,42 @@ Newest entry first. Every number cites the file or command output it was read fr
   - all 14 shootout sources, the rain file, its 44.1 kHz conversion and the two imported kits are on the laptop and the cluster.
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
   - **D-020:** prompt v2 with the grammar won (pass_not_copy 446/500 against 355/500). Its grammar lever then turned the grammar off for run 1, because the GRPO smoke's mean |log IS ratio| was 0.1538 > 0.05 (13657200). So run 1's start is registered again.
-  - **D-021, decided** (Shresth, 2026-11-02: "A: fix first"): keep the grammar with a masked trainer, decided by one smoke on the registered smoke job; the SFT warm-start is the fallback. The masked trainer is built, reviewed and fixed. Its CPU preflight (`lofi-mask-preflight`) runs before the smoke.
+  - **D-021, decided** (Shresth, 2026-11-02: "A: fix first") **and passed** (smoke 13673180, 2026-11-03): the masked trainer brought the IS gap from 0.1538 to 0.0067, so the grammar is on for run 1 with prompt v2.
   - **built:**
     - the prompt-version key, the copy penalty, and the backend pin with the in-language count;
     - the scorer server (smoke 13651611, `SCORER_SMOKE_OK`);
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
-- **Waiting on Shresth:** nothing now. Day 3 listening opens Nov 3.
+- **Waiting on Shresth:** Day 3 listening, open from today (Nov 3): `make rate`, two batches of about 8 and 7 minutes.
+
+---
+
+## 2026-11-03 (09:25 PST): D-021 Part A passes: the masked trainer brings the IS gap from 0.1538 to 0.0067, so the grammar is on for run 1
+
+**What was done**
+- **`lofi-grpo-smoke` 13673180** ran on an L40S (b17-15) from snapshot `ae7d3bf6e1eb-068f2ec9aad0`, after about 13 h in the queue (submitted 12:16 on Nov 2, started 01:18 on Nov 3).
+  - It COMPLETED 0:0 in 00:13:57, 279.0 SU (`sacct`, `session_report.py`).
+  - Its log ends `FIRST_RUN_OK`, `D021_PART_A pass`, `GRPO_SMOKE_OK`.
+- **D-021's gates,** from `runs/grpo-smoke-13673180/summary/smoke.json` `d021`:
+  - **M5-M8 (validity) pass.**
+    - One commit `ae7d3bf`, dirty=0, with 73 of 73 frozen files at their blobs in the snapshot.
+    - 480 of 480 stop completions in the language, and xgrammar applied.
+    - T1-T5 `match`, path `support_ids`.
+    - 0 violations and 0 NFA mismatches over 120,958 positions; 32/32/32 rows a step.
+  - **M9 (measured) passes:** 0.00665, token-weighted (per step 0.0048-0.0082), against the bar of 0.05. 13657200 read 0.1538; the no-grammar smoke 13632679 read 0.0044-0.0091 per step.
+  - **M10 passes:** −log Z is 0.1492 (validity bar 0.05), and M9 is 0.0446 of it (measured bar 0.25).
+  - **M11 (measured) passes:** the per-step mean IS weight is 0.713-0.980, against 0.0010-0.0814 in 13657200, and the largest share is 0.067-0.103.
+  - **M12 (estimate only) misses:** the mean step is 43.60 s against 43.3. Net of the −log Z forward (5.40 s mean) and the self-check, it is 38.16 s. So the lofi-grpo estimate is redone before that ask.
+  - **The self-check** (fill against support, masked): mean |difference| 2.0e-8 in launch a and 0.0091 in launch b; no flag.
+- **The outcome is recorded in D-021.** D-021 supersedes D-020's IS-half verdict: the grammar is on for run 1, with the masked trainer and prompt v2.
+- `.sync-freeze` is lifted.
+
+**SU spent:** 279.0. Total 1,785.9 (`session_report.py`).
+
+**Next** (D-021, What follows):
+1. Day 3 listening, then the palette freeze.
+2. D-020's official Phase-1 gate on the frozen palette: `lofi-junk-rate` with `ARGS='500 2026 1 v2'`, plus the 50-clip ear check and his APPROVED line.
+3. The step-0 samples, then Phase 2's GRPO smoke, then `lofi-grpo` to Shresth with a redone estimate.
 
 ---
 

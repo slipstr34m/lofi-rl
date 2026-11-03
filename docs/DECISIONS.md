@@ -748,3 +748,19 @@ no GRPO had run.
     - **M3:** 20 with no stop id, the same 20 with both stop ids, 25, and 8.
     - The prototype's "median 20–21" allowed tokens is 21, from an alphabet that now includes the bar mark. A cold
       step takes 0.043–0.046 s and a warm one 0.006–0.008 s (laptop, the committed module).
+- **Outcome, 2026-11-03: Part A passes, and the grammar is on for run 1 with the masked trainer.**
+  - **The smoke:** `lofi-grpo-smoke` 13673180 ran on an L40S (b17-15) from snapshot `ae7d3bf6e1eb-068f2ec9aad0`. It COMPLETED in 00:13:57 for 279.0 SU, with `GRPO_SMOKE_OK` and `D021_PART_A pass`. Every number below is read from `runs/grpo-smoke-13673180/summary/smoke.json` (`d021`).
+  - **Validity, M5-M8: all pass.**
+    - M5: both launches' stamps read `ae7d3bf6e1eb`, dirty=0. In the snapshot, all 73 frozen files sat at their blobs, and this entry was there.
+    - M6: 480 of 480 stop completions in the language (320 and 160), other.n 0. xgrammar was pinned and applied in both launches.
+    - M7: T1-T5 `match` in both launches, T5's run-time half too, path `support_ids`; V1 and V2 `match`.
+    - M8: 0 violations and 0 NFA mismatches over 120,958 positions of 480 completions; 32 old, 32 reference and 32 loss rows at each of the 15 steps; every loss, KL and entropy finite.
+  - **Measured, M9-M11: all pass.**
+    - M9: D-020's quantity is 0.00665, token-weighted (per step 0.0048-0.0082). The bar is 0.05; 13657200 read 0.1538.
+    - M10: the token-weighted −log Z is 0.1492, at least 0.05 (validity). M9 is 0.0446 of it, at most 0.25 (measured).
+    - M11: at every step the mean of the 32 weights is 0.713-0.980 (at least 0.3), and the largest weight is 0.067-0.103 of their sum (at most 0.25). 13657200's per-step means were 0.0010-0.0814.
+  - **M12 (estimate only) misses:** the mean step_s is 43.60, over the 43.3 bar. Net of the −log Z forward (5.40 s a step) and the self-check, it is 38.16. So, as this entry says, the lofi-grpo estimate is redone before the ask.
+  - **The self-check (a diagnostic):** fill against support, the masked mean |difference| is 2.0e-8 in launch a (step 1, adapter still zero) and 0.0091 in launch b (step 6). Neither raised a flag.
+  - **What follows, by this entry's rule (M5-M11 all pass):**
+    - This entry supersedes D-020's IS-half verdict. The grammar is on for run 1 with the masked trainer, and D-020's Outcome (prompt v2 with the grammar) is run 1's setting again.
+    - Next, in order: D-020's official Phase-1 gate on the frozen palette (with the 50-clip ear check and his APPROVED line in `gates/GATE_phase1.md`); the step-0 samples; Phase 2's GRPO smoke; then `lofi-grpo` goes to him for his yes.
