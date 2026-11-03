@@ -298,6 +298,110 @@ and banks under a scratch run, inbox and cache, 6 fixture drafts for d01 and d05
 −1.494 dBTP, a render 4.8–7.7 s; the batch passed `ui.manifest check`. Laptop renders are not canonical (LESSONS 38),
 and none is queued for listening.
 
+### 7.1 The sign-off mode
+
+```bash
+python -m lofi_rl.freeze.checks expect --keep3 runs/drafts-13656049/summary/renders.json   # writes drafts/v1/keep3_kept10.json
+python -m lofi_rl.freeze.checks report --gate gates/GATE_palette.md --keep3 runs/drafts-13656049/summary/renders.json --verify
+make submit JOB=jobs/drafts.sbatch ARGS='--drafts drafts/v1 --signoff palettes/lofi_rain_v1.yaml'
+```
+
+Before Shresth signs off the frozen palette (docs/FREEZE.md), the loops he kept render again with it. It is the same
+job type: `lofi_rl.drafts.job` hands a `--signoff PALETTE` run to `lofi_rl.freeze.signoff`, so the job script's
+`#SBATCH` and command lines stay as registered (sha `85a1ae8e085fd255`, at most 180 SU). The mode takes no `--briefs`,
+`--against` or `--palette`. `--runs-root` (default: the run's parent, `$REMOTE_SCR/runs`) is where it looks for earlier
+jobs' files, which it reads only to cross-check.
+
+- **What keep3 rendered, committed.** `drafts/v1/keep3_kept10.json` (schema `lofi-rl/keep3-kept10/1`, written by
+  `checks expect`) holds:
+  - keep3's `summary/renders.json` path, job and sha256 (`94ee7e1e…`);
+  - S\*, the draft palette's, which every kept bus record's `lu` was computed with;
+  - the kept list, which is the gate file's keep3 table;
+  - per kept loop: its file and sha256, the brief, persona, keys and kit, the render palette, n, pcm_sha256,
+    music_sha256, LUFS, true peak, master gain, and each bus's record.
+
+  `runs/` is never committed or synced, so this file carries keep3's values to the job, and a scratch purge cannot
+  remove them.
+- **The laptop checks** (`checks report`):
+  - (a) each kept file is the text keep3 rendered and passes gate, compile, energy and mood under the frozen palette,
+    and the validator (§5) passes every draft with it (`check_folder(..., palette=)`);
+  - (b) prompt v2 gives its 9 references under it, strict and identical to dev_gu's;
+  - (c) its regex is 3,408 characters, sha256 `5c081828…`, and every draft fullmatches it;
+  - (d) `python -m lofi_rl.freeze check --verify` (with `--verify`);
+  - (e) the kept loops' bus levels table: each bus's median off its target relative to S\*, its range, the keys per
+    instrument and against each loop's own sax;
+  - (g) `freeze check --gate` and the keep3 table (with `--gate`);
+  - (h) a fresh `expect` equals the committed file (with `--keep3`);
+  - once the file is sealed (`frozen:` set), (d) and (g) add `--sealed`, so `frozen` must be the date of the APPROVED
+    line: the one in the `--gate` file for (g), the one in gates/GATE_palette.md for (d).
+- **Stages.** Each goes into summary/stages.json, and the first that fails ends the job, so nothing reaches the inbox:
+  1. **check** (summary/check.json): the laptop checks (a)-(c) and (g) again in the job's snapshot, and every kept
+     loop's brief and every reference's cell in briefs.yaml. When keep3's summary/renders.json is still under
+     `--runs-root`, it must have the pinned sha256 and give the same records; when it is not there, that is recorded.
+  2. **palettes** (summary/palettes/): `freeze check --verify` runs, with `--levels-day1/2/3` when all three shootout
+     levels files are under `--runs-root`; absent files are recorded as not on scratch. The bed must be the picks':
+     the excerpt of `lofi_rl.freeze.BED`'s `excerpt_from` variant and only the level of its `delta_from` variant
+     (shootouts/plan.yaml). The rain file's stretch of that excerpt must hash to its pcm_sha256
+     (shootouts/rain_excerpts.json). Then the stage writes the no-bed twin `twin0`, the frozen document with `bed: null`
+     at the levels keep3 played (draft_day2.yaml's `#| ` levels), and verifies it as the draft render palettes are
+     verified. A frozen level that differs from keep3's (a change of Shresth's) also gives `twin1`, the frozen document
+     with `bed: null`.
+  3. **render** (summary/renders.json):
+     - (a) each kept loop with the frozen palette and with each twin, 8 at a time with 1 worker each, FLACs kept;
+     - (b) the 20 drafts he did not keep and prompt v2's 9 references, in this process, one at a time with 4 workers, as
+       junk's render step runs (a reference in its own cell's brief, d01-d09);
+     - (c) each frozen kept render again in a fresh process (`python -m lofi_rl.render.pipeline … --no-verify --workers
+       4`, `PYTHONHASHSEED=4093`).
+
+     A record holds n, LUFS, true peak, the loudness iterations, master gain, music_lufs, the bed report with `bed_lu`
+     (the bed as heard), pre_limiter_sha256, pcm_sha256, music_sha256 and `render_s` (`process_s` for a repeat); a kept
+     loop's records also hold each bus's effective trim, fader and loudness.
+  4. **verify** (summary/verify.json). Any failure exits 3:
+     - N is keep3's n and `loop_samples(bpm)`;
+     - every render (the twins included) sits at −14 LUFS within 0.1 LU, with a true peak at or below −1 dBTP;
+     - G1-G7 pass with no repair;
+     - every loudness iteration count is recorded, and a G7 failure fails the job;
+     - the bed as placed is measured on the rebuilt stem (`bed.place(bed.bed_loop(palette, n), music_lufs, 24.0)`):
+       24 LU under the music within 0.01 LU, with its gain and own loudness exactly the manifest's;
+     - the bed as heard is recorded, not gated, and flagged when it sits more than 2.015 LU closer than −24;
+     - the frozen render equals its fresh-process repeat, the whole manifest included;
+     - twin0's audio is keep3's pcm_sha256;
+     - the music under the bed (pre_limiter_sha256, music_lufs) is the twin's;
+     - each bus's pre-fader loudness, effective trim and fader are keep3's, and a change of his moves only its own
+       fader;
+     - the render times are recorded, with the Phase-1 gate's projection: 50 × the slowest one-at-a-time render,
+       against 300 s.
+
+     On a twin mismatch it names the bus inputs that differ from keep3's manifests
+     (`<runs-root>/drafts-<keep3's job>/renders/<render id>/manifest.json`), if scratch still holds them.
+  5. **build** (summary/draw.json, summary/batch.json): the triage batch, checked by `python -m lofi_rl.ui.manifest
+     check` before it moves into place. Then `SIGNOFF_OK`, and the script's `DRAFTS_OK`.
+- **The batch** goes to `inbox/<date>/b<MMDD>-signoff/` (`lofi_rl.freeze.batch`). A later sign-off batch gets
+  `b<MMDD>-signoff-<k>` with a fresh seed, and the old one stays as it was.
+  - **Mode triage:** one loop a round, answered A Toss, S Fine, D Good or F Great. The page plays the 8 bars and then
+    bars 1-2 again.
+  - **Clips:** one pass of exactly N samples, the frozen render with the bed.
+  - **Order:** drawn from a fresh 64-bit seed with no two consecutive rounds in one energy × mood cell (d02 and d10
+    share low/wistful). Opaque ids are drawn under the leak rules.
+  - **The note** names the one change from keep3, in plain words: the rain he picked in Day 3, at 24 below the music, a
+    pairing Day 3 never played, and the bed as measured after the final limiter in these loops.
+  - **The hidden manifest:** category `signoff`, every round kind `none`. Per clip it holds keep3's fields, the
+    palette label `lofi_rain_v1@<sha8>`, the sax, and the bed as placed and as heard.
+  - summary/batch.json also holds the push text.
+- **Laptop runs** (2026-11-03, Apple M4, `palettes/lofi_rain_v1.yaml` sha256 `bf9be2c3…`, `--runs-root runs`, run,
+  inbox and cache in a scratch folder). Laptop renders are not canonical (LESSONS 38), and none is queued for
+  listening.
+  - **The dry run** passed check (1.7 s: 30 of 30 drafts, keep3's renders.json on the laptop at its pinned sha256 and
+    equal) and palettes (2.5 s: `freeze check --verify` with the three levels files, the e2 stretch at `e6f3a632…`,
+    no level change, twin0 verified).
+  - **A full run** took 152.3 s of stages, its renders 146.5 s. All 49 renders were ok at −14.093 … −13.990 LUFS, true
+    peak at most −1.456 dBTP, in 1-3 loudness iterations. A one-at-a-time render took 2.01-3.45 s (projection
+    172.5 s) and a repeat 3.01-4.81 s. The repeats equalled their renders 10 of 10. The rebuilt bed sat within
+    0.000000003 LU of −24, its gain and own loudness the manifests' exactly, and the frozen music was twin0's. The
+    bed as heard was 22.64-23.99 LU under the music on the kept loops.
+  - **Its verify failed where a laptop must:** twin0 is not keep3's cluster pcm_sha256 (10 of 10), and the buses'
+    pre-fader loudness differs from keep3's (80 values). Every effective trim and fader equalled keep3's.
+
 ## 8. Claude's defaults here
 
 | default | reason |

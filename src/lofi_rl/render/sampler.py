@@ -5,6 +5,9 @@ Sampler (`mix_hits`):
 - Every DrumHit plays palette.kits[kit].lanes[lane].layers[layer][rr] from sample `on`, scaled by the
   hit's gain and the lane's dB, with a constant-power pan. The compiler has already chosen the velocity
   layer (X hard, x med, g soft, else the nearest non-empty layer) and the round-robin index.
+- A lane's dB is its palette `db` plus the kit's `trim_db` (docs/SHOOTOUTS.md §7.1), added in `kit_shots`, so the
+  trim scales the kit's whole drum stem: the float sum the draft palette wrote into its lanes (CD-51). A trim of 0
+  leaves every `db` as written.
 - A hit with `choke_at` (the open hat, cut by the next closed hat) fades out linearly over 8 ms from that
   sample, which may lie in the next cycle.
 - The loop is periodic, so everything past n folds back onto [0, n): the tails of the last hits play at
@@ -131,7 +134,8 @@ def render_drums(compiled: CompiledLoop, kit: KitShots) -> np.ndarray:
 # --------------------------------------------------------------------------------------------- one-shots
 @dataclass(frozen=True)
 class KitShots:
-    """The mono one-shots of one kit by (lane, layer), each lane's (pan, dB), and each one-shot's identity."""
+    """The mono one-shots of one kit by (lane, layer), each lane's (pan, dB) with the kit's trim_db in the dB, and
+    each one-shot's identity."""
 
     kit: str
     shots: Shots
@@ -288,7 +292,8 @@ def mono(x: np.ndarray) -> np.ndarray:
 def kit_shots(palette: Palette, kit_name: str, *, cache: Path | str | None = None, root: Path = ROOT,
               workers: int = 8) -> KitShots:
     """Every one-shot of a kit, built or loaded once each (in parallel processes; the result never depends
-    on how many)."""
+    on how many). Each lane's dB is its `db` plus the kit's `trim_db` (SHOOTOUTS.md §7.1), the sum taken only
+    when the trim is not 0."""
     kit = palette.kits[kit_name]
     wanted = list(dict.fromkeys(s for lane in LANES for layer in LAYERS for s in kit.lanes[lane].layers[layer]))
     with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
@@ -300,5 +305,9 @@ def kit_shots(palette: Palette, kit_name: str, *, cache: Path | str | None = Non
             layer_shots = kit.lanes[lane].layers[layer]
             shots[(lane, layer)] = tuple(mono(loaded[s][0]) for s in layer_shots)
             pcm[(lane, layer)] = tuple(loaded[s][1] for s in layer_shots)
-    lanes = {lane: (kit.lanes[lane].pan, kit.lanes[lane].db) for lane in LANES}
+    trim = kit.trim_db
+    lanes = {}
+    for lane in LANES:
+        d = kit.lanes[lane]
+        lanes[lane] = (d.pan, d.db + trim if trim else d.db)
     return KitShots(kit_name, shots, lanes, pcm)

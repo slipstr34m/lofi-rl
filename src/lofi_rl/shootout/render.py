@@ -24,7 +24,9 @@ builder stops before writing any batch; an infrastructure fault gets status `err
   format.
 - **Per clip** (section 3, "Recorded per instrument variant ... Per clip"): every bus's trim (a chain-head `Gain`
   for keys, bass and sax; the kit's kick-lane dB for drums, CD-51), fader (`mix.bus_gain_db`), loudness before
-  the fader and after it, the master gain, the final LUFS and true peak, and the lead's MIDI range.
+  the fader and after it, the master gain, the final LUFS and true peak, and the lead's MIDI range. The trim and
+  fader are effective levels: each adds the playing instrument's `trim_db` and `fader_db` (section 7.1, from the
+  render manifest; 0 in every shootout palette, and read as 0 from a manifest written before the fields).
 - **The clip's own level** (CD-52): a clip palette's entry in the generator's index.json beside it carries a
   `level` (the bus its round varies, the level tool's L before the clip's fader, the fader, and the loudness the
   tool measured after it). The record copies it, and the render must play that very bus: its pre-fader loudness
@@ -151,11 +153,20 @@ def _palette(path: str) -> Palette:
     return load_palette(path, verify=False)          # verified once by the parent (verify_palettes)
 
 
-def _trim(pal: Palette, bus: str, kit: str) -> float:
+def _plus(a: float, b: float) -> float:
+    """a + b, or a itself when b is 0, so a record without the fields reads exactly as before them."""
+    return a + b if b else a
+
+
+def _trim(pal: Palette, bus: str, kit: str, field_db: float = 0.0) -> float:
+    """The bus's effective trim: its chain-head Gain slot (the kick lane's dB for the drums, CD-51) plus the playing
+    instrument's trim_db (section 7.1)."""
     if bus == "drums":
-        return float(pal.kits[kit].lanes["kick"].db)
-    chain = pal.mix.buses[bus]
-    return float(chain[0].params.get("gain_db", 0.0)) if chain and chain[0].name == "Gain" else 0.0
+        slot = float(pal.kits[kit].lanes["kick"].db)
+    else:
+        chain = pal.mix.buses[bus]
+        slot = float(chain[0].params.get("gain_db", 0.0)) if chain and chain[0].name == "Gain" else 0.0
+    return _plus(slot, field_db)
 
 
 def _record(rid: str, entry: dict, pal: Palette | None, status: str, error: str | None, r=None,
@@ -174,8 +185,9 @@ def _record(rid: str, entry: dict, pal: Palette | None, status: str, error: str 
     pitches = [n.pitch for n in r.compiled.sax.notes]
     buses = {}
     for b in BUSES:
-        pre, fader = m["buses"][b]["lufs"], m["buses"][b]["gain_db"]
-        buses[b] = {"lufs": pre, "fader_db": fader, "trim_db": _trim(pal, b, r.compiled.kit),
+        got = m["buses"][b]
+        pre, fader = got["lufs"], _plus(got["gain_db"], got.get("fader_db", 0.0))
+        buses[b] = {"lufs": pre, "fader_db": fader, "trim_db": _trim(pal, b, r.compiled.kit, got.get("trim_db", 0.0)),
                     "post_lufs": None if pre is None else pre + fader}
     rec.update({"clip": clip_id(m), "n": m["n"], "sr": m["sr"], "lufs": m["loudness"]["lufs"],
                 "true_peak_dbtp": m["loudness"]["true_peak_dbtp"], "master_gain_db": m["loudness"]["gain_db"],

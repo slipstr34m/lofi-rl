@@ -21,9 +21,16 @@
 #   make submit JOB=jobs/drafts.sbatch ARGS='--drafts drafts/v1'
 #   a redraft of the briefs marked "none acceptable", compared with the drafts they replace:
 #   make submit JOB=jobs/drafts.sbatch ARGS='--drafts drafts/v1/redo1 --briefs d04+d07 --against drafts/v1'
+#   the sign-off render of the kept loops with the frozen palette (lofi_rl.freeze.signoff; docs/DRAFTS.md section 7):
+#   make submit JOB=jobs/drafts.sbatch ARGS='--drafts drafts/v1 --signoff palettes/lofi_rain_v1.yaml'
+#   its stages are check, palettes, render (the kept loops with the palette and with its no-bed twin, 8 at a time; the
+#   other 20 drafts and prompt v2's 9 references one at a time with 4 workers; each kept render again in a fresh
+#   process), verify (summary/verify.json) and build (a triage batch b<MMDD>-signoff[-<k>]); it prints SIGNOFF_OK
+#   before DRAFTS_OK. Its laptop run (Apple M4, 2026-11-03) took 152.3 s of stages, 146.5 s of them renders; at
+#   1.3-2.7 x on main (below) that is about 3-7 min of renders plus start-up, within the 15 min below.
 # Results: $REMOTE_SCR/runs/drafts-<job>/summary/ (args.json, check.json, palettes/, renders.json, draw.json,
-# batch.json, stages.json) and $REMOTE_SCR/inbox/<date>/b<MMDD>-keep3[-redo<k>]/; make pull brings back both, never the
-# renders.
+# batch.json, stages.json; the sign-off mode adds verify.json) and $REMOTE_SCR/inbox/<date>/b<MMDD>-keep3[-redo<k>]/
+# (in the sign-off mode, b<MMDD>-signoff[-<k>]/); make pull brings back both, never the renders.
 # Walltime: the laptop dry run (Apple M4, 6 fixture drafts with the real draft palette and banks, --jobs 8,
 # 2026-11-01) took 8.9 s for every stage, a render 4.8-7.7 s; the Day-2 shootout job rendered 93 clips in 162 s of
 # stages on main (13651610). The cluster renders 1.3-2.7 x slower (SHOOTOUTS.md 7.7), so 30 renders, 8 at a time, take

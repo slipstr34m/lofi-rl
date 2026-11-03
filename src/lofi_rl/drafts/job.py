@@ -10,6 +10,13 @@ with the ARGS `make submit JOB=jobs/drafts.sbatch ARGS='...'` passes (no spaces,
 and optionally `--date YYYY-MM-DD` (the inbox's date folder; default today, Pacific) and `--name <batch>` (default
 `b<MMDD>-keep3`, or for a redraft the first free of `b<MMDD>-keep3-redo`, `-redo2`, ...).
 
+    --drafts drafts/v1 --signoff palettes/lofi_rain_v1.yaml          # the sign-off render of the kept loops
+
+is the sign-off mode (docs/DRAFTS.md §7): the kept loops with the frozen palette, checked against what keep3 rendered
+(drafts/v1/keep3_kept10.json), then one triage batch for Shresth's sign-off listen. This module only parses it and
+hands the run to lofi_rl.freeze.signoff, whose docstring has its stages; `--runs-root` (where earlier jobs' run folders
+are, for its cross-checks) belongs to that mode alone, and `--briefs`, `--against` and `--palette` do not.
+
 Stages, in order; each one's exit code and wall time go into summary/stages.json and the log, and the first that fails
 ends the job, so nothing reaches the inbox unless every draft passed every check and rendered in spec:
 1. `check`: the validator (lofi_rl.drafts.check) over the briefs in scope, `--against` folders included in its
@@ -58,9 +65,13 @@ def _args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--inbox", required=True, type=Path, help="the inbox root the batch goes into")
     p.add_argument("--briefs", default=None, help="a redraft: the briefs to render, joined by +")
     p.add_argument("--against", type=Path, action="append", default=[], help="earlier drafts the check compares with")
-    p.add_argument("--palette", type=Path, default=DRAFT_PALETTE)
+    p.add_argument("--palette", type=Path, default=None, help=f"the draft palette (default {_label(DRAFT_PALETTE)})")
+    p.add_argument("--signoff", type=Path, default=None, metavar="PALETTE",
+                   help="the sign-off render of the kept loops with this frozen palette (lofi_rl.freeze.signoff)")
+    p.add_argument("--runs-root", type=Path, default=None,
+                   help="--signoff only: the folder of earlier jobs' runs, read for cross-checks (default: --run's parent)")
     p.add_argument("--date", default=None, help="the inbox date folder, YYYY-MM-DD (default: today, Pacific)")
-    p.add_argument("--name", default=None, help="the batch name (default b<MMDD>-keep3[-redo<k>])")
+    p.add_argument("--name", default=None, help="the batch name (default b<MMDD>-keep3[-redo<k>], b<MMDD>-signoff[-<k>])")
     p.add_argument("--jobs", type=int, default=8, help="renders at a time (one per CPU)")
     p.add_argument("--cache", type=Path, default=None, help="the one-shot cache (default $LOFI_CACHE)")
     p.add_argument("--seed", default=None, help="tests only: the batch draw's seed, 16 hex digits")
@@ -136,9 +147,19 @@ def main(argv: list[str] | None = None, *, renderer=None) -> int:
         a = _args(argv)
     except SystemExit as err:
         return int(err.code or 0)
+    if a.signoff is not None:
+        if a.briefs is not None or a.against or a.palette is not None:
+            print("error: --signoff renders every kept loop with its own palette: it takes no --briefs, --against or "
+                  "--palette", file=sys.stderr)
+            return 2
+        from lofi_rl.freeze import signoff
+        return signoff.run(a, list(argv if argv is not None else sys.argv[1:]), renderer=renderer)
+    if a.runs_root is not None:
+        print("error: --runs-root belongs to --signoff", file=sys.stderr)
+        return 2
     drafts = _repo_path(a.drafts)
     against = [_repo_path(x) for x in a.against]
-    palette_path = _repo_path(a.palette)
+    palette_path = _repo_path(a.palette or DRAFT_PALETTE)
     try:
         if a.jobs < 1:
             raise JobError("--jobs must be at least 1")

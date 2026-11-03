@@ -1,0 +1,628 @@
+{
+ "draft_palette": {
+  "path": "palettes/draft_day2.yaml",
+  "sha256": "58aeb9243309594cd422a641a56decfb1682aff4c06a6c34c6eb9c75016d23a5"
+ },
+ "keep3": {
+  "job": 13656049,
+  "path": "runs/drafts-13656049/summary/renders.json",
+  "sha256": "94ee7e1ec732173e25aded99966f1177bd91df35a47cdec8c0271875e9d8163d"
+ },
+ "kept": [
+  "drafts/v1/d01_chords.ls",
+  "drafts/v1/d02_chords.ls",
+  "drafts/v1/d03_chords.ls",
+  "drafts/v1/d04_horn.ls",
+  "drafts/v1/d05_groove.ls",
+  "drafts/v1/d06_horn.ls",
+  "drafts/v1/d07_chords.ls",
+  "drafts/v1/d08_horn.ls",
+  "drafts/v1/d09_chords.ls",
+  "drafts/v1/d10_groove.ls"
+ ],
+ "loops": {
+  "d01_chords": {
+   "bpm": 81,
+   "brief": {
+    "bpm": 81,
+    "energy": "low",
+    "mood": "melancholy",
+    "tonic": 3
+   },
+   "brief_id": "d01",
+   "buses": {
+    "bass": {
+     "fader_db": 5.09,
+     "lu": -4.337337900626764,
+     "lufs": -41.35198892939618,
+     "off_lu": -1.337337900626764,
+     "post_lufs": -36.26198892939618,
+     "target_lu": -3.0,
+     "trim_db": 34.97
+    },
+    "drums": {
+     "fader_db": 15.26,
+     "lu": -7.941208534541111,
+     "lufs": -55.12585956331053,
+     "off_lu": -6.441208534541111,
+     "post_lufs": -39.86585956331053,
+     "target_lu": -1.5,
+     "trim_db": -14.94
+    },
+    "keys": {
+     "fader_db": -6.435,
+     "lu": -8.46600095187707,
+     "lufs": -33.955651980646486,
+     "off_lu": -2.4660009518770707,
+     "post_lufs": -40.39065198064649,
+     "target_lu": -6.0,
+     "trim_db": -3.22
+    },
+    "sax": {
+     "fader_db": 2.55,
+     "lu": 0.20643969056650846,
+     "lufs": -34.26821133820291,
+     "off_lu": 0.20643969056650846,
+     "post_lufs": -31.71821133820291,
+     "target_lu": 0.0,
+     "trim_db": 6.63
+    }
+   },
+   "draft_sha256": "ff3c1f592f8446de4ba8309d39c683466b6de93eac4a04db0990aaa39bb2422d",
+   "file": "drafts/v1/d01_chords.ls",
+   "keys": "wurli",
+   "kit": "studio",
+   "lufs": -14.025941381459385,
+   "master_gain_db": 17.18490986867469,
+   "music_sha256": "db5bcff4d47c448bbb7fdfca7eec5c0018b42f09d2f01e21c7ccfb3525c126c0",
+   "n": 1045312,
+   "palette": "draft_day2_wurli_studio@05cccb55",
+   "pcm_sha256": "db5bcff4d47c448bbb7fdfca7eec5c0018b42f09d2f01e21c7ccfb3525c126c0",
+   "persona": "chords",
+   "true_peak_dbtp": -1.4912764318723013
+  },
+  "d02_chords": {
+   "bpm": 85,
+   "brief": {
+    "bpm": 85,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 10
+   },
+   "brief_id": "d02",
+   "buses": {
+    "bass": {
+     "fader_db": 5.13,
+     "lu": -3.8384959262005367,
+     "lufs": -40.89314695496996,
+     "off_lu": -0.8384959262005367,
+     "post_lufs": -35.763146954969955,
+     "target_lu": -3.0,
+     "trim_db": -2.79
+    },
+    "drums": {
+     "fader_db": 15.21,
+     "lu": -5.54297238092412,
+     "lufs": -52.67762340969354,
+     "off_lu": -4.04297238092412,
+     "post_lufs": -37.46762340969354,
+     "target_lu": -1.5,
+     "trim_db": 0.0
+    },
+    "keys": {
+     "fader_db": -5.94,
+     "lu": -7.411947937250929,
+     "lufs": -33.39659896602035,
+     "off_lu": -1.411947937250929,
+     "post_lufs": -39.33659896602035,
+     "target_lu": -6.0,
+     "trim_db": 0.0
+    },
+    "sax": {
+     "fader_db": 2.55,
+     "lu": 0.6328272605770842,
+     "lufs": -33.841823768192334,
+     "off_lu": 0.6328272605770842,
+     "post_lufs": -31.291823768192334,
+     "target_lu": 0.0,
+     "trim_db": 6.63
+    }
+   },
+   "draft_sha256": "63b3cc4ea380dcfbcc416ffa989735c77ee777903533be26b572bce603991351",
+   "file": "drafts/v1/d02_chords.ls",
+   "keys": "rhodes",
+   "kit": "jazz",
+   "lufs": -14.016650395263815,
+   "master_gain_db": 16.141096561146412,
+   "music_sha256": "360653028966a3bded6dcdf0f31b91dabf018d43fc61b4d86c173fec644f8c2c",
+   "n": 996160,
+   "palette": "draft_day2_rhodes_jazz@e63a9057",
+   "pcm_sha256": "360653028966a3bded6dcdf0f31b91dabf018d43fc61b4d86c173fec644f8c2c",
+   "persona": "chords",
+   "true_peak_dbtp": -1.494472645109297
+  },
+  "d03_chords": {
+   "bpm": 71,
+   "brief": {
+    "bpm": 71,
+    "energy": "low",
+    "mood": "hopeful",
+    "tonic": 1
+   },
+   "brief_id": "d03",
+   "buses": {
+    "bass": {
+     "fader_db": 5.13,
+     "lu": -4.093550608994391,
+     "lufs": -41.14820163776381,
+     "off_lu": -1.0935506089943914,
+     "post_lufs": -36.01820163776381,
+     "target_lu": -3.0,
+     "trim_db": -2.79
+    },
+    "drums": {
+     "fader_db": 15.21,
+     "lu": -2.8181745702207124,
+     "lufs": -49.95282559899013,
+     "off_lu": -1.3181745702207124,
+     "post_lufs": -34.74282559899013,
+     "target_lu": -1.5,
+     "trim_db": 0.0
+    },
+    "keys": {
+     "fader_db": -6.435,
+     "lu": -8.421665633795627,
+     "lufs": -33.91131666256504,
+     "off_lu": -2.4216656337956266,
+     "post_lufs": -40.346316662565044,
+     "target_lu": -6.0,
+     "trim_db": -3.22
+    },
+    "sax": {
+     "fader_db": 2.55,
+     "lu": 0.4823385718093398,
+     "lufs": -33.99231245696008,
+     "off_lu": 0.4823385718093398,
+     "post_lufs": -31.442312456960078,
+     "target_lu": 0.0,
+     "trim_db": 6.63
+    }
+   },
+   "draft_sha256": "034ae93a56e1fa55fd7dd88b1e319f1d5cb8fd84be168d35a09320d6f6723fe6",
+   "file": "drafts/v1/d03_chords.ls",
+   "keys": "wurli",
+   "kit": "jazz",
+   "lufs": -14.056581540950196,
+   "master_gain_db": 16.23359043256174,
+   "music_sha256": "b2ec89491097399b5cd1bb93258fc5c2b3bb5fc6111d9bacfd128e3217e3dd13",
+   "n": 1192576,
+   "palette": "draft_day2_wurli_jazz@94e4e5d4",
+   "pcm_sha256": "b2ec89491097399b5cd1bb93258fc5c2b3bb5fc6111d9bacfd128e3217e3dd13",
+   "persona": "chords",
+   "true_peak_dbtp": -1.494472645109297
+  },
+  "d04_horn": {
+   "bpm": 89,
+   "brief": {
+    "bpm": 89,
+    "energy": "mid",
+    "mood": "melancholy",
+    "tonic": 11
+   },
+   "brief_id": "d04",
+   "buses": {
+    "bass": {
+     "fader_db": 5.13,
+     "lu": -2.193714059077074,
+     "lufs": -39.248365087846494,
+     "off_lu": 0.8062859409229262,
+     "post_lufs": -34.11836508784649,
+     "target_lu": -3.0,
+     "trim_db": -2.79
+    },
+    "drums": {
+     "fader_db": 15.21,
+     "lu": 0.04341462404304508,
+     "lufs": -47.091236404726374,
+     "off_lu": 1.543414624043045,
+     "post_lufs": -31.881236404726373,
+     "target_lu": -1.5,
+     "trim_db": 0.0
+    },
+    "keys": {
+     "fader_db": -6.435,
+     "lu": -7.0275888640038815,
+     "lufs": -32.5172398927733,
+     "off_lu": -1.0275888640038815,
+     "post_lufs": -38.9522398927733,
+     "target_lu": -6.0,
+     "trim_db": -3.22
+    },
+    "sax": {
+     "fader_db": 2.55,
+     "lu": -0.426728558300951,
+     "lufs": -34.901379587070366,
+     "off_lu": -0.426728558300951,
+     "post_lufs": -32.35137958707037,
+     "target_lu": 0.0,
+     "trim_db": 6.63
+    }
+   },
+   "draft_sha256": "6bb07c6e8968edc9309d62a06cbb1329eb47b461c959e3aa9462b21950cd0681",
+   "file": "drafts/v1/d04_horn.ls",
+   "keys": "wurli",
+   "kit": "jazz",
+   "lufs": -14.01256259542063,
+   "master_gain_db": 16.156007351019593,
+   "music_sha256": "65b5d9863a4dd7d97b5d7d8fc75ac22eab052e6b50a3308e8d1313c31609ba75",
+   "n": 951360,
+   "palette": "draft_day2_wurli_jazz@94e4e5d4",
+   "pcm_sha256": "65b5d9863a4dd7d97b5d7d8fc75ac22eab052e6b50a3308e8d1313c31609ba75",
+   "persona": "horn",
+   "true_peak_dbtp": -1.4940567652343146
+  },
+  "d05_groove": {
+   "bpm": 82,
+   "brief": {
+    "bpm": 82,
+    "energy": "mid",
+    "mood": "wistful",
+    "tonic": 9
+   },
+   "brief_id": "d05",
+   "buses": {
+    "bass": {
+     "fader_db": 5.13,
+     "lu": -2.8653247462581675,
+     "lufs": -39.91997577502759,
+     "off_lu": 0.13467525374183253,
+     "post_lufs": -34.789975775027585,
+     "target_lu": -3.0,
+     "trim_db": -2.79
+    },
+    "drums": {
+     "fader_db": 15.21,
+     "lu": 1.6371471594221134,
+     "lufs": -45.497503869347305,
+     "off_lu": 3.1371471594221134,
+     "post_lufs": -30.287503869347304,
+     "target_lu": -1.5,
+     "trim_db": 0.0
+    },
+    "keys": {
+     "fader_db": -6.06,
+     "lu": -7.739283779090421,
+     "lufs": -33.60393480785984,
+     "off_lu": -1.739283779090421,
+     "post_lufs": -39.66393480785984,
+     "target_lu": -6.0,
+     "trim_db": 21.86
+    },
+    "sax": {
+     "fader_db": 2.55,
+     "lu": -0.4562438275269898,
+     "lufs": -34.930894856296405,
+     "off_lu": -0.4562438275269898,
+     "post_lufs": -32.38089485629641,
+     "target_lu": 0.0,
+     "trim_db": 6.63
+    }
+   },
+   "draft_sha256": "e5f3af716beecd9984e1c73c2fd66cbc7013646ff13fbe7cbcbde2bad0335c55",
+   "file": "drafts/v1/d05_groove.ls",
+   "keys": "piano",
+   "kit": "jazz",
+   "lufs": -14.011206731317174,
+   "master_gain_db": 16.423726755795848,
+   "music_sha256": "89d9c0be4cf15b1f108823efc19830a0773b81d6234c285137905636e374c485",
+   "n": 1032576,
+   "palette": "draft_day2_piano_jazz@173ba173",
+   "pcm_sha256": "89d9c0be4cf15b1f108823efc19830a0773b81d6234c285137905636e374c485",
+   "persona": "groove",
+   "true_peak_dbtp": -1.4920158734612985
+  },
+  "d06_horn": {
+   "bpm": 90,
+   "brief": {
+    "bpm": 90,
+    "energy": "mid",
+    "mood": "hopeful",
+    "tonic": 4
+   },
+   "brief_id": "d06",
+   "buses": {
+    "bass": {
+     "fader_db": 5.13,
+     "lu": -2.6603716852594417,
+     "lufs": -39.71502271402886,
+     "off_lu": 0.3396283147405583,
+     "post_lufs": -34.58502271402886,
+     "target_lu": -3.0,
+     "trim_db": -2.79
+    },
+    "drums": {
+     "fader_db": 15.21,
+     "lu": -2.04530758795169,
+     "lufs": -49.17995861672111,
+     "off_lu": -0.5453075879516902,
+     "post_lufs": -33.96995861672111,
+     "target_lu": -1.5,
+     "trim_db": 0.0
+    },
+    "keys": {
+     "fader_db": -6.06,
+     "lu": -4.968616015217691,
+     "lufs": -30.833267043987107,
+     "off_lu": 1.031383984782309,
+     "post_lufs": -36.89326704398711,
+     "target_lu": -6.0,
+     "trim_db": 21.86
+    },
+    "sax": {
+     "fader_db": 2.55,
+     "lu": 1.0387763837677433,
+     "lufs": -33.435874645001675,
+     "off_lu": 1.0387763837677433,
+     "post_lufs": -30.885874645001675,
+     "target_lu": 0.0,
+     "trim_db": 6.63
+    }
+   },
+   "draft_sha256": "02f762dbb1547977b39d4d3dd353c5873516b66a05b3362c842312d99c83a227",
+   "file": "drafts/v1/d06_horn.ls",
+   "keys": "piano",
+   "kit": "jazz",
+   "lufs": -14.093309022583226,
+   "master_gain_db": 15.514899523617357,
+   "music_sha256": "9be3c09ceb78aa855bc7b6431702b771c6796230747ecc06263882c48f45c4d8",
+   "n": 940800,
+   "palette": "draft_day2_piano_jazz@173ba173",
+   "pcm_sha256": "9be3c09ceb78aa855bc7b6431702b771c6796230747ecc06263882c48f45c4d8",
+   "persona": "horn",
+   "true_peak_dbtp": -1.490823324199098
+  },
+  "d07_chords": {
+   "bpm": 86,
+   "brief": {
+    "bpm": 86,
+    "energy": "high",
+    "mood": "melancholy",
+    "tonic": 8
+   },
+   "brief_id": "d07",
+   "buses": {
+    "bass": {
+     "fader_db": 5.13,
+     "lu": -1.775619761465272,
+     "lufs": -38.83027079023469,
+     "off_lu": 1.224380238534728,
+     "post_lufs": -33.70027079023469,
+     "target_lu": -3.0,
+     "trim_db": -2.79
+    },
+    "drums": {
+     "fader_db": 15.21,
+     "lu": 2.745161411927569,
+     "lufs": -44.38948961684185,
+     "off_lu": 4.245161411927569,
+     "post_lufs": -29.17948961684185,
+     "target_lu": -1.5,
+     "trim_db": 0.0
+    },
+    "keys": {
+     "fader_db": -5.94,
+     "lu": -6.480550665079669,
+     "lufs": -32.46520169384909,
+     "off_lu": -0.4805506650796687,
+     "post_lufs": -38.40520169384909,
+     "target_lu": -6.0,
+     "trim_db": 0.0
+    },
+    "sax": {
+     "fader_db": 2.55,
+     "lu": -0.3036362261836345,
+     "lufs": -34.77828725495305,
+     "off_lu": -0.3036362261836345,
+     "post_lufs": -32.22828725495305,
+     "target_lu": 0.0,
+     "trim_db": 6.63
+    }
+   },
+   "draft_sha256": "b10a3bfa7e1462c34e814aa829f6643ef381057c5a54c095457f5f9478a769f0",
+   "file": "drafts/v1/d07_chords.ls",
+   "keys": "rhodes",
+   "kit": "jazz",
+   "lufs": -14.018766686788025,
+   "master_gain_db": 15.11398110036318,
+   "music_sha256": "d12c0c57e4eee1b2b639616885f07ea0e423afb4a1e764abdb699d448100162f",
+   "n": 984576,
+   "palette": "draft_day2_rhodes_jazz@e63a9057",
+   "pcm_sha256": "d12c0c57e4eee1b2b639616885f07ea0e423afb4a1e764abdb699d448100162f",
+   "persona": "chords",
+   "true_peak_dbtp": -1.491603342725777
+  },
+  "d08_horn": {
+   "bpm": 77,
+   "brief": {
+    "bpm": 77,
+    "energy": "high",
+    "mood": "wistful",
+    "tonic": 2
+   },
+   "brief_id": "d08",
+   "buses": {
+    "bass": {
+     "fader_db": 5.13,
+     "lu": -2.7214983302566367,
+     "lufs": -39.77614935902606,
+     "off_lu": 0.2785016697433633,
+     "post_lufs": -34.646149359026055,
+     "target_lu": -3.0,
+     "trim_db": -2.79
+    },
+    "drums": {
+     "fader_db": 15.21,
+     "lu": 2.618807081754781,
+     "lufs": -44.51584394701464,
+     "off_lu": 4.118807081754781,
+     "post_lufs": -29.305843947014637,
+     "target_lu": -1.5,
+     "trim_db": 0.0
+    },
+    "keys": {
+     "fader_db": -6.06,
+     "lu": -5.7948733468786315,
+     "lufs": -31.65952437564805,
+     "off_lu": 0.20512665312136846,
+     "post_lufs": -37.71952437564805,
+     "target_lu": -6.0,
+     "trim_db": 21.86
+    },
+    "sax": {
+     "fader_db": 2.55,
+     "lu": 0.09481183652401981,
+     "lufs": -34.3798391922454,
+     "off_lu": 0.09481183652401981,
+     "post_lufs": -31.829839192245398,
+     "target_lu": 0.0,
+     "trim_db": 6.63
+    }
+   },
+   "draft_sha256": "d65489d0458f34d0cf55a2dc8383f2563c7edd9cc03a6fb2141b90cea3a3e8b4",
+   "file": "drafts/v1/d08_horn.ls",
+   "keys": "piano",
+   "kit": "jazz",
+   "lufs": -14.015071268923228,
+   "master_gain_db": 15.919168210415055,
+   "music_sha256": "bcbbc26e608ff68d77446f0c644933307ce44997c48e87cdafedef4547215dd0",
+   "n": 1099648,
+   "palette": "draft_day2_piano_jazz@173ba173",
+   "pcm_sha256": "bcbbc26e608ff68d77446f0c644933307ce44997c48e87cdafedef4547215dd0",
+   "persona": "horn",
+   "true_peak_dbtp": -1.492969830584758
+  },
+  "d09_chords": {
+   "bpm": 76,
+   "brief": {
+    "bpm": 76,
+    "energy": "high",
+    "mood": "hopeful",
+    "tonic": 6
+   },
+   "brief_id": "d09",
+   "buses": {
+    "bass": {
+     "fader_db": 5.13,
+     "lu": -2.565348482584838,
+     "lufs": -39.61999951135426,
+     "off_lu": 0.43465151741516195,
+     "post_lufs": -34.489999511354256,
+     "target_lu": -3.0,
+     "trim_db": -2.79
+    },
+    "drums": {
+     "fader_db": 15.21,
+     "lu": 2.890486168628655,
+     "lufs": -44.24416486014076,
+     "off_lu": 4.390486168628655,
+     "post_lufs": -29.034164860140763,
+     "target_lu": -1.5,
+     "trim_db": 0.0
+    },
+    "keys": {
+     "fader_db": -6.06,
+     "lu": -4.513780081952532,
+     "lufs": -30.378431110721948,
+     "off_lu": 1.4862199180474676,
+     "post_lufs": -36.43843111072195,
+     "target_lu": -6.0,
+     "trim_db": 21.86
+    },
+    "sax": {
+     "fader_db": 2.55,
+     "lu": 0.17858935824022026,
+     "lufs": -34.2960616705292,
+     "off_lu": 0.17858935824022026,
+     "post_lufs": -31.746061670529198,
+     "target_lu": 0.0,
+     "trim_db": 6.63
+    }
+   },
+   "draft_sha256": "47aa030864d5409983604939a56b17b6620e961fce2c1f2cb94f7ef81114c845",
+   "file": "drafts/v1/d09_chords.ls",
+   "keys": "piano",
+   "kit": "jazz",
+   "lufs": -14.038341843172466,
+   "master_gain_db": 14.928806134621013,
+   "music_sha256": "bbab1aa443d2a6ffc76dc9f2e5501cf32e68622b4d0bcbd7a9c8634e53a193bf",
+   "n": 1114112,
+   "palette": "draft_day2_piano_jazz@173ba173",
+   "pcm_sha256": "bbab1aa443d2a6ffc76dc9f2e5501cf32e68622b4d0bcbd7a9c8634e53a193bf",
+   "persona": "chords",
+   "true_peak_dbtp": -1.4558654669931814
+  },
+  "d10_groove": {
+   "bpm": 66,
+   "brief": {
+    "bpm": 66,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 0
+   },
+   "brief_id": "d10",
+   "buses": {
+    "bass": {
+     "fader_db": 5.09,
+     "lu": -4.607133612491111,
+     "lufs": -41.62178464126053,
+     "off_lu": -1.6071336124911113,
+     "post_lufs": -36.53178464126053,
+     "target_lu": -3.0,
+     "trim_db": 34.97
+    },
+    "drums": {
+     "fader_db": 15.26,
+     "lu": -2.2094976244480833,
+     "lufs": -49.3941486532175,
+     "off_lu": -0.7094976244480833,
+     "post_lufs": -34.1341486532175,
+     "target_lu": -1.5,
+     "trim_db": -14.94
+    },
+    "keys": {
+     "fader_db": -5.94,
+     "lu": -7.963170150853962,
+     "lufs": -33.94782117962338,
+     "off_lu": -1.963170150853962,
+     "post_lufs": -39.88782117962338,
+     "target_lu": -6.0,
+     "trim_db": 0.0
+    },
+    "sax": {
+     "fader_db": 2.55,
+     "lu": -0.22563678917710206,
+     "lufs": -34.70028781794652,
+     "off_lu": -0.22563678917710206,
+     "post_lufs": -32.15028781794652,
+     "target_lu": 0.0,
+     "trim_db": 6.63
+    }
+   },
+   "draft_sha256": "e8faf468e242e04ad1e0b89ba7b8f103fcf098cbf733bcf9eca6c72a6ead9a81",
+   "file": "drafts/v1/d10_groove.ls",
+   "keys": "rhodes",
+   "kit": "studio",
+   "lufs": -14.060780918827609,
+   "master_gain_db": 17.84981603667908,
+   "music_sha256": "210660c902af45b29eeca0cbbe60970659b96d9963667c95aab78b296847c544",
+   "n": 1282880,
+   "palette": "draft_day2_rhodes_studio@5982ad1b",
+   "pcm_sha256": "210660c902af45b29eeca0cbbe60970659b96d9963667c95aab78b296847c544",
+   "persona": "groove",
+   "true_peak_dbtp": -1.494472645109297
+  }
+ },
+ "s_star": -31.924651028769418,
+ "schema": "lofi-rl/keep3-kept10/1",
+ "tool": "python -m lofi_rl.freeze.checks expect"
+}

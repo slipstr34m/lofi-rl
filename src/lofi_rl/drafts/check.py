@@ -244,8 +244,11 @@ class Report:
 
 
 def check_folder(folder: Path | str, *, scope: list[str] | None = None, against: list[Path] = (),
-                 palette_path: Path | str = DRAFT_PALETTE, loops_dir: Path = SHOOTOUT_LOOPS) -> Report:
-    """Every check over a drafts folder. Raises BriefsError or DraftPaletteError for bad inputs."""
+                 palette_path: Path | str = DRAFT_PALETTE, loops_dir: Path = SHOOTOUT_LOOPS,
+                 palette: Palette | None = None) -> Report:
+    """Every check over a drafts folder. `palette`, when given, is the palette the drafts are checked against instead
+    of the draft palette at `palette_path` (the frozen palette before the sign-off, which has no `#| ` levels block:
+    docs/DRAFTS.md §7). Raises BriefsError or DraftPaletteError for bad inputs."""
     folder = Path(folder)
     if not folder.is_dir():
         raise B.BriefsError(f"{folder} is not a folder")
@@ -254,8 +257,7 @@ def check_folder(folder: Path | str, *, scope: list[str] | None = None, against:
     unknown = [s for s in scope if s not in briefs]
     if unknown:
         raise B.BriefsError(f"--briefs {unknown} are not in the briefs file")
-    dp = load(palette_path)
-    pal = dp.palette
+    pal = palette if palette is not None else load(palette_path).palette
     every = read_drafts(folder, briefs)
     for d in every:
         check_one(d, pal)

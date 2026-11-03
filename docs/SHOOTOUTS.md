@@ -118,7 +118,10 @@ hidden control (R: "You are never told which rounds those are") [CD-21].
      shows again, and where each sits.
 - **Recorded only** in `runs/shootout-<job>/summary/draw.json` and `batches.json` (on the cluster, and in the
   laptop's gitignored `runs/` after `make pull`; CLAUDE.md §7) and in the hidden manifests.
-- **Published after the freeze:** Claude copies the drawn tables into `gates/GATE_palette.md` with the tallies.
+- **Published after the freeze:** Claude copies the drawn tables' design rounds into `gates/GATE_palette.md`
+  with the tallies (`python -m lofi_rl.freeze.tables`). The hidden-check rounds (repeats and anchors) stay in the
+  private audit folder (`data/votes/audit/`), because Phase 2 and the final A/B reuse the same checks and the rater
+  is never told which rounds those are (RATING.md). This is Claude's default from the freeze review, 2026-11-03.
 - **Tests** (§7.6, §7.8): `plan.yaml` holds only symbols in its tiles; two seeds give different option-to-tile maps;
   one seed always gives the same batches; every draw meets its stage's constraints.
 
@@ -1702,7 +1705,8 @@ few to flag a single shootout. Position-of-best counts are pooled by clip count 
 - `gates/GATE_palette.md`, per shootout: the survivors, a table of `shown`, `heard`, `best`, `worst`, `net` and BW
   per option, the escape-hatch counts, the pooled repeat agreement, flagged rounds (§3), the audit files the numbers
   come from, and Shresth's confirmation in his words with the date. The `APPROVED by Shresth Rana <yyyy-mm-dd>` line
-  comes on Nov 6, after the kept 10; the drawn round tables follow it.
+  comes on Nov 6, after the kept 10; the drawn round tables (design rounds only; the hidden-check rounds stay
+  private, above) follow it.
 - CHANGELOG: the same numbers with their file paths, and the SU of each `lofi-shootout` run (`sacct`).
 
 ## 9. Departures from the source docs

@@ -6,9 +6,11 @@ Stages, each a pure function of its inputs:
 2. pitched stems: one fresh FluidSynth 2.6.1 process per stem (keys, bass, sax) on a MIDI file of
    PREROLL + cycles cycles. The pre-roll cycle is dropped, so every kept cycle starts with the previous
    cycle's tails, from voices that have already played the loop once (docs/COMPILER.md §4.3 caveat);
-3. drums: the one-shot sampler's periodic cycle, tiled;
+3. drums: the one-shot sampler's periodic cycle, tiled, every lane at its dB plus the kit's trim_db;
 4. bus chains, faders and the master chain over the kept cycles; the last cycle is the loop ("two
-   cycles, keep the second", §0 amendment 3);
+   cycles, keep the second", §0 amendment 3). Each bus plays its instrument's levels (Palette.bus_levels,
+   docs/SHOOTOUTS.md §7.1): a sax, keys or bass trim_db is a Gain at the head of its chain, and the gain after
+   the chain is bus_gain_db + fader_db;
 5. the bed at LUFS_music - Δ, the music measured after the master chain and before the limiter;
 6. loudness: gain into the true-peak limiter on the 3x tile, -14 LUFS within 0.1 LU in at most 4 iterations
    (render/loudness.py), true peak checked on the loop as it repeats;
@@ -43,7 +45,7 @@ from .bed import bed_loop, place, samples
 from .formats import write_flac, write_wav
 from .loudness import CEILING_DBTP, LoudnessError, limit_loop, lufs, normalize_loop
 from .machine import platform_info
-from .mix import BUFFER, BUSES, mix_buses
+from .mix import BUFFER, BUSES, TRIM_BUSES, mix_buses
 from .sampler import kit_shots, render_drums
 from .wavio import pcm_sha256, read_float
 
@@ -111,8 +113,8 @@ class Music:
 
     cycles: np.ndarray                  # (2, cycles n) float32
     n: int
-    bus_lufs: dict[str, float | None]   # each bus in the last cycle, after its chain, before its fader
-    stems: dict[str, str]               # pcm_sha256 of each bus input's last cycle
+    bus_lufs: dict[str, float | None]   # each bus in the last cycle, after its trim and chain, before its fader
+    stems: dict[str, str]               # pcm_sha256 of each bus input's last cycle (drums: with the kit's trim)
     oneshots: dict[str, list[str]]      # "lane/layer" -> pcm_sha256 of each one-shot
 
     @property
@@ -127,14 +129,19 @@ def _lufs_or_none(x: np.ndarray) -> float | None:
 
 def music_cycles(compiled: CompiledLoop, palette: Palette, cycles: int = CYCLES, *,
                  cache: Path | str | None = None, root: Path = ROOT, workers: int = 4) -> Music:
-    """Stages 2-4: FluidSynth stems, the drum sampler, bus chains and the master chain, over `cycles` cycles."""
+    """Stages 2-4: FluidSynth stems, the drum sampler, bus chains and the master chain, over `cycles` cycles. The
+    pitched stems go into the mix untrimmed, with each instrument's trim_db and fader_db passed to mix_buses; the
+    kit's trim is in its lanes (kit_shots)."""
     if cycles < 1:
         raise ValueError("cycles must be at least 1")
     n = compiled.n
+    levels = palette.bus_levels(compiled.keys_name, compiled.kit, compiled.sax_name)
     stems = fluid_stems(compiled, palette, cycles, root=root, workers=min(workers, 3))
     kit = kit_shots(palette, compiled.kit, cache=cache, root=root, workers=workers)
     stems["drums"] = np.tile(render_drums(compiled, kit), (1, cycles))
-    out = mix_buses(stems, palette.mix, SR, workers=workers)
+    out = mix_buses(stems, palette.mix, SR, workers=workers,
+                    trims={b: levels[b].trim_db for b in TRIM_BUSES},
+                    faders={b: levels[b].fader_db for b in BUSES})
     return Music(
         cycles=out.music, n=n,
         bus_lufs={b: _lufs_or_none(out.buses[b][:, -n:]) for b in BUSES},
@@ -230,6 +237,7 @@ def render(loop: str | Loop, brief: Brief, palette: Palette, *, cycles: int = CY
     else:
         ast, repairs, parse_gate = loop, [], "not run: AST given"
     compiled = compile_loop(ast, brief, palette)
+    levels = palette.bus_levels(compiled.keys_name, compiled.kit, compiled.sax_name)
     music = music_cycles(compiled, palette, cycles, cache=cache, root=root, workers=workers)
     done = finish(music.last, palette, root=root)
     all_repairs = repairs + list(compiled.repairs)
@@ -248,7 +256,11 @@ def render(loop: str | Loop, brief: Brief, palette: Palette, *, cycles: int = CY
                         "sax_warm": palette.mix.sax_warm},
         "stems": music.stems,
         "oneshots": music.oneshots,
-        "buses": {b: {"lufs": music.bus_lufs[b], "gain_db": palette.mix.bus_gain_db[b]} for b in BUSES},
+        # gain_db is mix.bus_gain_db; instrument, trim_db and fader_db are the playing instrument's (SHOOTOUTS.md
+        # §7.1). The gain after the bus's chain is gain_db + fader_db. Additive keys: the schema stays render/1.
+        "buses": {b: {"lufs": music.bus_lufs[b], "gain_db": palette.mix.bus_gain_db[b],
+                      "instrument": levels[b].instrument, "trim_db": levels[b].trim_db,
+                      "fader_db": levels[b].fader_db} for b in BUSES},
         **done.report,
         "gates": {"G1-G6": parse_gate, "G7": "pass"},
         "audio_sha256": pcm_sha256(done.audio),

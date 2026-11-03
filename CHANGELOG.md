@@ -18,7 +18,50 @@ Newest entry first. Every number cites the file or command output it was read fr
     - the scorer server (smoke 13651611, `SCORER_SMOKE_OK`);
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
-- **Waiting on Shresth:** nothing now. Next, Claude assembles `palettes/lofi_rain_v1.yaml` for his sign-off (the freeze, D-017).
+- **Waiting on Shresth:** nothing now. The frozen palette is built (`frozen: null`); his sign-off listen comes after job B.
+
+---
+
+## 2026-11-03 (15:17 PST): the frozen palette `lofi_rain_v1` built, reviewed and fixed; the sign-off renders are next
+
+**What was done**
+- **Shresth's one answer the build needed (Q1).** On the kept 10, the keys sit 1.22 LU under their target (wurli −2.42, rhodes −1.41, piano +0.62; 0.94 against each loop's own sax). The plan puts a bus more than 1.0 off to him. His answer: "Keep as heard (Recommended)". So nothing changes, and `lofi_rl.freeze.CHANGES` stays empty.
+- **Design** (workflow `wf_831448d6-864`: a designer, a critic and a revision). The critic raised 13 problems, and all were fixed in the spec.
+- **Build** (workflow `wf_a13612f3-74d`):
+  - **S1:** per-instrument `trim_db` and `fader_db` in `palette.py` and the renderer (SHOOTOUTS.md §7.1). Every golden render hash is unchanged, and 36 new tests are in `tests/test_palette_fields.py`.
+  - **S2:** the generator `lofi_rl.freeze` and `palettes/lofi_rain_v1.yaml`, with `frozen: null`.
+  - **S3:** the sign-off checks, the `lofi-drafts --signoff` mode (job B), the triage batch builder and `drafts/v1/keep3_kept10.json`.
+  - **S4:** the seal and the drawn round tables.
+- **Review** (workflow `wf_81d8287d-967`: five lenses, each with a skeptic). No blocker and no major. The 5 confirmed minors and 4 of the nits are fixed (workflow `wf_981d2247-1ed`):
+  - the report passes `--sealed` after the seal;
+  - the APPROVED-line reader skips HTML comments and reads fences as Markdown does;
+  - the tables test no longer depends on the gate file's layout;
+  - the seal and the batch use one calendar (Pacific);
+  - the provenance rule texts say that Day 3 measured 5 of the 8 instruments;
+  - FREEZE.md is honest about which changes the generator can record;
+  - the levels check is tested.
+- **The palette** (sha256 `d3590c8d…`, 496 lines; trim/fader in dB):
+  - **Sax:** `alto` = mtg alto, 6.63/2.55, warmth off, expression on, timing lag.
+  - **Keys:** `rhodes` = GU tine EP, 0/−5.94; `wurli` = gsullivan EP200, −3.22/−6.435; `piano` = VCSL upright, 21.86/−6.06.
+  - **Kits:** `studio` = Virtuosity, −14.94/15.26, with VSCO2 pizz bass 34.97/5.09; `jazz` = GU Jazz, 0/15.21, with FreePats finger bass −2.79/5.13.
+  - **Groove:** swing 0.55, humanize off.
+  - **The rain bed:** Metadex CC0 excerpt e2 (start 44.3 s, 1 s crossfade) at Δ 24 LU.
+  - **Loudness:** −14 LUFS ± 0.1.
+  - **Fit:** the regex is 3,408 characters, sha256 `5c081828…` (the same as `draft_day2`'s), and prompt v2's 9 references pass strictly.
+  - **Its check passes:** `python -m lofi_rl.freeze check --gate gates/GATE_palette.md --levels-day1/2/3 <the three levels files> --verify` prints `ok`.
+- **Laptop evidence** (laptop renders are not canonical):
+  - with the frozen palette and no bed, all 30 drafts render equal to keep3's own render palettes, in all 6 keys × kit bands;
+  - job B's dry run on the real kept 10 passes;
+  - with the bed, the rain on the kept 10 measures 22.64-23.99 LU under the music after the limiter. Δ is applied before the limiter, as in Day 3's W2 renders he judged (21.99-23.98).
+- **Claude's default from the review (S4-6):** the gate file will publish the drawn tables' design rounds only. The repeat and anchor rows go to the private audit folder, because Phase 2 and the final A/B reuse those checks and the rater is never told which rounds they are (RATING.md). It is noted in SHOOTOUTS.md §2.3 and §8, and D-022 records it.
+- **Tests:** 3,303 passed, 3 skipped.
+
+**SU spent:** 0.
+
+**Next:**
+1. `make sync`.
+2. Job A, `lofi-render-check` (the goldens on Linux).
+3. Job B, `make submit JOB=jobs/drafts.sbatch ARGS='--drafts drafts/v1 --signoff palettes/lofi_rain_v1.yaml'`: canonical renders of the kept 10 with the frozen palette, the check that the no-bed twin equals keep3, fresh-process repeats, the Phase-1 gate's render time, and the triage batch for his sign-off listen.
 
 ---
 

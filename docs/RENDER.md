@@ -69,8 +69,8 @@ python -m lofi_rl.render.pipeline file.ls --mood wistful --energy mid --bpm 82 -
 |---|---|---|---|---|
 | 1 | Parse, compile | `dsl.parse`, `compile.compile_loop` | Gates G1–G6, then the CompiledLoop | §1–3 |
 | 2 | Pitched stems | `pipeline.fluid_stems` | keys, bass, sax: one fresh FluidSynth process each, on a MIDI file of 1 + C cycles. The first cycle is a pre-roll and is dropped. | §3 Seamless, §4 |
-| 3 | Drums | `sampler.kit_shots`, `sampler.render_drums` | One-shots built or loaded from the cache; every hit summed into one periodic cycle, then tiled C times | §3 Drum sampler |
-| 4 | Mix | `mix.mix_buses` | Bus chains, faders and the master chain over all C cycles; the last cycle is kept | §0 amendment 3, §4 |
+| 3 | Drums | `sampler.kit_shots`, `sampler.render_drums` | One-shots built or loaded from the cache; every hit summed into one periodic cycle at its lane's dB plus the kit's `trim_db`, then tiled C times | §3 Drum sampler |
+| 4 | Mix | `mix.mix_buses` | Bus chains (each voice's `trim_db` a Gain at the head), faders (`bus_gain_db` + the instrument's `fader_db`) and the master chain over all C cycles; the last cycle is kept | §0 amendment 3, §4 |
 | 5 | Bed | `bed.bed_loop`, `bed.place` | The bed's seamless cycle at LUFS_music − Δ, added to the music | §4 Rain bed |
 | 6 | Loudness | `loudness.normalize_loop` | Gain into the true-peak limiter on the 3× tile, −14 LUFS ± 0.1 in at most 4 iterations | §4 Loudness |
 | 7 | Gate G7, manifest | `pipeline.finish`, `pipeline.render` | Length, finiteness, loudness, true peak on the repeating loop; the manifest | §2, §4 Outputs |
@@ -114,8 +114,12 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
 
 ### 3.2 Drum sampler and one-shots (§3 Drum sampler; docs/COMPILER.md §3.9, §4.4)
 - **A hit** plays `palette.kits[kit].lanes[lane].layers[layer][rr]` from sample `on`. Its gain is
-  `hit.gain × 10^(lane.db/20)`, and it is panned by the lane's `pan`. The compiler has already chosen the layer
-  (nearest-layer fallback) and `rr`.
+  `hit.gain × 10^(dB/20)` with dB = `lane.db + kit.trim_db`, and it is panned by the lane's `pan`. The compiler has
+  already chosen the layer (nearest-layer fallback) and `rr`.
+- **The kit's trim** (`kits.<name>.trim_db`, §3.3) is added to every lane's `db` in `kit_shots`, so it scales the
+  kit's whole drum stem, and `stems.drums` includes it. This is the float sum the draft palette wrote into its lanes
+  (CD-51): its studio shaker's `db` is 2.47 + (−14.94) = −12.469999999999999. A trim of 0 leaves every `db` as
+  written, with no addition.
 - **Pan law:** gL = √((1 − pan)/2), gR = √((1 + pan)/2). It is constant power and exact at −1, 0 and +1.
 - **Mono one-shots.** A stereo one-shot is downmixed to (L + R)/2 before the pan, so the palette's lane pan alone
   places it. The GU Jazz kit itself pans the rim, hats and shaker (its right channel is up to about 3× the left
@@ -145,6 +149,28 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
 - The chains are the palette's, built as pedalboard 0.9.26 plugins in order. Each bus is followed by its fader
   `bus_gain_db`, then the buses are summed in float64 in the order sax, keys, bass, drums, and the master chain
   runs on the sum.
+- **Per-instrument levels** (docs/SHOOTOUTS.md §7.1). Each `sax.<name>`, `keys.<name>`, `kits.<name>` (the kit's
+  whole drum stem) and `kits.<name>.bass` may carry `trim_db` and `fader_db`: numbers in −40 … +40 dB, 0 when
+  absent. A value outside that range, a boolean, NaN or an infinity is a `PaletteError` that names the field's
+  path; anywhere else (a lane, `mix`, `groove`, `bed`, the top level) the fields are unknown keys, also a
+  `PaletteError`. A file without the fields keeps its bytes and so its sha256 (`dev_gu`, `draft_day2` and every
+  shootout palette). `Palette.bus_levels(keys, kit,
+  sax=None)` gives each bus's playing instrument as a `BusLevel(instrument, trim_db, fader_db)`, its `instrument`
+  the palette path (`sax.tenor`, `keys.rhodes`, `kits.jazz.bass`, `kits.jazz`); `sax` defaults to `sax_lead`.
+  - **A sax, keys or bass trim** t is a pedalboard `Gain(gain_db=t)` put at the head of its bus chain, after the
+    `sax_warm` splice, only when t ≠ 0 (`mix.bus_chain`). Plugin for plugin, that is the shootout and draft
+    palettes' chain-head slot `[Gain, {gain_db: t}]` (CD-51), so it gives the same bits. A numpy pre-scale of the
+    stem would not: on 3 s of noise through `dev_gu`'s sax, keys and bass chains, at the trims −3.22, −2.79, 6.63,
+    21.86 and 34.97 dB, it ended up as much as 2.35e-5 away from the Gain after the chain (keys at +34.97 dB; a
+    `Gain(0)` at the head left every chain's output unchanged; measured 2026-11-03).
+  - **A kit's trim** is on its lanes (§3.2), never a Gain on the drum bus: `mix_buses` refuses a drums trim.
+  - **The fader:** the gain after a bus's chain is `bus_gain_db[bus]` plus the playing instrument's `fader_db`. A
+    fader of 0 leaves `bus_gain_db` exactly as written.
+  - `pipeline.music_cycles` reads `bus_levels(keys_name, kit, sax_name)` of the compiled loop and passes its trims
+    and faders to `mix_buses(stems, mix, sr, workers, *, trims=None, faders=None)`; `kit_shots` reads the kit's trim
+    itself. With every field at 0, every bus runs exactly as before the fields, so the golden hashes (§5) stand.
+  - **What each stage records:** `stems` stay the bus inputs, the pitched stems before their trim and the drum stem
+    with the kit's trim; `buses.<b>.lufs` is the bus after its trim and chain, before its fader.
 - **`sax_warm: true`** splices the `sax_warm` chain (HighShelfFilter 4 kHz −5 dB, LowpassFilter 9 kHz, Reverb
   room .35 damp .7 wet .12) in place of the sax chain's Reverb.
 - **Block size.** pedalboard always gets 8,192-sample blocks (`mix.BUFFER`, pedalboard's default) and a reset
@@ -210,12 +236,20 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
   - `instruments`;
   - `stems`: the pcm_sha256 of each bus input's kept cycle;
   - `oneshots`: the pcm_sha256 of every one-shot;
-  - `buses`: each bus's LUFS before its fader, and its gain;
+  - `buses`: per bus, `lufs` (after its trim and chain, before its fader), `gain_db` (`mix.bus_gain_db`), and the
+    playing `instrument` (its palette path, §3.3) with that instrument's `trim_db` and `fader_db`. The gain after the
+    chain is `gain_db` + `fader_db`;
   - `music_lufs` (before the limiter), `bed` (Δ, gain, levels, or null);
   - `loudness`: LUFS, gain, iterations, true peak, and the same two for music.wav;
   - `gates`, `audio_sha256` and `music_sha256`.
 - **No wall clock, paths or cache state.** The manifest is as deterministic as the audio: equal across
   processes and render orders (`tests/test_determinism.py`).
+- **The schema stays `lofi-rl/render/1`:** `instrument`, `trim_db` and `fader_db` are additive keys. The render
+  config inside every real clip id hashes the schema (`drafts/render.py` and `shootout/render.py` `clip_id`,
+  `scoring/render_pool.render_config`), so a bump would change every clip id, `dev_gu`'s too.
+- **The effective level** a record reports (`drafts/render.py`, `shootout/render.py`): a bus's trim is its
+  chain-head `Gain` slot (the kick lane's `db` for the drums, CD-51) plus `trim_db`, and its fader is `gain_db` plus
+  `fader_db`. A manifest written before the fields reads 0 for both, so its records are unchanged.
 
 ## 4. Seamless: why the MIDI holds 3 cycles
 - **Bus effects.** §0 amendment 3 puts the bus effects inside "two cycles, keep the second". The reverbs and
@@ -426,7 +460,10 @@ Each is pinned by a test and can be changed.
 | (CLI) | `tests/test_render.py` | exit 2 on an out-of-range `--bpm` or `--tonic`, a missing loop or palette file, or a palette that does not load, before anything renders |
 | (outputs) | `tests/test_formats.py` | SplitMix64 vectorized = `prng.stream`, the TPDF distribution, dither keyed by the hash, FLAC decode and bytes, no PEAK chunk |
 | (mix, bed) | `tests/test_mix.py`, `tests/test_bed.py` | block-size invariance, sax_warm, faders and sum order, calibration; the crossfade formula, the wrap, equal power, the excerpt, the level |
+| (levels) | `tests/test_palette_fields.py` | the per-instrument `trim_db` and `fader_db` (SHOOTOUTS.md §7.1, tests 1–3 and 8): the schema and its refusals by path, `bus_levels` for every keys × kit pair, a voice's trim bit-equal to the chain-head Gain (sax_warm off and on) and a kit's to its lanes' dB, a keys fader of 6 dB that moves only the keys bus after its chain, explicit zeros rendering as `dev_gu`, the manifest's bus fields, the drafts and shootout records' effective levels, and a palette with the fields rendering as its folded twin (slots, lane dB, `bus_gain_db`) |
 
 Shared renders are cached per session in `tests/helpers_render.py`. Tests that call FluidSynth skip when it is
 not on PATH (`tests/test_render_basic.py` convention). The 8 files hold 88 default tests (28 more are
-`-m cluster`), which ran in 11.11 s on the laptop (2026-10-31).
+`-m cluster`), which ran in 11.11 s on the laptop (2026-10-31). `tests/test_palette_fields.py` holds 36 more, which
+ran alone in 7.48 s on the laptop (2026-11-03, under load), 5.88 s of it the seven renders its module fixture makes at
+once.

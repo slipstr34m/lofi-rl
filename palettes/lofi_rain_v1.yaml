@@ -1,0 +1,496 @@
+# The frozen palette lofi_rain_v1 (docs/FREEZE.md): the shootout survivors under the names the model sees, with
+# their trims and faders, and the Day-3 rain (gates/GATE_palette.md: Shresth's confirmations of Days 1-3 and the
+# 10 drafts he kept in keep3).
+# After the freeze, palettes/lofi_rain_v1.yaml never changes (docs/DECISIONS.md D-017).
+# Written by python -m lofi_rl.freeze build from palettes/draft_day2.yaml, shootouts/plan.yaml,
+# shootouts/rain_excerpts.json and the levels.json of lofi-shootout 13656048; do not edit.
+# `frozen:` is null until Shresth's line `APPROVED by Shresth Rana <yyyy-mm-dd>` in gates/GATE_palette.md, then
+# that date; only that line changes.
+# Each instrument carries its trim_db and fader_db; where every number came from is the `#| ` block below, which
+# palette.py does not read and the file's sha256 pins.
+# Sound claims: none.
+#| freeze_provenance:
+#|   schema: lofi-rl/freeze-provenance/1
+#|   inputs:
+#|     draft: {path: palettes/draft_day2.yaml, sha256: 58aeb9243309594cd422a641a56decfb1682aff4c06a6c34c6eb9c75016d23a5}
+#|     plan: {path: shootouts/plan.yaml, sha256: 4f99b9f3a06651d5411a8da719d665b5a7d4ef902c18d1e4bff8c89e49c9c56c}
+#|     rain_excerpts: {path: shootouts/rain_excerpts.json, sha256: ec52348a19dc1904e0c1e3ff1cda529ae479df051d015a199ac00d558c3ef11e}
+#|     levels_day3: {path: runs/shootout-13656048/summary/levels.json, sha256: b313ff9ab98ffe8694d18bd42771a39ad128f2ea5e0315a94593a933d28088e7}
+#|   draft_levels:
+#|     schema: lofi-rl/draft-levels/1
+#|     S_star: -31.924651028769418
+#|     targets: {sax: 0.0, keys: -6.0, bass: -3.0, drums: -1.5}
+#|     from:
+#|       day1: {job: 13635646, sha256: 9cf78680b3d059e751df55600c0ee63d42890690b8854344b5aec3b4927628cf}
+#|       day2: {job: 13651610, sha256: 8f4f6e9f798560111657433082cb1f31690174e2888d23cc6f31b37ded1c3fdc}
+#|       base: {path: shootouts/palettes/base.yaml, sha256: 4ef238e519d8fbe0bc5999fc38af6efdb244bfaea624dc3889164789dab99613}
+#|       plan_settings: [swing_55, humanize_off, sax_plain, timing_lag]
+#|     as_written: {keys: rhodes, kit: studio}
+#|     keys:
+#|       rhodes:
+#|         option: gu_tine_ep
+#|         trim_db: 0.0
+#|         fader_db: -5.94
+#|         rootless_F: -6.04
+#|         spread_F: -5.84
+#|         rule: 'CD-28: mean of K1 rootless and K2 spread median F'
+#|         measured:
+#|           day1: {t: 0.0, F: -6.04}
+#|           day2: {t: 0.0, F: -6.04}
+#|           as: {source: gu, source_sha256: 9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe, bank: 0, prog: 4}
+#|       wurli:
+#|         option: gs_wurli_ep200
+#|         trim_db: -3.22
+#|         fader_db: -6.435
+#|         rootless_F: -6.65
+#|         spread_F: -6.22
+#|         rule: 'CD-28: mean of K1 rootless and K2 spread median F'
+#|         measured:
+#|           day1: {t: -3.22, F: -6.65}
+#|           day2: {t: -3.22, F: -6.65}
+#|           as: {source: gsullivan_wurlitzer, source_sha256: aab58d9cc609c23e72b2719e7b7b7cec6a7d7dab0264639d362c97fc8a7cac82,
+#|             bank: 0, prog: 0}
+#|       piano:
+#|         option: vcsl_upright_knight
+#|         trim_db: 21.86
+#|         fader_db: -6.06
+#|         rootless_F: -6.06
+#|         spread_F: -6.06
+#|         rule: 'CD-28: mean of K1 rootless and K2 spread median F'
+#|         measured:
+#|           day1: {t: 21.86, F: -6.06}
+#|           day2: {t: 21.86, F: -6.06}
+#|           as: {source: vcsl_upright_knight, source_sha256: 151ea259a8727bb0b207dcc0607fc665c7c924f8017ef30bc03c2e59158a585a,
+#|             bank: 0, prog: 0}
+#|     kits:
+#|       studio:
+#|         option: kit_virtuosity
+#|         trim_db: -14.94
+#|         fader_db: 15.26
+#|         trim_in: every lane's db (CD-51)
+#|         measured:
+#|           day1: {t: -14.94, F: 15.26}
+#|           day2: {t: -14.94, F: 15.26}
+#|           as: {source: kit_virtuosity, source_sha256: 5ca78cde9f96a1e42e1fd558195125529d40508b53cea1aeb2a34735ca66cd9e, kit_map_sha256: e957b921d80525adc6c0c41f7636cbb35f23a752a109b94509d403733dfb3426}
+#|         bass:
+#|           option: bass_vsco2_pizz
+#|           trim_db: 34.97
+#|           fader_db: 5.09
+#|           measured:
+#|             day1: {t: 34.97, F: 5.09}
+#|             day2: {t: 34.97, F: 5.09}
+#|             as: {source: vsco2_contrabass_pizz, source_sha256: 27f341aba7a608ac6689a19016c493a17d0632649d9b1b67bc909dde5efb0c01,
+#|               bank: 0, prog: 0}
+#|       jazz:
+#|         option: kit_gu_jazz
+#|         trim_db: 0.0
+#|         fader_db: 15.21
+#|         trim_in: every lane's db (CD-51)
+#|         measured:
+#|           day1: {t: 0.0, F: 15.21}
+#|           day2: {t: 0.0, F: 15.21}
+#|           as: {source: gu, source_sha256: 9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe, kit_map_sha256: 940bbb35d060fb7fb39f6ddf474b2abbfdeaaecabbf76402e44cc78c1cbdb67c}
+#|         bass:
+#|           option: bass_fp_finger_yr
+#|           trim_db: -2.79
+#|           fader_db: 5.13
+#|           measured:
+#|             day1: {t: -2.79, F: 5.13}
+#|             day2: {t: -2.79, F: 5.13}
+#|             as: {source: fp_finger_bass_yr, source_sha256: bd1332696f61c0cb254ce7f202fb6b945ff46ccb1dcdd62e345a50bde3afb165,
+#|               bank: 0, prog: 0}
+#|     sax:
+#|       alto:
+#|         option: sax_mtg_alto
+#|         trim_db: 6.63
+#|         fader_db: 2.55
+#|         rule: median F; timing lag keeps the instrument's trim and fader (CD-26)
+#|         measured:
+#|           day1: {t: 6.63, F: 2.55}
+#|           day2: {t: 6.63, F: 2.55}
+#|           as: {source: mtg_alto, source_sha256: 2b338b89a47b712ec84d5ffa8d33f22d37384838c744576bee68e34d903d30e6, bank: 0,
+#|             prog: 0}
+#|   day3:
+#|     job: 13656048
+#|     levels_sha256: b313ff9ab98ffe8694d18bd42771a39ad128f2ea5e0315a94593a933d28088e7
+#|     S_star: -31.924651028769418
+#|     moved: []
+#|     measured:
+#|       gu_tine_ep: {t: 0.0, F: -6.04}
+#|       kit_virtuosity: {t: -14.94, F: 15.26}
+#|       bass_vsco2_pizz: {t: 34.97, F: 5.09}
+#|       kit_gu_jazz: {t: 0.0, F: 15.21}
+#|       sax_mtg_alto: {t: 6.63, F: 2.55}
+#|   bed: {excerpt: e2, excerpt_from: excerpt_e2, delta_from: rain_d24, start_s: 44.3, xfade_s: 1.0, delta_lu: 24.0, excerpt_pcm_sha256: e6f3a63203dd876460e96bdd65e42e8f33d5f8441a54b85be4330a459b5813a8,
+#|     file_sha256: e6884875cba57f32b56f96faddee580fd3d4d3064c91176c63741045a72fd6f2, file_pcm_sha256: 01e17ded919e4582482686c1b9bb8565275620cb1e3274417e0caf03f5cc73f3}
+#|   picks: {day1: '2026-10-31', day2: '2026-11-01', day3: '2026-11-03'}
+#|   rules: {trim_db: 't as Day 2 measured it (SHOOTOUTS.md §3, Frozen values). Day 1 measured the same t for every instrument;
+#|       Day 3 measured the same t for those day3.measured lists, and did not measure the others', fader_db: 'the median F as
+#|       Day 2 measured it (SHOOTOUTS.md §3). Day 1 measured the same F for every instrument; Day 3 measured the same F for those
+#|       day3.measured lists, and did not measure the others', keys_fader_db: 'CD-28, the mean of the K1 rootless and K2 spread
+#|       median F, exact (drafts.palette.mean2) and not rounded to 0.01 dB, as keep3 played it (CD-29)', sax: timing lag keeps
+#|       the trim and fader of the instrument (CD-26), bus_gain_db: '0.0 on every bus, each fader is the fader_db of its instrument
+#|       (SHOOTOUTS.md §7.1)', kit_lanes: 'the importer db, the draft lanes with the kit trim taken off (drafts.palette.untrimmed_lanes)',
+#|     chains: 'the draft chains without their chain-head trim slots, which are the dev_gu chains', bed: the excerpt of excerpt_e2
+#|       (W1) and only the delta_lu of rain_d24 (W2)}
+id: lofi_rain_v1
+frozen: null
+sr: 44100
+assets_root: $LOFI_ASSETS
+sources:
+  gu: {path: assets/soundfonts/generaluser-gs/GeneralUser-GS.sf2, sha256: 9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe,
+    license: 'GeneralUser GS License v2.0 (permissive; use, modification and redistribution allowed)', mode: commit, url: 'https://github.com/mrbumpy409/GeneralUser-GS',
+    converted_from: null, attribution: null}
+  gsullivan_wurlitzer: {path: converted/gsullivan-wurlitzer.sf2, sha256: aab58d9cc609c23e72b2719e7b7b7cec6a7d7dab0264639d362c97fc8a7cac82,
+    license: 'CC BY 3.0 (Greg Sullivan; SFZ mapping by kinwie): attribution required, see assets/ATTRIBUTION.md', mode: fetch,
+    url: null, converted_from: gsullivan-epianos/Wurlitzer EP200/Wurlitzer EP200.sfz, attribution: 'Wurlitzer EP200 samples
+      by Greg Sullivan, SFZ mapping by kinwie / SFZ Instruments, CC BY 3.0'}
+  vcsl_upright_knight: {path: converted/vcsl-upright-knight.sf2, sha256: 151ea259a8727bb0b207dcc0607fc665c7c924f8017ef30bc03c2e59158a585a,
+    license: CC0 1.0, mode: fetch, url: null, converted_from: 'vcsl/Chordophones/Zithers/Upright Piano, Knight.sfz', attribution: 'VCSL
+      Upright Piano, Knight, sampled by Simon Dalzell of Ivy Audio'}
+  vsco2_contrabass_pizz: {path: converted/vsco2-contrabass-pizz.sf2, sha256: 27f341aba7a608ac6689a19016c493a17d0632649d9b1b67bc909dde5efb0c01,
+    license: 'CC0 1.0 (its readme asks for credit: Versilian Studios / Sam Gossner)', mode: fetch, url: null, converted_from: vsco2-ce/ContrabassPizz.sfz,
+    attribution: 'VSCO 2 Community Edition Solo Contrabass pizzicato, by Versilian Studios / Sam Gossner'}
+  fp_finger_bass_yr: {path: freepats-finger-bass-yr/x/FingerBassYR SF2-20190930/FingerBassYR 20190930.sf2, sha256: bd1332696f61c0cb254ce7f202fb6b945ff46ccb1dcdd62e345a50bde3afb165,
+    license: CC0 1.0, mode: fetch, url: 'https://github.com/freepats/electric-bass-YR/releases/download/2019-09-30/FingerBassYR-SF2-20190930.7z',
+    converted_from: null, attribution: 'FreePats Finger Bass YR, samples by Andrea Biasior with edits by Roberto'}
+  mtg_alto: {path: converted/mtg-alto.sf2, sha256: 2b338b89a47b712ec84d5ffa8d33f22d37384838c744576bee68e34d903d30e6, license: 'CC
+      BY 4.0 (SFZ mapping by kinwie) and CC BY 3.0 (samples by MTG, Universitat Pompeu Fabra): attribution required, see assets/ATTRIBUTION.md',
+    mode: fetch, url: null, converted_from: mtg-solo-sax/MTG Solo Saxophones/MTG Alto Sax (NL).sfz, attribution: 'MTG Solo
+      Saxophones, SFZ by kinwie / SFZ Instruments (CC BY 4.0), samples by MTG, Universitat Pompeu Fabra (CC BY 3.0)'}
+  kit_virtuosity: {path: derived/kits/kit_virtuosity.tar, sha256: 5ca78cde9f96a1e42e1fd558195125529d40508b53cea1aeb2a34735ca66cd9e,
+    license: CC0 1.0 (Virtuosity Drums v0.925), mode: fetch, url: null, converted_from: shootouts/kits/kit_virtuosity.yaml,
+    attribution: null}
+  rain: {path: derived/rain/235827__metadex__soft-rain-on-roof-window_44k.wav, sha256: e6884875cba57f32b56f96faddee580fd3d4d3064c91176c63741045a72fd6f2,
+    license: 'CC0 1.0 (Freesound page: Creative Commons 0)', mode: fetch, url: 'https://freesound.org/people/Metadex/sounds/235827/',
+    converted_from: 'assets/big/rain/235827__metadex__soft-rain-on-roof-window.wav (sha256 60f7398e5902..., 48000 Hz) by lofi_rl.convert.resample',
+    attribution: null}
+sax:
+  alto:
+    src: mtg_alto
+    bank: 0
+    prog: 0
+    play: [49, 80]
+    comfort: [55, 77]
+    home: [57, 68]
+    trim_db: 6.63
+    fader_db: 2.55
+sax_lead: alto
+keys:
+  rhodes:
+    src: gu
+    bank: 0
+    prog: 4
+    vel: {X: 96, x: 80, g: 52}
+    trim_db: 0.0
+    fader_db: -5.94
+  wurli:
+    src: gsullivan_wurlitzer
+    bank: 0
+    prog: 0
+    vel: {X: 96, x: 80, g: 52}
+    trim_db: -3.22
+    fader_db: -6.435
+  piano:
+    src: vcsl_upright_knight
+    bank: 0
+    prog: 0
+    vel: {X: 96, x: 80, g: 52}
+    trim_db: 21.86
+    fader_db: -6.06
+kits:
+  studio:
+    trim_db: -14.94
+    fader_db: 15.26
+    bass:
+      src: vsco2_contrabass_pizz
+      bank: 0
+      prog: 0
+      vel: {X: 104, x: 88, g: 64}
+      trim_db: 34.97
+      fader_db: 5.09
+    choke:
+    - [ohat, hat]
+    - [ohat, ohat]
+    lanes:
+      kick:
+        soft:
+        - {src: kit_virtuosity, file: kick/vl1_rr1.wav}
+        - {src: kit_virtuosity, file: kick/vl1_rr2.wav}
+        - {src: kit_virtuosity, file: kick/vl1_rr3.wav}
+        - {src: kit_virtuosity, file: kick/vl1_rr4.wav}
+        med:
+        - {src: kit_virtuosity, file: kick/vl2_rr1.wav}
+        - {src: kit_virtuosity, file: kick/vl2_rr2.wav}
+        - {src: kit_virtuosity, file: kick/vl2_rr3.wav}
+        - {src: kit_virtuosity, file: kick/vl2_rr4.wav}
+        hard:
+        - {src: kit_virtuosity, file: kick/vl4_rr1.wav}
+        - {src: kit_virtuosity, file: kick/vl4_rr2.wav}
+        - {src: kit_virtuosity, file: kick/vl4_rr3.wav}
+        - {src: kit_virtuosity, file: kick/vl4_rr4.wav}
+        pan: 0.0
+        db: 0.0
+      snare:
+        soft:
+        - {src: kit_virtuosity, file: snare/vl8.wav}
+        - {src: kit_virtuosity, file: snare/vl9.wav}
+        - {src: kit_virtuosity, file: snare/vl10.wav}
+        med:
+        - {src: kit_virtuosity, file: snare/vl21.wav}
+        - {src: kit_virtuosity, file: snare/vl22.wav}
+        - {src: kit_virtuosity, file: snare/vl23.wav}
+        hard:
+        - {src: kit_virtuosity, file: snare/vl31.wav}
+        - {src: kit_virtuosity, file: snare/vl32.wav}
+        - {src: kit_virtuosity, file: snare/vl33.wav}
+        pan: 0.0
+        db: 0.0
+      rim:
+        soft:
+        - {src: kit_virtuosity, file: rim/vl3.wav}
+        - {src: kit_virtuosity, file: rim/vl4.wav}
+        - {src: kit_virtuosity, file: rim/vl5.wav}
+        med:
+        - {src: kit_virtuosity, file: rim/vl9.wav}
+        - {src: kit_virtuosity, file: rim/vl10.wav}
+        - {src: kit_virtuosity, file: rim/vl11.wav}
+        hard:
+        - {src: kit_virtuosity, file: rim/vl13.wav}
+        - {src: kit_virtuosity, file: rim/vl14.wav}
+        - {src: kit_virtuosity, file: rim/vl15.wav}
+        pan: 0.0
+        db: 0.0
+      hat:
+        soft:
+        - {src: kit_virtuosity, file: hat/vl1_rr1.wav}
+        - {src: kit_virtuosity, file: hat/vl1_rr2.wav}
+        - {src: kit_virtuosity, file: hat/vl1_rr3.wav}
+        - {src: kit_virtuosity, file: hat/vl1_rr4.wav}
+        med:
+        - {src: kit_virtuosity, file: hat/vl2_rr1.wav}
+        - {src: kit_virtuosity, file: hat/vl2_rr2.wav}
+        - {src: kit_virtuosity, file: hat/vl2_rr3.wav}
+        - {src: kit_virtuosity, file: hat/vl2_rr4.wav}
+        hard:
+        - {src: kit_virtuosity, file: hat/vl4_rr1.wav}
+        - {src: kit_virtuosity, file: hat/vl4_rr2.wav}
+        - {src: kit_virtuosity, file: hat/vl4_rr3.wav}
+        - {src: kit_virtuosity, file: hat/vl4_rr4.wav}
+        pan: 0.0
+        db: 0.0
+      ohat:
+        soft:
+        - {src: kit_virtuosity, file: ohat/vl1_rr1.wav}
+        - {src: kit_virtuosity, file: ohat/vl1_rr2.wav}
+        - {src: kit_virtuosity, file: ohat/vl1_rr3.wav}
+        med:
+        - {src: kit_virtuosity, file: ohat/vl2_rr1.wav}
+        - {src: kit_virtuosity, file: ohat/vl2_rr2.wav}
+        - {src: kit_virtuosity, file: ohat/vl2_rr3.wav}
+        hard:
+        - {src: kit_virtuosity, file: ohat/vl4_rr1.wav}
+        - {src: kit_virtuosity, file: ohat/vl4_rr2.wav}
+        - {src: kit_virtuosity, file: ohat/vl4_rr3.wav}
+        pan: 0.0
+        db: 0.0
+      shaker:
+        soft:
+        - {src: kit_virtuosity, file: shaker/D_rr1.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr1.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr2.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr2.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr3.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr3.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr4.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr4.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr5.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr5.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr6.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr6.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr7.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr7.wav}
+        med:
+        - {src: kit_virtuosity, file: shaker/D_rr1.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr1.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr2.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr2.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr3.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr3.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr4.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr4.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr5.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr5.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr6.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr6.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr7.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr7.wav}
+        hard:
+        - {src: kit_virtuosity, file: shaker/D_rr1.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr1.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr2.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr2.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr3.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr3.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr4.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr4.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr5.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr5.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr6.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr6.wav}
+        - {src: kit_virtuosity, file: shaker/D_rr7.wav}
+        - {src: kit_virtuosity, file: shaker/U_rr7.wav}
+        pan: 0.0
+        db: 2.47
+  jazz:
+    trim_db: 0.0
+    fader_db: 15.21
+    bass:
+      src: fp_finger_bass_yr
+      bank: 0
+      prog: 0
+      vel: {X: 104, x: 88, g: 64}
+      trim_db: -2.79
+      fader_db: 5.13
+    choke:
+    - [ohat, hat]
+    - [ohat, ohat]
+    lanes:
+      kick:
+        soft:
+        - {src: gu, bank: 128, prog: 32, note: 36, vel: 48}
+        med:
+        - {src: gu, bank: 128, prog: 32, note: 36, vel: 80}
+        hard:
+        - {src: gu, bank: 128, prog: 32, note: 36, vel: 112}
+        pan: 0.0
+        db: 0.0
+      snare:
+        soft:
+        - {src: gu, bank: 128, prog: 32, note: 38, vel: 48}
+        med:
+        - {src: gu, bank: 128, prog: 32, note: 38, vel: 80}
+        hard:
+        - {src: gu, bank: 128, prog: 32, note: 38, vel: 112}
+        pan: 0.0
+        db: 0.0
+      rim:
+        soft:
+        - {src: gu, bank: 128, prog: 32, note: 37, vel: 48}
+        med:
+        - {src: gu, bank: 128, prog: 32, note: 37, vel: 80}
+        hard:
+        - {src: gu, bank: 128, prog: 32, note: 37, vel: 112}
+        pan: 0.0
+        db: 0.0
+      hat:
+        soft:
+        - {src: gu, bank: 128, prog: 32, note: 42, vel: 48}
+        med:
+        - {src: gu, bank: 128, prog: 32, note: 42, vel: 80}
+        hard:
+        - {src: gu, bank: 128, prog: 32, note: 42, vel: 112}
+        pan: 0.0
+        db: 0.0
+      ohat:
+        soft:
+        - {src: gu, bank: 128, prog: 32, note: 46, vel: 48}
+        med:
+        - {src: gu, bank: 128, prog: 32, note: 46, vel: 80}
+        hard:
+        - {src: gu, bank: 128, prog: 32, note: 46, vel: 112}
+        pan: 0.0
+        db: 0.0
+      shaker:
+        soft:
+        - {src: gu, bank: 128, prog: 32, note: 82, vel: 48}
+        med:
+        - {src: gu, bank: 128, prog: 32, note: 82, vel: 80}
+        hard:
+        - {src: gu, bank: 128, prog: 32, note: 82, vel: 112}
+        pan: 0.0
+        db: 0.0
+aliases: {}
+chords:
+  numerals: [I, bII, II, bIII, III, IV, V, bVI, VI, bVII, VII]
+  qualities: [maj7, maj9, maj7#11, '7', '9', '13', 7sus, 7b9, 7#9, m7, m9, m11, m7b5, dim7]
+voicings: [rootless, shell, spread, quartal]
+groove:
+  swing: {default: 0.55}
+  offset_ms: {}
+  humanize: 'off'
+  humanize_ms: 3.0
+  humanize_vel: 0.08
+  humanize_lanes: [kick, snare, rim, hat, ohat, shaker, bass, keys]
+  drum_gain: {X: 1.0, x: 0.71, g: 0.32}
+  metric_db:
+    lanes: [hat, shaker]
+    db: [0.0, -4.0, -2.0, -4.0, -1.0, -4.0, -2.0, -4.0, 0.0, -4.0, -2.0, -4.0, -1.0, -4.0, -2.0, -4.0]
+sax_expr:
+  enabled: true
+  timing: lag
+  lag_ms: 25.0
+  swing8: 0.6
+  bend_range: 2
+  bend_every_ms: 10.0
+  cc11_every_ms: 20.0
+  gap_ms: 15.0
+  scoop: {min_steps: 4, leap: 3, cents: -60.0, ms: 80.0}
+  vibrato: {min_steps: 8, start: 0.35, fade_ms: 300.0, cents: 18.0, rate_hz: 5.5}
+  cc11: {short: 110, long_steps: 8, long_base: 100, long_swell: 27, last: 80, last_share: 0.4}
+  velocity: {base: 92, bar_start: 8, beat3: 4, sixteenth: -10, phrase_start: 6, min: 60, max: 112}
+mix:
+  bus_gain_db: {sax: 0.0, drums: 0.0, bass: 0.0, keys: 0.0}
+  bus_target_lu: {sax: 0.0, drums: -1.5, bass: -3.0, keys: -6.0}
+  sax_warm: false
+  buses:
+    sax:
+    - - HighpassFilter
+      - {cutoff_frequency_hz: 140.0}
+    - - PeakFilter
+      - {cutoff_frequency_hz: 450.0, gain_db: -2.0, q: 1.0}
+    - - Compressor
+      - {threshold_db: -20.0, ratio: 3.0, attack_ms: 8.0, release_ms: 120.0}
+    - - PeakFilter
+      - {cutoff_frequency_hz: 2800.0, gain_db: 2.0, q: 0.8}
+    - - Reverb
+      - {room_size: 0.22, damping: 0.55, wet_level: 0.07, dry_level: 1.0, width: 1.0}
+    sax_warm:
+    - - HighShelfFilter
+      - {cutoff_frequency_hz: 4000.0, gain_db: -5.0, q: 0.70710678}
+    - - LowpassFilter
+      - {cutoff_frequency_hz: 9000.0}
+    - - Reverb
+      - {room_size: 0.35, damping: 0.7, wet_level: 0.12, dry_level: 1.0, width: 1.0}
+    keys:
+    - - HighpassFilter
+      - {cutoff_frequency_hz: 120.0}
+    - - PeakFilter
+      - {cutoff_frequency_hz: 400.0, gain_db: -3.0, q: 0.70710678}
+    - - Compressor
+      - {threshold_db: -18.0, ratio: 2.0, attack_ms: 20.0, release_ms: 150.0}
+    - - Reverb
+      - {room_size: 0.3, damping: 0.5, wet_level: 0.1, dry_level: 1.0, width: 1.0}
+    bass:
+    - - HighpassFilter
+      - {cutoff_frequency_hz: 30.0}
+    - - PeakFilter
+      - {cutoff_frequency_hz: 250.0, gain_db: -2.0, q: 0.70710678}
+    - - Compressor
+      - {threshold_db: -20.0, ratio: 4.0, attack_ms: 15.0, release_ms: 120.0}
+    drums:
+    - - HighpassFilter
+      - {cutoff_frequency_hz: 30.0}
+    - - PeakFilter
+      - {cutoff_frequency_hz: 350.0, gain_db: -2.5, q: 0.70710678}
+    - - Compressor
+      - {threshold_db: -16.0, ratio: 3.0, attack_ms: 10.0, release_ms: 80.0}
+  master:
+  - - HighpassFilter
+    - {cutoff_frequency_hz: 25.0}
+  - - PeakFilter
+    - {cutoff_frequency_hz: 300.0, gain_db: -1.5, q: 0.7}
+  - - Compressor
+    - {threshold_db: -12.0, ratio: 1.5, attack_ms: 30.0, release_ms: 200.0}
+bed: {src: rain, start_s: 44.3, xfade_s: 1.0, delta_lu: 24.0}
+loudness: {lufs: -14.0, tol: 0.1, iters: 4, ceiling_dbtp: -1.0}

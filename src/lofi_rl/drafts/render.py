@@ -19,6 +19,9 @@ builder reads. A record's status:
 The record also holds the real clip id (taste_pipeline.md §2, the shootout's formula), every bus's trim, fader and
 loudness before and after its fader, that loudness relative to the sax target S* and its miss from the bus target
 (the freeze compares the kept 10 with the targets, SHOOTOUTS.md §3), the master gain, and the lead's MIDI range.
+A bus's trim and fader are its effective levels (SHOOTOUTS.md §7.1): the trim is the chain-head `Gain` slot (the kit's
+kick-lane dB for the drums, CD-51) plus the playing instrument's `trim_db`, and the fader is the manifest's `gain_db`
+(mix.bus_gain_db) plus its `fader_db`, either field read as 0 from a manifest written before them.
 Sound claims: none.
 """
 from __future__ import annotations
@@ -64,11 +67,25 @@ def _palette(path: str) -> Palette:
     return load_palette(path, verify=False)      # verified once before the renders (job stage `palettes`)
 
 
-def _trim(pal: Palette, bus: str, kit: str) -> float:
+def _plus(a: float, b: float) -> float:
+    """a + b, or a itself when b is 0, so a record without the fields reads exactly as before them."""
+    return a + b if b else a
+
+
+def _trim(pal: Palette, bus: str, kit: str, field_db: float = 0.0) -> float:
+    """The bus's effective trim: its chain-head Gain slot (the kick lane's dB for the drums, CD-51) plus the playing
+    instrument's trim_db (SHOOTOUTS.md §7.1)."""
     if bus == "drums":
-        return float(pal.kits[kit].lanes["kick"].db)
-    chain = pal.mix.buses[bus]
-    return float(chain[0].params.get("gain_db", 0.0)) if chain and chain[0].name == "Gain" else 0.0
+        slot = float(pal.kits[kit].lanes["kick"].db)
+    else:
+        chain = pal.mix.buses[bus]
+        slot = float(chain[0].params.get("gain_db", 0.0)) if chain and chain[0].name == "Gain" else 0.0
+    return _plus(slot, field_db)
+
+
+def _fader(bus_record: dict) -> float:
+    """The bus's effective fader from its manifest record: gain_db (mix.bus_gain_db) plus the instrument's fader_db."""
+    return _plus(bus_record["gain_db"], bus_record.get("fader_db", 0.0))
 
 
 def _record(task: dict, status: str, error: str | None, pal: Palette | None = None, r=None,
@@ -87,10 +104,12 @@ def _record(task: dict, status: str, error: str | None, pal: Palette | None = No
     s_star, targets = task.get("s_star"), dict(pal.mix.bus_target_lu)
     buses = {}
     for b in BUSES:
-        pre, fader = m["buses"][b]["lufs"], m["buses"][b]["gain_db"]
+        got = m["buses"][b]
+        pre, fader = got["lufs"], _fader(got)
+        trim = _trim(pal, b, r.compiled.kit, got.get("trim_db", 0.0))
         post = None if pre is None else pre + fader
         lu = None if post is None or s_star is None else post - s_star
-        buses[b] = {"lufs": pre, "fader_db": fader, "trim_db": _trim(pal, b, r.compiled.kit), "post_lufs": post,
+        buses[b] = {"lufs": pre, "fader_db": fader, "trim_db": trim, "post_lufs": post,
                     "lu": lu, "target_lu": targets.get(b), "off_lu": None if lu is None else lu - targets[b]}
     pitches = [n.pitch for n in r.compiled.sax.notes]
     rec.update({"clip": clip_id(m), "n": m["n"], "sr": m["sr"], "lufs": m["loudness"]["lufs"],

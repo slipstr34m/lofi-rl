@@ -13,6 +13,11 @@ unset).
 
 Numbers that feed sample positions (swing, offsets, lags) are kept as exact `Fraction`s of the decimal
 written in the file, so the timeline never depends on binary floating point.
+
+Per-instrument levels (docs/SHOOTOUTS.md §7.1): each `sax.<name>`, `keys.<name>`, `kits.<name>` (its whole drum
+stem) and `kits.<name>.bass` may carry `trim_db` and `fader_db`, numbers in -40..+40 dB, 0 when absent; anywhere else
+they are unknown keys. A file without them keeps its bytes, so its sha256. `Palette.bus_levels` gives each bus's
+playing instrument with its two values; the renderer applies them (docs/RENDER.md §3.2-3.3).
 """
 from __future__ import annotations
 
@@ -70,6 +75,8 @@ _VAR = re.compile(r"\$(?:\{(\w+)\}|(\w+))")
 # $REMOTE_KEEP/assets (CLAUDE.md section 1); docs/RENDER.md sections 10 and 11 say what is still missing there.
 ASSETS_VAR = "LOFI_ASSETS"
 ASSETS_DEFAULT = Path("assets") / "big"
+LEVEL_FIELDS: tuple[str, ...] = ("trim_db", "fader_db")    # optional on each sax, keys voice, kit and kit bass
+LEVEL_DB = 40                   # each field lies in -LEVEL_DB..+LEVEL_DB dB (SHOOTOUTS.md §7.1)
 
 
 class PaletteError(ValueError):
@@ -98,6 +105,8 @@ class SaxVoice:
     play: tuple[int, int]       # sounding MIDI, inclusive
     comfort: tuple[int, int]
     home: tuple[int, int]       # 12 notes: the brief's tonic is placed here
+    trim_db: float = 0.0        # a Gain at the head of the sax bus chain (SHOOTOUTS.md §7.1)
+    fader_db: float = 0.0       # added to mix.bus_gain_db.sax after the chain
 
 
 @dataclass(frozen=True)
@@ -107,6 +116,8 @@ class KeysVoice:
     bank: int
     prog: int
     vel: Mapping[str, int] = field(hash=False)      # level -> MIDI velocity
+    trim_db: float = 0.0        # a Gain at the head of the keys bus chain
+    fader_db: float = 0.0       # added to mix.bus_gain_db.keys after the chain
 
 
 @dataclass(frozen=True)
@@ -115,6 +126,8 @@ class BassVoice:
     bank: int
     prog: int
     vel: Mapping[str, int] = field(hash=False)
+    trim_db: float = 0.0        # a Gain at the head of the bass bus chain
+    fader_db: float = 0.0       # added to mix.bus_gain_db.bass after the chain
 
 
 @dataclass(frozen=True)
@@ -151,6 +164,17 @@ class Kit:
     bass: BassVoice
     choke: tuple[tuple[str, str], ...]      # (choked lane, choking lane); a lane may choke itself
     lanes: Mapping[str, DrumLane] = field(hash=False)
+    trim_db: float = 0.0        # added to every lane's db by the sampler: the kit's whole drum stem
+    fader_db: float = 0.0       # added to mix.bus_gain_db.drums after the drums chain
+
+
+@dataclass(frozen=True)
+class BusLevel:
+    """A bus's playing instrument and its levels (SHOOTOUTS.md §7.1), from `Palette.bus_levels`."""
+
+    instrument: str             # the palette path: sax.alto, keys.wurli, kits.studio.bass or kits.studio
+    trim_db: float
+    fader_db: float
 
 
 @dataclass(frozen=True)
@@ -295,6 +319,20 @@ class Palette:
         if hit not in table:
             raise PaletteError(f"{kind} name {name!r} is not in palette {self.id}")
         return hit
+
+    def bus_levels(self, keys: str, kit: str, sax: str | None = None) -> dict[str, BusLevel]:
+        """The instrument each bus plays for a loop on `keys` and `kit` (the palette's own names, after aliases, as a
+        CompiledLoop holds them), with its trim_db and fader_db, in render/mix.py's bus order: sax, keys, bass,
+        drums. `sax` is the sax that plays, sax_lead by default. PaletteError for a name the palette lacks."""
+        sax = self.sax_lead if sax is None else sax
+        for kind, name, table in (("sax", sax, self.sax), ("keys", keys, self.keys), ("kits", kit, self.kits)):
+            if name not in table:
+                raise PaletteError(f"{kind} name {name!r} is not in palette {self.id}")
+        s, k, d = self.sax[sax], self.keys[keys], self.kits[kit]
+        return {"sax": BusLevel(f"sax.{sax}", s.trim_db, s.fader_db),
+                "keys": BusLevel(f"keys.{keys}", k.trim_db, k.fader_db),
+                "bass": BusLevel(f"kits.{kit}.bass", d.bass.trim_db, d.bass.fader_db),
+                "drums": BusLevel(f"kits.{kit}", d.trim_db, d.fader_db)}
 
     def assets_dir(self, root: Path = ROOT) -> Path:
         """Where mode-fetch sources live: `assets_root` with its `$VARS` and `~` expanded.
@@ -699,6 +737,12 @@ def _dec(node: Any, where: str, lo: float | None = None, hi: float | None = None
     return Fraction(repr(_num(node, where, lo, hi)))
 
 
+def _levels(m: Mapping[str, Any], where: str) -> tuple[float, float]:
+    """An instrument's (trim_db, fader_db): each a number in -40..+40 dB, 0.0 when absent (SHOOTOUTS.md §7.1). A
+    boolean, NaN or an infinity is refused, and the error names the field's path."""
+    return tuple(_num(m[k], f"{where}.{k}", -LEVEL_DB, LEVEL_DB) if k in m else 0.0 for k in LEVEL_FIELDS)
+
+
 def _bool(node: Any, where: str) -> bool:
     if not isinstance(node, bool):
         raise _fail(where, f"expected true or false, got {node!r}")
@@ -810,7 +854,7 @@ def _sax(node: Any, sources: Mapping[str, Source]) -> Mapping[str, SaxVoice]:
     out = {}
     for name, raw in sorted(_table(node, "sax").items()):
         w = f"sax.{name}"
-        m = _map(raw, w, ("src", "bank", "prog", "play", "comfort", "home"))
+        m = _map(raw, w, ("src", "bank", "prog", "play", "comfort", "home"), LEVEL_FIELDS)
         play, comfort, home = (_range(m[k], f"{w}.{k}") for k in ("play", "comfort", "home"))
         if not play[0] <= comfort[0] <= comfort[1] <= play[1]:
             raise _fail(w, "comfort must lie inside play")
@@ -821,7 +865,7 @@ def _sax(node: Any, sources: Mapping[str, Source]) -> Mapping[str, SaxVoice]:
         if play[1] - play[0] < 11:
             raise _fail(f"{w}.play", "must span at least 12 notes, so an octave fold always lands")
         out[name] = SaxVoice(name, _src(m["src"], f"{w}.src", sources), _int(m["bank"], f"{w}.bank", 0, 127),
-                             _int(m["prog"], f"{w}.prog", 0, 127), play, comfort, home)
+                             _int(m["prog"], f"{w}.prog", 0, 127), play, comfort, home, *_levels(m, w))
     return MappingProxyType(out)
 
 
@@ -829,9 +873,9 @@ def _keys(node: Any, sources: Mapping[str, Source]) -> Mapping[str, KeysVoice]:
     out = {}
     for name, raw in sorted(_table(node, "keys").items()):
         w = f"keys.{name}"
-        m = _map(raw, w, ("src", "bank", "prog", "vel"))
+        m = _map(raw, w, ("src", "bank", "prog", "vel"), LEVEL_FIELDS)
         out[name] = KeysVoice(name, _src(m["src"], f"{w}.src", sources), _int(m["bank"], f"{w}.bank", 0, 127),
-                              _int(m["prog"], f"{w}.prog", 0, 127), _vel(m["vel"], f"{w}.vel"))
+                              _int(m["prog"], f"{w}.prog", 0, 127), _vel(m["vel"], f"{w}.vel"), *_levels(m, w))
     return MappingProxyType(out)
 
 
@@ -870,10 +914,11 @@ def _kits(node: Any, sources: Mapping[str, Source]) -> Mapping[str, Kit]:
     out = {}
     for name, raw in sorted(_table(node, "kits").items()):
         w = f"kits.{name}"
-        m = _map(raw, w, ("bass", "choke", "lanes"))
-        b = _map(m["bass"], f"{w}.bass", ("src", "bank", "prog", "vel"))
+        m = _map(raw, w, ("bass", "choke", "lanes"), LEVEL_FIELDS)
+        b = _map(m["bass"], f"{w}.bass", ("src", "bank", "prog", "vel"), LEVEL_FIELDS)
         bass = BassVoice(_src(b["src"], f"{w}.bass.src", sources), _int(b["bank"], f"{w}.bass.bank", 0, 127),
-                         _int(b["prog"], f"{w}.bass.prog", 0, 127), _vel(b["vel"], f"{w}.bass.vel"))
+                         _int(b["prog"], f"{w}.bass.prog", 0, 127), _vel(b["vel"], f"{w}.bass.vel"),
+                         *_levels(b, f"{w}.bass"))
         choke = _choke_pairs(m["choke"], f"{w}.choke")
         lanes_raw = _map(m["lanes"], f"{w}.lanes", LANES)
         lanes = {}
@@ -891,7 +936,7 @@ def _kits(node: Any, sources: Mapping[str, Source]) -> Mapping[str, Kit]:
                 raise _fail(lw, "every layer is empty")
             lanes[lane] = DrumLane(MappingProxyType(layers), _num(lm["pan"], f"{lw}.pan", -1, 1),
                                    _num(lm["db"], f"{lw}.db", -60, 24))
-        out[name] = Kit(name, bass, tuple(choke), MappingProxyType(lanes))
+        out[name] = Kit(name, bass, tuple(choke), MappingProxyType(lanes), *_levels(m, w))
     return MappingProxyType(out)
 
 

@@ -3,6 +3,10 @@
 - Each bus (sax, keys, bass, drums) runs its palette chain, then its static fader `bus_gain_db`. Per-loop
   bus normalization was rejected because it would flatten the energy knob (§4).
 - `sax_warm: true` replaces the sax chain's Reverb with the sax_warm chain (high shelf, lowpass, reverb).
+- The playing instrument's levels (docs/SHOOTOUTS.md §7.1; `Palette.bus_levels`): a sax, keys or bass `trim_db`
+  is a pedalboard Gain at the head of its bus chain, after the sax_warm swap, and each bus's `fader_db` adds to
+  `bus_gain_db`. A kit's trim is on its lanes' dB (sampler.kit_shots), never a Gain on the drum bus. A trim or fader
+  of 0 adds nothing, so a palette without the fields mixes exactly as before them.
 - The buses are summed in float64 in BUSES order, then the master chain runs (high-pass, the low-mid cut,
   glue compression).
 - Callers pass several cycles of a periodic signal and keep the last one, so reverb tails and compressor
@@ -13,10 +17,13 @@
 """
 from __future__ import annotations
 
+import math
+import numbers
 import statistics
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from types import MappingProxyType
 
 import numpy as np
 import pedalboard
@@ -26,22 +33,30 @@ from lofi_rl.palette import Mix, Plugin
 SR = 44100
 BUFFER = 8192                   # pedalboard block size, fixed; pedalboard 0.9.26's default
 BUSES = ("sax", "keys", "bass", "drums")      # summing order
+TRIM_BUSES = ("sax", "keys", "bass")          # FluidSynth buses: a trim is a Gain at the chain head
 
 
 class MixError(ValueError):
     pass
 
 
-def bus_chain(mix: Mix, bus: str) -> tuple[Plugin, ...]:
-    """A bus's chain as the palette writes it, with the sax_warm swap applied to the sax."""
+def bus_chain(mix: Mix, bus: str, trim_db: float = 0.0) -> tuple[Plugin, ...]:
+    """A bus's chain as the palette writes it, with the sax_warm swap applied to the sax, and the playing
+    instrument's trim as a Gain(trim_db) at its head when it is not 0 (SHOOTOUTS.md §7.1). That is the shootout and
+    draft carriage's chain-head slot [Gain, {gain_db: t}] (CD-51) plugin for plugin; the drum bus takes no trim."""
     chain = mix.buses[bus]
-    if bus != "sax" or not mix.sax_warm:
+    if bus == "sax" and mix.sax_warm:
+        reverbs = [i for i, p in enumerate(chain) if p.name == "Reverb"]
+        if len(reverbs) != 1:
+            raise MixError(f"sax_warm replaces the sax chain's one Reverb, but the chain has {len(reverbs)}")
+        i = reverbs[0]
+        chain = chain[:i] + mix.buses["sax_warm"] + chain[i + 1:]
+    if trim_db == 0.0:
         return chain
-    reverbs = [i for i, p in enumerate(chain) if p.name == "Reverb"]
-    if len(reverbs) != 1:
-        raise MixError(f"sax_warm replaces the sax chain's one Reverb, but the chain has {len(reverbs)}")
-    i = reverbs[0]
-    return chain[:i] + mix.buses["sax_warm"] + chain[i + 1:]
+    if bus not in TRIM_BUSES:
+        raise MixError(f"a {bus} trim is not a Gain on its bus: a kit's trim_db is added to every lane's dB "
+                       f"(sampler.kit_shots)")
+    return (Plugin("Gain", MappingProxyType({"gain_db": float(trim_db)})),) + tuple(chain)
 
 
 def board(chain: Sequence[Plugin]) -> pedalboard.Pedalboard:
@@ -60,24 +75,49 @@ def process(chain: Sequence[Plugin], x: np.ndarray, sr: int = SR) -> np.ndarray:
 @dataclass(frozen=True)
 class MixOut:
     music: np.ndarray                   # (2, samples) float32: the master chain's output
-    buses: Mapping[str, np.ndarray]     # each bus after its chain, before its fader
+    buses: Mapping[str, np.ndarray]     # each bus after its trim and chain, before its fader
 
 
-def mix_buses(stems: Mapping[str, np.ndarray], mix_cfg: Mix, sr: int = SR, workers: int = 4) -> MixOut:
+def _levels(values: Mapping[str, float] | None, allowed: tuple[str, ...], what: str) -> dict[str, float]:
+    """`trims` or `faders` checked: known buses only, each a finite number of dB."""
+    out: dict[str, float] = {}
+    for b, v in (values or {}).items():
+        if b not in allowed:
+            if what == "trims" and b == "drums":
+                raise MixError("a drums trim is not a Gain on the drum bus: a kit's trim_db is added to every "
+                               "lane's dB (sampler.kit_shots)")
+            raise MixError(f"{what}: {b!r} is not one of {list(allowed)}")
+        if isinstance(v, bool) or not isinstance(v, numbers.Real) or not math.isfinite(v):
+            raise MixError(f"{what}[{b!r}] must be a finite number of dB, got {v!r}")
+        out[b] = float(v)
+    return out
+
+
+def mix_buses(stems: Mapping[str, np.ndarray], mix_cfg: Mix, sr: int = SR, workers: int = 4, *,
+              trims: Mapping[str, float] | None = None, faders: Mapping[str, float] | None = None) -> MixOut:
     """Bus chains, faders and the master chain over all the cycles given. The four bus chains run in
-    parallel threads; each is independent, so the result never depends on how many."""
+    parallel threads; each is independent, so the result never depends on how many.
+
+    `trims` (sax, keys, bass) and `faders` (any bus) are the playing instruments' trim_db and fader_db
+    (`Palette.bus_levels`; SHOOTOUTS.md §7.1): a trim is a Gain at the head of its bus chain (`bus_chain`), and the
+    gain after a bus's chain is bus_gain_db + fader_db. A drums trim is a MixError, since a kit's trim is on its
+    lanes. None, or a value of 0, runs that bus exactly as without them."""
     missing = [b for b in BUSES if b not in stems]
     if missing:
         raise MixError(f"missing stems: {missing}")
     shapes = {stems[b].shape for b in BUSES}
     if len(shapes) != 1 or next(iter(shapes))[0] != 2:
         raise MixError(f"stems must all be stereo and the same length, got {sorted(shapes)}")
+    trims, faders = _levels(trims, TRIM_BUSES, "trims"), _levels(faders, BUSES, "faders")
+    chains = {b: bus_chain(mix_cfg, b, trims.get(b, 0.0)) for b in BUSES}
     with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
-        futures = {b: ex.submit(process, bus_chain(mix_cfg, b), stems[b], sr) for b in BUSES}
+        futures = {b: ex.submit(process, chains[b], stems[b], sr) for b in BUSES}
         buses = {b: futures[b].result() for b in BUSES}
     total = np.zeros(next(iter(shapes)), dtype=np.float64)
     for b in BUSES:
-        total += buses[b].astype(np.float64) * 10.0 ** (mix_cfg.bus_gain_db[b] / 20.0)
+        fader = faders.get(b, 0.0)
+        gain_db = mix_cfg.bus_gain_db[b] if fader == 0.0 else mix_cfg.bus_gain_db[b] + fader
+        total += buses[b].astype(np.float64) * 10.0 ** (gain_db / 20.0)
     return MixOut(process(mix_cfg.master, total.astype(np.float32), sr), buses)
 
 
