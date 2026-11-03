@@ -125,6 +125,62 @@
         "music_sha256": "cfb8b05250449fc471698eaafdaaf3e83698435c824b3fe48e99b3f1f5a5467b",
         "n": 1032576
       },
+      "oneshots|dev_gu|jazz": {
+        "hat/hard": [
+          "f08e542aeebfea925da3832c8ea0fc6792010640e0bcee80c410b89ed6c7f857"
+        ],
+        "hat/med": [
+          "399ac73893efa94a2e3f8791a63104a96629bdbdf8d502a2d848b886c4c3256e"
+        ],
+        "hat/soft": [
+          "28f136996568ea1368b64902859d1c56a688301f79f8d1e60aaba4d038ebdd65"
+        ],
+        "kick/hard": [
+          "c24e6bc6809ec710379f6c1ff11c4eb408975799a37673e29ffc02d95ad0c6a1"
+        ],
+        "kick/med": [
+          "3d525b754acbde7da5dec3080457f4ff759a0d1fa5d748740bb22ff9ade47e57"
+        ],
+        "kick/soft": [
+          "357eec28609adb1b0fbe18aa8c57ee5ce0def6d442f34daf6917ba91435fa43e"
+        ],
+        "ohat/hard": [
+          "94f6eb39f9abc54c622ad829f6ce3dd4c8951361428e168771f258f5fe55688a"
+        ],
+        "ohat/med": [
+          "edac8190326301348be6a6abac45b835aa0593782d277d0635c6f49bdc8eb10d"
+        ],
+        "ohat/soft": [
+          "f11f66ad5081f4a65c532d67bae8cad734f90280dca472972b6653844f15c6ee"
+        ],
+        "rim/hard": [
+          "bb21857df73d2379082d72a06f98a7f76cd837d7854b9d94ad4f25927f3e8e8c"
+        ],
+        "rim/med": [
+          "599a58e35b193ed0aff39c5123b658b90f77718d71cf654cd4f79384c24d64a6"
+        ],
+        "rim/soft": [
+          "a42dd12c4149ed32b4eb0a789367a3c1eca1b5949354ed13347758020c4e5508"
+        ],
+        "shaker/hard": [
+          "42f3a9fbfa6c61066c8219472e6dabc898e821367ae1ab1cdc7b5ebf79937c13"
+        ],
+        "shaker/med": [
+          "d182ea394b450fc1dd86a37091a565f5b3ee6cb56f365f1fd7d96a630c6020b0"
+        ],
+        "shaker/soft": [
+          "e34d14409ce358626dfe4ba344a1768611080cd0e71279ada4a1d0c5d3db356a"
+        ],
+        "snare/hard": [
+          "17187fcd6e7107a7189447a3cfa96d2e1f757dc6bf37e7620e15d6cfd79fff91"
+        ],
+        "snare/med": [
+          "75ed96fa4ac6a210cbb43e25b1b6a7f0bcbdd7df587a794382a7055324a00a82"
+        ],
+        "snare/soft": [
+          "148e7a18abf2d8125cf93b825728d3fc276f26507276fa141d38d12f863c112d"
+        ]
+      },
       "shaker_edits.ls|hopeful|high|95|7": {
         "audio_sha256": "65e59a63d284fa00022ed55f2093db4d49596107db758b60dd2354e7be90b961",
         "music_sha256": "65e59a63d284fa00022ed55f2093db4d49596107db758b60dd2354e7be90b961",
@@ -136,8 +192,8 @@
         "n": 1032576
       },
       "span1_dotted.ls|wistful|mid|82|2": {
-        "audio_sha256": "0ce2a27b435e488cd1f8b5e7faff8bd3c7ecc9f58a04799719e25b9438cbacb9",
-        "music_sha256": "0ce2a27b435e488cd1f8b5e7faff8bd3c7ecc9f58a04799719e25b9438cbacb9",
+        "audio_sha256": "950e3800ee638cdf539a135dd2a1e57326c49bff31b8549bfae8badc6234b132",
+        "music_sha256": "950e3800ee638cdf539a135dd2a1e57326c49bff31b8549bfae8badc6234b132",
         "n": 1032576
       }
     }

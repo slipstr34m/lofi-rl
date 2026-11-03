@@ -222,6 +222,25 @@ The palette's gate item 2: Shresth kept 10 of the 30 drafted loops (docs/DRAFTS.
 - **Labels** (taste_pipeline §8, for the RM in Phase 2): every kept loop is at least Fine, and beats each of its round's rejects. In round d08 one reject never played, so under D-013 as amended that one pair is dropped.
 - **Audit file** (private): `data/votes/b1101-keep3.jsonl`, backed up as votes commit `085f8d2`.
 
+## Sign-off listen: voted 2026-11-03 (batch b1103-signoff; job 13701026)
+
+The kept 10, rendered on the cluster with `palettes/lofi_rain_v1.yaml` (sha256 `d3590c8d…`, `frozen: null`), the rain
+bed included. Triage mode: one loop per round, played through its seam.
+- **Job 13701026:** `SIGNOFF_OK`. Every check in `runs/drafts-13701026/summary/verify.json` passed.
+  - The no-bed twin's audio equals keep3's for all 10, so the music under the rain is what he kept.
+  - The repeats equal their renders.
+  - The bed is placed at −24.0 LU. After the limiter it sits 22.6–24.0 LU under the music.
+- **Counts:** 10 of 10 heard. Great 2, Good 1, Fine 3, Toss 4.
+- **Tossed:** `drafts/v1/d01_chords.ls`, `drafts/v1/d06_horn.ls`, `drafts/v1/d07_chords.ls` and `drafts/v1/d10_groove.ls`.
+- **Shresth, 2026-11-03,** asked what made him toss them (the rain, a part, or the loops themselves): "The loops
+  themselves".
+- **Outcome: the sign-off has not passed** (docs/FREEZE.md, the sign-off loop).
+  - His words name the loops, not the palette, so the palette does not change.
+  - Briefs d01, d06, d07 and d10 reopen through the drafts redo path.
+  - The kept list changes only by his words, after he hears the redrafts.
+  - There is no APPROVED line yet.
+- **Audit file** (private): `data/votes/b1103-signoff.jsonl`, backed up as votes commit `9dec1cc`.
+
 ## How to approve
 Add one line of your own, exactly in this form:
 

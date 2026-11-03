@@ -3,7 +3,7 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 1,785.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-03 09:18 PST).
+- **SU used:** 1,944.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-03 15:40 PST).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
     - Days 1, 2 and 3 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended); Day 3 gave rain excerpt `excerpt_e2` and, by his word, the rain at Δ 24;
@@ -18,7 +18,32 @@ Newest entry first. Every number cites the file or command output it was read fr
     - the scorer server (smoke 13651611, `SCORER_SMOKE_OK`);
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
-- **Waiting on Shresth:** nothing now. The frozen palette is built (`frozen: null`); his sign-off listen comes after job B.
+- **Waiting on Shresth:** his choice of order: redraft the 4 tossed briefs before the palette sign-off, or approve the palette first.
+
+---
+
+## 2026-11-03 (15:45 PST): the sign-off listen did not pass (4 Toss; "The loops themselves"), so the palette is not sealed; the Linux golden key re-recorded
+
+**What was done**
+- **Job B, `lofi-drafts --signoff` 13701026** (main, a01-13): COMPLETED in 00:04:26, 53.2 SU, `SIGNOFF_OK`. Every check in `runs/drafts-13701026/summary/verify.json` passed:
+  - **The music is keep3's:** the no-bed twin's audio equals keep3's for all 10 kept loops (Linux), and the music under the bed equals the twin's.
+  - **Levels and repeats:** the bus levels equal keep3's, and each fresh-process repeat equals its render.
+  - **The bed:** placed at −24.0 LU. As heard after the limiter it is 22.64–23.99 LU under the music, with information flags on two non-kept drafts (d04_chords 2.556 LU, d04_groove 2.074 LU closer than −24).
+  - **The loudness, N and gates checks** all pass.
+  - **The Phase-1 gate's render-time projection:** 1,534 s, from the slowest one-at-a-time render, the first reference at 30.68 s; the others took 3.5–10.3 s. It is above SPEC §5.5's 300 s, so the gate's render step is decided before the gate.
+  - **The batch:** `b1103-signoff`, 10 triage rounds; `ui.manifest check` ok.
+- **His sign-off listen,** 10 of 10 heard: Great 2, Good 1, Fine 3, Toss 4.
+  - Tossed: d01_chords, d06_horn, d07_chords and d10_groove. These are both studio-kit loops and two jazz-kit loops.
+  - Asked what made him toss them (the rain, a part, or the loops themselves), he answered "The loops themselves".
+  - So the palette does not change. The four briefs reopen through the drafts redo path, and nothing is sealed. Recorded in `gates/GATE_palette.md` (Sign-off listen). The votes are backed up as votes commit `9dec1cc`.
+- **Job A, `lofi-render-check` 13701025** (a01-13): FAILED, 00:08:48, 105.6 SU. It had 3 failures, none from the freeze build:
+  - **`test_golden_hashes_for_every_fixture[span1_dotted…]`:** the Linux key was stale. It was recorded from 13632135 on 2026-10-31 at 12:17, before voicing V2.1. `d048eae` re-recorded only the laptop key for that change ("keys stem only"). This run differs from the old Linux key in the keys stem alone, as the laptop's did. The Linux key is now re-recorded from this run (`950e3800…`, plus the one-shot case the old key lacked), and the laptop goldens still pass (12 passed).
+  - **`test_junk.py::test_render_writes_one_pass_flacs_for_real`:** a cluster-only test that also failed on the laptop before this work. It is to be investigated before the Phase-1 gate, which uses junk's render step.
+  - **`test_rain_excerpts.py::test_the_real_file_gives_the_committed_record_when_it_is_here`:** the excerpt picker re-run on the cluster's rain file does not give the laptop-made record byte for byte. Job B hashed the frozen excerpt's frames on the cluster and got the record's pcm sha256 (`e6f3a632…`), so the bed itself is right. To be investigated.
+
+**SU spent:** 158.8 (105.6 + 53.2). Total 1,944.7.
+
+**Next:** Shresth chooses the order: redraft d01, d06, d07 and d10 before the sign-off, or approve the palette first.
 
 ---
 
