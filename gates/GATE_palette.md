@@ -163,6 +163,44 @@ S2a (warmth) and S2b (timing):
 
 **Audit files** (private): `data/votes/audit/{b1104-1-groove,b1104-2-sax,b1104-3-keys,b1104-4-vamps,shootouts}.json` and `day2-report.md`, from the tally at main `7a0dfd0`. An independent recount over the raw logs gives the same figures for every stage, for R2r per kit and for V per mood.
 
+### Day 3: voted 2026-11-03 (batches b1106-1-mix, b1106-2-mix; job 13656048)
+
+**Shresth's confirmation, 2026-11-03:** "Yes, use these", with "24 below (Recommended)" as his word on the rain level.
+He was asked which rain level the palette should use, since W2's three quietest options tied with no best given. A tie keeps the default, Δ 24, but a `rain_none` lead is his call (SHOOTOUTS.md §8, Rain). He was then asked whether to use the rest of Day 3's results.
+
+**Results**
+- **Rain excerpt:** `excerpt_e2`, the W1 BW leader, holding the only best.
+- **Rain level:** `rain_d24` (Δ 24 LU under the music), by his word.
+  - W2 had no best in any of its 4 rounds.
+  - `rain_d24`, `rain_d30` and `rain_none` tied at BW 0.000.
+  - `rain_d18` came last with 2 worsts.
+- **The sax:** no S2 re-run, since the final's winner is the sax S2 ran on.
+
+**Tables** (weighted marks; every Day-3 vote is at full weight):
+
+| stage | option | shown | heard | best | worst | BW | net |
+|---|---|---|---|---|---|---|---|
+| W1 | `excerpt_e2` | 3 | 3 | 1 | 0 | +0.333 | +1 |
+| W1 | `excerpt_e1` | 3 | 3 | 0 | 0 | 0.000 | 0 |
+| W1 | `excerpt_e3` | 3 | 3 | 0 | 0 | 0.000 | 0 |
+| W2 | `rain_d24` | 4 | 4 | 0 | 0 | 0.000 | 0 |
+| W2 | `rain_d30` | 4 | 4 | 0 | 0 | 0.000 | 0 |
+| W2 | `rain_none` | 4 | 4 | 0 | 0 | 0.000 | 0 |
+| W2 | `rain_d18` | 4 | 4 | 0 | 2 | −0.500 | −2 |
+
+**Escape hatches:** W1: T 2, B 3. W2: T 4, B 2. None used G.
+
+**Flags (§3):** none. W1's largest bed spread is 0.0274 LU and its largest sax spread 0.0015 LU; the limit is 1.0. W2 has no level flag.
+
+**Hidden checks**
+- **The anchor:** micro-session `s1103a`/1 caught its one anchor, so every Day-3 vote counts at full weight (D-013).
+- **Repeats** (CD-47): 3 of 7 implied pairs agree (p 0.429, Wilson 95 % 0.158–0.750) over 5 repeats, the first showings voted on Days 1 and 2. With one repeat per shootout, that is too few pairs to read any one shootout from (SHOOTOUTS.md §8, Consistency).
+- **Position of best** (descriptive, pooled over every shootout batch): 2 clips [1, 2], p 0.564; 3 clips [3, 2, 4], p 0.717; 4 clips [9, 7, 4, 2], chi-square 5.27 on 3 df, p 0.153.
+
+**Audit files** (private): `data/votes/audit/{b1106-1-mix,b1106-2-mix,shootouts}.json` and `day3-report.md`, from the tally at main `dcc0d9c` (2026-11-03 09:50).
+- An independent recount of W1 and W2 over the raw logs and the hidden manifests gives the same figures: shown, heard, best, worst, BW and escape hatches.
+- The standing votes are 7 design rounds, 5 repeats and 1 anchor.
+
 ## Kept drafts (keep3): voted 2026-11-01 (batch b1101-keep3; job 13656049)
 
 The palette's gate item 2: Shresth kept 10 of the 30 drafted loops (docs/DRAFTS.md; taste_pipeline.md §8). That is one per brief, from the three personas' drafts of that brief, rendered with `palettes/draft_day2.yaml`. No round was marked "none acceptable", so there are no redrafts.

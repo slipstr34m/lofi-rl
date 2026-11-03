@@ -2,6 +2,16 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "rate",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "PYTHONPATH=src exec .venv/bin/python -m lofi_rl.ui.serve --no-browser --port 8596"
+      ],
+      "port": 8596,
+      "url": "http://127.0.0.1:8596"
+    },
+    {
       "name": "rate-demo",
       "runtimeExecutable": "bash",
       "runtimeArgs": [

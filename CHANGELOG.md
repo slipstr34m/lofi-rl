@@ -6,8 +6,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 - **SU used:** 1,785.9 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-03 09:18 PST).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
-    - Days 1 and 2 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended);
-    - Day 3 (rain W1/W2, five repeats, an anchor) is rendered and is served from 2026-11-03;
+    - Days 1, 2 and 3 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended); Day 3 gave rain excerpt `excerpt_e2` and, by his word, the rain at Δ 24;
   - **keep3:** Shresth kept 10 of the 30 drafts, with no redrafts (`gates/GATE_palette.md`);
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
   - all 14 shootout sources, the rain file, its 44.1 kHz conversion and the two imported kits are on the laptop and the cluster.
@@ -19,7 +18,27 @@ Newest entry first. Every number cites the file or command output it was read fr
     - the scorer server (smoke 13651611, `SCORER_SMOKE_OK`);
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
-- **Waiting on Shresth:** Day 3 listening, open from today (Nov 3): `make rate`, two batches of about 8 and 7 minutes.
+- **Waiting on Shresth:** nothing now. Next, Claude assembles `palettes/lofi_rain_v1.yaml` for his sign-off (the freeze, D-017).
+
+---
+
+## 2026-11-03 (10:00 PST): Day 3 voted and confirmed; the shootouts are done (rain excerpt e2; rain at Δ 24 by Shresth's word)
+
+**What was done**
+- **Shresth voted Day 3** on the laptop's rating page (`lofi_rl.ui.serve`, port 8596): `b1106-1-mix` (7 rounds) and `b1106-2-mix` (6 rounds), 2026-11-03.
+- **The tally:** `python -m lofi_rl.shootout.tally --votes data/votes --inbox inbox --runs runs --serve-date 2026-11-03 --report data/votes/audit/day3-report.md`. Its outputs are private (`data/votes/audit/`).
+  - **W1 (rain excerpt):** `excerpt_e2` BW +0.333 (the only best); `excerpt_e1` and `excerpt_e3` 0.000.
+  - **W2 (rain level):** no best in any of its 4 rounds. `rain_d24`, `rain_d30` and `rain_none` tied at 0.000, and `rain_d18` came last at −0.500 (2 worsts). Since `rain_none` tied for the lead, the level was his call (SHOOTOUTS.md §8).
+  - **Hidden checks:** the anchor was caught (full weight). The repeats agreed in 3 of 7 implied pairs (p 0.429, Wilson 95 % 0.158–0.750) over 5 repeats, too few to read one shootout from.
+  - **Flags:** none (W1's bed spread 0.0274 LU, limit 1.0).
+  - **Independent recount:** W1 and W2 recounted from the raw logs and the hidden manifests give the same figures.
+- **Shresth's word:** "24 below (Recommended)" for the rain level, and "Yes, use these" for the rest. So the palette takes `excerpt_e2` and `rain_d24`. Both are recorded in `gates/GATE_palette.md` (Day 3), with the tables.
+- **The votes are backed up** as votes commit `0bc6908`, in the private repo and in `$REMOTE_KEEP/votes/`.
+- `.claude/launch.json` gains a `rate` entry: the rating page on port 8596, with the real votes folder.
+
+**SU spent:** 0.
+
+**Next:** assemble `palettes/lofi_rain_v1.yaml` from the survivors, their trims and faders (SHOOTOUTS.md §3) and the rain pick, with the plain-word names the model sees. Check the kept 10 against it. Then it goes to Shresth for his `APPROVED by Shresth Rana <date>` line, followed by the freeze entry (D-017) and the official Phase-1 gate.
 
 ---
 
