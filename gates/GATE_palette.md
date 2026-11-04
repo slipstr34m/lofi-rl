@@ -263,6 +263,23 @@ brief. Shresth kept one loop in each round; no round was marked "none acceptable
   stay out of it.
 - **Audit file** (private): `data/votes/b1103-keep3-redo.jsonl`, backed up as votes commit `5e804de`.
 
+## Sign-off listen: voted 2026-11-04 (batch b1103-signoff-2; job 13706355)
+
+The new kept 10, keep3's six that passed the first sign-off and his four redo picks, rendered on the cluster with
+`palettes/lofi_rain_v1.yaml` (sha256 `d3590c8d…`, `frozen: null`, unchanged since the first sign-off), the rain bed
+included. Triage mode: one loop per round, played through its seam.
+- **Job 13706355:** `SIGNOFF_OK`. Every check in `runs/drafts-13706355/summary/verify.json` passed.
+  - The no-bed twin's audio equals each loop's own source render (keep3's for six, the redo round's for four), so the
+    music under the rain is what he kept.
+  - The repeats equal their renders.
+  - The bed is placed at −24.0 LU. After the limiter it sits 22.6–23.9 LU under the music on the kept loops.
+- **Before it** (Q2, SHOOTOUTS.md §3): on the new kept 10 the drums sit +1.149 LU and the keys −1.040 LU off their
+  targets (median). Shresth, 2026-11-03: "Keep as heard (Recommended)". Nothing changed.
+- **Counts:** 10 of 10 heard. Great 3, Good 4, Fine 3, Toss 0.
+- **Tossed:** none.
+- **Outcome: the sign-off passed.** His APPROVED line below seals the palette.
+- **Audit file** (private): `data/votes/b1103-signoff-2.jsonl`, backed up as votes commit `a1eb3c0`.
+
 ## How to approve
 Add one line of your own, exactly in this form:
 

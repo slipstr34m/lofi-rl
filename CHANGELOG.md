@@ -3,11 +3,11 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 1,944.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-03 15:40 PST).
+- **SU used:** 2,034.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-04 10:25 PST).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
     - Days 1, 2 and 3 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended); Day 3 gave rain excerpt `excerpt_e2` and, by his word, the rain at Δ 24;
-  - **keep3:** Shresth kept 10 of the 30 drafts (`gates/GATE_palette.md`). The sign-off listen tossed 4 of them ("The loops themselves"); he kept one redraft of each in `b1103-keep3-redo` (`drafts/v1/redo1/`), so the kept 10 are keep3's 6 and his 4 redo picks;
+  - **keep3:** Shresth kept 10 of the 30 drafts (`gates/GATE_palette.md`). The sign-off listen tossed 4 of them ("The loops themselves"); he kept one redraft of each in `b1103-keep3-redo` (`drafts/v1/redo1/`), so the kept 10 are keep3's 6 and his 4 redo picks. The second sign-off listen passed (Toss 0, 2026-11-04);
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
   - all 14 shootout sources, the rain file, its 44.1 kHz conversion and the two imported kits are on the laptop and the cluster.
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
@@ -18,11 +18,31 @@ Newest entry first. Every number cites the file or command output it was read fr
     - the scorer server (smoke 13651611, `SCORER_SMOKE_OK`);
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
-- **Next:** job B again on the new kept 10, then Shresth's second sign-off listen (`b1103-signoff-2`) and, if it passes, his APPROVED line and the seal.
+- **Waiting on Shresth:** his APPROVED line under `## Approval` in `gates/GATE_palette.md`; then the seal.
 
 ---
 
-## 2026-11-03 (19:25 PST): his redo picks recorded; the freeze tools take kept loops from redo rounds; the kept 10 rebuilt; job B next
+## 2026-11-04 (10:30 PST): the second sign-off listen passed (Toss 0); his APPROVED line is the one step left
+
+**What was done**
+- **Job B again, `lofi-drafts --signoff` 13706355** (main, a02-09): COMPLETED in 00:07:03, 84.6 SU (`session_report.py`), `SIGNOFF_OK`. Every check in `runs/drafts-13706355/summary/verify.json` passed:
+  - **twin_is_kept:** the no-bed twin equals each kept loop's own source render (keep3 for 6 loops, keep3_redo1 for 4);
+  - the repeats equal their renders, and the bus levels equal their sources'; N, loudness, gates and iterations pass;
+  - **the bed:** placed at −24.0 LU, and after the limiter 22.64–23.93 LU under the music on the kept loops. Two non-kept drafts are flagged as information (d04_chords 2.556 LU and d04_groove 2.074 LU closer than −24), as in the first job;
+  - **renders:** 61 of 61 ok (kept 38.5 s, the others 320.2 s, the repeats 46.3 s);
+  - **the Phase-1 gate's render-time projection:** 869.5 s (50 × the slowest one-at-a-time render, 17.39 s), still above SPEC §5.5's 300 s (1,534 s on the first job).
+  - Batch `b1103-signoff-2`: 10 triage rounds; its note says "Sign-off again".
+- **His listen** (2026-11-04, 10:20–10:21 PST): 10 of 10 heard. Great 3, Good 4, Fine 3, Toss 0. Votes backed up as votes commit `a1eb3c0`.
+- **Recorded:** gates/GATE_palette.md (`## Sign-off listen: voted 2026-11-04 (batch b1103-signoff-2; job 13706355)`, Tossed: none) and `SIGNOFFS[1]`, with no tossed loop.
+- **Checks:** `python -m lofi_rl.freeze check --gate gates/GATE_palette.md` ok ("Days 1-3, keep3, 1 redo rounds, 2 sign-off listens"). The freeze and drafts tests: 469 passed, 2 skipped. `python -m lofi_rl.freeze.seal --dry-run` refuses only for the missing APPROVED line.
+
+**SU spent:** 84.6.
+
+**Next:** his line `APPROVED by Shresth Rana <yyyy-mm-dd>` under `## Approval`. Then the seal, the drawn tables, D-022, tests/test_palette_frozen.py and the consumers' switch to the frozen palette.
+
+---
+
+## 2026-11-03 (19:15 PST): his redo picks recorded; the freeze tools take kept loops from redo rounds; the kept 10 rebuilt; job B next
 
 **What was done**
 - **`lofi-drafts` 13703830** (the redrafts, main, a01-04): COMPLETED in 00:00:27, 5.4 SU (`session_report.py`), `DRAFTS_OK`.

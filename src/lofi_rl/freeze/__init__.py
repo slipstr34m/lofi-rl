@@ -84,6 +84,7 @@ SIGNOFFS: tuple[dict[str, Any], ...] = (
     {"batch": "b1103-signoff", "job": 13701026,
      "tossed": ("drafts/v1/d01_chords.ls", "drafts/v1/d06_horn.ls", "drafts/v1/d07_chords.ls",
                 "drafts/v1/d10_groove.ls")},
+    {"batch": "b1103-signoff-2", "job": 13706355, "tossed": ()},
 )
 
 PICKS: dict[str, dict[str, Any]] = {
