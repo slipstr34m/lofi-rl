@@ -764,3 +764,183 @@ no GRPO had run.
   - **What follows, by this entry's rule (M5-M11 all pass):**
     - This entry supersedes D-020's IS-half verdict. The grammar is on for run 1 with the masked trainer, and D-020's Outcome (prompt v2 with the grammar) is run 1's setting again.
     - Next, in order: D-020's official Phase-1 gate on the frozen palette (with the 50-clip ear check and his APPROVED line in `gates/GATE_phase1.md`); the step-0 samples; Phase 2's GRPO smoke; then `lofi-grpo` goes to him for his yes.
+
+## D-022 (2026-11-04): `palettes/lofi_rain_v1.yaml` frozen
+**Decided by:** Shresth, with his line under `## Approval` in gates/GATE_palette.md, `APPROVED by Shresth Rana 2026-11-04`, which he wrote there after the second sign-off listen passed. Claude assembled the palette from his picks (docs/FREEZE.md) and sealed it. "The freeze spec" below is the design of workflow `wf_831448d6-864`, which docs/FREEZE.md describes as built.
+- **His line and the seal** (CHANGELOG 2026-11-04 10:50; main `074b46c`).
+  - His first save put the date in angle brackets (`<2026-11-04>`), as the How-to-approve placeholder showed it. The seal refused that line, and he fixed it in the file. The refusals now show the line with a bare date (`80596d9`, `9aca73c`, `313b865`); the accepted form is unchanged.
+  - `python -m lofi_rl.freeze.seal` read his line and checked that the palette (sha256 A) is what the latest sign-off job, 13706355, rendered for b1103-signoff-2, and that `freeze check --gate` passes ("Days 1-3, keep3, 1 redo rounds, 2 sign-off listens"). It rebuilt the file with `frozen: '2026-11-04'`, one line apart from A, and `freeze check --sealed --verify` passed on it.
+  - Then `python -m lofi_rl.freeze.tables --write gates/GATE_palette.md --private` and tests/test_palette_frozen.py: steps 1–4 of the freeze spec's order on the day (§5.6). This entry is step 5.
+- **His confirmations** (gates/GATE_palette.md, each day's confirmation line): Day 1 (2026-10-31) and Day 2 (2026-11-01), "Yes, use these"; Day 3 (2026-11-03), "Yes, use these", with "24 below (Recommended)" as his word on the rain level.
+- **keep3** (2026-11-01; batch b1101-keep3, job 13656049): he kept 10 of the 30 drafts, one per brief.
+- **Q1** (2026-11-03), before any sign-off render: on keep3's kept 10 the keys sat 1.22 LU under their target (wurli −2.42, rhodes −1.41, piano +0.62; CHANGELOG 2026-11-03 15:17). His answer: "Keep as heard (Recommended)". He gave no numbers, so `lofi_rl.freeze.CHANGES` stayed empty.
+- **The first sign-off listen** (2026-11-03; batch b1103-signoff, job 13701026): 10 of 10 heard; Great 2, Good 1, Fine 3, Toss 4.
+  - Tossed: `drafts/v1/d01_chords.ls`, `drafts/v1/d06_horn.ls`, `drafts/v1/d07_chords.ls` and `drafts/v1/d10_groove.ls`.
+  - Asked what made him toss them (the rain, a part, or the loops themselves), he answered "The loops themselves".
+  - His words named the loops, not the palette. So the palette did not change, nothing was sealed, and briefs d01, d06, d07 and d10 reopened through the drafts redo path (the freeze spec §4.5, step 3; docs/FREEZE.md §5.1).
+- **The order** (2026-11-03): asked whether to redraft the four briefs before the sign-off or to approve the palette first, he answered "Redraft first".
+- **His redo picks** (2026-11-03; batch b1103-keep3-redo, job 13703830), one per round, with no round marked "none acceptable": `drafts/v1/redo1/d01_groove.ls`, `drafts/v1/redo1/d06_chords.ls`, `drafts/v1/redo1/d07_groove.ls` and `drafts/v1/redo1/d10_chords.ls` (gates/GATE_palette.md, `## Kept drafts (keep3 redo1)`).
+- **Q2** (2026-11-03), on the new kept 10: the drums sat +1.149 LU and the keys −1.040 LU off their targets (median). His answer: "Keep as heard (Recommended)". Nothing changed, and A stayed `d3590c8d…`.
+- **The second sign-off listen** (2026-11-04; batch b1103-signoff-2, job 13706355): 10 of 10 heard; Great 3, Good 4, Fine 3, Toss 0. It passed, and his line followed.
+
+- **What froze**
+  - **The file:** `palettes/lofi_rain_v1.yaml`, 496 lines, sha256 B `09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183`, `frozen: '2026-11-04'`, written by `python -m lofi_rl.freeze build` and the seal, never by hand.
+    - The signed-off file, sha256 A `d3590c8da2e186de2b5a113a585f17646dfec9390f1eb9de569b1bacaa47bc8a`, is B with `frozen: null`; exactly one line differs (tests/test_palette_frozen.py).
+    - No render reads `frozen:`, so A ≡ B in audio. Both sign-off jobs rendered A (`palette_sha256` in each `summary/args.json`), and the votes of both batches name it (`lofi_rain_v1@d3590c8d`).
+  - **The picks, under the drafts' names** (F1), each with its trim t and fader F in dB (docs/FREEZE.md §1):
+
+    | name | instrument (shootout option) | trim_db | fader_db |
+    |---|---|---|---|
+    | sax `alto` | `sax_mtg_alto`, warmth off, expression on, timing lag | 6.63 | 2.55 |
+    | keys `rhodes` | `gu_tine_ep` (GU, bank 0, prog 4) | 0.0 | −5.94 |
+    | keys `wurli` | `gs_wurli_ep200` | −3.22 | −6.435 |
+    | keys `piano` | `vcsl_upright_knight` | 21.86 | −6.06 |
+    | kit `studio` | `kit_virtuosity` (the whole drum stem) | −14.94 | 15.26 |
+    | its bass | `bass_vsco2_pizz` | 34.97 | 5.09 |
+    | kit `jazz` | `kit_gu_jazz` (GU Jazz kit 32 one-shots) | 0.0 | 15.21 |
+    | its bass | `bass_fp_finger_yr` | −2.79 | 5.13 |
+
+    - Each t and median F is Day 2's (lofi-shootout 13651610), equal in Day 1 (13635646) for all 8 instruments and in Day 3 (13656048) for the 5 it measured; S\* is −31.924651028769418 in all three.
+    - The keys faders are CD-28's mean of the K1 rootless and K2 spread F: rhodes −6.04 and −5.84, wurli −6.65 and −6.22, piano −6.06 and −6.06 (the file's `#| freeze_provenance:` block).
+  - **The bed:** `{src: rain, start_s: 44.3, xfade_s: 1.0, delta_lu: 24.0}`, placed before the limiter. That is excerpt e2 (the W1 pick `excerpt_e2`) at Δ 24, the level alone taken from the W2 pick `rain_d24`, which W2 played on e1.
+    - So e2 at Δ 24 was first played in the first sign-off listen; W1 played e2 at Δ 18 (docs/FREEZE.md §1).
+    - The e2 stretch's pcm sha256 is `e6f3a632…` (shootouts/rain_excerpts.json). Both sign-off jobs hashed it on the cluster to that value (each job's summary/palettes/index.json).
+  - **The settings:** swing 0.55 (`swing_55`), humanize off (`humanize_off`), warmth off (`sax_plain`), expression on, and timing lag at 25 ms (`timing_lag`).
+  - **The mix and loudness:** dev_gu's bus and master chains (the draft's without their chain-head trim slots); `bus_gain_db` 0.0 on every bus; bus targets sax 0, drums −1.5, bass −3 and keys −6 LU; −14 LUFS ± 0.1 in at most 4 iterations, ceiling −1 dBTP.
+  - **The vocabulary:** the chord numerals and qualities unchanged (Day 2's borrowed-chord condition was not met); voicings rootless, shell, spread and quartal; `aliases: {}` (F2). Its LoopScript regex is 3,408 characters, sha256 `5c081828ac50718edc4db82c2a855ea52210debb375280ba01e8442de60f8558`, the same as draft_day2's. dev_gu's is 3,395 characters, `1412f11f…`.
+  - **The sources,** each with its sha256 and licence mode (D-012; F14):
+    - committed: GeneralUser GS `9575028c…`, the one committed source;
+    - fetched under `$LOFI_ASSETS`: the gsullivan Wurlitzer EP200 `aab58d9c…` (CC BY 3.0), the VCSL upright piano `151ea259…` (CC0 1.0), the VSCO 2 contrabass pizzicato `27f341ab…` (CC0 1.0), the FreePats finger bass `bd133269…` (CC0 1.0), the MTG alto `2b338b89…` (CC BY 4.0 and CC BY 3.0), the Virtuosity kit `5ca78cde…` (CC0 1.0), and the rain, Freesound 235827 by Metadex converted to 44.1 kHz, `e6884875…` (CC0 1.0).
+  - **The provenance** (F13): the file's `#| freeze_provenance:` block, pinned by B. It names the inputs with their sha256s (palettes/draft_day2.yaml `58aeb924…`, shootouts/plan.yaml `4f99b9f3…`, shootouts/rain_excerpts.json `ec52348a…`, Day 3's levels.json `b313ff9a…`), the three confirmation dates, and the rule behind every number.
+
+- **Departures, each with its reason**
+  - **The bed as heard is not −Δ ± 0.5 LU.**
+    - Δ is applied before the limiter (src/lofi_rl/render/bed.py, "Level"; instrument.md §4, Rain bed), and the limiter then works on the music and the bed together. The docs' "bed at −Δ ± 0.5 LU" holds on tests/test_render.py's synthetic noise fixture, not with the rain.
+    - As heard (`bed_lu`: the final render minus the music, against the music):
+      - the final kept 10: 22.64–23.93 LU under the music (job 13706355, runs/drafts-13706355/summary/verify.json `checks.bed_heard.kept_below`);
+      - keep3's kept 10 at the first sign-off: 22.64–23.99 LU (job 13701026, the same field);
+      - Day 3's four W2 renders at Δ 24, the ones he judged, on excerpt e1: 21.99–23.98 LU (runs/shootout-13656048/summary/renders.json `bed.bed_lu`);
+      - two drafts outside the kept 10 sat more than 2.015 LU closer than −24 in both jobs (d04_chords by 2.556 LU, d04_groove by 2.074 LU), flagged as information.
+    - So the bed is checked as placed, and its level as heard is recorded, not gated (F8). As placed it is 24 LU under the music within 0.01 LU; over the 51 renders with the bed in job 13706355, the largest miss was 2.1e-9 LU. The W1 and W2 renders he judged placed the bed the same way.
+    - RENDER.md §3.4 and §12 and instrument.md §7 now say so (`9abc2cd`).
+  - **CD-28's keys mean kept exact:** wurli −6.435 dB, not rounded to 0.01 dB as SHOOTOUTS.md §3 rounds trims and faders, because keep3 played −6.435 and the freeze keeps the faders he heard (CD-29; F6).
+  - **Loudness iterations: "at most 4" kept** (instrument.md §4, Loudness, step 4). All 61 renders of job 13706355 and all 49 of job 13701026 converged in 1–3 iterations and passed G7 (their summary/renders.json; verify.json `checks.iterations`). No render forced a higher cap.
+  - **The published drawn tables hold the design rounds only** (Claude's default from review finding S4-6; CHANGELOG 2026-11-03 15:17).
+    - The plan promised the drawn tables in the gate file after the freeze; SHOOTOUTS.md §2.3 ("Published after the freeze") now names the design rounds only. The gate file's `## Drawn round tables (published after the freeze)` covers Days 1–3, keep3 and keep3 redo1, and leaves out the 8 hidden-check rounds: Phase 2's votes and the final A/B reuse those checks, and the rater is never told which rounds they are (RATING.md, "Checks you won't see").
+    - The full tables are private, in `data/votes/audit/drawn_round_tables.md` (sha256 `7c6c679c…`; CHANGELOG 2026-11-04 10:50). The seeds, the opaque and real ids and the audio hashes are in neither (F11; CD-21).
+  - **Job A did not pass as the freeze spec §4.3 defines it.** `lofi-render-check` 13701025 (2026-11-03, 105.6 SU) ended with 3 failed and 3229 passed (runs/render-check-13701025/summary/pytest.txt). None of the three came from the freeze build (CHANGELOG 2026-11-03 15:45):
+    - span1_dotted's Linux golden key was stale since voicing V2.1, and it was re-recorded from this run (`950e3800…`);
+    - `test_junk.py::test_render_writes_one_pass_flacs_for_real` rendered the in-prompt example, a near-copy that D-020 keeps out of the render pool, so it got 1 clip of 2. Since `8da39fd` it renders two non-copies, and it passes on the laptop (`-m cluster`, 2026-11-04);
+    - `test_rain_excerpts.py::test_the_real_file_gives_the_committed_record_when_it_is_here`: the excerpt picker, re-run on the cluster's rain file, does not give the laptop-made record byte for byte. It is still to be investigated. The bed itself is the record's: both sign-off jobs hashed the e2 stretch to `e6f3a632…`.
+    - Job A was there to run S1's test 1, the golden render hashes, on Linux (the freeze spec §4.3). Job B's twin checks S1 on the kept loops: twin0, the frozen document with `bed: null` at the levels keep3 played, gave each kept loop its own source render's audio on the cluster, 10 of 10 in both jobs.
+
+- **Evidence**
+  - **The second sign-off job,** `lofi-drafts --signoff` 13706355 (main, a02-09; snapshot `e5111e2e2e05-0237b644dee3`): COMPLETED in 00:07:03, 84.6 SU, `SIGNOFF_OK` (CHANGELOG 2026-11-04 10:30). Its stages (summary/stages.json): check 5.3 s, palettes 5.7 s, render 405.0 s, verify 4.7 s, build 0.2 s. Every check of summary/verify.json passed:
+    - N: each kept loop's n equals its source's and `loop_samples(bpm)` (940,800–1,282,880 samples);
+    - 61 of 61 renders ok (the kept 10, their 10 twins, and 41 others: the 32 drafts outside the kept 10 and prompt v2's 9 references): −14.092 … −13.990 LUFS, true peak at most −1.456 dBTP, G1–G7 with no repair, 1–3 loudness iterations;
+    - the bed placed 24 LU under the music (above), and as heard 22.64–23.93 LU under it on the kept 10;
+    - each frozen kept render equals its fresh-process repeat (audio, music and the whole manifest), 10 of 10, in 4.09–5.20 s a process;
+    - twin0's audio is each kept loop's source render (keep3's for 6, keep3 redo1's for 4), the music under the bed is twin0's, and every bus's pre-fader loudness, trim and fader are its source's;
+    - the batch b1103-signoff-2: 10 triage rounds, 301.6 s of audio, no two consecutive rounds in one cell (summary/batch.json, draw.json).
+  - **The first sign-off job,** 13701026 (main, a01-13): COMPLETED in 00:04:26, 53.2 SU, `SIGNOFF_OK`. 49 of 49 renders ok at −14.093 … −13.990 LUFS, true peak at most −1.456 dBTP, in 1–3 iterations; twin0 = keep3, and each repeat = its render, 10 of 10 (runs/drafts-13701026/summary/verify.json, renders.json).
+  - **The redo render,** `lofi-drafts` 13703830 (00:00:27, 5.4 SU, `DRAFTS_OK`), with `palettes/draft_day2.yaml` as keep3: 12 of 12 at −14.082 … −13.994 LUFS, true peak at most −1.456 dBTP (runs/drafts-13703830/summary/renders.json).
+  - **SU:** the four jobs of the freeze took 248.8 SU (105.6 + 53.2 + 5.4 + 84.6; CHANGELOG, from `session_report.py`).
+  - **The kept 10's bus levels** (the freeze spec §4.1 e), as `python -m lofi_rl.freeze.checks report --gate gates/GATE_palette.md --renders keep3=runs/drafts-13656049/summary/renders.json --renders keep3_redo1=runs/drafts-13703830/summary/renders.json --verify` reads them from drafts/v1/keep3_kept10.json (sha256 `72a739ec…`). It ran on 2026-11-04 on the sealed file, from a worktree, with the two renders.json given by absolute path. Each bus after its fader, relative to S\* and its target:
+
+    | bus | median off target (LU) | per-loop range | over 1.0? |
+    |---|---|---|---|
+    | sax | +0.480 | −0.456 … +1.037 | no |
+    | keys | −1.040 | −2.422 … +1.486 | yes |
+    | bass | −0.012 | −1.130 … +0.806 | no |
+    | drums | +1.149 | −4.043 … +4.390 | yes |
+
+    - The keys per instrument: wurli (d01_groove, d03_chords, d04_horn, d10_chords) median −1.685; rhodes (d02_chords, d07_groove) −1.232; piano (d05_groove, d06_chords, d08_horn, d09_chords) +0.091. Against each loop's own sax, the keys' median is −1.172.
+    - The two buses over 1.0 went to him as Q2. On keep3's kept 10 the keys median was −1.220 and the drums +0.499 (CHANGELOG 2026-11-03 19:15).
+    - The kept 10 play the jazz kit in all 10, and keys piano in 4, wurli in 4 and rhodes in 2. The studio kit and its bass are in none of them. In the sign-off listens they played only in b1103-signoff's d01_chords and d10_groove, both tossed (runs/drafts-13701026/summary/renders.json).
+    - The same report: (a) the 10 kept files are the texts their sources rendered, and pass gate, compile, energy and mood under the frozen palette; 42 of 42 drafts pass in drafts/v1 and drafts/v1/redo1. (c) Every draft fullmatches the frozen regex, 42 of 42. (d) and (g): `freeze check --verify --sealed` and `freeze check --gate --sealed` exit 0. (i) 10 kept now (keep3 6, keep3 redo1 4), and no kept file tossed. (h) The fresh `expect` differs from the committed file only in its two sources' path labels, which are absolute in a worktree that has no runs/; the run of 2026-11-03 19:15 found it equal.
+  - **His triage counts:** above (gates/GATE_palette.md; the votes are private, votes commits `9dec1cc` and `a1eb3c0`).
+  - **Prompt v2:** 9 of 9 references under `strict=True` with the frozen palette, identical to dev_gu's (the report's (b)). So D-020's "If that palette refuses a v2 example, that run's prompt is registered here first" asks for nothing, and the template stays `127e3094…`.
+  - **The frozen regex:** 3,408 characters, sha256 `5c081828…` (the report's (c)); tests/test_palette_frozen.py pins both.
+  - **The Phase-1 gate's render step** (the freeze spec §5.5 and F22: it changes only if 50 × s exceeds 300 s, where s is job B's slowest one-at-a-time render, and 300 s is the 360 s deadline less 60 s kept for an outlier).
+    - **On the cluster.** Job B is the latest sign-off job, 13706355. It rendered its 41 others one at a time with 4 workers, in an 8-CPU job, with palette A, whose audio is B's. Their render_s: min 2.90 s, median 6.09 s, mean 7.707 s, max 17.39 s (d07_chords), sum 315.99 s (runs/drafts-13706355/summary/verify.json `checks.render_time`; renders.json `others`). So 50 × 17.39 = 869.5 s, against 300 s.
+    - The first job B, 13701026, rendered the same palette sha: 29 renders, mean 6.019 s, median 4.49 s, max 30.68 s, a projection of 1,534.0 s (runs/drafts-13701026/summary/verify.json, renders.json). Its 30.68 s render was ref_l1_melancholy_low, an isolated outlier: the same render took 3.63 s in 13706355, and 13701026's next slowest took 10.29 s.
+    - **On the laptop** (Apple M4, 10 CPUs): the frozen palette B through `junk.render_clip` with a warm cache, by `…/scratchpad/s5/render_orders.py`. Laptop renders are not canonical (LESSONS 38), so only the ratio is used.
+      - The 42 drafts and 9 references, with job B's briefs (`…/scratchpad/s5/drafts/orders.json`): one at a time with 4 workers, 113.03 s and 122.81 s; two at a time with 2 workers each, 67.39 s and 70.28 s; speedup 117.92 / 68.84 = 1.713.
+      - 50 of arm B's loops (`…/scratchpad/s5/armb/orders.json`): 115.83 s and 114.91 s against 66.89 s and 63.85 s, speedup 115.37 / 65.37 = 1.765.
+      - The projection uses the drafts' lower 1.713, because arm B's loops mostly do not carry over to the frozen vocabulary. Of its 446 passing non-copies on dev_gu (runs/junk-13640325), 276 pass the gates and compile under the frozen palette, and 170 fail G4: keys 'organ' is not in it (`…/scratchpad/s5/armb_compile.json`). Re-scored on the frozen palette, 312 of 500 pass and 276 are passing non-copies, and all 50 sampled play rhodes and jazz only. The drafts and references play all three keys and both kits.
+    - **The same clips either way.**
+      - In all 4 runs of each laptop set, every clip's audio_sha256, FLAC sha256 and manifest sha256 was the same: 51 of 51 drafts and references, 50 of 50 arm B loops.
+      - Through the CLI, `python -m lofi_rl.rl.junk render --jobs 1` against `--jobs 2` on arm B's re-scored run gave the same order and 50 of 50 identical clips: records less render_s, FLAC bytes and manifest bytes (`…/scratchpad/s5/armb/cli_compare.json`).
+      - In the suite (`f07d579`), `tests/test_junk.py::test_render_two_at_a_time_gives_one_at_a_times_clips_with_the_frozen_palette` renders three drafts on the frozen palette two at a time on a cold cache, then one at a time, and finds them identical. It passed with LOFI_ASSETS (12.8 s on the laptop, 2026-11-04) and skips where the fetch-only sources are missing.
+      - A render never depends on its workers (render.pipeline.render; tests/test_determinism.py).
+    - **The freeze spec's order** (§5.5). tests/test_junk_job.py requires the three timeouts and their kill grace to sit at least 60 s under the walltime. Generate takes 840 + 15 s and score 90 + 10 s.
+      - No change: 869.5 > 300.
+      - (i) at 25 min: the deadline can rise to at most 415 s (timeout 475 s), so the spec's +90 s does not keep the minute spare; and 869.5 > 415.
+      - (ii) at 26 min (deadline 475 s, timeout 535 s) or 27 min (535 s, 595 s): 869.5 > 535.
+      - (iii) alone, the sbatch untouched: 869.5 / 1.713 = 507.6 > 360. With (i): 507.6 > 415. With (ii) at 26 min: 507.6 > 475.
+      - **(iii) with (ii) at 27 min: 507.6 ≤ 535, with 27.4 s spare. Chosen:** the smallest change that fits within Claude's 500 SU.
+      - Without (iii), the deadline would need 869.5 s: 33 min and 594 SU, so (iv), Shresth's call.
+    - **The projection after the change:** at worst 507.6 s against the 535 s deadline, about 20.3 s a render on each of the two lanes, with the last renders starting at about 487.3 s. At job B's mean: 50 × 7.707 / 1.713 = 225.0 s.
+    - **Sensitivity:**
+      - the most pessimistic pairing of the laptop runs (113.03 / 70.28 = 1.608) gives 540.6 s, 5.6 s over the deadline; its last renders would start at about 519 s, before the deadline;
+      - taking the first job's 30.68 s as s gives 895.5 s, which would need about 34 min and 612 SU;
+      - one isolated outlier of that size (about 35.8 s on a lane) moves the last start to about 502.8 s, still under 535 s, which is the case the spec's outlier margin is for;
+      - 28 min (504 SU, a deadline up to 595 s) would also keep the no-change rule's 60 s outlier allowance inside the deadline. It is over 500 SU, so it is Shresth's call, and the rule does not need it.
+
+- **Consequences**
+  - **D-017 holds:** the file never changes. tests/test_palette_frozen.py pins B, with the message "D-017: the palette never changes after the freeze", and also A (B with `frozen: null`), the date, the regex (3,408 characters, `5c081828…`), prompt v2's 9 references, and his one line under `## Approval`.
+  - **`palettes/draft_day2.yaml`** (sha256 `58aeb924…`) is a rebuild input of B's provenance, so it stays byte-identical too.
+  - **The Phase-1 gate's validity** on the frozen palette is D-020's list (its amended Validity bullets), with two values swapped:
+    - `palette.sha256` is B, `09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183`, instead of dev_gu's `b2e4a340…`, with `palette.matches_generate` true;
+    - `constrained.regex_sha256` and `constrained.in_language.regex_sha256` are both `5c081828ac50718edc4db82c2a855ea52210debb375280ba01e8442de60f8558`, instead of `1412f11f…`.
+
+    Everything else is unchanged:
+    - complete: `n` = `requested` = 500, `partial` false, `unreadable_lines` 0 and `generate.stopped` null;
+    - as registered: the model revision `cdbee75f17c01a7cc42f958dc650907174af0554`, `briefs.seed` 2026, and `sampling` equal to runs/junk-13632676's; prompt v2 with template `127e3094…`, `prompt.template_matches_generate` true, `prompt.rows_matching` 500 and `prompt.example_mismatch` 0;
+    - constrained: `constrained.enabled` true, `constrained.in_language.matches_generate` true, `stop.out_of_language` 0 and `other.n` 0;
+    - what the regex guarantees: `failures.G1`, `G3`, `G4`, `G5` and `crash` all 0;
+    - one stamp: `generate.host.stamp` and `score_stamp` show the same `commit=… dirty=0`, now the job snapshot's. D-020's frozen-path list (docs/prereg/D-020_junk_path.txt) recorded its arms' code and does not bind the gate.
+
+    The render step and G7 stay outside validity. The bar is D-021's and unchanged: `pass_not_copy.count` ≥ 300 of 500 in a valid run, and at least 15 of 50 clips "fine" by his ear, with his APPROVED line in `gates/GATE_phase1.md`.
+  - **Beside that list: the gate's job type and its render step changed** (the freeze spec §5.5 (iii) with (ii); the evidence is above).
+    - D-020's arms ran under job sha `4a9d8685231fd573` (max 450 SU), and D-021 named that sha for the gate. The gate now runs under `a7c7ea3502cf395c`, max 486 SU, re-registered by Claude under D-003's amendment: `make approve JOB=jobs/junk_rate.sbatch MAX=486 BY=Claude`. jobs/APPROVED.yaml reads `{sha: a7c7ea3502cf395c, max_su: 486, by: Claude, date: 2026-11-04}`, and `scripts/approve_job.py --check` lists no stale entry.
+    - `src/lofi_rl/rl/junk.py`: `RENDER_JOBS = 2`, so the job's `--workers 4` renders two clips at a time with 2 workers each (`8da39fd`). The clips, their manifests and their order are those of one-at-a-time rendering; only render_s differs. No render starts after the deadline, on either lane.
+    - `jobs/junk_rate.sbatch`: `--time 00:27:00`, and the render step under `timeout -k 10 595 … --deadline-s 535` (`2198836`). It was 25 min, a 360 s deadline and a 420 s timeout. The three timeouts with their kill grace come to 855 + 100 + 605 = 1,560 s, a minute under 1,620 s.
+    - Cost: 4 CPU + 6 (24 GB) + 8 (the GPU) = 18 SU/min × 27 min = 486 SU at most.
+    - The render step's change is a code change on the gate path that leaves the clips and their order unchanged. Neither it nor the walltime touches validity: D-020 says "The render step and G7 do not affect validity either".
+    - The submit is `make submit JOB=jobs/junk_rate.sbatch OVR='-p gpu' ARGS='500 2026 1 v2'`, with no `--palette`: junk's default is now the frozen file (`eb5bf11`).
+  - **The other switches of the freeze spec §5.5** (`eb5bf11`, `9abc2cd`):
+    - junk-rate's generate, score and render read `palettes/lofi_rain_v1.yaml` by default. D-019's and D-020's runs stay on dev_gu, as their junk.json records, and a re-score of one passes `--palette palettes/dev_gu.yaml`;
+    - the scorer server's default stays dev_gu (src/lofi_rl/scoring/server.py), with the reason now in its comment: jobs/scorer_smoke.sbatch starts its servers without `--palette`, and 5 of the 6 gate-passing fixtures it scores fail G4 under the frozen palette, which has no aliases. Phase-2 jobs pass `--palette palettes/lofi_rain_v1.yaml`, and a request made for another palette is refused with a 409;
+    - the docs: DSL.md's names, GRAMMAR.md's regex row, RENDER.md §3.4 and §12 and instrument.md §7 (the bed as heard), SHOOTOUTS.md's status, taste_pipeline.md's sign-off vote rules, and the rain's credit in assets/ATTRIBUTION.md;
+    - no change: the copy penalty's references (prompt v2's texts are the same under both palettes); the masked trainer's NFA, checked on dev_gu's regex, since Phase 2's smoke re-checks M8 at run time (D-021);
+    - new configs, for Phase 2's GRPO smoke and run 1, name `palette: palettes/lofi_rain_v1.yaml` and decode under `5c081828…` (D-021, Settings).
+  - **Not settled here.** D-021 was written before the redo round. Its Part B corpus names keep3's 10 kept drafts, and its item 2 pool names "the 30 drafts". Neither has run. Which drafts they hold now (the kept 10 above, the four loops he tossed at b1103-signoff, the 12 redrafts) is registered with Part B if it runs, and in run 1's config (`copy_penalty.pool`) and code path.
+  - **What follows** (the freeze spec §5.6, steps 7–10): the CHANGELOG entry; `pytest -q`, commit and push; `make sync`; then D-021's next step, the Phase-1 gate on the frozen palette, a separate unit.
+
+- **Records, so no reader takes them for pending work**
+  - **Historical comments left unedited.** Four GRPO smoke configs keep `palette: palettes/dev_gu.yaml` with the comment `# until palettes/lofi_rain_v1.yaml is frozen (D-017)`: configs/grpo_smoke.yaml:15, grpo_smoke_constrained.yaml:13, grpo_smoke_v2_grammar.yaml:18 and grpo_smoke_v2_grammar_masked.yaml:23.
+    - They record the smoke configurations made on dev_gu. Two are pinned by blob: grpo_smoke_v2_grammar.yaml in docs/prereg/D-020_grpo_smoke_path.txt and grpo_smoke_v2_grammar_masked.yaml in docs/prereg/D-021_masked_smoke_path.txt.
+    - So is src/lofi_rl/dsl/vocab.py (blob `b27b49a9…`, in all three docs/prereg lists), whose docstring still calls the names placeholders until the palette freeze and names the frozen palette.
+  - **junk.py's old blob** (`f545f5bc…`) stays in the three docs/prereg lists, as a record of runs that have ended. No `.sync-freeze` is active, and the gate job's snapshot records the new blob.
+  - **The sign-off votes** are triage tiers, each loop's tier an acceptability label at weight 1 (taste_pipeline.md, Storage). A sign-off batch whose palette did not freeze never trains the RM (F9). Both batches, b1103-signoff and b1103-signoff-2, played `lofi_rain_v1@d3590c8d`, the palette that froze, so neither is excluded.
+  - **The four loops he tossed** stay in drafts/v1 as committed, and a tossed file stays tossed (`lofi_rl.freeze.tossed_kept`; docs/FREEZE.md §5.2).
+  - **The redo round** (docs/DRAFTS.md §6; CHANGELOG 2026-11-03 17:35): workflow `wf_7f517813-71f` wrote 12 redrafts into drafts/v1/redo1/, three per reopened brief, and the validator passed 12 of 12.
+    - Claude's default for their keys and kits (docs/DRAFTS.md §8): in each brief's round one `studio` draft and two `jazz`, and the three keys instruments, none in the slot its old draft played.
+    - Its reason: the 30 drafts used each kit 15 times; he kept 8 `jazz` and 2 `studio` loops in keep3, and both `studio` loops were among the 4 he tossed. One `studio` draft per round keeps that kit in his rounds while his picks decide.
+    - His four picks are all `jazz` drafts (runs/drafts-13703830/summary/renders.json).
+  - **The freeze tools after the spec** (docs/FREEZE.md §5; workflow `wf_ad4dd7fe-b31`, merge `79c327c`):
+    - `REDOS` and `SIGNOFFS` record the redo rounds and the sign-off listens beside `PICKS`, each compared with its own gate section by `freeze check --gate`. `REDOS` holds keep3_redo1 (job 13703830), and `SIGNOFFS` holds b1103-signoff (13701026, 4 tossed) and b1103-signoff-2 (13706355, none);
+    - `kept_now()` is keep3's table with each redo round's picks over it;
+    - `drafts/v1/keep3_kept10.json` is schema `lofi-rl/keep3-kept10/2`: a source per kept loop (keep3's renders.json `94ee7e1e…` for 6, keep3 redo1's `d00ec18f…` for 4), and every kept draft read by its file path, since a redo file shares its stem with a drafts/v1 file;
+    - `checks expect`, `checks report` and job B refuse a tossed loop that is still kept, and the seal takes only a passing latest sign-off listen.
+  - **The build** (CHANGELOG 2026-11-03 15:17): the spec by workflow `wf_831448d6-864`, S1–S4 built by `wf_a13612f3-74d`, reviewed by `wf_81d8287d-967` and fixed by `wf_981d2247-1ed`.
+
+- **Claude's defaults applied** (the freeze spec §6.2; each is overridable):
+  - F1 the drafts' names; F2 `aliases: {}`; F3 every level in a per-instrument field, `bus_gain_db` 0 and no chain-head slots; F4 a FluidSynth trim as a prepended `Gain`, only when t ≠ 0; F5 a kit trim added to each lane's dB in `kit_shots`;
+  - F6 CD-28's mean kept exact (a departure, above); F7 Day 2's values, with Day 1 = Day 2 asserted for all 8 instruments and Day 3 = Day 2 for the 5 Day 3 measured; F8 the bed checked as placed and recorded as heard, with an information flag above 2.015 LU (a departure, above);
+  - F9 the sign-off in triage mode, no hidden controls, the votes private, counts only in the gate file, and a batch whose palette did not freeze kept out of the RM; F10 `lofi-drafts --signoff`, no new job type (sha `85a1ae8e085fd255`, max 180 SU; the two sign-off jobs took 53.2 and 84.6 SU);
+  - F11 drawn tables for the 9 shootout batches, keep3 and its redo round, without seeds or ids (narrowed by S4-6, above); F12 `frozen` is the date of his line, quoted, one line apart from A; F13 the provenance block inside the file; F14 the source modes unchanged, the rain added to assets/ATTRIBUTION.md's CC0 list;
+  - F15 the manifest schema stays `lofi-rl/render/1`; F16 trims and faders written on every instrument, even at 0.0, in a fixed key order; F17 junk-rate switched, the scorer server's default kept with its reason, the smoke configs left; F18 the package `lofi_rl.freeze`;
+  - F19 the kept loops' expected values committed as `drafts/v1/keep3_kept10.json` (schema 2 since the redo round); F20 job B also renders the drafts outside the kept 10 and the 9 references one at a time with 4 workers (41 in 13706355); F21 the gate-file reader by headings, labels and backticked ids, in the checks and at the seal; F22 the render step changed only because 869.5 > 300, by (iii) with (ii) within 500 SU.
+  - Since the spec: S4-6, the published tables' design rounds only (above); the redo round's keys and kits (above); docs/FREEZE.md §7's for the redo rounds: `REDOS` and `SIGNOFFS` as constants traced to the gate file, a tossed file tossed for good, a `- **Tossed:**` item in every sign-off section, keep3_kept10.json written with `--allow-tossed` while a tossed loop was still kept, and a redo draft's render id `<folder>_<stem>`; and, for the render step, (iii) with (ii) at 27 min as the smallest change within Claude's 500 SU.
