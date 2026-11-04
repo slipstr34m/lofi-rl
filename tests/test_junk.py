@@ -980,6 +980,29 @@ def test_model_spec_needs_a_pinned_commit():
             junk.split_model(bad)
 
 
+FROZEN = ROOT / "palettes" / "lofi_rain_v1.yaml"
+
+
+def test_every_step_reads_the_frozen_palette_by_default(tmp_path, monkeypatch):
+    """The Phase-1 gate runs on the frozen palette (the freeze spec §5.5; D-022). jobs/junk_rate.sbatch passes no
+    --palette, so generate, score and render all read junk.DEFAULT_PALETTE: palettes/lofi_rain_v1.yaml, the file
+    tests/test_palette_frozen.py pins. D-020's runs used dev_gu, which their junk.json records."""
+    assert junk.DEFAULT_PALETTE == FROZEN
+    frozen = load_palette(FROZEN, verify=False)
+    assert (frozen.id, str(frozen.frozen)) == ("lofi_rain_v1", "2026-11-04")
+    assert frozen.sha256 == "09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183"
+    seen = {}
+    for cmd in ("generate", "score", "render"):
+        monkeypatch.setattr(junk, f"cmd_{cmd}", lambda a, cmd=cmd: seen.__setitem__(cmd, a.palette) or 0)
+    assert junk.main(["generate", "--run", str(tmp_path), "--hang-s", "0"]) == 0
+    assert junk.main(["score", "--run", str(tmp_path)]) == 0
+    assert junk.main(["render", "--run", str(tmp_path)]) == 0
+    assert seen == {"generate": FROZEN, "score": FROZEN, "render": FROZEN}
+    job = (ROOT / "jobs" / "junk_rate.sbatch").read_text()
+    code = [ln for ln in job.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    assert sum("-m lofi_rl.rl.junk" in ln for ln in code) == 3 and not any("--palette" in ln for ln in code)
+
+
 # ------------------------------------------------------------------------------------------- render (stubbed audio)
 def test_render_samples_passing_loops_and_merges_g7_into_the_summary(tmp_path, pal, monkeypatch):
     _write_run(tmp_path, pal, drift=None)

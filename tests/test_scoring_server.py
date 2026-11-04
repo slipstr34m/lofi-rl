@@ -263,6 +263,26 @@ def test_another_palette_or_pinned_version_is_409(tmp_path):
         assert err.value.status == 409 and "rm_ver" in str(err.value)
 
 
+def test_the_default_palette_stays_dev_gu_after_the_freeze():
+    """D-022 (the freeze spec §5.5): the server's default stays palettes/dev_gu.yaml. jobs/scorer_smoke.sbatch starts
+    its servers without --palette, and the smoke's fixtures are written in dev_gu's names and aliases: under the frozen
+    palette, which has no aliases, all of its gate-passing fixtures but shaker_edits.ls fail G4. Phase-2 jobs pass
+    --palette palettes/lofi_rain_v1.yaml, and a request for another palette is a 409 (the test above)."""
+    from lofi_rl.dsl import parse
+    from lofi_rl.scoring import smoke
+    assert server.DEFAULT_PALETTE == PALETTE == ROOT / "palettes" / "dev_gu.yaml"
+    frozen = load_palette(ROOT / "palettes" / "lofi_rain_v1.yaml", verify=False)
+
+    def gate(name, pal):
+        return parse(fixture_text(name), vocab=pal.vocab(), mode="dorian").gate.code
+    passing = sorted({n for n in smoke.GROUP if gate(n, PAL) is None})
+    assert len(passing) == 6
+    assert {n: gate(n, frozen) for n in passing} == {n: (None if n == "shaker_edits.ls" else "G4") for n in passing}
+    job = (ROOT / "jobs" / "scorer_smoke.sbatch").read_text()
+    code = [ln for ln in job.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    assert any("-m lofi_rl.scoring.server" in ln for ln in code) and not any("--palette" in ln for ln in code)
+
+
 def test_render_failures_zero_one_item_and_infrastructure_faults_are_not_cached(tmp_path):
     shaker = fixture_text("shaker_edits.ls")
     renderer = fakes.FakeRenderer(fail={canon_sha_of(EX): ("G7", "final -15.2 LUFS is not within 0.5 LU")},

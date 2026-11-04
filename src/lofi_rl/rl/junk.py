@@ -30,10 +30,14 @@ jobs/junk_rate.sbatch runs the three in order on one GPU node, with DIR = $REMOT
   generate.json's (v1 when it names none; one this file does not know exits 2), and each row is compared with the
   example its own prompt showed. For a constrained run it also counts the completions in the recorded regex's
   language, by finish_reason (stop, length, other).
-- render: a seeded sample of --k gate-passing loops that are not near-copies (D-020), rendered with dev_gu
-  (render.pipeline) to one-pass 16-bit
-  FLACs under DIR/clips/, for a later ear check. G7 comes from these renders and is merged into junk.json.
-  Nothing goes to the inbox.
+- render: a seeded sample of --k gate-passing loops that are not near-copies (D-020), rendered with the palette
+  (render.pipeline) to one-pass 16-bit FLACs under DIR/clips/, for a later ear check. G7 comes from these renders
+  and is merged into junk.json. Nothing goes to the inbox.
+
+The palette: every step reads --palette, by default the frozen palettes/lofi_rain_v1.yaml (D-017; D-022), whose
+names, grammar and banks the Phase-1 gate runs on. Generate, score and render must read the same file: score records
+its sha256 and whether it matches generate's. D-019's and D-020's runs were made on palettes/dev_gu.yaml (sha256
+b2e4a340...), their junk.json records it, and a re-score of one of them passes --palette palettes/dev_gu.yaml.
 
 Files: DIR/summary/{generate.json, completions.jsonl, scored.jsonl, junk.json, clips.json} (make pull brings
 summary/ back) and DIR/clips/<i>.flac with <i>.manifest.json (they stay on scratch).
@@ -112,7 +116,7 @@ from lofi_rl.smoke import QWEN
 SCHEMA = "lofi-rl/junk/1"
 GENERATE_SCHEMA = "lofi-rl/junk-generate/1"
 CLIPS_SCHEMA = "lofi-rl/junk-clips/1"
-DEFAULT_PALETTE = ROOT / "palettes" / "dev_gu.yaml"
+DEFAULT_PALETTE = ROOT / "palettes" / "lofi_rain_v1.yaml"     # frozen 2026-11-04 (D-017, D-022); D-020 ran on dev_gu
 DEFAULT_N, DEFAULT_SEED, DEFAULT_CHUNK, RENDER_K = 500, 2026, 128, 50
 # taste_pipeline §6: GRPO's sampling, which make junk-rate shares; top_k 0 is "every token" in vLLM
 SAMPLING = {"temperature": 1.0, "top_p": 1.0, "top_k": 0, "min_p": 0.0, "repetition_penalty": 1.0,
