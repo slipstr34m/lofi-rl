@@ -1,4 +1,5 @@
-"""The 30 keep3 drafts as committed (drafts/v1; docs/DRAFTS.md §2.1 and §5). They pass the validator, and they keep the
+"""The 30 keep3 drafts as committed (drafts/v1; docs/DRAFTS.md §2.1 and §5), and each redraft folder beside them (§6:
+drafts/v1/redo1, its briefs only, checked against drafts/v1). They pass the validator, and they keep the
 house-rule readings that the validator reports (rubs) or that the text shows but nothing fails on: no sax note rubs
 against the band, every answer ends on another pitch than its call, no stretch of more than 3 bars goes without a rest,
 and bar 5, where the answer restates the call's first bar over the same chord, brings more than a ghost or a level.
@@ -19,9 +20,22 @@ V1 = ROOT / "drafts" / "v1"
 MAX_RUN = 48                    # 3 bars of 16 steps
 
 
+# folder -> (briefs in scope, the folders it is checked against, drafts expected)
+FOLDERS = {
+    V1: (None, (), 30),
+    V1 / "redo1": (["d01", "d06", "d07", "d10"], (V1,), 12),
+}
+
+
+@pytest.fixture(scope="module", params=list(FOLDERS), ids=lambda f: f.relative_to(ROOT).as_posix())
+def folder(request):
+    return request.param
+
+
 @pytest.fixture(scope="module")
-def report():
-    return C.check_folder(V1)
+def report(folder):
+    scope, against, _ = FOLDERS[folder]
+    return C.check_folder(folder, scope=scope, against=list(against))
 
 
 @pytest.fixture(scope="module")
@@ -34,9 +48,9 @@ def views(report):
     return out
 
 
-def test_every_draft_passes_the_validator(report):
+def test_every_draft_passes_the_validator(folder, report):
     assert [(d.file, d.problems) for d in report.drafts if not d.ok] == []
-    assert report.ok and report.missing == [] and len(report.drafts) == 30
+    assert report.ok and report.missing == [] and len(report.drafts) == FOLDERS[folder][2]
 
 
 def test_no_sax_note_rubs_against_the_band(report):

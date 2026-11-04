@@ -7,7 +7,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
     - Days 1, 2 and 3 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended); Day 3 gave rain excerpt `excerpt_e2` and, by his word, the rain at Δ 24;
-  - **keep3:** Shresth kept 10 of the 30 drafts, with no redrafts (`gates/GATE_palette.md`);
+  - **keep3:** Shresth kept 10 of the 30 drafts (`gates/GATE_palette.md`). The sign-off listen tossed 4 of them ("The loops themselves"), so their briefs are redrafted in `drafts/v1/redo1/` (12 drafts);
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
   - all 14 shootout sources, the rain file, its 44.1 kHz conversion and the two imported kits are on the laptop and the cluster.
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
@@ -18,7 +18,38 @@ Newest entry first. Every number cites the file or command output it was read fr
     - the scorer server (smoke 13651611, `SCORER_SMOKE_OK`);
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
-- **Waiting on Shresth:** his choice of order: redraft the 4 tossed briefs before the palette sign-off, or approve the palette first.
+- **Next:** render the redrafts (`lofi-drafts`) and serve `b1103-keep3-redo`. Then Shresth keeps one per brief, and the sign-off listen runs again on the new kept 10.
+
+---
+
+## 2026-11-03 (17:35 PST): the 12 redrafts of d01, d06, d07 and d10 (`drafts/v1/redo1/`), checked; their render next
+
+**What was done**
+- **Shresth's choice, 2026-11-03:** "Redraft first". The four briefs whose kept loops he tossed at the sign-off are redrafted before the sign-off runs again (docs/DRAFTS.md §6).
+- **Workflow `wf_7f517813-71f`** (7 agents):
+  - three persona writers (groove, horn, chords), each writing one loop per reopened brief as `drafts/v1/redo1/<brief>_<persona>.ls`;
+  - a checker; two adversarial reviewers (the spec read by the letter, and the four dealbreakers read as structure); a fixer.
+- **Keys and kits** (Claude's default, DRAFTS.md §8): each brief's round has one studio-kit draft and two jazz-kit drafts, and all three keys instruments, none in the slot its old draft played.
+  - The reason: the 30 drafts used each kit 15 times. He kept 8 jazz-kit and 2 studio-kit loops in keep3, and both studio-kit loops were among the 4 he tossed.
+- **Review:** 9 findings (none high); 7 applied, and 2 skipped because an applied finding replaced the same lines. Applied:
+  - three sax lines that reused another draft's rhythm skeleton (d10_chords against d06_chords; d06_groove against old d07_horn and old d03_chords; d07_groove against d01_groove and d10_groove);
+  - d10_groove's per-bar edits and line, which repeated d01_groove's skeleton (its line used 4 pitches);
+  - two bar-7 kicks one step off their bass strike (d07_groove, d07_horn), now matched by `@7 bass` edits.
+- **Validator** (`python -m lofi_rl.drafts.check drafts/v1/redo1 --briefs d01+d06+d07+d10 --against drafts/v1`, rerun on the laptop): 12 of 12 pass, 0 missing.
+  - E: low 0.316–0.356, mid 0.504–0.534, high 0.703–0.757. Mood margins +4 to +20.
+  - Theory 1.00, P_sax 0.00 and rubs 0 for all 12.
+  - Largest 5-gram Jaccard: 0.401 against the references (d01_chords, prompt v2's l2_melancholy_mid) and 0.395 against another draft (d06_horn, v1/d06_chords). The limit is 0.6.
+- **Readings** (the house rules tests/test_drafts_v1.py holds drafts to): 12 of 12 ok.
+  - Every answer ends on another pitch class than its call. At most 44 steps go without a rest. Bar 5 always changes more than a ghost or a level.
+  - 2–4 long notes per line, 19–31 % rests in each phrase, and 90–100 % of bass strikes on kicks.
+- **Vamps:** each brief's three drafts use three different chord pairs, none of them a pair its old drafts used.
+- **tests/test_drafts_v1.py** is parametrized over `drafts/v1` (30 drafts) and `drafts/v1/redo1` (12 drafts, its 4 briefs, checked against drafts/v1).
+- **Suite:** 3308 passed, 3 skipped.
+- **In parallel** (workflow `wf_ad4dd7fe-b31`, its own worktree, not merged yet): the freeze tools are being extended so the sign-off can take its kept loops from keep3 and from a redo round, and refuse a kept loop he tossed.
+
+**SU spent:** 0.
+
+**Next:** `make submit JOB=jobs/drafts.sbatch ARGS='--drafts drafts/v1/redo1 --briefs d01+d06+d07+d10 --against drafts/v1'` (at most 180 SU), then serve `b1103-keep3-redo` for his picks.
 
 ---
 
