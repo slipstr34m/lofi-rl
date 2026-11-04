@@ -24,10 +24,11 @@ Four steps. A step that finds problems lists every one and refuses (exit 3). Not
      `stages.json` exited 0, `verify` and `build` among them. Its batch `<inbox>/<date>/<batch>/` has `manifest.json`
      and a hidden manifest of category `signoff`, and every clip there plays `<palette id>@<sha8>`.
    - A sha256 that only an earlier sign-off job recorded refuses: a §4.5 loop has run since.
-   - **The listen passed.** That job and its batch are the latest sign-off listen recorded in
-     lofi_rl.freeze.SIGNOFFS (his marks of it are recorded before the seal), and that listen tossed no kept loop
-     (`tossed` is empty). A listen with a Toss reopens its loops (docs/FREEZE.md §5), and only a later sign-off job
-     that passes can be sealed.
+   - **The listen passed.** The record keeps its own rules first (lofi_rl.freeze.gate.records_problems: each
+     REDOS and SIGNOFFS entry well formed, the listens' jobs rising), so a malformed entry refuses by name. That job
+     and its batch are the latest sign-off listen recorded in lofi_rl.freeze.SIGNOFFS (his marks of it are recorded
+     before the seal), and that listen tossed no kept loop (`tossed` is empty). A listen with a Toss reopens its
+     loops (docs/FREEZE.md §5), and only a later sign-off job that passes can be sealed.
    - His date is not before that batch's date (a Pacific date: the job's `--date`, or its Pacific today).
    - `python -m lofi_rl.freeze check --gate` passes on the file.
 3. **The rebuild.** `python -m lofi_rl.freeze build --frozen <his date>` writes a candidate next to the file. It must
@@ -67,7 +68,7 @@ from lofi_rl.drafts import job as J
 from lofi_rl.palette import ROOT, PaletteError, parse_palette
 
 from . import FROZEN, JOBS
-from .gate import APPROVAL_HEADING, GateError, approval_date, confirmations
+from .gate import APPROVAL_HEADING, GateError, approval_date, confirmations, records_problems
 
 GATE_PATH = ROOT / "gates" / "GATE_palette.md"
 SIGNOFF_BATCH_RE = re.compile(r"b\d{4}-signoff(?:-\d+)?")
@@ -251,8 +252,13 @@ def latest_signoff(runs: Path, inbox: Path, sha256: str, label: str) -> Signoff:
 
 def listen_problems(job: Signoff, signoffs: Sequence[Mapping] | None = None) -> list[str]:
     """The latest sign-off job found under runs (latest_signoff) against the latest sign-off listen recorded
-    (lofi_rl.freeze.SIGNOFFS, unless given): the same job and batch, and no kept loop tossed in it."""
+    (lofi_rl.freeze.SIGNOFFS, unless given): the same job and batch, and no kept loop tossed in it. First the record
+    keeps its own rules (lofi_rl.freeze.gate.records_problems, with those listens and REDOS, JOBS and KEPT as they
+    stand), so a malformed entry is named here rather than read."""
     signoffs = F.SIGNOFFS if signoffs is None else signoffs
+    bad = records_problems(signoffs=signoffs)
+    if bad:
+        return bad
     if not signoffs:
         return [f"no sign-off listen is recorded in lofi_rl.freeze.SIGNOFFS: his marks of {job.batch} (job {job.job}) "
                 f"are recorded before the seal"]

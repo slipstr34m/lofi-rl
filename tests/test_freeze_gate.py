@@ -444,7 +444,10 @@ def test_a_redo_round_of_redos_must_be_in_the_gate_file(redo_job):
     (lambda t: _edit(t, "## How to approve", "## Sign-off listen 2: voted 2026-11-06 (batch b1106-signoff-2; job "
                                              "13720000)\n\n- **Tossed:** none.\n\n## How to approve"),
      "SIGNOFFS lacks"),
-], ids=["tossed-differs", "no-tossed-item", "job-differs", "batch-differs", "listen-not-in-signoffs"])
+    (lambda t: _edit(t, f"- **Tossed:** {TOSSED}.\n", f"- **Tossed:** {TOSSED}.\n- **Tossed:** none.\n"),
+     "## Sign-off listen (b1103-signoff): 2 **Tossed:** items"),
+], ids=["tossed-differs", "no-tossed-item", "job-differs", "batch-differs", "listen-not-in-signoffs",
+        "two-tossed-items"])
 def test_a_signoff_section_that_disagrees_with_signoffs_fails(edit, what):
     bad = G.picks_problems(edit(GATE))
     assert bad and any(what in p for p in bad), bad
@@ -494,6 +497,39 @@ def test_records_problems_on_the_order_the_jobs_and_the_signoffs(redo_job, monke
         redos=(REDO, two), signoffs=(LISTEN, {**retossed, "job": LISTEN["job"]})))
     assert any("not a b<MMDD>-signoff[-<k>] name of its own" in p for p in G.records_problems(
         redos=(REDO, two), signoffs=(LISTEN, {**retossed, "batch": LISTEN["batch"]})))
+
+
+LATER = "b1106-signoff-2"
+
+
+@pytest.mark.parametrize("signoff, what", [
+    ({"batch": LATER, "job": 13720000}, "SIGNOFFS[1]: a sign-off listen holds exactly ['batch', 'job', 'tossed']"),
+    ({"batch": LATER, "job": 13720000, "tossed": (), "words": "Great"},
+     "SIGNOFFS[1]: a sign-off listen holds exactly ['batch', 'job', 'tossed']"),
+    ("b1106-signoff-2", "SIGNOFFS[1]: a sign-off listen holds exactly ['batch', 'job', 'tossed']"),
+    ({"batch": LATER, "job": 13720000, "tossed": "drafts/v1/d02_chords.ls"},
+     f"SIGNOFFS[1] ({LATER}): its tossed files are a list, each once"),
+    ({"batch": LATER, "job": 13720000, "tossed": None}, f"SIGNOFFS[1] ({LATER}): its tossed files are a list, each once"),
+    ({"batch": LATER, "job": 13720000, "tossed": ("drafts/v1/d02_chords.ls", "drafts/v1/d02_chords.ls")},
+     f"SIGNOFFS[1] ({LATER}): its tossed files are a list, each once"),
+], ids=["tossed-forgotten", "a-field-more", "not-a-mapping", "tossed-a-string", "tossed-none", "a-file-twice"])
+def test_records_problems_names_a_malformed_signoff_and_never_reads_it(signoff, what):
+    assert G.records_problems(redos=(), signoffs=(LISTEN, signoff)) == [what]
+
+
+FIELDS = f"REDOS[0]: a redo round holds exactly {list(G.REDO_FIELDS)}"
+ORPHAN = "JOBS['keep3_redo1']: no redo round of that key in REDOS"     # its job, once the round itself is refused
+
+
+@pytest.mark.parametrize("redo, want", [
+    ({**REDO, "kept": ["drafts/v1/redo1/d01_horn.ls"]}, ["REDOS[0] (keep3_redo1): its kept picks are a mapping of "
+                                                         "brief to file"]),
+    ({k: v for k, v in REDO.items() if k != "kept"}, [FIELDS, ORPHAN]),
+    ("keep3_redo1", [FIELDS, ORPHAN]),
+], ids=["kept-a-list", "kept-forgotten", "not-a-mapping"])
+def test_records_problems_names_a_malformed_redo_round_and_never_reads_it(redo, want):
+    assert G.records_problems(redos=(redo,), signoffs=(LISTEN,),
+                              jobs={**R.TODAY["JOBS"], REDO["key"]: REDO_JOB}) == want
 
 
 def test_a_tossed_file_stays_tossed_until_another_file_replaces_it():

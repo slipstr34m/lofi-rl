@@ -347,7 +347,8 @@ folders under drafts/v1 (`REDOS`'s and every `redo<k>/` present), so the job scr
 ### 5.5 The seal, the tables and the note after a redo round
 - **The seal** (`lofi_rl.freeze.seal`, step 2) takes the latest sign-off job under runs/, the highest job id in sign-off
   mode. It must be the latest `SIGNOFFS` entry (its job and batch: his marks of it are recorded first), and that listen
-  tossed nothing. Today the latest entry, b1103-signoff, tossed 4, so the seal refuses.
+  tossed nothing. Before it reads that entry, `REDOS` and `SIGNOFFS` must keep their own rules (`gate.records_problems`,
+  §5.2), so a malformed entry refuses by name. Today the latest entry, b1103-signoff, tossed 4, so the seal refuses.
 - **The drawn tables** (`lofi_rl.freeze.tables`) publish each redo round's job as they publish keep3's
   (`Drawn, keep3 redo<k>`), its job `JOBS[key]`.
 - **A later sign-off batch's note and push** say "again": the last listen played this rain at this level, and redo

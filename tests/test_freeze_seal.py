@@ -414,6 +414,22 @@ def test_the_seal_reads_lofi_rl_freeze_signoffs(tmp_path, monkeypatch):
     assert S.seal(**w.kwargs(cli=FakeCLI(w), signoffs=None)).written
 
 
+@pytest.mark.parametrize("record, what", [
+    ({"batch": "b1105-signoff", "job": 13700001}, "SIGNOFFS[0]: a sign-off listen holds exactly ['batch', 'job', "
+                                                  "'tossed']"),
+    ({"batch": "b1105-signoff", "job": 13700001, "tossed": "drafts/v1/d01_chords.ls"},
+     "SIGNOFFS[0] (b1105-signoff): its tossed files are a list, each once"),
+], ids=["tossed-forgotten", "tossed-a-string"])
+def test_a_malformed_listen_record_refuses_by_name_and_runs_nothing(tmp_path, record, what):
+    """A SIGNOFFS entry that breaks its rules (here the record of this world's own job) is a refusal that names it,
+    never a KeyError, and the freeze CLI never runs."""
+    w = make_world(tmp_path)
+    cli = FakeCLI(w)
+    assert refused(w, cli, signoffs=(record,)) == [what]
+    assert cli.calls == []
+    assert S.listen_problems(S.signoff_runs(w.runs)[-1], (record,)) == [what]
+
+
 def test_a_palette_no_signoff_job_rendered_refuses(tmp_path):
     w = make_world(tmp_path, signoff=False)
     w.signoff(sha="e" * 64)
