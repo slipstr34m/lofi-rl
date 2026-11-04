@@ -8,10 +8,13 @@ check passes; a synthetic redo round that replaces them (tests/helpers_redo.py: 
 REDOS, SIGNOFFS, KEPT and JOBS monkeypatched) passes. The laptop report runs on a stand-in of the frozen palette made
 from palettes/draft_day2.yaml the way the generator makes the real file (tests/test_freeze_signoff.py), and on
 palettes/lofi_rain_v1.yaml itself, as it stands and as the seal leaves it (copies). The freeze check's command
-(`python -m lofi_rl.freeze check`) is replaced by a recorder, except in the last two tests. Nothing is rendered and
-nothing is claimed about sound."""
+(`python -m lofi_rl.freeze check`) is replaced by a recorder, except in the last two tests. The tests on the committed
+file and the real gate file read them by what they record (the kept list, its sources, the round that supplies a
+brief), so recording a redo round and running `expect` again leaves them valid; keep3's own bus table (the freeze
+spec's §4.1 and Q1) is checked on keep3's ten. Nothing is rendered and nothing is claimed about sound."""
 import copy
 import hashlib
+import itertools
 import json
 import re
 import statistics
@@ -155,16 +158,19 @@ def test_today_the_tossed_loops_are_keep3s_four_of_b1103_signoff():
 
 
 def k3_doc(tmp_path) -> tuple[dict, dict]:
-    """A keep3 renders document for two fixture drafts in tmp_path (the committed records' shape), and its kept list
-    as lofi_rl.freeze.kept_rounds gives one: {brief: (file, "keep3")}."""
-    loops = C.load_expectations(EXPECT)["loops"]
+    """A keep3 renders document for two drafts/v1 drafts copied to tmp_path, d01_chords and d05_groove, and its kept
+    list as lofi_rl.freeze.kept_rounds gives one: {brief: (file, "keep3")}. Each record has the committed records'
+    shape: the values of the committed loop of its brief (whichever round supplies that brief now), with its own file,
+    text sha256 and persona, so the document does not depend on which loops are kept."""
+    by_brief = {e["brief_id"]: e for e in C.load_expectations(EXPECT)["loops"].values()}
     renders = {}
     for rid in ("d01_chords", "d05_groove"):
         f = tmp_path / f"{rid}.ls"
         f.write_text((ROOT / "drafts" / "v1" / f"{rid}.ls").read_text(), encoding="utf-8")
-        e = loops[rid]
-        renders[rid] = {**{k: e[k] for k in C.LOOP_KEYS}, "file": str(f), "status": "ok",
-                        "palette": {"label": e["palette"]}, "buses": copy.deepcopy(e["buses"])}
+        e = by_brief[rid[:3]]
+        renders[rid] = {**{k: e[k] for k in C.LOOP_KEYS}, "file": str(f), "draft_sha256": C.file_sha256(f),
+                        "persona": rid[4:], "status": "ok", "palette": {"label": e["palette"]},
+                        "buses": copy.deepcopy(e["buses"])}
     return {"renders": renders}, {rid[:3]: (renders[rid]["file"], "keep3") for rid in renders}
 
 
@@ -239,25 +245,34 @@ def test_a_tossed_loop_still_kept_refuses_in_expect(tmp_path):
 
 
 def test_load_expectations_refuses_a_file_that_is_not_one(tmp_path):
+    """Each edit of the committed file names its own problem. The loops edited are the file's first two kept loops and
+    the source added is a round it does not name, whichever rounds supply the kept list."""
     good = json.loads(EXPECT.read_text())
-    cases = {"schema": lambda d: d.update(schema="lofi-rl/keep3-kept10/1"),
-             "loops": lambda d: d["loops"].pop("d05_groove"),
-             "bus": lambda d: d["loops"]["d01_chords"]["buses"]["keys"].pop("off_lu"),
-             "source sha": lambda d: d["sources"][0].update(sha256="nope"),
-             "no sources": lambda d: d.update(sources=[]),
-             "loop source": lambda d: d["loops"]["d02_chords"].update(source="keep3_redo1"),
-             "source unused": lambda d: d["sources"].append({**d["sources"][0], "key": "keep3_redo1"}),
-             "loop field": lambda d: d["loops"]["d02_chords"].pop("source"),
-             "tossed": lambda d: d.update(allow_tossed=False, tossed=[{"brief": "d02", "file": d["kept"][1],
-                                                                      "signoffs": ["b1103-signoff"]}]),
-             "tossed shape": lambda d: d.update(tossed=[{"file": d["kept"][1]}])}
-    for name, edit in cases.items():
+    one, two = (Path(f).stem for f in good["kept"][:2])
+    keys = [s["key"] for s in good["sources"]]
+    other = next(k for k in (f"keep3_redo{n}" for n in itertools.count(1)) if k not in keys)
+    cases = {"schema": (lambda d: d.update(schema="lofi-rl/keep3-kept10/1"), "not a lofi-rl/keep3-kept10/2 document"),
+             "loops": (lambda d: d["loops"].pop(two), "its loops are not exactly its kept files"),
+             "bus": (lambda d: d["loops"][one]["buses"]["keys"].pop("off_lu"), f"loop {one} needs each bus's"),
+             "source sha": (lambda d: d["sources"][0].update(sha256="nope"), "sources needs a list of"),
+             "no sources": (lambda d: d.update(sources=[]), "sources needs a list of"),
+             "loop source": (lambda d: d["loops"][two].update(source=other), f"loop {two} comes from {other}, not one"),
+             "source unused": (lambda d: d["sources"].append({**d["sources"][0], "key": other}),
+                               f"source {other} supplies no loop"),
+             "loop field": (lambda d: d["loops"][two].pop("source"), f"loop {two} lacks a field"),
+             "tossed": (lambda d: d.update(allow_tossed=False, tossed=[{"brief": d["loops"][two]["brief_id"],
+                                                                       "file": d["kept"][1],
+                                                                       "signoffs": ["b1103-signoff"]}]),
+                        "it records tossed loops without allow_tossed"),
+             "tossed shape": (lambda d: d.update(tossed=[{"file": d["kept"][1]}]), "needs allow_tossed and a tossed")}
+    for name, (edit, what) in cases.items():
         d = copy.deepcopy(good)
         edit(d)
         f = tmp_path / f"{name}.json"
         f.write_text(json.dumps(d), encoding="utf-8")
-        with pytest.raises(C.ChecksError):
+        with pytest.raises(C.ChecksError) as err:
             C.load_expectations(f)
+        assert any(what in x for x in err.value.errors), (name, err.value.errors)
     with pytest.raises(C.ChecksError, match="not a lofi-rl/keep3-kept10/2 document"):   # main bd33ce2's file
         C.load_expectations(tmp_path / "schema.json")
 
@@ -389,31 +404,33 @@ def test_a_redo_gate_table_that_disagrees_with_redos_fails_the_report(tree):
 
 @pytest.mark.skipif(not FROZEN.is_file(), reason="palettes/lofi_rain_v1.yaml is the generator's (S2), not written yet")
 def test_freeze_check_gate_compares_a_redo_rounds_table_with_redos(tmp_path, monkeypatch):
-    """`python -m lofi_rl.freeze check --gate` (lofi_rl.freeze.palette.check, in this process so REDOS can be a
-    synthetic round) on a copy of the real gate file with a redo round's section added before its sign-off listen."""
-    redo = {"key": "keep3_redo1", "folder": "drafts/v1/redo1", "batch": "b1105-keep3-redo", "job": 13710001,
-            "heading": "## Kept drafts (keep3 redo1)",
-            "kept": {"d01": "drafts/v1/redo1/d01_horn.ls", "d06": "drafts/v1/redo1/d06_horn.ls"}}
-    section = ("## Kept drafts (keep3 redo1): voted 2026-11-05 (batch b1105-keep3-redo; job 13710001)\n\n"
-               "| Brief | Energy, mood | Kept |\n|---|---|---|\n"
-               "| d01 | low, melancholy | `drafts/v1/redo1/d01_horn.ls` |\n"
-               "| d06 | mid, hopeful | `drafts/v1/redo1/d06_horn.ls` |\n\n")
+    """`python -m lofi_rl.freeze check --gate` (lofi_rl.freeze.palette.check, in this process so REDOS can hold a
+    synthetic round) on a copy of the real gate file with a redo round's section added: the round after the last one
+    REDOS records (keep3_redo1 while none is), so it never meets a recorded round's section."""
+    k = 1 + max((int(r["key"].removeprefix("keep3_redo")) for r in FZ.REDOS), default=0)
+    key, folder, job, rounds, listens = f"keep3_redo{k}", f"drafts/v1/redo{k}", 13710000 + k, len(FZ.REDOS), \
+        len(FZ.SIGNOFFS)
+    head = f"## Kept drafts (keep3 redo{k})"
+    redo = {"key": key, "folder": folder, "batch": "b1105-keep3-redo", "job": job, "heading": head,
+            "kept": {"d01": f"{folder}/d01_horn.ls", "d06": f"{folder}/d06_horn.ls"}}
+    heading = f"{head}: voted 2026-11-05 (batch b1105-keep3-redo; job {job})"
+    section = (f"{heading}\n\n| Brief | Energy, mood | Kept |\n|---|---|---|\n"
+               f"| d01 | low, melancholy | `{folder}/d01_horn.ls` |\n| d06 | mid, hopeful | `{folder}/d06_horn.ls` |\n\n")
     real = GATE.read_text(encoding="utf-8")
-    assert real.count("\n## Sign-off listen: ") == 1
+    assert real.count("\n## How to approve\n") == 1
     gate = tmp_path / "GATE_palette.md"
-    gate.write_text(real.replace("\n## Sign-off listen: ", "\n" + section + "## Sign-off listen: "), encoding="utf-8")
-    assert F.check(FROZEN, gate=gate)[1] == ["## Kept drafts (keep3 redo1): voted 2026-11-05 (batch b1105-keep3-redo; "
-                                             "job 13710001): a redo round the gate file records and "
-                                             "lofi_rl.freeze.REDOS lacks"]
-    monkeypatch.setattr(FZ, "REDOS", (redo,))
-    monkeypatch.setitem(FZ.JOBS, "keep3_redo1", 13710001)
+    gate.write_text(real.replace("\n## How to approve\n", "\n" + section + "## How to approve\n"), encoding="utf-8")
+    assert F.check(FROZEN, gate=gate)[1] == [f"{heading}: a redo round the gate file records and lofi_rl.freeze.REDOS "
+                                             f"lacks"]
+    monkeypatch.setattr(FZ, "REDOS", (*FZ.REDOS, redo))
+    monkeypatch.setitem(FZ.JOBS, key, job)
     _fp, bad, done = F.check(FROZEN, gate=gate)
-    assert bad == [] and "(c) picks = " in done[-1] and "1 redo rounds, 1 sign-off listens" in done[-1]
-    gate.write_text(gate.read_text().replace("`drafts/v1/redo1/d06_horn.ls`", "`drafts/v1/redo1/d06_groove.ls`"),
-                    encoding="utf-8")
+    assert bad == [] and "(c) picks = " in done[-1]
+    assert f"{rounds + 1} redo rounds, {listens} sign-off listens" in done[-1]
+    gate.write_text(gate.read_text().replace(f"`{folder}/d06_horn.ls`", f"`{folder}/d06_groove.ls`"), encoding="utf-8")
     assert F.check(FROZEN, gate=gate)[1] == [
-        "## Kept drafts (keep3 redo1): the kept table differs from REDOS keep3_redo1's picks: "
-        "[('d06', 'drafts/v1/redo1/d06_groove.ls'), ('d06', 'drafts/v1/redo1/d06_horn.ls')]"]
+        f"{head}: the kept table differs from REDOS {key}'s picks: "
+        f"[('d06', '{folder}/d06_groove.ls'), ('d06', '{folder}/d06_horn.ls')]"]
 
 
 def test_drafts_folders_render_ids_and_a_folder_of_another_name(tree, tmp_path):
@@ -440,7 +457,7 @@ def test_the_report_on_a_standin_fails_on_exactly_the_tossed_loops(tmp_path):
     b1103-signoff that no redo pick has replaced yet."""
     pal = standin(tmp_path / "lofi_rain_v1.yaml")
     rec = Recorder()
-    renders = {k: p for k, p in {"keep3": K3R}.items() if p.is_file()}
+    renders = {s["key"]: ROOT / s["path"] for s in C.load_expectations(EXPECT)["sources"] if (ROOT / s["path"]).is_file()}
     doc = C.report(pal, gate=GATE, renders=renders, verify=True, runner=rec)
     assert doc["problems"] == doc["i"]["problems"] == C.tossed_problems()
     assert [p.split(":")[0] for p in doc["problems"]] == [b for b, _f, _s in FZ.tossed_kept()]
@@ -474,14 +491,44 @@ def test_the_report_refuses_constants_that_break_their_own_rules(tmp_path, monke
         C.report(pal, runner=Recorder())
 
 
-def test_the_bus_table_is_keep3s_and_puts_the_keys_to_shresth():
+def test_the_bus_table_is_the_kept_loops_and_names_a_bus_over_one_lu():
+    """(e) of the committed file, whichever rounds supply its loops: each bus's median, range and over flag, the keys
+    per instrument and against each loop's own sax, and the instruments played."""
     expect = C.load_expectations(EXPECT)
+    loops = expect["loops"]
     e = C.bus_table(expect)
     for b in C.BUSES:
-        offs = [expect["loops"][r]["buses"][b]["off_lu"] for r in KEPT]
+        offs = [x["buses"][b]["off_lu"] for x in loops.values()]
         assert e["buses"][b]["median_off_lu"] == statistics.median(offs)
         assert (e["buses"][b]["min_off_lu"], e["buses"][b]["max_off_lu"]) == (min(offs), max(offs))
-    # the freeze spec's §4.1 table and Q1, read from keep3's renders (runs/drafts-13656049/summary/renders.json)
+        assert e["buses"][b]["over"] is (abs(statistics.median(offs)) > C.OVER_LU)
+    keys = sorted({x["keys"] for x in loops.values()})
+    assert {i: v["median"] for i, v in e["keys_by_instrument"].items()} == {
+        i: statistics.median(x["buses"]["keys"]["off_lu"] for x in loops.values() if x["keys"] == i) for i in keys}
+    assert e["keys_vs_own_sax"]["median"] == statistics.median(
+        (x["buses"]["keys"]["lu"] - x["buses"]["sax"]["lu"]) - (x["buses"]["keys"]["target_lu"]
+                                                                  - x["buses"]["sax"]["target_lu"]) for x in loops.values())
+    assert e["uses"]["keys"] == {i: sorted(r for r, x in loops.items() if x["keys"] == i) for i in keys}
+
+
+def keep3_ten() -> dict:
+    """keep3's ten loops as a keep3_kept10.json document: the committed file while its kept list is keep3's (2026-11-03),
+    else rebuilt from keep3's renders.json where runs/ holds it (skip otherwise)."""
+    doc = C.load_expectations(EXPECT)
+    if [s["key"] for s in doc["sources"]] == ["keep3"] and doc["kept"] == list(FZ.KEPT.values()):
+        return doc
+    if not K3R.is_file():
+        pytest.skip("the kept list is no longer keep3's ten, and runs/ does not hold keep3's renders.json")
+    return C.expectations([C.read_source("keep3", K3R, job=13656049)],
+                          kept={b: (f, "keep3") for b, f in FZ.KEPT.items()}, draft=P.load())
+
+
+def test_the_bus_table_of_keep3s_ten_puts_the_keys_to_shresth():
+    """The freeze spec's §4.1 table and Q1 (2026-11-03), read from keep3's renders
+    (runs/drafts-13656049/summary/renders.json): the keys bus is the one more than OVER_LU off."""
+    expect = keep3_ten()
+    assert sorted(expect["loops"]) == sorted(KEPT)
+    e = C.bus_table(expect)
     assert {b: round(e["buses"][b]["median_off_lu"], 3) for b in C.BUSES} == {"sax": 0.137, "keys": -1.220,
                                                                              "bass": 0.207, "drums": 0.499}
     assert [b for b in C.BUSES if e["buses"][b]["over"]] == ["keys"]
@@ -514,13 +561,21 @@ def test_check_folder_checks_the_drafts_against_the_palette_it_is_given(tmp_path
 
 
 def test_the_report_names_a_freeze_check_that_fails_and_a_stale_kept_list(tmp_path):
+    """A copy of the real gate file with one kept loop's row naming another draft of its brief: the row of the round
+    that supplies d04 now (keep3's table, or the redo round's that picked it)."""
     pal = standin(tmp_path / "lofi_rain_v1.yaml")
+    kept = FZ.kept_now()["d04"]
+    other = str(Path(kept).with_name("d04_chords.ls" if Path(kept).name != "d04_chords.ls" else "d04_horn.ls"))
+    lines = GATE.read_text(encoding="utf-8").splitlines(keepends=True)
+    (row,) = [i for i, x in enumerate(lines) if x.startswith("| d04 |") and f"`{kept}`" in x]
+    lines[row] = lines[row].replace(f"`{kept}`", f"`{other}`")
     gate = tmp_path / "gate.md"
-    gate.write_text(GATE.read_text().replace("`drafts/v1/d04_horn.ls`", "`drafts/v1/d04_chords.ls`"), encoding="utf-8")
+    gate.write_text("".join(lines), encoding="utf-8")
     doc = C.report(pal, gate=gate, runner=Recorder(3, "problem: a pick"))
     assert not doc["ok"] and doc["g"]["kept_table_matches"] is False
     assert any("freeze check --gate exited 3" in x for x in doc["problems"])
-    assert any("but the gate file's keep3 table keeps" in x for x in doc["problems"])
+    assert any(x.startswith("keep3_kept10.json keeps") and "but the gate file's keep3 table" in x and other in x
+               for x in doc["problems"])
 
 
 def test_the_cli_prints_the_report_and_refuses_bad_input(tmp_path, capsys, monkeypatch):
@@ -528,7 +583,8 @@ def test_the_cli_prints_the_report_and_refuses_bad_input(tmp_path, capsys, monke
     monkeypatch.setattr(C, "freeze_check", Recorder())
     assert C.main(["report", "--palette", str(pal)]) == (3 if FZ.tossed_kept() else 0)
     out = capsys.readouterr().out
-    assert "(e) bus levels of the kept loops" in out and "keys   -1.220" in out and "(g) picks: not run" in out
+    keys = C.bus_table(C.load_expectations(EXPECT))["buses"]["keys"]["median_off_lu"]     # -1.220 for keep3's ten
+    assert "(e) bus levels of the kept loops" in out and f"keys   {keys:+.3f}" in out and "(g) picks: not run" in out
     assert [x for x in out.splitlines() if x.startswith("problem: ")] == [f"problem: {x}" for x in C.tossed_problems()]
     assert C.main(["report", "--palette", str(tmp_path / "nowhere.yaml")]) == 2
     assert C.main(["report", "--palette", str(pal), "--drafts", str(tmp_path)]) == 2      # no keep3_kept10.json
