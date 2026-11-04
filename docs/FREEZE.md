@@ -6,10 +6,14 @@ the plain-word names the model sees (instrument.md §6). Shresth signs it off wi
 <yyyy-mm-dd>` in gates/GATE_palette.md; then `frozen:` takes that date, and after that **the file never changes**
 (D-017, docs/DECISIONS.md).
 
-- **Code:** `src/lofi_rl/freeze/` (`__init__` holds the constants; `palette`: build, check, vocab; `gate`: reading the
-  gate file), tests `tests/test_freeze_palette.py` and `tests/test_freeze_gate.py`.
-- **Files:** `palettes/lofi_rain_v1.yaml`, written by `python -m lofi_rl.freeze build`, never by hand.
-- **Status (2026-11-03):** built with `frozen: null`, for the checks before the sign-off and Shresth's sign-off listen.
+- **Code:** `src/lofi_rl/freeze/` (`__init__` holds the constants and the kept-list readers; `palette`: build, check,
+  vocab; `gate`: reading the gate file; `checks`, `signoff`, `batch`: the sign-off, §5; `seal`, `tables`), tests
+  `tests/test_freeze_*.py`.
+- **Files:** `palettes/lofi_rain_v1.yaml`, written by `python -m lofi_rl.freeze build`, never by hand;
+  `drafts/v1/keep3_kept10.json` (§5.3).
+- **Status (2026-11-03):** built with `frozen: null`. The first sign-off listen (b1103-signoff) did not pass: 4 Toss,
+  and Shresth's words were "The loops themselves", so the palette does not change and briefs d01, d06, d07 and d10
+  reopen through the drafts redo path (§5).
 - **Sound claims:** none. Every number here is read from a repo file or from the build's output; the file names where
   it came from.
 
@@ -88,8 +92,10 @@ A package of its own, `lofi_rl.freeze`, so the draft module (`lofi_rl.drafts.pal
 `draft_day2.yaml` byte for byte) stays as it is. It imports the draft module's helpers (`load`, `render_doc`,
 `untrimmed_lanes`, `yaml_text`, `mean2`, the sha helpers) and constants (`KEYS`, `KITS`, `SAX`, `SETTINGS`,
 `TRIM_BUSES`, `BUS_ORDER`), so nothing is copied. Its own constants (`lofi_rl.freeze`): `FROZEN`, `PICKS` (the gate
-file's picks, §4), `KEPT` (keep3's table), `BED`, `JOBS` (13635646, 13651610, 13656048 and keep3's 13656049),
-`CHANGES`, and the frozen grammar's `REGEX_CHARS`, `REGEX_SHA256` and `V2_REFERENCES`.
+file's picks, §4), `KEPT` (keep3's table), `REDOS` and `SIGNOFFS` (the redo rounds and the sign-off listens, §5),
+`BED`, `JOBS` (13635646, 13651610, 13656048, keep3's 13656049, then each redo round's job under its key), `CHANGES`,
+and the frozen grammar's `REGEX_CHARS`, `REGEX_SHA256` and `V2_REFERENCES`; and three readers of them, `kept_rounds`,
+`kept_now` and `tossed_kept` (§5.1).
 
 ### 3.2 CLI
 ```
@@ -198,8 +204,9 @@ them; his answer (2026-11-03) was "Keep as heard (Recommended)", so the keys fad
 - (i) `frozen` is null, or with `--sealed` the date of the APPROVED line under the gate file's `## Approval`.
 
 **With `--gate gates/GATE_palette.md`:** (c) the gate file's picks equal `PICKS` (§4), and `PICKS` names what the
-palette is built from (the draft's `KEYS`, `KITS`, `SAX`, `SETTINGS` and `BED`). It runs in the laptop checks, in job B
-and at the seal.
+palette is built from (the draft's `KEYS`, `KITS`, `SAX`, `SETTINGS` and `BED`); each redo round's section equals its
+`REDOS` entry and each sign-off listen's section its `SIGNOFFS` entry (§5.2), and both constants keep their own rules.
+It runs in the laptop checks, in job B and at the seal.
 
 **Permanent tests read the real gate file,** which keeps changing after the freeze:
 - tests/test_freeze_checks.py: its keep3 table, and `checks report --gate`, which runs this check on the committed
@@ -228,22 +235,125 @@ the SF2 coverage of every note the compiler may send (palette.py `note_cells`). 
 
 The gate file keeps changing after the freeze (the sign-off counts, the drawn round tables), so nothing reads it by
 line number:
-- a section by its heading (`### Day 1: voted`, `### Day 2: voted`, `### Day 3: voted`, `## Kept drafts (keep3)`),
-  running to the next heading of its level or above; its heading must name its job;
+- a section by its heading (`### Day 1: voted`, `### Day 2: voted`, `### Day 3: voted`, `## Kept drafts (keep3)`, and
+  each redo round's `## Kept drafts (keep3 redo<k>)`), running to the next heading of its level or above; its heading
+  must name its job (a redo round's heading its batch too);
 - in a day's section, the line `**Shresth's confirmation, <date>:**` and the quoted words on it (Day 3: "Yes, use
   these" and "24 below (Recommended)");
 - each pick by the bold label of its item in the **Survivors** (Day 1) or **Results** (Days 2 and 3) list, and every
   backticked id the item holds, its sub-bullets included, in order; Day 2's **Sax** also by its sub-bullets Warmth,
   Expression and Timing;
-- keep3's table by its header row's `Brief` and `Kept` columns.
+- keep3's table, and each redo round's, by its header row's `Brief` and `Kept` columns (a redo round's table lists only
+  the briefs he kept a loop for);
+- each sign-off listen by its `## Sign-off listen` heading that names its batch (`batch b1103-signoff`, a whole word,
+  so `b1103-signoff-2` is another listen) and its job, and the backticked files of its `- **Tossed:**` item (`- **Tossed:**
+  none.` for a listen that passed).
 
-`picks_problems` names the heading of every difference: a heading, job, confirmation, label, id or kept file that is
-missing or differs. A line moved within its section, or added outside these items, changes nothing.
+`picks_problems` names the heading of every difference: a heading, job, batch, confirmation, label, id, kept file or
+tossed file that is missing or differs, and a redo round or sign-off listen the gate file records that `REDOS` or
+`SIGNOFFS` lacks (or the other way round). A line moved within its section, or added outside these items, changes
+nothing. `kept_now_table` is keep3's table with each redo round's table over it, in order: the gate file's side of
+`kept_now()`.
 `approval_date` reads the APPROVED line: under `## Approval`, exactly one line `APPROVED by Shresth Rana <yyyy-mm-dd>`
 with a real date (trailing whitespace aside). A note beside it is ignored; a second such line, or a line that starts
 as an approval in another form, is refused. `confirmations` and `kept` give the seal and the checks what they read.
 
-## 5. Run on the laptop, 2026-11-03
+## 5. The sign-off loop and the kept list
+
+The kept loops render again with the frozen palette in job B, the sign-off mode of `lofi-drafts` (docs/DRAFTS.md
+§7.1), and Shresth hears them in one triage batch: the sign-off listen. The palette is sealed (`frozen:` set,
+`lofi_rl.freeze.seal`) only after a listen with no Toss and his APPROVED line.
+
+### 5.1 The loop
+1. **The listen.** Job B serves `b<MMDD>-signoff`, then `b<MMDD>-signoff-<k>`. His marks go into the gate file under a
+   `## Sign-off listen` heading that names its batch and its job, with a `- **Tossed:**` item, and into `SIGNOFFS`.
+2. **A Toss.** He is asked what fired: the rain, a part, or the loops themselves.
+   - **The palette:** a change in his words goes through §3.5 (its rule first, then `freeze build` with his entry),
+     then job B again.
+   - **The loops:** the palette does not change. The tossed loops' briefs reopen through the drafts redo path
+     (docs/DRAFTS.md §6): new drafts in `drafts/v1/redo<k>/`, a normal `lofi-drafts` run of them into a keep3 batch
+     `b<MMDD>-keep3-redo[<n>]`, where he keeps one per brief or says "none acceptable" (that brief goes to the next
+     round).
+   - **His picks there** enter the kept list only as his words recorded them: the round's own gate section
+     `## Kept drafts (keep3 redo<k>)` (naming its batch and its job, with a Brief/Kept table of the briefs he kept a
+     loop for) and its `REDOS` entry with the same picks, its job in `JOBS` under its key. Then `checks expect` writes
+     keep3_kept10.json again (§5.3), and job B runs again on the new kept list.
+3. **No Toss.** The listen passed: `SIGNOFFS` records it with no tossed file, then his APPROVED line, then the seal.
+
+On 2026-11-03, b1103-signoff (job 13701026) tossed d01_chords, d06_horn, d07_chords and d10_groove. His words were "The
+loops themselves", so d01, d06, d07 and d10 reopen. `REDOS` stays empty until he picks in their redo batch.
+
+### 5.2 The constants
+- **`KEPT`:** keep3's table.
+- **`REDOS`:** the redo rounds, in order. An entry is added once he has picked in its batch:
+  `{key: keep3_redo<k>, folder: drafts/v1/redo<k>, batch: b<MMDD>-keep3-redo[<n>], job: <its lofi-drafts job>,
+  heading: "## Kept drafts (keep3 redo<k>)", kept: {brief: drafts/v1/redo<k>/<brief>_<persona>.ls}}`. `kept` holds
+  only the briefs he kept a loop for. The rules (`gate.records_problems`):
+  - k rises from round to round and names the folder and the heading;
+  - the batch has the redraft form, and the job is `JOBS[key]`;
+  - each pick is a draft of its own brief, a brief of keep3's, in the round's folder.
+- **`SIGNOFFS`:** every sign-off listen, in order, as `{batch, job, tossed}`. Today there is one: b1103-signoff, job
+  13701026, the four files above. A listen that passes has `tossed: ()`. The jobs rise, and every tossed file was kept
+  by keep3 or by a redo round.
+- **`kept_rounds()`:** {brief: (file, the key of the round that picked it)}: `KEPT` with each `REDOS` round's picks
+  applied in order, in brief order. `kept_now()` gives the files alone.
+- **`tossed_kept()`:** the files of `kept_now()` that some listen tossed, each with the batches that tossed it. A
+  tossed file stays tossed until a redo pick of another file replaces it; a later pick of the same file keeps it
+  tossed.
+
+`freeze check --gate` compares `REDOS` and `SIGNOFFS` with the gate file (§3.6 (c), §4).
+
+### 5.3 `drafts/v1/keep3_kept10.json`, schema `lofi-rl/keep3-kept10/2`
+Written by `python -m lofi_rl.freeze.checks expect`. Job B reads it from its code snapshot: runs/ is never committed or
+synced, and a scratch purge cannot remove it.
+- **`sources`:** `[{key, path, job, sha256}]`, keep3 first, then each redo round that supplies a kept loop, in round
+  order. Each is the summary/renders.json of its round's job `JOBS[key]`, and its path must name `drafts-<job>`.
+- **`draft_palette` and `s_star`:** S\* of `palettes/draft_day2.yaml`. Every source's bus records were computed with it,
+  since keep3 and every redo round render with the draft palette.
+- **`kept`:** `kept_now()` as a list, in brief order.
+- **`loops`**, keyed by the kept file's stem (one loop per brief, so no two share a stem): its `file`, its `source`, and
+  schema 1's fields (draft_sha256, brief, persona, keys, kit, render palette, n, pcm_sha256, music_sha256, LUFS, true
+  peak, master gain, each bus's record). They come from exactly one ok record of that file, under its stem, in its
+  own source's renders.json, and the committed text must still be the one rendered.
+- **`allow_tossed` and `tossed`:** `expect` refuses while a kept file is tossed, naming the brief, the file and the
+  batch. With `--allow-tossed` it writes the file and lists each such loop under `tossed`.
+
+Every kept draft is read by its file path, never by its stem: `drafts/v1/redo1/d01_horn.ls` shares its stem with
+`drafts/v1/d01_horn.ls`.
+
+**The committed file (2026-11-03)** was regenerated with `--allow-tossed` from keep3's renders.json
+(runs/drafts-13656049/summary/renders.json, sha256 `94ee7e1e…`). No redo round is recorded, so the kept list is still
+keep3's 10, and the four tossed loops are listed under `tossed`.
+- Every per-loop value equals schema 1's (sha256 `9df59929…`, main bd33ce2): all 16 fields of each of the 10 loops.
+  Each loop gains `source: keep3`, and the old `keep3` record becomes `sources[0]`.
+- The file still records keep3's values, and nothing takes the tossed loops from it: `checks report` fails on exactly
+  those four (its check (i)), and job B stops at its check stage, until a redo round's picks replace them and
+  `expect` runs again without the flag.
+
+### 5.4 The commands
+```
+python -m lofi_rl.freeze.checks expect --renders keep3=runs/drafts-13656049/summary/renders.json \
+    [--renders keep3_redo1=runs/drafts-<job>/summary/renders.json ...] [--allow-tossed]
+python -m lofi_rl.freeze.checks report --gate gates/GATE_palette.md \
+    --renders keep3=runs/drafts-13656049/summary/renders.json [--renders keep3_redo1=...] --verify
+make submit JOB=jobs/drafts.sbatch ARGS='--drafts drafts/v1/redo1 --briefs d01+d06+d07+d10 --against drafts/v1'
+make submit JOB=jobs/drafts.sbatch ARGS='--drafts drafts/v1 --signoff palettes/lofi_rain_v1.yaml'
+python -m lofi_rl.freeze.seal [--dry-run]
+```
+`--keep3 PATH` is `--renders keep3=PATH`. Job B's arguments stay `--drafts drafts/v1 --signoff ...`: it finds the redo
+folders under drafts/v1 (`REDOS`'s and every `redo<k>/` present), so the job script and its registry sha
+(`85a1ae8e085fd255`) do not change. The checks and job B's stages are docs/DRAFTS.md §7.1's.
+
+### 5.5 The seal, the tables and the note after a redo round
+- **The seal** (`lofi_rl.freeze.seal`, step 2) takes the latest sign-off job under runs/, the highest job id in sign-off
+  mode. It must be the latest `SIGNOFFS` entry (its job and batch: his marks of it are recorded first), and that listen
+  tossed nothing. Today the latest entry, b1103-signoff, tossed 4, so the seal refuses.
+- **The drawn tables** (`lofi_rl.freeze.tables`) publish each redo round's job as they publish keep3's
+  (`Drawn, keep3 redo<k>`), its job `JOBS[key]`.
+- **A later sign-off batch's note and push** say "again": the last listen played this rain at this level, and redo
+  picks may be among the kept loops, so neither "new to your ears" nor "the same loops" holds.
+
+## 6. Run on the laptop, 2026-11-03
 
 `python -m lofi_rl.freeze build --levels-day3 runs/shootout-13656048/summary/levels.json` wrote
 `palettes/lofi_rain_v1.yaml`, 496 lines, sha256 `d3590c8da2e186de2b5a113a585f17646dfec9390f1eb9de569b1bacaa47bc8a`.
@@ -265,7 +375,7 @@ only 5 of the 8 instruments (not `gs_wurli_ep200`, `vcsl_upright_knight` or `bas
 only the provenance block's `rules:` lines (7 lines in place of 5); every other line is byte for byte the first
 build's, so nothing a render reads changed.
 
-## 6. Claude's defaults here
+## 7. Claude's defaults here
 Each is overridable.
 - The drafts' names (`rhodes`, `wurli`, `piano`, `studio`, `jazz`, `alto`) and `aliases: {}`: the kept 10 parse with
   no repair only under them, and prompt v2's references stay byte-identical.
@@ -280,3 +390,14 @@ Each is overridable.
 - The gate-file reader finds headings, labels and backticked ids, never line numbers. It runs in the checks, in job B
   and at the seal, and the permanent tests that read the real gate file read it only this way (§3.6), so its later
   additions (his line, the sign-off counts, the drawn tables) leave them as they were.
+- The redo rounds and the sign-off listens are constants beside `PICKS` (`REDOS`, `SIGNOFFS`), each traced to its own
+  gate section and compared with it by `freeze check --gate`, so the kept list in effect never comes from a file that
+  the gate file does not confirm. A tossed file stays tossed for good (a later pick of it again is refused), and a
+  `## Sign-off listen` section always carries a `- **Tossed:**` item (`none.` when it passed), so a missing record
+  fails closed.
+- keep3_kept10.json is regenerated with `--allow-tossed` while the tossed loops are still kept, so it keeps recording
+  their renders, and the flag is written into the file; the report and job B refuse those loops from the constants,
+  never from the file.
+- In job B a drafts/v1 draft's render id is its stem and a redo folder's draft's id is `<folder>_<stem>`
+  (`redo1_d01_horn`): ids stay unique across the folders, and drafts/v1's ids, the ones the first sign-off job used,
+  do not change.
