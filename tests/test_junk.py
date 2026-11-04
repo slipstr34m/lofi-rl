@@ -11,6 +11,7 @@ readouts (copy.any, containment, verbatim lines, grid share, forms, knobs, by_ce
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import math
 import os
@@ -18,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import types
 from dataclasses import replace
 from pathlib import Path
@@ -32,6 +34,9 @@ from lofi_rl.rl import junk
 
 ROOT = Path(__file__).resolve().parents[1]
 DEV = ROOT / "palettes" / "dev_gu.yaml"
+needs_audio = pytest.mark.skipif(
+    shutil.which("fluidsynth") is None or any(importlib.util.find_spec(m) is None for m in ("pedalboard", "soundfile")),
+    reason="renders for real: needs fluidsynth on PATH, pedalboard and soundfile")
 
 ORIG = """vamp: IVm9 bVII13 span 2
 keys: organ shell
@@ -1004,7 +1009,8 @@ def test_every_step_reads_the_frozen_palette_by_default(tmp_path, monkeypatch):
 
 
 # ------------------------------------------------------------------------------------------- render (stubbed audio)
-def test_render_samples_passing_loops_and_merges_g7_into_the_summary(tmp_path, pal, monkeypatch):
+@pytest.mark.parametrize("jobs", ["1", "2"])
+def test_render_samples_passing_loops_and_merges_g7_into_the_summary(tmp_path, pal, monkeypatch, jobs):
     _write_run(tmp_path, pal, drift=None)
     assert junk.main(["score", "--run", str(tmp_path), "--palette", str(DEV)]) == 0
     calls = []
@@ -1016,13 +1022,17 @@ def test_render_samples_passing_loops_and_merges_g7_into_the_summary(tmp_path, p
         (clips_dir / f"{row['i']:04d}.flac").write_bytes(b"fLaC")
         return {"i": row["i"], "ok": True, "gate": None, "clip": f"clips/{row['i']:04d}.flac"}
     monkeypatch.setattr(junk, "render_clip", fake_clip)
-    assert junk.main(["render", "--run", str(tmp_path), "--k", "3", "--palette", str(DEV), "--no-verify"]) == 0
+    assert junk.main(["render", "--run", str(tmp_path), "--k", "3", "--palette", str(DEV), "--no-verify",
+                      "--jobs", jobs]) == 0
     scored = {r["i"]: r for r in map(json.loads, (tmp_path / "summary" / "scored.jsonl").read_text().splitlines())}
     pool = [i for i, r in scored.items() if r["ok"] and not r["near_copy"]]       # D-020: copies are not ear-checked
     assert pool and len(pool) < sum(r["ok"] for r in scored.values()), "the fixture has a passing near-copy to skip"
-    assert calls == junk.sample_indices(pool, 3, seed=1), "the brief seed from generate.json"
+    pick = junk.sample_indices(pool, 3, seed=1)
+    if jobs == "1":
+        assert calls == pick, "the brief seed from generate.json"
+    assert sorted(calls) == sorted(pick), "two lanes may start in either order; each loop renders once"
     clips = json.loads((tmp_path / "summary" / "clips.json").read_text())
-    assert [c["i"] for c in clips["clips"]] == calls and clips["k"] == 3 and clips["seed"] == 1
+    assert [c["i"] for c in clips["clips"]] == pick and clips["k"] == 3 and clips["seed"] == 1
     assert clips["passing"] == len(pool)
     assert all("copy_jaccard" in c and "brief" in c for c in clips["clips"])
     for c in clips["clips"]:
@@ -1047,10 +1057,123 @@ def test_render_reports_infrastructure_errors_and_deadline_skips(tmp_path, pal, 
     monkeypatch.setattr(junk, "render_clip", fake_clip)
     monkeypatch.setattr(junk, "_now", lambda: clock[0])
     rc = junk.main(["render", "--run", str(tmp_path), "--k", "4", "--deadline-s", "50", "--palette", str(DEV),
-                    "--no-verify"])
+                    "--no-verify", "--jobs", "1"])
     assert rc == 1, "an infrastructure error is not a gate"
     s = json.loads((tmp_path / "summary" / "junk.json").read_text())
     assert s["render"]["errors"] == 1 and s["render"]["skipped"] == 1 and s["failures"]["G7"] == 0   # 2 non-copies
+
+
+# R3 in six briefs and R2: seven passing loops, none a near-copy of the example (the 50-clip sample's pool, D-020)
+POOL7 = [(R3, "stop", e, m, 310) for e, m in (("low", "melancholy"), ("low", "hopeful"), ("mid", "wistful"),
+                                               ("mid", "hopeful"), ("high", "melancholy"), ("high", "wistful"))]
+POOL7.append((R2, "stop", "high", "hopeful", 300))
+
+
+def _pool7_run(run: Path, pal) -> list[int]:
+    """A synthetic run whose render pool is POOL7, scored; the seeded sample of 6 that render takes."""
+    _write_run(run, pal, POOL7, drift=None)
+    assert junk.main(["score", "--run", str(run), "--palette", str(DEV)]) == 0
+    scored = [json.loads(line) for line in (run / "summary" / "scored.jsonl").read_text().splitlines()]
+    pool = [r["i"] for r in scored if r["ok"] and not r["near_copy"]]
+    assert len(pool) == 7
+    return junk.sample_indices(pool, 6, seed=1)
+
+
+def test_render_lanes_split_the_workers_between_the_renders_at_a_time():
+    """The freeze spec §5.5 (iii): the job passes its 4 CPUs as --workers, so the default 2 renders get 2 each."""
+    assert junk.RENDER_JOBS == 2
+    assert [junk.render_lanes(j, w) for j, w in ((2, 4), (1, 4), (2, 2), (2, 1), (2, 3), (4, 8), (8, 4))] == [
+        (2, 2), (1, 4), (2, 1), (1, 1), (2, 1), (4, 2), (4, 1)]
+
+
+def test_render_two_at_a_time_keeps_the_samples_order_and_splits_the_workers(tmp_path, pal, monkeypatch):
+    """The first loop of the sample renders until the last one has started, so the other five finish first, on the
+    other lane: clips.json still lists the six in the sample's order, two renders at a time, 2 workers each."""
+    pick = _pool7_run(tmp_path, pal)
+    lock, release = threading.Lock(), threading.Event()
+    state = {"active": 0, "peak": 0, "finished": [], "workers": set()}
+
+    def fake_clip(row, palette, clips_dir, *, cache, workers):
+        with lock:
+            state["active"] += 1
+            state["peak"] = max(state["peak"], state["active"])
+            state["workers"].add(workers)
+        if row["i"] == pick[0]:
+            assert release.wait(timeout=30), "the other lane never reached the last loop"
+        elif row["i"] == pick[-1]:
+            release.set()
+        with lock:
+            state["active"] -= 1
+            state["finished"].append(row["i"])
+        return {"i": row["i"], "ok": True, "gate": None, "clip": f"clips/{row['i']:04d}.flac"}
+    monkeypatch.setattr(junk, "render_clip", fake_clip)
+    assert junk.main(["render", "--run", str(tmp_path), "--k", "6", "--palette", str(DEV), "--no-verify",
+                      "--workers", "4"]) == 0
+    clips = json.loads((tmp_path / "summary" / "clips.json").read_text())
+    assert [c["i"] for c in clips["clips"]] == pick and state["finished"][0] != pick[0]
+    assert (clips["jobs"], clips["workers"]) == (2, 2) and state["workers"] == {2} and state["peak"] == 2
+    s = json.loads((tmp_path / "summary" / "junk.json").read_text())
+    assert s["render"] == {"attempted": 6, "rendered": 6, "G7": 0, "other_gates": 0, "errors": 0, "skipped": 0,
+                           "seed": 1, "k": 6}
+
+
+def test_render_two_at_a_time_starts_no_render_after_the_deadline(tmp_path, pal, monkeypatch):
+    """One lane holds the sample's first loop while the other renders the next three, each moving the clock 100 s
+    on; against a 250-s deadline the fifth and sixth find the clock at 300 and are skipped, whichever lane takes
+    them. The first loop started at 0, so it renders, though it ends after the deadline."""
+    pick = _pool7_run(tmp_path, pal)
+    clock, lock, release = [0.0], threading.Lock(), threading.Event()
+
+    def fake_clip(row, palette, clips_dir, *, cache, workers):
+        if row["i"] == pick[0]:
+            assert release.wait(timeout=30), "the other lane never moved the clock to 300"
+        else:
+            with lock:
+                clock[0] += 100.0
+                if clock[0] >= 300.0:
+                    release.set()
+        return {"i": row["i"], "ok": True, "gate": None, "clip": f"clips/{row['i']:04d}.flac"}
+    monkeypatch.setattr(junk, "render_clip", fake_clip)
+    monkeypatch.setattr(junk, "_now", lambda: clock[0])
+    assert junk.main(["render", "--run", str(tmp_path), "--k", "6", "--deadline-s", "250", "--palette", str(DEV),
+                      "--no-verify"]) == 0
+    clips = json.loads((tmp_path / "summary" / "clips.json").read_text())["clips"]
+    assert [c["i"] for c in clips] == pick
+    assert [bool(c["ok"]) for c in clips] == [True] * 4 + [False] * 2
+    assert [c.get("skipped") for c in clips[4:]] == ["render deadline"] * 2
+    s = json.loads((tmp_path / "summary" / "junk.json").read_text())
+    assert (s["render"]["attempted"], s["render"]["rendered"], s["render"]["skipped"]) == (4, 4, 2)
+
+
+def test_render_refuses_no_jobs_or_no_workers(tmp_path):
+    for bad in (["--jobs", "0"], ["--workers", "0"]):
+        with pytest.raises(SystemExit) as err:
+            junk.main(["render", "--run", str(tmp_path), *bad])
+        assert err.value.code == 2
+
+
+@needs_audio
+def test_render_two_at_a_time_gives_one_at_a_times_clips_for_real(tmp_path, pal):
+    """The freeze spec §5.5 (iii) on real audio: the same three loops rendered one at a time with 4 workers and two
+    at a time with 2 workers each give the same records in the same order (render_s aside), and byte-identical FLACs
+    and manifests. A render never depends on its workers (render.pipeline.render; tests/test_determinism.py)."""
+    out = {}
+    for jobs in ("1", "2"):
+        run = tmp_path / f"jobs{jobs}"
+        _write_run(run, pal, POOL7[:3], drift=None)
+        assert junk.main(["score", "--run", str(run), "--palette", str(DEV)]) == 0
+        assert junk.main(["render", "--run", str(run), "--k", "3", "--palette", str(DEV), "--workers", "4",
+                          "--jobs", jobs]) == 0
+        doc = json.loads((run / "summary" / "clips.json").read_text())
+        files = {c["clip"]: ((run / c["clip"]).read_bytes(),
+                             (run / c["clip"]).with_suffix(".manifest.json").read_bytes()) for c in doc["clips"]}
+        out[jobs] = (doc, files)
+    (one, one_files), (two, two_files) = out["1"], out["2"]
+    assert (one["jobs"], one["workers"], two["jobs"], two["workers"]) == (1, 4, 2, 2)
+    assert len(one["clips"]) == 3 and all(c["ok"] for c in one["clips"])
+    strip = [{k: v for k, v in c.items() if k != "render_s"} for c in one["clips"]]
+    assert [{k: v for k, v in c.items() if k != "render_s"} for c in two["clips"]] == strip
+    assert two_files == one_files
 
 
 @pytest.mark.cluster
@@ -1059,8 +1182,8 @@ def test_render_writes_one_pass_flacs_for_real(tmp_path, pal):
     pytest.importorskip("pedalboard")
     if not shutil.which("fluidsynth"):
         pytest.skip("no fluidsynth")
-    ex = prompt.example_text(pal)
-    _write_run(tmp_path, pal, [(ex, "stop", "mid", "wistful", 263), (ORIG, "stop", "low", "melancholy", 250)],
+    # two loops in the render pool: since D-020 a near-copy of the example (as prompt.example_text is) never is
+    _write_run(tmp_path, pal, [(R3, "stop", "mid", "wistful", 310), (ORIG, "stop", "low", "melancholy", 250)],
                drift=None)
     assert junk.main(["score", "--run", str(tmp_path), "--palette", str(DEV)]) == 0
     assert junk.main(["render", "--run", str(tmp_path), "--k", "2", "--palette", str(DEV), "--workers", "2"]) == 0
