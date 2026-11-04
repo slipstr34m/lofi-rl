@@ -6,22 +6,28 @@ and tables' tests run on copies of it). The synthetic text below has the real fi
 or added line passes; a changed pick, a missing label or a missing confirmation fails, naming the heading. Then
 Shresth's APPROVED line under `## Approval`, and the reader every test here goes through: a line inside a code fence
 or an HTML comment is never read (kit.gates.approvals' rule, LESSONS 52), and the reader keeps one entry per line.
-Last, the redo rounds (lofi_rl.freeze.REDOS, a synthetic one: none is recorded yet) and the sign-off listens
-(SIGNOFFS): each read under its own heading and compared with its constant, and the constants' own rules."""
+Last, the redo rounds (lofi_rl.freeze.REDOS, a synthetic one) and the sign-off listens (SIGNOFFS): each read under its
+own heading and compared with its constant, and the constants' own rules.
+
+The synthetic text is the record of 2026-11-03 (no redo round, the one listen b1103-signoff), and the live constants
+gain each round and listen as they are recorded, so every test here runs with that record pinned on lofi_rl.freeze
+(tests/helpers_record.py TODAY). One test reads the live record, captured at import: it keeps its own rules."""
 from __future__ import annotations
 
 import pytest
 
+import helpers_record as R
 from lofi_rl import freeze as F
-from lofi_rl.freeze import BED, KEPT, PICKS, SIGNOFFS
+from lofi_rl.freeze import BED, KEPT, PICKS
 from lofi_rl.freeze import gate as G
 
+REAL = R.live()                         # read at import, before the fixture below pins the record of 2026-11-03
 KEPT_ROWS = "".join(
     f"| {b} | {em} | `{KEPT[b]}` |\n" for b, em in (
         ("d01", "low, melancholy"), ("d02", "low, wistful"), ("d03", "low, hopeful"), ("d04", "mid, melancholy"),
         ("d05", "mid, wistful"), ("d06", "mid, hopeful"), ("d07", "high, melancholy"), ("d08", "high, wistful"),
         ("d09", "high, hopeful"), ("d10", "low, wistful")))
-LISTEN = SIGNOFFS[0]
+LISTEN = R.LISTEN
 TOSSED = ", ".join(f"`{f}`" for f in LISTEN["tossed"][:-1]) + f" and `{LISTEN['tossed'][-1]}`"
 SIGNOFF_SECTION = f"""\
 ## Sign-off listen: voted 2026-11-03 (batch {LISTEN['batch']}; job {LISTEN['job']})
@@ -116,6 +122,12 @@ Add one line of your own, exactly in this form:
 
 ## Approval
 """
+
+
+@pytest.fixture(autouse=True)
+def record_of_today(monkeypatch):
+    """The record the synthetic text holds, on lofi_rl.freeze: no redo round, b1103-signoff, the jobs of 2026-11-03."""
+    R.pin(monkeypatch, R.TODAY)
 
 
 def _move(text: str, line: str, before: str) -> str:
@@ -382,8 +394,13 @@ def redo_job(monkeypatch):
 
 
 def test_the_real_constants_keep_their_own_rules():
-    assert G.records_problems() == []
-    assert G.picks_problems(GATE, redos=()) == []                   # REDOS is () today
+    """The live record (read at import): REDOS and SIGNOFFS keep their rules, and it holds the record of 2026-11-03,
+    the pinned one, as its start (a later record only adds to it)."""
+    assert G.records_problems(kept=REAL["KEPT"], redos=REAL["REDOS"], signoffs=REAL["SIGNOFFS"],
+                              jobs=REAL["JOBS"]) == []
+    assert REAL["SIGNOFFS"][0] == LISTEN and REAL["KEPT"] == KEPT
+    assert {k: REAL["JOBS"][k] for k in R.TODAY["JOBS"]} == R.TODAY["JOBS"]
+    assert G.picks_problems(GATE) == []                              # the pinned record: the synthetic text's
 
 
 def test_a_redo_round_is_read_under_its_own_heading(redo_job):

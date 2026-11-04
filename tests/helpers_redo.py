@@ -10,15 +10,17 @@ the validator over the tree lifts lofi_rl.drafts.check.J5_MAX (`lift_near_copy_l
 (the stem of the tossed keep3 pick drafts/v1/d06_horn.ls), d07 groove and d10 chords.
 
 `constants(...)` gives KEPT, REDOS, SIGNOFFS and JOBS for the tree (keep3's picks as in the real gate file, at the
-tree's paths; one redo round; b1103-signoff with its four Toss at the tree's paths), `patch` puts them on lofi_rl.freeze
-with monkeypatch, and `gate_text` writes a gate file that records them. Tests only: nothing here is a draft anyone
-wrote, and nothing is claimed about sound."""
+tree's paths; one redo round; b1103-signoff with its four Toss at the tree's paths; the jobs of the record of 2026-11-03,
+tests/helpers_record.py, with the tree's keep3 and redo jobs, never the live JOBS), `patch` puts them on
+lofi_rl.freeze with monkeypatch, and `gate_text` writes a gate file that records them. Tests only: nothing here is a
+draft anyone wrote, and nothing is claimed about sound."""
 from __future__ import annotations
 
 import re
 import shutil
 from pathlib import Path
 
+import helpers_record as R
 from lofi_rl import freeze as F
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,7 +30,7 @@ PERSONAS = ("groove", "horn", "chords")
 PICKS = {"d01": "horn", "d06": "horn", "d07": "groove", "d10": "chords"}
 KEYS = ("rhodes", "wurli", "piano")
 REDO_BATCH = "b1105-keep3-redo"
-LISTEN = {"batch": "b1103-signoff", "job": 13701026}
+LISTEN = {"batch": R.LISTEN["batch"], "job": R.LISTEN["job"]}
 EMS = {"d01": "low, melancholy", "d02": "low, wistful", "d03": "low, hopeful", "d04": "mid, melancholy",
        "d05": "mid, wistful", "d06": "mid, hopeful", "d07": "high, melancholy", "d08": "high, wistful",
        "d09": "high, hopeful", "d10": "low, wistful"}
@@ -63,9 +65,9 @@ def constants(v1: Path, redo1: Path, *, keep3_job: int, redo_job: int) -> dict:
     redo = {"key": "keep3_redo1", "folder": str(redo1), "batch": REDO_BATCH, "job": redo_job,
             "heading": "## Kept drafts (keep3 redo1)",
             "kept": {b: str(redo1 / f"{b}_{PICKS[b]}.ls") for b in REOPENED}}
-    listen = {**LISTEN, "tossed": tuple(str(v1 / Path(f).name) for f in F.SIGNOFFS[0]["tossed"])}
+    listen = {**LISTEN, "tossed": tuple(str(v1 / Path(f).name) for f in R.TOSSED)}
     return {"KEPT": kept, "REDOS": (redo,), "SIGNOFFS": (listen,),
-            "JOBS": {**F.JOBS, "keep3": keep3_job, "keep3_redo1": redo_job}}
+            "JOBS": {**R.TODAY["JOBS"], "keep3": keep3_job, "keep3_redo1": redo_job}}
 
 
 def patch(monkeypatch, consts: dict) -> None:

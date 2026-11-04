@@ -7,7 +7,8 @@ levels as fields, the kit lanes untrimmed, no chain-head slots, bus_gain_db 0, a
 the rain, and a stand-in renderer: the real parse, compile and bed placement (render.bed), synthetic music that depends
 on the loop and on each bus's effective levels, stated loudness numbers. keep3's records are that renderer's renders
 with the draft palette's render palettes, so `twin0 = keep3` holds exactly when the twin carries keep3's levels.
-The world's kept list is put on lofi_rl.freeze (KEPT: its two keep3 picks; no redo round; no sign-off listen yet).
+The world's kept list is put on lofi_rl.freeze (KEPT: its two keep3 picks; no redo round; no sign-off listen yet;
+JOBS from tests/helpers_record.py's literal record, never the live one).
 The job runs once per world; its refusals are checked on the verify stage's own function. The same job with a redo
 round is tests/test_freeze_signoff_redo.py. Nothing is listened to and nothing is claimed about sound."""
 import copy
@@ -24,6 +25,7 @@ import pytest
 import soundfile as sf
 import yaml
 
+import helpers_record as HR
 from lofi_rl import freeze as FZ
 from lofi_rl.brief import Brief
 from lofi_rl.compile.compiler import compile_loop
@@ -216,9 +218,10 @@ def build_world(tmp: Path, mp: pytest.MonkeyPatch, *, keys_offset_db: dict | Non
     files = {Path(f).stem: J._label(v1 / f) for f in FIXTURES}
     gate = tmp / "GATE_palette.md"
     gate.write_text(gate_text([files[k] for k in KEPT]), encoding="utf-8")
-    # the kept list of this world (lofi_rl.freeze: keep3's two picks, no redo round, no sign-off listen yet)
+    # the kept list of this world (lofi_rl.freeze: keep3's two picks, no redo round, no sign-off listen yet), its jobs
+    # the record of 2026-11-03's with keep3's job 7, never the live JOBS (which gains each recorded redo round's job)
     for name, value in (("KEPT", {k[:3]: files[k] for k in KEPT}), ("REDOS", ()), ("SIGNOFFS", ()),
-                        ("JOBS", {**FZ.JOBS, "keep3": 7})):
+                        ("JOBS", {**HR.TODAY["JOBS"], "keep3": 7})):
         mp.setattr(FZ, name, value)
     mp.setenv("LOFI_ASSETS", str(assets))
     for name, value in (("GATE", gate), ("RAIN", tmp / "rain_excerpts.json"), ("DRAFT_PALETTE", dp.path)):

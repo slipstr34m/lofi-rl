@@ -1,7 +1,8 @@
 """The drawn round tables (lofi_rl.freeze.tables; the freeze spec §5.2; SHOOTOUTS.md §2.3 "Published after the freeze").
 
 On a synthetic world: three shootout jobs and a keep3 job (and, in one test, a redo round's job of
-lofi_rl.freeze.REDOS), written as the batch builders write their summaries and the inbox manifests. It has design
+lofi_rl.freeze.REDOS), written as the batch builders write their summaries and the inbox manifests. The world has no
+redo round unless a test gives it one, whatever the live REDOS holds once a round is recorded. It has design
 rounds, an anchor, a repeat of an earlier job's round, and a stage whose maps share symbols. The tests check that
 the tables come out deterministic, cross-checked against the manifests, without a seed or an id, and only after the
 APPROVED line. The section published in the gate file holds the design rounds only, with no serving position, no
@@ -238,8 +239,10 @@ def gate_file(root: Path, approval: str = LINE + "\n", after: str = "") -> Path:
 
 @pytest.fixture()
 def jobs(monkeypatch):
-    """The CLI reads lofi_rl.freeze.JOBS: here the synthetic world's."""
+    """The CLI reads lofi_rl.freeze.JOBS and REDOS: here the synthetic world's, which has no redo round (the live
+    REDOS gains each round as it is recorded)."""
     monkeypatch.setattr(T, "JOBS", JOBS)
+    monkeypatch.setattr(FZ, "REDOS", ())
     return JOBS
 
 
@@ -248,8 +251,10 @@ def synth(tmp_path, jobs):
     return write(tmp_path, world())
 
 
-def collect(root: Path, jobs=JOBS):
-    return T.collect(root / "runs", root / "inbox", jobs)
+def collect(root: Path, jobs=JOBS, redos=()):
+    """The synthetic world's tables: its jobs, and its redo rounds (none unless a test gives them), never the live
+    REDOS."""
+    return T.collect(root / "runs", root / "inbox", jobs, redos=redos)
 
 
 def secrets_of(docs: dict[str, dict]) -> set[str]:
@@ -348,7 +353,8 @@ def test_a_redo_rounds_job_is_published_as_keep3s_is(tmp_path, monkeypatch):
     docs = world()
     drafts_job(docs, 105, "2026-01-05", "b0105-keep3-redo", REDO_ROUNDS, tag="keep3_redo1", folder="drafts/v1/redo1")
     root = write(tmp_path, docs)
-    tabs = collect(root, jobs)
+    tabs = T.collect(root / "runs", root / "inbox", jobs)                  # REDOS read at call time
+    assert tabs == collect(root, jobs, redos=(REDO,))
     assert [t.key for t in tabs] == ["day1", "day2", "day3", "keep3", "keep3_redo1"]
     redo = tabs[-1]
     assert redo.job == 105 and redo.square == tabs[3].square and redo.files[0][0] == "runs/drafts-105/summary/draw.json"
@@ -360,13 +366,13 @@ def test_a_redo_rounds_job_is_published_as_keep3s_is(tmp_path, monkeypatch):
     assert "#### b0105-keep3-redo (`inbox/2026-01-05/b0105-keep3-redo/`)" in text
     assert "## Drawn, keep3 redo1 (job 105)" in T.render_private(tabs, D) and RECIPE.findall(text) == []
     with pytest.raises(T.TablesError, match="keep3 redo1: REDOS names job 105, the jobs 106"):
-        T.collect(root / "runs", root / "inbox", {**jobs, "keep3_redo1": 106})
+        collect(root, {**jobs, "keep3_redo1": 106}, redos=(REDO,))
     bad = copy.deepcopy(docs)
     bad["runs/drafts-105/summary/draw.json"]["rounds"][0]["row"] = 1
     with pytest.raises(T.TablesError, match=r"keep3 redo1 \(job 105\) b0105-keep3-redo #1 \(d01\): the draw's brief"):
-        collect(write(tmp_path / "bad", bad), jobs)
+        collect(write(tmp_path / "bad", bad), jobs, redos=(REDO,))
     monkeypatch.setattr(FZ, "REDOS", ())                     # read at call time: no round, no redo tables
-    assert [t.key for t in collect(root, jobs)] == ["day1", "day2", "day3", "keep3"]
+    assert [t.key for t in T.collect(root / "runs", root / "inbox", jobs)] == ["day1", "day2", "day3", "keep3"]
 
 
 def test_the_section_lists_the_design_rounds_by_slot(synth):
