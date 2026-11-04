@@ -181,7 +181,9 @@ Its tests build `rain_d30` and `rain_none` through the rule. A level other than 
 which names the keys.
 
 **`CHANGES` is empty.** Q1 asked him whether the keys of the kept 10, which measure off their target, stay as he heard
-them; his answer (2026-11-03) was "Keep as heard (Recommended)", so the keys faders are the ones keep3 played.
+them; his answer (2026-11-03) was "Keep as heard (Recommended)", so the keys faders are the ones keep3 played. After the redo round (§5), Q2 asked the same of the new kept 10, whose medians sit off their targets by
++1.149 LU on the drums (+0.499 on keep3's kept 10) and −1.040 LU on the keys (−1.220); his answer (2026-11-03) was
+again "Keep as heard (Recommended)".
 
 ### 3.6 The check
 **Offline** (committed files only; `tests/test_freeze_palette.py` runs it on every commit):

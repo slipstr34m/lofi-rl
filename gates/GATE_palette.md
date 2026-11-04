@@ -241,6 +241,28 @@ bed included. Triage mode: one loop per round, played through its seam.
   - There is no APPROVED line yet.
 - **Audit file** (private): `data/votes/b1103-signoff.jsonl`, backed up as votes commit `9dec1cc`.
 
+## Kept drafts (keep3 redo1): voted 2026-11-03 (batch b1103-keep3-redo; job 13703830)
+
+The four briefs the sign-off reopened (d01, d06, d07 and d10), redrafted by the three writers into `drafts/v1/redo1/`
+(docs/DRAFTS.md §6). They were rendered with `palettes/draft_day2.yaml`, as keep3 was, and heard as one keep3 round per
+brief. Shresth kept one loop in each round; no round was marked "none acceptable".
+
+| Brief | Energy, mood | Kept |
+|---|---|---|
+| d01 | low, melancholy | `drafts/v1/redo1/d01_groove.ls` |
+| d06 | mid, hopeful | `drafts/v1/redo1/d06_chords.ls` |
+| d07 | high, melancholy | `drafts/v1/redo1/d07_groove.ls` |
+| d10 | low, wistful | `drafts/v1/redo1/d10_chords.ls` |
+
+- **Job 13703830:** `DRAFTS_OK`. Its 12 renders sit at −14.082 … −13.994 LUFS, with true peak at most −1.456 dBTP;
+  5.4 SU.
+- **Kept per persona** (descriptive): groove 2, chords 2, horn 0.
+- **Labels** (taste_pipeline §8, for the RM in Phase 2): each kept loop is at least Fine and beats each of its round's
+  two rejects. Every clip was heard for at least one bar.
+- **The kept list now** is keep3's table with these four picks over it (docs/FREEZE.md §5). The four tossed loops
+  stay out of it.
+- **Audit file** (private): `data/votes/b1103-keep3-redo.jsonl`, backed up as votes commit `5e804de`.
+
 ## How to approve
 Add one line of your own, exactly in this form:
 

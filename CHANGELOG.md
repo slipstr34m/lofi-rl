@@ -7,7 +7,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
     - Days 1, 2 and 3 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended); Day 3 gave rain excerpt `excerpt_e2` and, by his word, the rain at Δ 24;
-  - **keep3:** Shresth kept 10 of the 30 drafts (`gates/GATE_palette.md`). The sign-off listen tossed 4 of them ("The loops themselves"), so their briefs are redrafted in `drafts/v1/redo1/` (12 drafts);
+  - **keep3:** Shresth kept 10 of the 30 drafts (`gates/GATE_palette.md`). The sign-off listen tossed 4 of them ("The loops themselves"); he kept one redraft of each in `b1103-keep3-redo` (`drafts/v1/redo1/`), so the kept 10 are keep3's 6 and his 4 redo picks;
   - cluster renders are deterministic across CPU models, and the Linux golden key is in the repo;
   - all 14 shootout sources, the rain file, its 44.1 kHz conversion and the two imported kits are on the laptop and the cluster.
 - **GRPO path, pulled forward** (Shresth: "Feel free to decide how to proceed next"):
@@ -18,7 +18,39 @@ Newest entry first. Every number cites the file or command output it was read fr
     - the scorer server (smoke 13651611, `SCORER_SMOKE_OK`);
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
-- **Next:** render the redrafts (`lofi-drafts`) and serve `b1103-keep3-redo`. Then Shresth keeps one per brief, and the sign-off listen runs again on the new kept 10.
+- **Next:** job B again on the new kept 10, then Shresth's second sign-off listen (`b1103-signoff-2`) and, if it passes, his APPROVED line and the seal.
+
+---
+
+## 2026-11-03 (19:25 PST): his redo picks recorded; the freeze tools take kept loops from redo rounds; the kept 10 rebuilt; job B next
+
+**What was done**
+- **`lofi-drafts` 13703830** (the redrafts, main, a01-04): COMPLETED in 00:00:27, 5.4 SU (`session_report.py`), `DRAFTS_OK`.
+  - 12 of 12 renders at −14.082 … −13.994 LUFS, true peak at most −1.456 dBTP.
+  - Batch `b1103-keep3-redo`: 4 rounds, 12 clips. The first submit was refused by the snapshot check: right after the sync, the login node did not yet show `drafts/v1/redo1/` (it listed the folder, then not, then again within a minute). The retry a minute later passed.
+- **His picks** (counted from `data/votes/b1103-keep3-redo.jsonl` against the hidden manifest; votes commit `5e804de`):
+  - d01 `drafts/v1/redo1/d01_groove.ls`, d06 `drafts/v1/redo1/d06_chords.ls`, d07 `drafts/v1/redo1/d07_groove.ls`, d10 `drafts/v1/redo1/d10_chords.ls`;
+  - no round was marked "none acceptable"; every clip was heard for at least one bar;
+  - kept per persona: groove 2, chords 2, horn 0.
+  - Recorded in gates/GATE_palette.md (`## Kept drafts (keep3 redo1)`), as `REDOS[0]`, and with its job as `JOBS["keep3_redo1"]`.
+- **Merged the freeze tools' redo-round support** (workflow `wf_ad4dd7fe-b31`, 17 commits; merge `79c327c`):
+  - `REDOS`, `SIGNOFFS`, `kept_now()` and `tossed_kept()`, with the gate reader for redo rounds and sign-off listens;
+  - `drafts/v1/keep3_kept10.json` schema 2, a source per kept loop, and every kept draft read by its path (a redo file shares its stem with an old draft);
+  - `checks expect`, `checks report` and job B refuse a tossed loop that is still kept, and the seal takes only a passing latest sign-off listen;
+  - review: 12 findings, one high (tests coupled to the live record, which would have failed as soon as `REDOS` held this round); 14 fixes; verify ok; the branch's suite 3355 passed.
+- **The kept 10 rebuilt:** `python -m lofi_rl.freeze.checks expect --renders keep3=runs/drafts-13656049/summary/renders.json --renders keep3_redo1=runs/drafts-13703830/summary/renders.json` wrote `drafts/v1/keep3_kept10.json` (sha256 `72a739ec…`): 6 loops from keep3 and 4 from keep3_redo1.
+- **`checks report --gate gates/GATE_palette.md --renders … --verify`: ok.**
+  - (a) 10 of 10 kept files are the texts their sources rendered, and 42 of 42 drafts pass in 2 folders.
+  - (c) The regex is 3,408 characters, sha256 `5c081828…`, and all 42 drafts fullmatch it.
+  - (d) and (g) exit 0; (h) the rebuild is equal; (i) no tossed loop is kept.
+- **Q2, the bus levels of the new kept 10** (SHOOTOUTS.md §3: a bus more than 1.0 LU off its target goes to Shresth before the sign-off):
+  - drums +1.149 LU (+0.499 on keep3's kept 10) and keys −1.040 LU (−1.220); the six surviving loops' own values are unchanged;
+  - his answer: "Keep as heard (Recommended)". `CHANGES` stays empty and the palette's sha256 stays `d3590c8d…`.
+- **What the kept 10 play now:** the jazz kit in all 10; keys piano 4, wurli 4, rhodes 2.
+
+**SU spent:** 5.4.
+
+**Next:** `make submit JOB=jobs/drafts.sbatch ARGS='--drafts drafts/v1 --signoff palettes/lofi_rain_v1.yaml'`, then the listen `b1103-signoff-2`.
 
 ---
 

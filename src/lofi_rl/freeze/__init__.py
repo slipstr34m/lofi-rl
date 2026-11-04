@@ -18,7 +18,8 @@ This module holds the constants every freeze tool reads, and three small readers
 - **BED**: the rain bed takes its excerpt from the W1 pick and only its level from the W2 pick (rain_d24 also sets
   `bed.excerpt: e1`, the excerpt W2 played its levels on, so applying the two variants in order would freeze e1).
 - **CHANGES**: Shresth's changes to an input after the shootouts, each with his words (docs/FREEZE.md §3.5). Empty:
-  his answer to Q1 (2026-11-03) kept the levels he heard, and nothing changes without his words.
+  his answers to Q1 and, after the redo round, Q2 (both 2026-11-03) kept the levels he heard, and nothing changes
+  without his words.
 
 The three readers take their constants at call time (tests replace a constant with monkeypatch on this module), and
 any of them may be given explicitly instead. Sound claims: none.
@@ -38,7 +39,8 @@ PROVENANCE_SCHEMA = "lofi-rl/freeze-provenance/1"
 
 # The lofi-shootout jobs of Days 1-3 and the lofi-drafts job of keep3 (gates/GATE_palette.md, each section's heading),
 # then the lofi-drafts job of each redo round under its REDOS key (`keep3_redo1`, ...), once he has picked in it.
-JOBS: dict[str, int] = {"day1": 13635646, "day2": 13651610, "day3": 13656048, "keep3": 13656049}
+JOBS: dict[str, int] = {"day1": 13635646, "day2": 13651610, "day3": 13656048, "keep3": 13656049,
+                        "keep3_redo1": 13703830}
 LEVELS_DAY3 = f"runs/shootout-{JOBS['day3']}/summary/levels.json"     # where `make pull` puts Day 3's levels file
 
 BED: dict[str, str] = {"excerpt_from": "excerpt_e2", "delta_from": "rain_d24"}
@@ -65,9 +67,15 @@ KEPT: dict[str, str] = {
 # The batch is the name the job served, as the gate heading gives it: lofi_rl.drafts.job.batch_name counts the redraft
 # batches of its own date (b<MMDD>-keep3-redo, then -redo2, ...), so n need not be the round's k.
 # `kept` holds only the briefs he kept a loop for: "none acceptable" for a brief leaves it out, and a later round
-# redrafts it. Empty now: the sign-off listen b1103-signoff reopened d01, d06, d07 and d10 (gates/GATE_palette.md,
-# `## Sign-off listen`), and he has not picked from their redraft yet.
-REDOS: tuple[dict[str, Any], ...] = ()
+# redrafts it. redo1: the sign-off listen b1103-signoff reopened d01, d06, d07 and d10 (gates/GATE_palette.md,
+# `## Sign-off listen`); he kept one redraft of each in b1103-keep3-redo on 2026-11-03 (`## Kept drafts (keep3
+# redo1)`, lofi-drafts job 13703830; his votes: data/votes/b1103-keep3-redo.jsonl).
+REDOS: tuple[dict[str, Any], ...] = (
+    {"key": "keep3_redo1", "folder": "drafts/v1/redo1", "batch": "b1103-keep3-redo", "job": JOBS["keep3_redo1"],
+     "heading": "## Kept drafts (keep3 redo1)",
+     "kept": {"d01": "drafts/v1/redo1/d01_groove.ls", "d06": "drafts/v1/redo1/d06_chords.ls",
+              "d07": "drafts/v1/redo1/d07_groove.ls", "d10": "drafts/v1/redo1/d10_chords.ls"}},
+)
 
 # Every sign-off listen, in order (gates/GATE_palette.md, each `## Sign-off listen` section: its heading's batch and
 # job, its **Tossed:** files). `tossed` holds the kept files he marked Toss in it; a listen that passes has `()`.

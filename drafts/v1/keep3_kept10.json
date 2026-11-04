@@ -1,23 +1,23 @@
 {
- "allow_tossed": true,
+ "allow_tossed": false,
  "draft_palette": {
   "path": "palettes/draft_day2.yaml",
   "sha256": "58aeb9243309594cd422a641a56decfb1682aff4c06a6c34c6eb9c75016d23a5"
  },
  "kept": [
-  "drafts/v1/d01_chords.ls",
+  "drafts/v1/redo1/d01_groove.ls",
   "drafts/v1/d02_chords.ls",
   "drafts/v1/d03_chords.ls",
   "drafts/v1/d04_horn.ls",
   "drafts/v1/d05_groove.ls",
-  "drafts/v1/d06_horn.ls",
-  "drafts/v1/d07_chords.ls",
+  "drafts/v1/redo1/d06_chords.ls",
+  "drafts/v1/redo1/d07_groove.ls",
   "drafts/v1/d08_horn.ls",
   "drafts/v1/d09_chords.ls",
-  "drafts/v1/d10_groove.ls"
+  "drafts/v1/redo1/d10_chords.ls"
  ],
  "loops": {
-  "d01_chords": {
+  "d01_groove": {
    "bpm": 81,
    "brief": {
     "bpm": 81,
@@ -28,55 +28,55 @@
    "brief_id": "d01",
    "buses": {
     "bass": {
-     "fader_db": 5.09,
-     "lu": -4.337337900626764,
-     "lufs": -41.35198892939618,
-     "off_lu": -1.337337900626764,
-     "post_lufs": -36.26198892939618,
+     "fader_db": 5.13,
+     "lu": -3.2923902223196393,
+     "lufs": -40.34704125108906,
+     "off_lu": -0.2923902223196393,
+     "post_lufs": -35.21704125108906,
      "target_lu": -3.0,
-     "trim_db": 34.97
+     "trim_db": -2.79
     },
     "drums": {
-     "fader_db": 15.26,
-     "lu": -7.941208534541111,
-     "lufs": -55.12585956331053,
-     "off_lu": -6.441208534541111,
-     "post_lufs": -39.86585956331053,
+     "fader_db": 15.21,
+     "lu": -0.7461616798321273,
+     "lufs": -47.880812708601546,
+     "off_lu": 0.7538383201678727,
+     "post_lufs": -32.670812708601545,
      "target_lu": -1.5,
-     "trim_db": -14.94
+     "trim_db": 0.0
     },
     "keys": {
      "fader_db": -6.435,
-     "lu": -8.46600095187707,
-     "lufs": -33.955651980646486,
-     "off_lu": -2.4660009518770707,
-     "post_lufs": -40.39065198064649,
+     "lu": -6.348893330145906,
+     "lufs": -31.838544358915325,
+     "off_lu": -0.3488933301459056,
+     "post_lufs": -38.27354435891532,
      "target_lu": -6.0,
      "trim_db": -3.22
     },
     "sax": {
      "fader_db": 2.55,
-     "lu": 0.20643969056650846,
-     "lufs": -34.26821133820291,
-     "off_lu": 0.20643969056650846,
-     "post_lufs": -31.71821133820291,
+     "lu": 0.5140569457144686,
+     "lufs": -33.96059408305495,
+     "off_lu": 0.5140569457144686,
+     "post_lufs": -31.41059408305495,
      "target_lu": 0.0,
      "trim_db": 6.63
     }
    },
-   "draft_sha256": "ff3c1f592f8446de4ba8309d39c683466b6de93eac4a04db0990aaa39bb2422d",
-   "file": "drafts/v1/d01_chords.ls",
+   "draft_sha256": "730711b9b8fe582931a362926a4e3ecd787b86c247d0708c4487fdb3c1ec5d91",
+   "file": "drafts/v1/redo1/d01_groove.ls",
    "keys": "wurli",
-   "kit": "studio",
-   "lufs": -14.025941381459385,
-   "master_gain_db": 17.18490986867469,
-   "music_sha256": "db5bcff4d47c448bbb7fdfca7eec5c0018b42f09d2f01e21c7ccfb3525c126c0",
+   "kit": "jazz",
+   "lufs": -14.050762618990177,
+   "master_gain_db": 15.646006806560218,
+   "music_sha256": "be5b67539c018b8ef839a8b6f5ed2e62e695e268d739f46ddc7f85c1df60d867",
    "n": 1045312,
-   "palette": "draft_day2_wurli_studio@05cccb55",
-   "pcm_sha256": "db5bcff4d47c448bbb7fdfca7eec5c0018b42f09d2f01e21c7ccfb3525c126c0",
-   "persona": "chords",
-   "source": "keep3",
-   "true_peak_dbtp": -1.4912764318723013
+   "palette": "draft_day2_wurli_jazz@94e4e5d4",
+   "pcm_sha256": "be5b67539c018b8ef839a8b6f5ed2e62e695e268d739f46ddc7f85c1df60d867",
+   "persona": "groove",
+   "source": "keep3_redo1",
+   "true_peak_dbtp": -1.494472645109297
   },
   "d02_chords": {
    "bpm": 85,
@@ -322,7 +322,7 @@
    "source": "keep3",
    "true_peak_dbtp": -1.4920158734612985
   },
-  "d06_horn": {
+  "d06_chords": {
    "bpm": 90,
    "brief": {
     "bpm": 90,
@@ -334,56 +334,56 @@
    "buses": {
     "bass": {
      "fader_db": 5.13,
-     "lu": -2.6603716852594417,
-     "lufs": -39.71502271402886,
-     "off_lu": 0.3396283147405583,
-     "post_lufs": -34.58502271402886,
+     "lu": -2.398477666213701,
+     "lufs": -39.45312869498312,
+     "off_lu": 0.6015223337862992,
+     "post_lufs": -34.32312869498312,
      "target_lu": -3.0,
      "trim_db": -2.79
     },
     "drums": {
      "fader_db": 15.21,
-     "lu": -2.04530758795169,
-     "lufs": -49.17995861672111,
-     "off_lu": -0.5453075879516902,
-     "post_lufs": -33.96995861672111,
+     "lu": -2.0728101458808155,
+     "lufs": -49.207461174650234,
+     "off_lu": -0.5728101458808155,
+     "post_lufs": -33.99746117465023,
      "target_lu": -1.5,
      "trim_db": 0.0
     },
     "keys": {
      "fader_db": -6.06,
-     "lu": -4.968616015217691,
-     "lufs": -30.833267043987107,
-     "off_lu": 1.031383984782309,
-     "post_lufs": -36.89326704398711,
+     "lu": -6.023168857321785,
+     "lufs": -31.887819886091204,
+     "off_lu": -0.023168857321785197,
+     "post_lufs": -37.9478198860912,
      "target_lu": -6.0,
      "trim_db": 21.86
     },
     "sax": {
      "fader_db": 2.55,
-     "lu": 1.0387763837677433,
-     "lufs": -33.435874645001675,
-     "off_lu": 1.0387763837677433,
-     "post_lufs": -30.885874645001675,
+     "lu": 1.0372957538629954,
+     "lufs": -33.43735527490642,
+     "off_lu": 1.0372957538629954,
+     "post_lufs": -30.887355274906422,
      "target_lu": 0.0,
      "trim_db": 6.63
     }
    },
-   "draft_sha256": "02f762dbb1547977b39d4d3dd353c5873516b66a05b3362c842312d99c83a227",
-   "file": "drafts/v1/d06_horn.ls",
+   "draft_sha256": "be05a7d1ae14a88ee41496bfd1c7bb8d7f93de532cb694275eb7e8ca6e7d8893",
+   "file": "drafts/v1/redo1/d06_chords.ls",
    "keys": "piano",
    "kit": "jazz",
-   "lufs": -14.093309022583226,
-   "master_gain_db": 15.514899523617357,
-   "music_sha256": "9be3c09ceb78aa855bc7b6431702b771c6796230747ecc06263882c48f45c4d8",
+   "lufs": -14.075555749017655,
+   "master_gain_db": 15.172710379007297,
+   "music_sha256": "ea0999c4252b605bd54574d3ea810c330d86db6b5bf5ffab18f6b2d9dd51c527",
    "n": 940800,
    "palette": "draft_day2_piano_jazz@173ba173",
-   "pcm_sha256": "9be3c09ceb78aa855bc7b6431702b771c6796230747ecc06263882c48f45c4d8",
-   "persona": "horn",
-   "source": "keep3",
-   "true_peak_dbtp": -1.490823324199098
+   "pcm_sha256": "ea0999c4252b605bd54574d3ea810c330d86db6b5bf5ffab18f6b2d9dd51c527",
+   "persona": "chords",
+   "source": "keep3_redo1",
+   "true_peak_dbtp": -1.494472645109297
   },
-  "d07_chords": {
+  "d07_groove": {
    "bpm": 86,
    "brief": {
     "bpm": 86,
@@ -395,54 +395,54 @@
    "buses": {
     "bass": {
      "fader_db": 5.13,
-     "lu": -1.775619761465272,
-     "lufs": -38.83027079023469,
-     "off_lu": 1.224380238534728,
-     "post_lufs": -33.70027079023469,
+     "lu": -3.158491402374729,
+     "lufs": -40.21314243114415,
+     "off_lu": -0.1584914023747288,
+     "post_lufs": -35.08314243114415,
      "target_lu": -3.0,
      "trim_db": -2.79
     },
     "drums": {
      "fader_db": 15.21,
-     "lu": 2.745161411927569,
-     "lufs": -44.38948961684185,
-     "off_lu": 4.245161411927569,
-     "post_lufs": -29.17948961684185,
+     "lu": 2.6821689325725515,
+     "lufs": -44.45248209619687,
+     "off_lu": 4.1821689325725515,
+     "post_lufs": -29.242482096196866,
      "target_lu": -1.5,
      "trim_db": 0.0
     },
     "keys": {
      "fader_db": -5.94,
-     "lu": -6.480550665079669,
-     "lufs": -32.46520169384909,
-     "off_lu": -0.4805506650796687,
-     "post_lufs": -38.40520169384909,
+     "lu": -7.052716262799983,
+     "lufs": -33.0373672915694,
+     "off_lu": -1.0527162627999829,
+     "post_lufs": -38.9773672915694,
      "target_lu": -6.0,
      "trim_db": 0.0
     },
     "sax": {
      "fader_db": 2.55,
-     "lu": -0.3036362261836345,
-     "lufs": -34.77828725495305,
-     "off_lu": -0.3036362261836345,
-     "post_lufs": -32.22828725495305,
+     "lu": 0.51901926352053,
+     "lufs": -33.95563176524889,
+     "off_lu": 0.51901926352053,
+     "post_lufs": -31.405631765248888,
      "target_lu": 0.0,
      "trim_db": 6.63
     }
    },
-   "draft_sha256": "b10a3bfa7e1462c34e814aa829f6643ef381057c5a54c095457f5f9478a769f0",
-   "file": "drafts/v1/d07_chords.ls",
+   "draft_sha256": "a6f9fc635093b746269dd30461f88debcf7b6c3b0645fe4f8ab1c422da5835cf",
+   "file": "drafts/v1/redo1/d07_groove.ls",
    "keys": "rhodes",
    "kit": "jazz",
-   "lufs": -14.018766686788025,
-   "master_gain_db": 15.11398110036318,
-   "music_sha256": "d12c0c57e4eee1b2b639616885f07ea0e423afb4a1e764abdb699d448100162f",
+   "lufs": -14.021153253627258,
+   "master_gain_db": 15.188950514624095,
+   "music_sha256": "70b1457573f3cec92e7aec465a0e3399f5d0375e535fbdd7d43bec507c939832",
    "n": 984576,
    "palette": "draft_day2_rhodes_jazz@e63a9057",
-   "pcm_sha256": "d12c0c57e4eee1b2b639616885f07ea0e423afb4a1e764abdb699d448100162f",
-   "persona": "chords",
-   "source": "keep3",
-   "true_peak_dbtp": -1.491603342725777
+   "pcm_sha256": "70b1457573f3cec92e7aec465a0e3399f5d0375e535fbdd7d43bec507c939832",
+   "persona": "groove",
+   "source": "keep3_redo1",
+   "true_peak_dbtp": -1.4913672334172459
   },
   "d08_horn": {
    "bpm": 77,
@@ -566,7 +566,7 @@
    "source": "keep3",
    "true_peak_dbtp": -1.4558654669931814
   },
-  "d10_groove": {
+  "d10_chords": {
    "bpm": 66,
    "brief": {
     "bpm": 66,
@@ -577,55 +577,55 @@
    "brief_id": "d10",
    "buses": {
     "bass": {
-     "fader_db": 5.09,
-     "lu": -4.607133612491111,
-     "lufs": -41.62178464126053,
-     "off_lu": -1.6071336124911113,
-     "post_lufs": -36.53178464126053,
+     "fader_db": 5.13,
+     "lu": -4.129694666368195,
+     "lufs": -41.184345695137615,
+     "off_lu": -1.129694666368195,
+     "post_lufs": -36.05434569513761,
      "target_lu": -3.0,
-     "trim_db": 34.97
+     "trim_db": -2.79
     },
     "drums": {
-     "fader_db": 15.26,
-     "lu": -2.2094976244480833,
-     "lufs": -49.3941486532175,
-     "off_lu": -0.7094976244480833,
-     "post_lufs": -34.1341486532175,
+     "fader_db": 15.21,
+     "lu": -4.868980694720307,
+     "lufs": -52.003631723489725,
+     "off_lu": -3.3689806947203067,
+     "post_lufs": -36.793631723489725,
      "target_lu": -1.5,
-     "trim_db": -14.94
+     "trim_db": 0.0
     },
     "keys": {
-     "fader_db": -5.94,
-     "lu": -7.963170150853962,
-     "lufs": -33.94782117962338,
-     "off_lu": -1.963170150853962,
-     "post_lufs": -39.88782117962338,
+     "fader_db": -6.435,
+     "lu": -8.343176736287433,
+     "lufs": -33.83282776505685,
+     "off_lu": -2.3431767362874325,
+     "post_lufs": -40.26782776505685,
      "target_lu": -6.0,
-     "trim_db": 0.0
+     "trim_db": -3.22
     },
     "sax": {
      "fader_db": 2.55,
-     "lu": -0.22563678917710206,
-     "lufs": -34.70028781794652,
-     "off_lu": -0.22563678917710206,
-     "post_lufs": -32.15028781794652,
+     "lu": 0.4772558315251807,
+     "lufs": -33.99739519724424,
+     "off_lu": 0.4772558315251807,
+     "post_lufs": -31.447395197244237,
      "target_lu": 0.0,
      "trim_db": 6.63
     }
    },
-   "draft_sha256": "e8faf468e242e04ad1e0b89ba7b8f103fcf098cbf733bcf9eca6c72a6ead9a81",
-   "file": "drafts/v1/d10_groove.ls",
-   "keys": "rhodes",
-   "kit": "studio",
-   "lufs": -14.060780918827609,
-   "master_gain_db": 17.84981603667908,
-   "music_sha256": "210660c902af45b29eeca0cbbe60970659b96d9963667c95aab78b296847c544",
+   "draft_sha256": "3e0b0bf3210ceae6d9dcd62efe9cb15598f3860bd956d06d25a47c521440e5cd",
+   "file": "drafts/v1/redo1/d10_chords.ls",
+   "keys": "wurli",
+   "kit": "jazz",
+   "lufs": -14.036168853886418,
+   "master_gain_db": 16.652616382741112,
+   "music_sha256": "0b012898ac5f5df271ba15ce3dadca9fcb5985d76835181ac37a516a8adf12c8",
    "n": 1282880,
-   "palette": "draft_day2_rhodes_studio@5982ad1b",
-   "pcm_sha256": "210660c902af45b29eeca0cbbe60970659b96d9963667c95aab78b296847c544",
-   "persona": "groove",
-   "source": "keep3",
-   "true_peak_dbtp": -1.494472645109297
+   "palette": "draft_day2_wurli_jazz@94e4e5d4",
+   "pcm_sha256": "0b012898ac5f5df271ba15ce3dadca9fcb5985d76835181ac37a516a8adf12c8",
+   "persona": "chords",
+   "source": "keep3_redo1",
+   "true_peak_dbtp": -1.4803129658729766
   }
  },
  "s_star": -31.924651028769418,
@@ -636,37 +636,14 @@
    "key": "keep3",
    "path": "runs/drafts-13656049/summary/renders.json",
    "sha256": "94ee7e1ec732173e25aded99966f1177bd91df35a47cdec8c0271875e9d8163d"
+  },
+  {
+   "job": 13703830,
+   "key": "keep3_redo1",
+   "path": "runs/drafts-13703830/summary/renders.json",
+   "sha256": "d00ec18ff98640e87ab308bc3227e8b0b70304031143b063a093e1067ae3c015"
   }
  ],
  "tool": "python -m lofi_rl.freeze.checks expect",
- "tossed": [
-  {
-   "brief": "d01",
-   "file": "drafts/v1/d01_chords.ls",
-   "signoffs": [
-    "b1103-signoff"
-   ]
-  },
-  {
-   "brief": "d06",
-   "file": "drafts/v1/d06_horn.ls",
-   "signoffs": [
-    "b1103-signoff"
-   ]
-  },
-  {
-   "brief": "d07",
-   "file": "drafts/v1/d07_chords.ls",
-   "signoffs": [
-    "b1103-signoff"
-   ]
-  },
-  {
-   "brief": "d10",
-   "file": "drafts/v1/d10_groove.ls",
-   "signoffs": [
-    "b1103-signoff"
-   ]
-  }
- ]
+ "tossed": []
 }
