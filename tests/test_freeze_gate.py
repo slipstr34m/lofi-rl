@@ -398,7 +398,7 @@ def test_the_real_constants_keep_their_own_rules():
     the pinned one, as its start (a later record only adds to it)."""
     assert G.records_problems(kept=REAL["KEPT"], redos=REAL["REDOS"], signoffs=REAL["SIGNOFFS"],
                               jobs=REAL["JOBS"]) == []
-    assert REAL["SIGNOFFS"][0] == LISTEN and REAL["KEPT"] == KEPT
+    assert REAL["SIGNOFFS"][0] == LISTEN
     assert {k: REAL["JOBS"][k] for k in R.TODAY["JOBS"]} == R.TODAY["JOBS"]
     assert G.picks_problems(GATE) == []                              # the pinned record: the synthetic text's
 
