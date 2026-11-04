@@ -6,9 +6,11 @@ the freeze", step 4; docs/DECISIONS.md D-017; the freeze spec §5.1).
 
 Four steps. A step that finds problems lists every one and refuses (exit 3). Nothing is written unless all four pass:
 1. **His line**, read as `freeze check --sealed` reads it (lofi_rl.freeze.gate.approval_date). The gate file has one
-   `## Approval` heading. Under it, exactly one line is `APPROVED by Shresth Rana <yyyy-mm-dd>`, with a real date. The
+   `## Approval` heading. Under it, exactly one line is his line, `APPROVED by Shresth Rana` and a real date as bare
+   year-month-day digits (`APPROVED by Shresth Rana 2026-11-04`). The
    heading and the line are found by their text, never by a line number. A second such line refuses, and so does a
-   line under the heading that starts as an approval in another form. Other lines are ignored, such as a note that
+   line under the heading that starts as an approval in another form, with what to change in it ("write the date
+   bare: 2026-11-04, not <2026-11-04>"; `approval`). Other lines are ignored, such as a note that
    his line was given in chat and entered verbatim. The date is not before any of his confirmations, the
    `**Shresth's confirmation, <date>:**` line of each day's section (gate.confirmations, which `freeze check --gate`
    compares with lofi_rl.freeze.PICKS). Nor is it after today, Pacific: the calendar the sign-off job dates its batch
@@ -67,8 +69,10 @@ from lofi_rl import freeze as F
 from lofi_rl.drafts import job as J
 from lofi_rl.palette import ROOT, PaletteError, parse_palette
 
+from kit.gates import example_line
+
 from . import FROZEN, JOBS
-from .gate import APPROVAL_HEADING, GateError, approval_date, confirmations, records_problems
+from .gate import APPROVAL_HEADING, APPROVER, GateError, approval_date, confirmations, records_problems
 
 GATE_PATH = ROOT / "gates" / "GATE_palette.md"
 SIGNOFF_BATCH_RE = re.compile(r"b\d{4}-signoff(?:-\d+)?")
@@ -93,16 +97,20 @@ class BadInput(SealError):
 
 
 # --------------------------------------------------------------------------------------------- the gate file
-def approval(text: str) -> date:
+def approval(text: str, *, today: date | None = None) -> date:
     """The date on his APPROVED line, read as `freeze check --sealed` reads it (lofi_rl.freeze.gate.approval_date).
-    SealError when there is none, or the gate file's `## Approval` section is not one with one such line."""
+    SealError when there is none, or the gate file's `## Approval` section is not one with one such line. The refusal
+    shows his line written out with a bare date (`today`, by default `pacific_today()`, when the gate file gives none
+    to use), never the placeholder form, and says what to change in a line that is not the form: "write the date
+    bare: 2026-11-04, not <2026-11-04>". The line stays his: Claude enters only his chat line, verbatim."""
+    today = pacific_today() if today is None else today
     try:
-        got = approval_date(text)
+        got = approval_date(text, today=today)
     except GateError as err:
-        raise SealError([str(err)]) from None
+        raise SealError([f"{err}. His line is his to change"]) from None
     if got is None:
-        raise SealError([f"no line `APPROVED by Shresth Rana <yyyy-mm-dd>` under `{APPROVAL_HEADING}`: his line is "
-                         f"his to write, or his chat line entered verbatim"])
+        raise SealError([f"no APPROVED line under `{APPROVAL_HEADING}`: his line is his to write (or his chat line, "
+                         f"entered verbatim), with the date bare, e.g. {example_line(APPROVER, today)}"])
     return date.fromisoformat(got)
 
 
@@ -365,7 +373,7 @@ def seal(*, gate: Path, palette: Path, runs: Path, inbox: Path, levels_day3: Pat
         text = gate.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as err:
         raise BadInput([f"the gate file {gate}: {err}"]) from None
-    when = approval(text)
+    when = approval(text, today=today)
     problems = check_date(when, confirmation_dates(text), today)
     if problems:
         raise SealError(problems)

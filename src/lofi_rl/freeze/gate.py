@@ -62,6 +62,7 @@ _CONFIRMATION = re.compile(r"^\*\*Shresth['’]s confirmation, (\d{4}-\d{2}-\d{2
 _JOB = re.compile(r"\bjob (\d+)\b")
 _NONE = re.compile(r"none\.?", re.I)                          # a passing listen's **Tossed:** item: `none.`
 APPROVAL_HEADING = "## Approval"
+APPROVER = "Shresth Rana"
 APPROVED = re.compile(r"^APPROVED by Shresth Rana (\d{4}-\d{2}-\d{2})$")   # trailing whitespace aside
 _ATTEMPT = re.compile(r"^\s*approved\b", re.I)          # a line that starts as an approval: the exact form or refused
 REDO_PREFIX = "## Kept drafts (keep3 redo"              # every redo round's heading starts so (REDOS `heading`)
@@ -570,9 +571,10 @@ def kept_now_table(text: str, picks: Mapping[str, Mapping[str, Any]] = PICKS, *,
 
 
 def approval_lines(text: str) -> tuple[list[str], list[str]]:
-    """Under the `## Approval` heading: (the dates of the lines that are exactly `APPROVED by Shresth Rana
-    <yyyy-mm-dd>`, trailing whitespace aside, with a real date; every other line that starts with "approved", in any
-    case or indent: a malformed approval). Other lines (a note that his line came from chat, say) are ignored.
+    """Under the `## Approval` heading: (the dates of the lines that are exactly his line, `APPROVED by Shresth Rana`
+    and a real date as bare year-month-day digits, e.g. `APPROVED by Shresth Rana 2026-11-04`, trailing whitespace
+    aside; every other line that starts with "approved", in any case or indent, as written less trailing whitespace: a
+    malformed approval). Other lines (a note that his line came from chat, say) are ignored.
     GateError without the heading, or with two of it. A line inside a code fence or an HTML comment is never read
     (`_lines`), so an example of the form there neither counts nor refuses. GateError too when a line opens an HTML
     comment after a `-->` (module doc): where that comment ends cannot be read, so no line after it is trusted."""
@@ -595,16 +597,30 @@ def approval_lines(text: str) -> tuple[list[str], list[str]]:
             except ValueError:
                 pass
         if _ATTEMPT.match(line):
-            other.append(line.strip())
+            other.append(line.rstrip())          # its indent kept: `approval_problem` names it
     return dates, other
 
 
-def approval_date(text: str) -> str | None:
+def approval_problem(line: str, *, today: _dt.date | str | None = None) -> str:
+    """Why a line under `## Approval` that starts as an approval is not his line, in plain words, with the line as it
+    would count (kit.gates.explain), e.g. "`APPROVED by Shresth Rana <2026-11-04>` is not an approval line: write the
+    date bare: 2026-11-04, not <2026-11-04> (the line that counts: APPROVED by Shresth Rana 2026-11-04)". The form
+    is shown written out, never as a placeholder he could copy; a date the line has no use for is shown as `today`."""
+    from kit.gates import corrected, explain, fixes
+    if fixes(line, APPROVER, today=today) or APPROVED.match(line.rstrip()):
+        return explain(line, APPROVER, today=today)
+    # kit.gates reads a run of spaces or tabs in a name as one space; his line has one space between its words
+    return (f"`{line.rstrip()}` is not an approval line: one space between the words (the line that counts: "
+            f"{corrected(line, APPROVER, today=today)})")
+
+
+def approval_date(text: str, *, today: _dt.date | str | None = None) -> str | None:
     """The date of Shresth's one APPROVED line under `## Approval`, or None when there is none. GateError for a second
-    matching line, or a line that starts as an approval in another form (only the exact form counts)."""
+    matching line, or a line that starts as an approval in another form (only the exact form counts), naming what to
+    change (`approval_problem`; a date the line has no use for is shown as `today`, default today's date)."""
     dates, other = approval_lines(text)
     if other:
-        raise GateError(f"under {APPROVAL_HEADING}: {other} is not the form `APPROVED by Shresth Rana <yyyy-mm-dd>`")
+        raise GateError(f"under {APPROVAL_HEADING}: " + "; ".join(approval_problem(x, today=today) for x in other))
     if len(dates) > 1:
         raise GateError(f"under {APPROVAL_HEADING}: {len(dates)} APPROVED lines ({dates}); there is one")
     return dates[0] if dates else None

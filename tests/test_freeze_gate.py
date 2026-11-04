@@ -14,6 +14,8 @@ gain each round and listen as they are recorded, so every test here runs with th
 (tests/helpers_record.py TODAY). One test reads the live record, captured at import: it keeps its own rules."""
 from __future__ import annotations
 
+import re
+
 import pytest
 
 import helpers_record as R
@@ -261,16 +263,37 @@ def test_his_line_is_found_under_the_heading_beside_a_note():
 
 @pytest.mark.parametrize("lines, match", [
     ("APPROVED by Shresth Rana 2026-11-05\nAPPROVED by Shresth Rana 2026-11-06\n", "2 APPROVED lines"),
-    ("APPROVED by Shresth Rana 2026-11-5\n", "not the form"),
-    ("APPROVED by Shresth Rana 2026-02-30\n", "not the form"),
-    ("Approved by Shresth Rana 2026-11-05\n", "not the form"),
-    ("APPROVED by Shresth 2026-11-05\n", "not the form"),
-    ("    APPROVED by Shresth Rana 2026-11-05\n", "not the form"),
-    ("APPROVED by Shresth Rana <2026-11-05>\n", "not the form"),
+    ("APPROVED by Shresth Rana 2026-11-5\n", "write the date as 2026-11-05, not 2026-11-5"),
+    ("APPROVED by Shresth Rana 2026-02-30\n", "2026-02-30 is not a date on the calendar"),
+    ("Approved by Shresth Rana 2026-11-05\n", "write APPROVED in capitals, not Approved"),
+    ("APPROVED by Shresth 2026-11-05\n", "the name is Shresth Rana, not Shresth"),
+    ("    APPROVED by Shresth Rana 2026-11-05\n", "no spaces or tabs before APPROVED"),
+    ("APPROVED by Shresth Rana <2026-11-05>\n", "write the date bare: 2026-11-05, not <2026-11-05>"),
+    ("APPROVED by Shresth  Rana 2026-11-05\n", "one space between the words"),
 ])
 def test_two_lines_or_another_form_refuse(lines, match):
-    with pytest.raises(G.GateError, match=match):
+    with pytest.raises(G.GateError, match=re.escape(match)):
         G.approval_date(GATE + lines)
+
+
+@pytest.mark.parametrize("line, why, counts", [
+    ("APPROVED by Shresth Rana <2026-11-04>", "write the date bare: 2026-11-04, not <2026-11-04>", "2026-11-04"),
+    ("APPROVED by Shresth Rana <yyyy-mm-dd>", "write the day's date in place of <yyyy-mm-dd>, bare: 2026-11-08",
+     "2026-11-08"),
+    ("APPROVED by Shresth Rana 2026-11-04 (in chat)", "end the line with the date: nothing after it", "2026-11-04"),
+    ("APPROVED by Shresth  Rana 2026-11-04", "one space between the words", "2026-11-04"),
+    ("  approved by Shresth Rana 2026-11-4", "no spaces or tabs before APPROVED; write APPROVED in capitals, not "
+     "approved; write the date as 2026-11-04, not 2026-11-4", "2026-11-04"),
+])
+def test_a_line_that_is_not_his_is_told_what_to_change_and_how_it_counts(line, why, counts):
+    """The refusal names each fault and shows his line as it would count, with a bare date: the line's own when it is
+    a real date, else `today` (here 2026-11-08). Never the placeholder form he copied on 2026-11-04."""
+    with pytest.raises(G.GateError) as err:
+        G.approval_date(GATE + line + "\n", today="2026-11-08")
+    msg = str(err.value)
+    assert msg.startswith(f"under ## Approval: `{line}` is not an approval line: ") and why in msg, msg
+    assert msg.endswith(f"(the line that counts: APPROVED by Shresth Rana {counts})"), msg
+    assert G.approval_date(GATE + f"APPROVED by Shresth Rana {counts}\n") == counts, "the line it shows counts"
 
 
 def test_the_approval_heading_is_needed_once():
