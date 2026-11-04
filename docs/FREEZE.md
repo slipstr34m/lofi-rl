@@ -95,7 +95,7 @@ A package of its own, `lofi_rl.freeze`, so the draft module (`lofi_rl.drafts.pal
 file's picks, §4), `KEPT` (keep3's table), `REDOS` and `SIGNOFFS` (the redo rounds and the sign-off listens, §5),
 `BED`, `JOBS` (13635646, 13651610, 13656048, keep3's 13656049, then each redo round's job under its key), `CHANGES`,
 and the frozen grammar's `REGEX_CHARS`, `REGEX_SHA256` and `V2_REFERENCES`; and three readers of them, `kept_rounds`,
-`kept_now` and `tossed_kept` (§5.1).
+`kept_now` and `tossed_kept` (§5.2).
 
 ### 3.2 CLI
 ```
@@ -289,7 +289,8 @@ loops themselves", so d01, d06, d07 and d10 reopen. `REDOS` stays empty until he
 - **`REDOS`:** the redo rounds, in order. An entry is added once he has picked in its batch:
   `{key: keep3_redo<k>, folder: drafts/v1/redo<k>, batch: b<MMDD>-keep3-redo[<n>], job: <its lofi-drafts job>,
   heading: "## Kept drafts (keep3 redo<k>)", kept: {brief: drafts/v1/redo<k>/<brief>_<persona>.ls}}`. `kept` holds
-  only the briefs he kept a loop for. The rules (`gate.records_problems`):
+  only the briefs he kept a loop for. The batch is the name the job served: `lofi_rl.drafts.job.batch_name` counts the
+  redraft batches of its own date, so `<n>` need not be the round's k. The rules (`gate.records_problems`):
   - k rises from round to round and names the folder and the heading;
   - the batch has the redraft form, and the job is `JOBS[key]`;
   - each pick is a draft of its own brief, a brief of keep3's, in the round's folder.

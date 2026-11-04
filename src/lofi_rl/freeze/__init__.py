@@ -59,9 +59,11 @@ KEPT: dict[str, str] = {
 # The redo rounds of keep3, in order (docs/DRAFTS.md §6). An entry is added once Shresth has picked in its batch, from
 # his picks there and by his words only, together with its own section in gates/GATE_palette.md under its heading (a
 # Brief/Kept table, as keep3's; `gate.picks_problems` compares the two), and its job goes into JOBS under its key:
-#   {"key": "keep3_redo<k>", "folder": "drafts/v1/redo<k>", "batch": "b<MMDD>-keep3-redo[<k>]",
+#   {"key": "keep3_redo<k>", "folder": "drafts/v1/redo<k>", "batch": "b<MMDD>-keep3-redo[<n>]",
 #    "job": <its lofi-drafts job id>, "heading": "## Kept drafts (keep3 redo<k>)",
 #    "kept": {brief: "drafts/v1/redo<k>/<brief>_<persona>.ls", ...}}
+# The batch is the name the job served, as the gate heading gives it: lofi_rl.drafts.job.batch_name counts the redraft
+# batches of its own date (b<MMDD>-keep3-redo, then -redo2, ...), so n need not be the round's k.
 # `kept` holds only the briefs he kept a loop for: "none acceptable" for a brief leaves it out, and a later round
 # redrafts it. Empty now: the sign-off listen b1103-signoff reopened d01, d06, d07 and d10 (gates/GATE_palette.md,
 # `## Sign-off listen`), and he has not picked from their redraft yet.

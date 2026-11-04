@@ -263,7 +263,8 @@ reopened d01, d06, d07 and d10. The three writers redraft that brief into a new 
 stay as the labelled negatives: `drafts/v1/redo1/` (then `redo2/`, …), holding only `<brief>_<persona>.ls` for the named
 briefs; its briefs come from `drafts/v1/briefs.yaml`. Check it with `--briefs` and `--against drafts/v1` (and every
 earlier redo folder), so no redraft repeats a draft it replaces, and render it with the same arguments (§7). A
-redraft batch is named `b<MMDD>-keep3-redo`, then `-redo2`, ….
+redraft batch is named `b<MMDD>-keep3-redo`, then `-redo2`, … among the redraft batches of its date, so the suffix
+need not be its folder's k.
 
 **How a redo pick enters the kept list.** Only his picks in the redo batch do, recorded by his words alone, in two
 places that `python -m lofi_rl.freeze check --gate` compares:
