@@ -72,6 +72,18 @@ def test_junk_job_runs_generate_and_score_in_policy_then_render_in_scorer_under_
     assert budget <= 60 * _minutes(_sbatch(s)["time"]) - 60, "the steps' timeouts fit the walltime with a minute spare"
 
 
+def test_the_render_step_runs_the_two_lanes_its_deadline_was_sized_for():
+    """The render deadline and timeout (535 s, 595 s) were sized for junk's default two renders at a time with 2
+    workers each on the job's 4 CPUs (the freeze spec §5.5 (iii) with (ii); D-022). So the job passes its CPUs as
+    --workers and no --jobs, and junk.RENDER_JOBS splits those CPUs into 2 x 2."""
+    s = JOB.read_text()
+    render = next(line for line in _code(s) if "-m lofi_rl.rl.junk render" in line)
+    assert '--workers "${SLURM_CPUS_PER_TASK:-4}"' in render
+    assert not any("--jobs" in line for line in _code(s)), "the render step takes junk's default --jobs"
+    cpus = int(_sbatch(s)["cpus-per-task"])
+    assert cpus == 4 and junk.render_lanes(junk.RENDER_JOBS, cpus) == (2, 2)
+
+
 def test_junk_job_writes_one_run_dir_and_never_the_inbox():
     s = JOB.read_text()
     code = "\n".join(_code(s))

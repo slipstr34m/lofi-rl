@@ -986,6 +986,9 @@ def test_model_spec_needs_a_pinned_commit():
 
 
 FROZEN = ROOT / "palettes" / "lofi_rain_v1.yaml"
+# tests/test_palette_frozen.py's pins: the sealed file (B) and its LoopScript regex, the gate's grammar (D-022)
+FROZEN_SHA256 = "09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183"
+FROZEN_REGEX_SHA256 = "5c081828ac50718edc4db82c2a855ea52210debb375280ba01e8442de60f8558"
 
 
 def test_every_step_reads_the_frozen_palette_by_default(tmp_path, monkeypatch):
@@ -995,7 +998,7 @@ def test_every_step_reads_the_frozen_palette_by_default(tmp_path, monkeypatch):
     assert junk.DEFAULT_PALETTE == FROZEN
     frozen = load_palette(FROZEN, verify=False)
     assert (frozen.id, str(frozen.frozen)) == ("lofi_rain_v1", "2026-11-04")
-    assert frozen.sha256 == "09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183"
+    assert frozen.sha256 == FROZEN_SHA256
     seen = {}
     for cmd in ("generate", "score", "render"):
         monkeypatch.setattr(junk, f"cmd_{cmd}", lambda a, cmd=cmd: seen.__setitem__(cmd, a.palette) or 0)
@@ -1006,6 +1009,34 @@ def test_every_step_reads_the_frozen_palette_by_default(tmp_path, monkeypatch):
     job = (ROOT / "jobs" / "junk_rate.sbatch").read_text()
     code = [ln for ln in job.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
     assert sum("-m lofi_rl.rl.junk" in ln for ln in code) == 3 and not any("--palette" in ln for ln in code)
+
+
+def test_the_gates_generate_and_score_record_the_frozen_palette_and_its_grammar(tmp_path, monkeypatch):
+    """The Phase-1 gate's own arguments (ARGS='500 2026 1 v2': prompt v2 and --constrained) with no --palette, as the
+    job passes, through the fake engine: junk.json holds the two values D-022 swaps into D-020's validity list,
+    palette.sha256 = B with matches_generate true and both regex shas = the frozen grammar's, and the v2 and grammar
+    conditions the list keeps hold too. The completions are prompt v2's references under the frozen palette."""
+    frozen = load_palette(FROZEN, verify=False)
+    refs = prompt_v2.reference_texts(frozen, strict=True)
+    engine = FakeEngine(list(refs.values())[:3], info={"engine": "fake", "structured_outputs": PINNED})
+    monkeypatch.setattr(junk, "load_engine", lambda model, **kw: engine)
+    monkeypatch.setattr(junk, "structured_outputs_params", lambda regex: {"regex_sha256": junk.sha256_text(regex)})
+    n = 18
+    assert junk.main(["generate", "--run", str(tmp_path), "--n", str(n), "--chunk", "8", "--hang-s", "0",
+                      "--prompt", "v2", "--constrained"]) == 0
+    assert junk.main(["score", "--run", str(tmp_path)]) == 0
+    s = json.loads((tmp_path / "summary" / "junk.json").read_text())
+    assert s["palette"] == {"id": "lofi_rain_v1", "sha256": FROZEN_SHA256, "matches_generate": True}
+    assert grammar.regex_sha256(frozen) == FROZEN_REGEX_SHA256
+    c = s["constrained"]
+    assert c["enabled"] is True and c["regex_sha256"] == c["in_language"]["regex_sha256"] == FROZEN_REGEX_SHA256
+    assert c["in_language"]["matches_generate"] is True and c["in_language"]["other"]["n"] == 0
+    assert c["in_language"]["stop"] == {"n": n, "in_language": n, "out_of_language": 0}
+    p = s["prompt"]
+    assert (p["version"], p["template_matches_generate"], p["rows_matching"], p["example_mismatch"]) == (
+        "v2", True, n, 0)
+    assert s["n"] == n and {g: s["failures"][g] for g in ("G1", "G3", "G4", "G5", "crash")} == {
+        "G1": 0, "G3": 0, "G4": 0, "G5": 0, "crash": 0}
 
 
 # ------------------------------------------------------------------------------------------- render (stubbed audio)
