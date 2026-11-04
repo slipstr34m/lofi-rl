@@ -1,12 +1,8 @@
 {
+ "allow_tossed": true,
  "draft_palette": {
   "path": "palettes/draft_day2.yaml",
   "sha256": "58aeb9243309594cd422a641a56decfb1682aff4c06a6c34c6eb9c75016d23a5"
- },
- "keep3": {
-  "job": 13656049,
-  "path": "runs/drafts-13656049/summary/renders.json",
-  "sha256": "94ee7e1ec732173e25aded99966f1177bd91df35a47cdec8c0271875e9d8163d"
  },
  "kept": [
   "drafts/v1/d01_chords.ls",
@@ -79,6 +75,7 @@
    "palette": "draft_day2_wurli_studio@05cccb55",
    "pcm_sha256": "db5bcff4d47c448bbb7fdfca7eec5c0018b42f09d2f01e21c7ccfb3525c126c0",
    "persona": "chords",
+   "source": "keep3",
    "true_peak_dbtp": -1.4912764318723013
   },
   "d02_chords": {
@@ -139,6 +136,7 @@
    "palette": "draft_day2_rhodes_jazz@e63a9057",
    "pcm_sha256": "360653028966a3bded6dcdf0f31b91dabf018d43fc61b4d86c173fec644f8c2c",
    "persona": "chords",
+   "source": "keep3",
    "true_peak_dbtp": -1.494472645109297
   },
   "d03_chords": {
@@ -199,6 +197,7 @@
    "palette": "draft_day2_wurli_jazz@94e4e5d4",
    "pcm_sha256": "b2ec89491097399b5cd1bb93258fc5c2b3bb5fc6111d9bacfd128e3217e3dd13",
    "persona": "chords",
+   "source": "keep3",
    "true_peak_dbtp": -1.494472645109297
   },
   "d04_horn": {
@@ -259,6 +258,7 @@
    "palette": "draft_day2_wurli_jazz@94e4e5d4",
    "pcm_sha256": "65b5d9863a4dd7d97b5d7d8fc75ac22eab052e6b50a3308e8d1313c31609ba75",
    "persona": "horn",
+   "source": "keep3",
    "true_peak_dbtp": -1.4940567652343146
   },
   "d05_groove": {
@@ -319,6 +319,7 @@
    "palette": "draft_day2_piano_jazz@173ba173",
    "pcm_sha256": "89d9c0be4cf15b1f108823efc19830a0773b81d6234c285137905636e374c485",
    "persona": "groove",
+   "source": "keep3",
    "true_peak_dbtp": -1.4920158734612985
   },
   "d06_horn": {
@@ -379,6 +380,7 @@
    "palette": "draft_day2_piano_jazz@173ba173",
    "pcm_sha256": "9be3c09ceb78aa855bc7b6431702b771c6796230747ecc06263882c48f45c4d8",
    "persona": "horn",
+   "source": "keep3",
    "true_peak_dbtp": -1.490823324199098
   },
   "d07_chords": {
@@ -439,6 +441,7 @@
    "palette": "draft_day2_rhodes_jazz@e63a9057",
    "pcm_sha256": "d12c0c57e4eee1b2b639616885f07ea0e423afb4a1e764abdb699d448100162f",
    "persona": "chords",
+   "source": "keep3",
    "true_peak_dbtp": -1.491603342725777
   },
   "d08_horn": {
@@ -499,6 +502,7 @@
    "palette": "draft_day2_piano_jazz@173ba173",
    "pcm_sha256": "bcbbc26e608ff68d77446f0c644933307ce44997c48e87cdafedef4547215dd0",
    "persona": "horn",
+   "source": "keep3",
    "true_peak_dbtp": -1.492969830584758
   },
   "d09_chords": {
@@ -559,6 +563,7 @@
    "palette": "draft_day2_piano_jazz@173ba173",
    "pcm_sha256": "bbab1aa443d2a6ffc76dc9f2e5501cf32e68622b4d0bcbd7a9c8634e53a193bf",
    "persona": "chords",
+   "source": "keep3",
    "true_peak_dbtp": -1.4558654669931814
   },
   "d10_groove": {
@@ -619,10 +624,49 @@
    "palette": "draft_day2_rhodes_studio@5982ad1b",
    "pcm_sha256": "210660c902af45b29eeca0cbbe60970659b96d9963667c95aab78b296847c544",
    "persona": "groove",
+   "source": "keep3",
    "true_peak_dbtp": -1.494472645109297
   }
  },
  "s_star": -31.924651028769418,
- "schema": "lofi-rl/keep3-kept10/1",
- "tool": "python -m lofi_rl.freeze.checks expect"
+ "schema": "lofi-rl/keep3-kept10/2",
+ "sources": [
+  {
+   "job": 13656049,
+   "key": "keep3",
+   "path": "runs/drafts-13656049/summary/renders.json",
+   "sha256": "94ee7e1ec732173e25aded99966f1177bd91df35a47cdec8c0271875e9d8163d"
+  }
+ ],
+ "tool": "python -m lofi_rl.freeze.checks expect",
+ "tossed": [
+  {
+   "brief": "d01",
+   "file": "drafts/v1/d01_chords.ls",
+   "signoffs": [
+    "b1103-signoff"
+   ]
+  },
+  {
+   "brief": "d06",
+   "file": "drafts/v1/d06_horn.ls",
+   "signoffs": [
+    "b1103-signoff"
+   ]
+  },
+  {
+   "brief": "d07",
+   "file": "drafts/v1/d07_chords.ls",
+   "signoffs": [
+    "b1103-signoff"
+   ]
+  },
+  {
+   "brief": "d10",
+   "file": "drafts/v1/d10_groove.ls",
+   "signoffs": [
+    "b1103-signoff"
+   ]
+  }
+ ]
 }

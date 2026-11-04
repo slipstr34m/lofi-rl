@@ -7,8 +7,10 @@ levels as fields, the kit lanes untrimmed, no chain-head slots, bus_gain_db 0, a
 the rain, and a stand-in renderer: the real parse, compile and bed placement (render.bed), synthetic music that depends
 on the loop and on each bus's effective levels, stated loudness numbers. keep3's records are that renderer's renders
 with the draft palette's render palettes, so `twin0 = keep3` holds exactly when the twin carries keep3's levels.
-The job runs once per world; its refusals are checked on the verify stage's own function. Nothing is listened to and
-nothing is claimed about sound."""
+The world's kept list is put on lofi_rl.freeze (KEPT: its two keep3 picks; no redo round; no sign-off listen yet;
+JOBS from tests/helpers_record.py's literal record, never the live one).
+The job runs once per world; its refusals are checked on the verify stage's own function. The same job with a redo
+round is tests/test_freeze_signoff_redo.py. Nothing is listened to and nothing is claimed about sound."""
 import copy
 import hashlib
 import json
@@ -23,6 +25,8 @@ import pytest
 import soundfile as sf
 import yaml
 
+import helpers_record as HR
+from lofi_rl import freeze as FZ
 from lofi_rl.brief import Brief
 from lofi_rl.compile.compiler import compile_loop
 from lofi_rl.drafts import job as J
@@ -186,6 +190,12 @@ def write_rain(assets: Path) -> tuple[Path, dict]:
     return f, rec
 
 
+def renders_source(key: str, job: int, path: Path) -> C.Source:
+    """A round's summary/renders.json at `path`, named as `make pull` would put it (runs/drafts-<job>/...)."""
+    return C.Source(key, f"runs/drafts-{job}/summary/renders.json", job, C.file_sha256(path),
+                    json.loads(path.read_text(encoding="utf-8")))
+
+
 def gate_text(kept_files: list[str]) -> str:
     rows = "".join(f"| {Path(f).name[:3]} | stand-in | `{f}` |\n" for f in kept_files)
     return ("# GATE stand-in\n\n## Kept drafts (keep3): voted (a test stand-in)\n\n| Brief | Energy, mood | Kept |\n"
@@ -208,6 +218,11 @@ def build_world(tmp: Path, mp: pytest.MonkeyPatch, *, keys_offset_db: dict | Non
     files = {Path(f).stem: J._label(v1 / f) for f in FIXTURES}
     gate = tmp / "GATE_palette.md"
     gate.write_text(gate_text([files[k] for k in KEPT]), encoding="utf-8")
+    # the kept list of this world (lofi_rl.freeze: keep3's two picks, no redo round, no sign-off listen yet), its jobs
+    # the record of 2026-11-03's with keep3's job 7, never the live JOBS (which gains each recorded redo round's job)
+    for name, value in (("KEPT", {k[:3]: files[k] for k in KEPT}), ("REDOS", ()), ("SIGNOFFS", ()),
+                        ("JOBS", {**HR.TODAY["JOBS"], "keep3": 7})):
+        mp.setattr(FZ, name, value)
     mp.setenv("LOFI_ASSETS", str(assets))
     for name, value in (("GATE", gate), ("RAIN", tmp / "rain_excerpts.json"), ("DRAFT_PALETTE", dp.path)):
         mp.setattr(S, name, value)
@@ -238,8 +253,7 @@ def build_world(tmp: Path, mp: pytest.MonkeyPatch, *, keys_offset_db: dict | Non
               "palette": str(pal_file[combos[rid]]), "s_star": dp.levels["S_star"]} for rid in KEPT]
     render_all(tasks, tmp / "k3" / "renders", jobs=2, workers=1, summary_dir=tmp / "k3" / "summary", renderer=renderer)
     k3 = tmp / "k3" / "summary" / "renders.json"
-    expect = C.expectations(json.loads(k3.read_text()), renders_sha256=C.file_sha256(k3),
-                            renders_path="runs/drafts-7/summary/renders.json", job=7, kept=C.gate_kept(gate), draft=dp)
+    expect = C.expectations([renders_source("keep3", 7, k3)], kept=FZ.kept_rounds(), draft=dp)
     (v1 / C.EXPECT_NAME).write_text(C.expect_text(expect), encoding="utf-8")
     return SimpleNamespace(tmp=tmp, v1=v1, frozen=frozen, dp=dp, gate=gate, k3=k3, expect=expect, calls=calls,
                            renderer=renderer, files=files, rain_file=rain_file)
@@ -271,7 +285,7 @@ def state_of(w, run: str = "drafts-1") -> dict:
     renders, index = summary(w, "renders.json", run), summary(w, "palettes/index.json", run)
     return {"pal": load_palette(w.frozen, verify=False), "expect": C.load_expectations(w.v1 / C.EXPECT_NAME),
             "bed": index["bed"]["want"], "changes": index["changes"], "run": w.tmp / "runs" / run,
-            "runs_root": w.tmp / "runs", "palette_record": renders["palette"],
+            "runs_root": w.tmp / "runs", "palette_record": renders["palette"], "kept_ids": renders["kept_loops"],
             "records": {"kept": renders["kept"], "others": renders["others"]}}
 
 
@@ -332,7 +346,9 @@ def test_verify_passes_every_check_and_records_what_it_measured(world):
 
 def test_the_check_and_palettes_record_what_they_found(world):
     check = summary(world, "check.json")
-    assert check["problems"] == [] and check["keep3_scratch"]["present"] is False
+    assert check["problems"] == [] and check["sources_scratch"]["absent"] == ["keep3"]
+    assert check["sources_scratch"]["sources"]["keep3"]["present"] is False
+    assert check["kept_vs_constants"] == check["kept_vs_gate"] == check["tossed"] == []
     assert check["a"]["folder"] == {"drafts": 6, "ok": 6, "missing": [], "references": check["a"]["folder"]["references"],
                                     "failing": {}}
     assert check["b"]["count"] == 9 and check["b"]["identical"] is True
@@ -494,9 +510,25 @@ def test_the_g7_render_fails_the_whole_job_before_the_batch(world):
     assert not (world.tmp / "inbox-g7").exists()
 
 
-def test_a_kept_file_that_is_not_the_text_keep3_rendered_stops_at_the_check(world, tmp_path):
+def moved(world, other: Path, monkeypatch) -> None:
+    """The world's kept list at a copy of its drafts folder: the constants, keep3_kept10.json and the gate file name
+    the files there (a kept draft is read by its own path, so a copy of the folder is another kept list)."""
+    at = {f: str(other / Path(f).name) for f in FZ.KEPT.values()}
+    monkeypatch.setattr(FZ, "KEPT", {b: at[f] for b, f in FZ.KEPT.items()})
+    doc = json.loads((other / C.EXPECT_NAME).read_text(encoding="utf-8"))
+    doc["kept"] = [at[f] for f in doc["kept"]]
+    for e in doc["loops"].values():
+        e["file"] = at[e["file"]]
+    (other / C.EXPECT_NAME).write_text(C.expect_text(doc), encoding="utf-8")
+    gate = other.parent / "GATE_moved.md"
+    gate.write_text(gate_text(list(FZ.KEPT.values())), encoding="utf-8")
+    monkeypatch.setattr(S, "GATE", gate)
+
+
+def test_a_kept_file_that_is_not_the_text_its_source_rendered_stops_at_the_check(world, tmp_path, monkeypatch):
     other = tmp_path / "v1"
     shutil.copytree(world.v1, other)
+    moved(world, other, monkeypatch)
     text = FIXTURES["d01_chords.ls"]
     edited = text.replace("| q4 e3 e2 h1 |", "| q4 e3 e1 h1 |", 1)           # one sax note of the call
     assert edited != text
@@ -505,21 +537,62 @@ def test_a_kept_file_that_is_not_the_text_keep3_rendered_stops_at_the_check(worl
            "--inbox", str(tmp_path / "inbox"), "--date", "2026-11-05", "--seed", "00000000000000bb"]
     assert J.main(run, renderer=world.renderer) == 3
     check = json.loads((tmp_path / "runs" / "drafts-2" / "summary" / "check.json").read_text())
-    assert any("d01_chords.ls: sha256" in x and "not the text keep3 rendered" in x for x in check["problems"])
+    assert [x for x in check["problems"] if "sha256" in x] == [
+        f"{other / 'd01_chords.ls'}: sha256 {C.sha256_bytes(edited.encode())[:12]}... is not the text keep3 rendered "
+        f"({world.expect['loops']['d01_chords']['draft_sha256'][:12]}..., keep3_kept10.json)"]
     assert not (tmp_path / "runs" / "drafts-2" / "renders").exists() and not (tmp_path / "inbox").exists()
+
+
+def test_a_tossed_file_still_kept_stops_the_job_at_the_check(world, tmp_path, monkeypatch):
+    """A sign-off listen tossed d05_groove, and no redo pick replaced it: the check names the brief, the file and the
+    batch, and nothing is rendered."""
+    listen = {"batch": "b1104-signoff", "job": 11, "tossed": (world.files["d05_groove"],)}
+    monkeypatch.setattr(FZ, "SIGNOFFS", (listen,))
+    rc = J.main(argv(world, run="drafts-tossed", inbox="inbox-tossed"), renderer=world.renderer)
+    assert rc == 3
+    check = summary(world, "check.json", "drafts-tossed")
+    assert check["tossed"] == [f"d05: {world.files['d05_groove']} is still kept, but Shresth tossed it at the sign-off "
+                               f"listen b1104-signoff (lofi_rl.freeze.SIGNOFFS); a redo round's pick replaces it first "
+                               f"(docs/DRAFTS.md §6)"]
+    assert set(check["tossed"]) <= set(check["problems"])
+    assert [s["stage"] for s in summary(world, "stages.json", "drafts-tossed")["stages"]] == ["check"]
+    assert not (world.tmp / "runs" / "drafts-tossed" / "renders").exists() and not (world.tmp / "inbox-tossed").exists()
+
+
+def test_constants_that_disagree_with_the_file_stop_the_job_at_the_check(world, monkeypatch):
+    """keep3_kept10.json and the gate file agree, but lofi_rl.freeze.JOBS names another job for keep3 than the file's
+    source: only the constants disagree (check (i)), and the job stops at its check stage on that alone."""
+    monkeypatch.setitem(FZ.JOBS, "keep3", 8)
+    assert J.main(argv(world, run="drafts-consts", inbox="inbox-consts"), renderer=world.renderer) == 3
+    check = summary(world, "check.json", "drafts-consts")
+    assert check["kept_vs_constants"] == [
+        "keep3_kept10.json's source keep3 is job 7, not lofi_rl.freeze.JOBS['keep3'] (8)"]
+    assert check["problems"] == check["kept_vs_constants"] and check["kept_vs_gate"] == check["tossed"] == []
+    assert [s["stage"] for s in summary(world, "stages.json", "drafts-consts")["stages"]] == ["check"]
+    assert not (world.tmp / "runs" / "drafts-consts" / "renders").exists() and not (world.tmp / "inbox-consts").exists()
+
+
+def test_constants_that_break_their_own_rules_stop_the_job_at_the_check(world, monkeypatch):
+    monkeypatch.setattr(FZ, "REDOS", ({"key": "keep3_redo1", "folder": "drafts/v1/redo1"},))
+    assert J.main(argv(world, run="drafts-records", inbox="inbox-records"), renderer=world.renderer) == 3
+    check = summary(world, "check.json", "drafts-records")
+    assert check["problems"] == check["kept_vs_constants"] and any("a redo round holds exactly" in x
+                                                                   for x in check["problems"])
+    assert [s["stage"] for s in summary(world, "stages.json", "drafts-records")["stages"]] == ["check"]
 
 
 def test_scratch_cross_checks_absent_recorded_present_with_another_sha_refused(world, tmp_path, monkeypatch):
     expect = world.expect
-    absent = S.keep3_cross_check(expect, tmp_path)
-    assert absent["present"] is False and absent["problems"] == []
+    absent = S.sources_cross_check(expect, tmp_path)
+    assert absent["absent"] == ["keep3"] and absent["problems"] == []
+    assert absent["sources"]["keep3"]["note"] == "not on scratch: keep3_kept10.json stands"
     k3 = tmp_path / "drafts-7" / "summary" / "renders.json"
     k3.parent.mkdir(parents=True)
     shutil.copyfile(world.k3, k3)
-    same = S.keep3_cross_check(expect, tmp_path)
+    same = S.sources_cross_check(expect, tmp_path)["sources"]["keep3"]
     assert same["present"] and same["equal"] and same["problems"] == []
     k3.write_text(k3.read_text() + " ", encoding="utf-8")
-    assert "keep3_kept10.json pins" in S.keep3_cross_check(expect, tmp_path)["problems"][0]
+    assert "keep3_kept10.json pins" in S.sources_cross_check(expect, tmp_path)["problems"][0]
     # the shootout levels files: with all three present the freeze check gets them; with one missing it does not
     calls = []
     monkeypatch.setattr(S, "freeze_check", lambda args, root=ROOT: (calls.append([str(a) for a in args]) or 0, "ok"))

@@ -6,7 +6,8 @@ after the freeze"; §1, "From votes to the freeze", step 4; the freeze spec §5.
                                     # the full tables into the private file, then the section into the gate file
     python -m lofi_rl.freeze.tables --private [data/votes/audit/drawn_round_tables.md] [...]        # the full tables
 
-**What it publishes** in the gate file, for the jobs in lofi_rl.freeze.JOBS (`render`): the design rounds only.
+**What it publishes** in the gate file, for the jobs in lofi_rl.freeze.JOBS (`render`): the shootout days, keep3 and
+each redo round of lofi_rl.freeze.REDOS, whose job is JOBS[its key]; the design rounds only.
 Phase 2's votes and the final A/B use the same hidden checks as the shootouts (taste_pipeline.md, "Hidden controls"),
 and the rater is never told which rounds those are (RATING.md, "Checks you won't see"). So the published section
 neither says how those rounds are built nor lets anyone tell which of his rounds they were: it holds no such round,
@@ -17,7 +18,8 @@ and why. (A Claude's default from review finding S4-6, to be recorded in D-022.)
     (the vamps, one map per mood) names the design slots each one was drawn for;
   - then each batch's design rounds by slot (`summary/batches.json`), not in serving order: the slot and loop, and
     each tile's option with what it played, left to right as served.
-- **The keep3 job** (no hidden checks): which persona each tile of each row of its Latin square holds
+- **The keep3 job, and each redo round's job** (`lofi-drafts` too, no hidden checks), each under its own heading
+  (`Drawn, keep3`, `Drawn, keep3 redo1`, ...): which persona each tile of each row of its Latin square holds
   (`summary/draw.json`), then each round in serving order (`summary/batch.json`): the brief, energy and mood, the row,
   and each tile's persona and draft.
 
@@ -68,6 +70,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from lofi_rl import freeze as F
 from lofi_rl.drafts.batch import BATCH_SCHEMA as KEEP3_BATCH_SCHEMA
 from lofi_rl.drafts.batch import CATEGORY as KEEP3_CATEGORY
 from lofi_rl.drafts.batch import DRAW_SCHEMA as KEEP3_DRAW_SCHEMA
@@ -131,7 +134,7 @@ class BatchTable:
 
 @dataclass(frozen=True)
 class JobTables:
-    key: str             # day1 | day2 | day3 | keep3
+    key: str             # day1 | day2 | day3 | keep3 | keep3_redo<k> (a REDOS key)
     job: int
     files: tuple[tuple[str, str], ...]               # (repo-relative path, sha256 of its bytes)
     maps: tuple[tuple[str, str, str], ...] = ()      # (stage label, symbol, option): shootout jobs; the label of a
@@ -328,11 +331,22 @@ def _map_rows(tag: str, maps: Mapping[str, list[Mapping[str, str]]],
     return tuple(out), tuple(public)
 
 
-def _keep3(runs: Path, inbox: Path, job: int, problems: list[str]) -> JobTables:
+def is_drafts(key: str) -> bool:
+    """Whether a job's tables are a lofi-drafts job's (keep3, or a redo round's), not a shootout day's."""
+    return key == "keep3" or key.startswith("keep3_")
+
+
+def job_name(key: str) -> str:
+    """A job's name in the headings: Day 1-3, keep3, keep3 redo<k>."""
+    return DAY_NAMES.get(key, key.replace("_", " "))
+
+
+def _keep3(runs: Path, inbox: Path, job: int, problems: list[str], key: str = "keep3") -> JobTables:
+    """A lofi-drafts job's tables (keep3's, or a redo round's under its REDOS key)."""
     summary = runs / f"drafts-{job}" / "summary"
     draw, draw_sha = _json(summary / "draw.json")
     batch, batch_sha = _json(summary / "batch.json")
-    tag = f"keep3 (job {job})"
+    tag = f"{job_name(key)} (job {job})"
     try:
         if draw.get("schema") != KEEP3_DRAW_SCHEMA or batch.get("schema") != KEEP3_BATCH_SCHEMA:
             problems.append(f"{tag}: schemas {draw.get('schema')!r} and {batch.get('schema')!r}, not "
@@ -382,18 +396,21 @@ def _keep3(runs: Path, inbox: Path, job: int, problems: list[str]) -> JobTables:
         met, k = draw.get("order_constraint_met"), draw.get("same_cell_neighbours")
         order = ("drawn with no two consecutive rounds in one energy and mood cell" if met is True and k == 0
                  else f"drawn; {k} pairs of consecutive rounds share an energy and mood cell (no drawn order had none)")
-        return JobTables("keep3", job, ((f"runs/drafts-{job}/summary/draw.json", draw_sha),
-                                        (f"runs/drafts-{job}/summary/batch.json", batch_sha)),
+        return JobTables(key, job, ((f"runs/drafts-{job}/summary/draw.json", draw_sha),
+                                    (f"runs/drafts-{job}/summary/batch.json", batch_sha)),
                          square=tuple(tuple(symbols[i] for i in row) for row in square), order=order,
                          batches=(BatchTable(name, batch["dir"], tuple(rows)),))
     except (KeyError, TypeError, IndexError, AttributeError) as err:
         raise BadInput([f"{tag}: {summary}: a file is not the drafts job's shape ({type(err).__name__}: {err})"]) from None
 
 
-def collect(runs: Path, inbox: Path, jobs: Mapping[str, int] = JOBS) -> list[JobTables]:
-    """Every job's tables, cross-checked (module doc). TablesError listing every problem; BadInput for a missing or
-    unreadable file."""
+def collect(runs: Path, inbox: Path, jobs: Mapping[str, int] = JOBS,
+            redos: Sequence[Mapping[str, Any]] | None = None) -> list[JobTables]:
+    """Every job's tables, cross-checked (module doc): the three shootout days, keep3, then each redo round of
+    `redos` (lofi_rl.freeze.REDOS, read now, unless given), whose job is jobs[its key]. TablesError listing every
+    problem; BadInput for a missing or unreadable file."""
     runs, inbox = Path(runs), Path(inbox)
+    redos = F.REDOS if redos is None else redos
     raw = {}
     for day in DAYS:
         job = int(jobs[day])
@@ -419,6 +436,14 @@ def collect(runs: Path, inbox: Path, jobs: Mapping[str, int] = JOBS) -> list[Job
                                         (f"runs/shootout-{job}/summary/batches.json", batches_sha)),
                              maps=maps, batches=tables, public_maps=public_maps))
     out.append(_keep3(runs, inbox, int(jobs["keep3"]), problems))
+    for r in redos:
+        r = r if isinstance(r, Mapping) else {}
+        key = r.get("key") if isinstance(r.get("key"), str) else "keep3_redo?"
+        job = jobs.get(key)
+        if job is None or job != r.get("job"):
+            problems.append(f"{job_name(key)}: REDOS names job {r.get('job')}, the jobs {job}")
+            continue
+        out.append(_keep3(runs, inbox, int(job), problems, key=key))
     if problems:
         raise TablesError(problems)
     return out
@@ -441,7 +466,8 @@ def hidden_checks(tables: Sequence[JobTables]) -> int:
 
 def _sources() -> str:
     return (f"Written by `python -m lofi_rl.freeze.tables` from each job's `summary/draw.json` and "
-            f"`summary/batches.json` (keep3: `summary/batch.json`), and checked against every batch's `{PUBLIC_NAME}` "
+            f"`summary/batches.json` (keep3 and its redo rounds: `summary/batch.json`), and checked against every "
+            f"batch's `{PUBLIC_NAME}` "
             f"and `{HIDDEN_NAME}`. Left out: the 64-bit seeds, the opaque round and clip ids, the real clip ids and "
             f"the audio hashes. Each job's files are named by their sha256.")
 
@@ -457,10 +483,10 @@ def _left_out(n: int) -> str:
 
 
 def _job(t: JobTables, depth: str, maps: Sequence[tuple[str, str, str]]) -> list[str]:
-    """A job's heading, its files, and its maps (a shootout job) or its Latin square (keep3)."""
-    L = [f"{depth} Drawn, {DAY_NAMES.get(t.key, t.key)} (job {t.job})", ""]
+    """A job's heading, its files, and its maps (a shootout job) or its Latin square (keep3 and its redo rounds)."""
+    L = [f"{depth} Drawn, {job_name(t.key)} (job {t.job})", ""]
     L += [f"- `{path}` sha256 `{sha}`" for path, sha in t.files] + [""]
-    if t.key == "keep3":
+    if is_drafts(t.key):
         L += ["The persona on each tile of each row of the Latin square:", "",
               "| row | " + " | ".join(f"tile {i + 1}" for i in range(len(t.square[0]))) + " |",
               "|---|" + "---|" * len(t.square[0])]
@@ -493,12 +519,12 @@ def render(tables: Sequence[JobTables], approved: date) -> str:
          f"What the batch builders drew at job time, published now that the freeze is approved (SHOOTOUTS.md §2.3; "
          f"his approval line above is dated {approved.isoformat()}). " + _sources(),
          "",
-         "- Rounds: each shootout batch's design rounds by slot, and keep3's rounds in serving order. Tiles: left to "
-         "right as served, each `option` (what it played).",
+         "- Rounds: each shootout batch's design rounds by slot, and keep3's rounds (and each redo round's) in serving "
+         "order. Tiles: left to right as served, each `option` (what it played).",
          _left_out(hidden_checks(tables)),
          ""]
     for t in tables:
-        keep3 = t.key == "keep3"
+        keep3 = is_drafts(t.key)
         L += _job(t, "###", t.public_maps)
         for b in t.batches:
             L += [f"#### {b.name} (`inbox/{b.folder}/`)", ""]
@@ -530,7 +556,7 @@ def render_private(tables: Sequence[JobTables], approved: date) -> str:
          "- Tiles: left to right as served, each `option` (what it played).",
          ""]
     for t in tables:
-        keep3 = t.key == "keep3"
+        keep3 = is_drafts(t.key)
         L += _job(t, "##", t.maps)
         for b in t.batches:
             L += [f"### {b.name} (`inbox/{b.folder}/`, {len(b.rows)} rounds)", ""]

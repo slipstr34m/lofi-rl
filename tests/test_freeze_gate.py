@@ -5,19 +5,40 @@ lofi_rl.freeze check --gate gates/GATE_palette.md` does, in the laptop checks, j
 and tables' tests run on copies of it). The synthetic text below has the real file's structure and pick items: a moved
 or added line passes; a changed pick, a missing label or a missing confirmation fails, naming the heading. Then
 Shresth's APPROVED line under `## Approval`, and the reader every test here goes through: a line inside a code fence
-or an HTML comment is never read (kit.gates.approvals' rule, LESSONS 52), and the reader keeps one entry per line."""
+or an HTML comment is never read (kit.gates.approvals' rule, LESSONS 52), and the reader keeps one entry per line.
+Last, the redo rounds (lofi_rl.freeze.REDOS, a synthetic one) and the sign-off listens (SIGNOFFS): each read under its
+own heading and compared with its constant, and the constants' own rules.
+
+The synthetic text is the record of 2026-11-03 (no redo round, the one listen b1103-signoff), and the live constants
+gain each round and listen as they are recorded, so every test here runs with that record pinned on lofi_rl.freeze
+(tests/helpers_record.py TODAY). One test reads the live record, captured at import: it keeps its own rules."""
 from __future__ import annotations
 
 import pytest
 
+import helpers_record as R
+from lofi_rl import freeze as F
 from lofi_rl.freeze import BED, KEPT, PICKS
 from lofi_rl.freeze import gate as G
 
+REAL = R.live()                         # read at import, before the fixture below pins the record of 2026-11-03
 KEPT_ROWS = "".join(
     f"| {b} | {em} | `{KEPT[b]}` |\n" for b, em in (
         ("d01", "low, melancholy"), ("d02", "low, wistful"), ("d03", "low, hopeful"), ("d04", "mid, melancholy"),
         ("d05", "mid, wistful"), ("d06", "mid, hopeful"), ("d07", "high, melancholy"), ("d08", "high, wistful"),
         ("d09", "high, hopeful"), ("d10", "low, wistful")))
+LISTEN = R.LISTEN
+TOSSED = ", ".join(f"`{f}`" for f in LISTEN["tossed"][:-1]) + f" and `{LISTEN['tossed'][-1]}`"
+SIGNOFF_SECTION = f"""\
+## Sign-off listen: voted 2026-11-03 (batch {LISTEN['batch']}; job {LISTEN['job']})
+
+The kept 10, rendered on the cluster with `palettes/lofi_rain_v1.yaml` (sha256 `d3590c8d…`, `frozen: null`).
+- **Counts:** 10 of 10 heard. Great 2, Good 1, Fine 3, Toss 4.
+- **Tossed:** {TOSSED}.
+- **Outcome: the sign-off has not passed.**
+  - Briefs d01, d06, d07 and d10 reopen through the drafts redo path.
+
+"""
 
 GATE = """\
 # Gate: palette_v1 freeze (Phase 1)
@@ -94,13 +115,19 @@ The palette's gate item 2: Shresth kept 10 of the 30 drafted loops.
 """ + KEPT_ROWS + """
 - **Kept per persona** (descriptive): chords 5, horn 3, groove 2.
 
-## How to approve
+""" + SIGNOFF_SECTION + """## How to approve
 Add one line of your own, exactly in this form:
 
     APPROVED by Shresth Rana <yyyy-mm-dd>
 
 ## Approval
 """
+
+
+@pytest.fixture(autouse=True)
+def record_of_today(monkeypatch):
+    """The record the synthetic text holds, on lofi_rl.freeze: no redo round, b1103-signoff, the jobs of 2026-11-03."""
+    R.pin(monkeypatch, R.TODAY)
 
 
 def _move(text: str, line: str, before: str) -> str:
@@ -336,3 +363,218 @@ def test_the_reader_keeps_one_entry_per_line(text):
     assert len(G._lines(text)) == len(text.splitlines())
     if text.lstrip("\ufeff").startswith("# Gate"):
         assert G.picks_problems(text) == []
+
+
+# ------------------------------------------------------------------------------------------- redo rounds, sign-offs
+REDO_JOB = 13710001
+REDO = {"key": "keep3_redo1", "folder": "drafts/v1/redo1", "batch": "b1105-keep3-redo", "job": REDO_JOB,
+        "heading": "## Kept drafts (keep3 redo1)",
+        "kept": {"d01": "drafts/v1/redo1/d01_horn.ls", "d06": "drafts/v1/redo1/d06_horn.ls",
+                 "d10": "drafts/v1/redo1/d10_chords.ls"}}           # d07: "none acceptable", so a redo2 for it later
+REDO_SECTION = f"""\
+## Kept drafts (keep3 redo1): voted 2026-11-05 (batch {REDO['batch']}; job {REDO_JOB})
+
+The redrafts of the four briefs the sign-off listen reopened. For d07 he said "none acceptable".
+
+| Brief | Energy, mood | Kept |
+|---|---|---|
+| d01 | low, melancholy | `drafts/v1/redo1/d01_horn.ls` |
+| d06 | mid, hopeful | `drafts/v1/redo1/d06_horn.ls` |
+| d10 | low, wistful | `drafts/v1/redo1/d10_chords.ls` |
+
+"""
+WITH_REDO = _edit(GATE, "## Sign-off listen:", REDO_SECTION + "## Sign-off listen:")
+
+
+@pytest.fixture
+def redo_job(monkeypatch):
+    """lofi_rl.freeze.JOBS with the synthetic redo round's job under its key, as its REDOS entry needs."""
+    monkeypatch.setitem(F.JOBS, REDO["key"], REDO_JOB)
+    return (REDO,)
+
+
+def test_the_real_constants_keep_their_own_rules():
+    """The live record (read at import): REDOS and SIGNOFFS keep their rules, and it holds the record of 2026-11-03,
+    the pinned one, as its start (a later record only adds to it)."""
+    assert G.records_problems(kept=REAL["KEPT"], redos=REAL["REDOS"], signoffs=REAL["SIGNOFFS"],
+                              jobs=REAL["JOBS"]) == []
+    assert REAL["SIGNOFFS"][0] == LISTEN
+    assert {k: REAL["JOBS"][k] for k in R.TODAY["JOBS"]} == R.TODAY["JOBS"]
+    assert G.picks_problems(GATE) == []                              # the pinned record: the synthetic text's
+
+
+def test_a_redo_round_is_read_under_its_own_heading(redo_job):
+    assert G.picks_problems(WITH_REDO, redos=redo_job) == []
+    now = G.kept_now_table(WITH_REDO, redos=redo_job)
+    assert now == F.kept_now(redos=redo_job) and list(now) == list(KEPT)
+    assert now["d01"] == "drafts/v1/redo1/d01_horn.ls" and now["d07"] == KEPT["d07"]      # none acceptable: keep3's
+    assert G.kept(WITH_REDO) == KEPT                                                    # keep3's own table as it was
+
+
+@pytest.mark.parametrize("old, new, what", [
+    ("`drafts/v1/redo1/d06_horn.ls`", "`drafts/v1/redo1/d06_groove.ls`", "the kept table differs from REDOS"),
+    ("| d10 | low, wistful | `drafts/v1/redo1/d10_chords.ls` |\n", "", "the kept table differs from REDOS"),
+    (f"job {REDO_JOB})", "job 13710002)", "the heading names job 13710002"),
+    ("batch b1105-keep3-redo;", "batch b1105-keep3-redo2;", "does not name its batch b1105-keep3-redo"),
+    ("## Kept drafts (keep3 redo1): voted", "## Kept drafts (keep3, redo 1): voted", "no heading"),
+])
+def test_a_redo_table_that_disagrees_with_redos_fails_naming_the_heading(redo_job, old, new, what):
+    bad = G.picks_problems(_edit(WITH_REDO, old, new), redos=redo_job)
+    assert bad and any(what in p for p in bad), bad
+    assert all(p.startswith(("## Kept drafts (keep3 redo1)", "no heading")) for p in bad), bad
+
+
+def test_a_redo_round_the_gate_file_records_must_be_in_redos():
+    assert G.picks_problems(WITH_REDO, redos=()) == [
+        "## Kept drafts (keep3 redo1): voted 2026-11-05 (batch b1105-keep3-redo; job 13710001): a redo round the gate "
+        "file records and lofi_rl.freeze.REDOS lacks"]
+
+
+def test_a_redo_round_of_redos_must_be_in_the_gate_file(redo_job):
+    assert G.picks_problems(GATE, redos=redo_job) == ["no heading '## Kept drafts (keep3 redo1)'"]
+    assert G.picks_problems(WITH_REDO, redos=()) == [        # and its job in JOBS without the round is a record problem
+        "JOBS['keep3_redo1']: no redo round of that key in REDOS"]
+
+
+@pytest.mark.parametrize("edit, what", [
+    (lambda t: _edit(t, " and `drafts/v1/d10_groove.ls`", ""), "**Tossed:** holds"),
+    (lambda t: _edit(t, f"- **Tossed:** {TOSSED}.\n", ""), "no `- **Tossed:**` item"),
+    (lambda t: _edit(t, f"job {LISTEN['job']})", "job 13701027)"), "the heading names job 13701027"),
+    (lambda t: _edit(t, f"batch {LISTEN['batch']};", "batch b1103-signoff-2;"), "0 `## Sign-off listen` headings"),
+    (lambda t: _edit(t, "## How to approve", "## Sign-off listen 2: voted 2026-11-06 (batch b1106-signoff-2; job "
+                                             "13720000)\n\n- **Tossed:** none.\n\n## How to approve"),
+     "SIGNOFFS lacks"),
+    (lambda t: _edit(t, f"- **Tossed:** {TOSSED}.\n", f"- **Tossed:** {TOSSED}.\n- **Tossed:** none.\n"),
+     "## Sign-off listen (b1103-signoff): 2 **Tossed:** items"),
+], ids=["tossed-differs", "no-tossed-item", "job-differs", "batch-differs", "listen-not-in-signoffs",
+        "two-tossed-items"])
+def test_a_signoff_section_that_disagrees_with_signoffs_fails(edit, what):
+    bad = G.picks_problems(edit(GATE))
+    assert bad and any(what in p for p in bad), bad
+
+
+def test_a_later_signoff_that_passed_records_none_tossed():
+    later = {"batch": "b1106-signoff-2", "job": 13720000, "tossed": ()}
+    text = _edit(GATE, "## How to approve", "## Sign-off listen 2: voted 2026-11-06 (batch b1106-signoff-2; job "
+                                            "13720000)\n\n- **Tossed:** none.\n\n## How to approve")
+    assert G.picks_problems(text, signoffs=(LISTEN, later)) == []
+    assert G.tossed_item(G.sections_starting(text, G.SIGNOFF_PREFIX)[1][1], "x") == ()
+
+
+@pytest.mark.parametrize("change, what", [
+    ({"key": "keep3_redo"}, "its key is not keep3_redo<k>"),
+    ({"folder": "drafts/v1/redo2"}, "its folder drafts/v1/redo2 is not redo1"),
+    ({"heading": "## Kept drafts (keep3 redo2)"}, "its heading"),
+    ({"batch": "b1105-redo"}, "its batch 'b1105-redo'"),
+    ({"job": 13710002}, "is not JOBS['keep3_redo1']"),
+    ({"kept": {"d01": "drafts/v1/d01_horn.ls"}}, "not a <brief>_<persona>.ls draft of d01 in drafts/v1/redo1"),
+    ({"kept": {"d01": "drafts/v1/redo1/d02_horn.ls"}}, "not a <brief>_<persona>.ls draft of d01"),
+    ({"kept": {"d11": "drafts/v1/redo1/d11_horn.ls"}}, "brief d11 is not one of keep3's"),
+    ({"kept": {"d01": "drafts/v1/redo1/d01_bass.ls"}}, "not a <brief>_<persona>.ls draft of d01"),
+], ids=["key", "folder", "heading", "batch", "job", "pick-outside-folder", "pick-of-another-brief", "brief-not-keep3s",
+        "persona"])
+def test_records_problems_names_a_redo_round_that_breaks_its_rules(redo_job, change, what):
+    bad = G.records_problems(redos=({**REDO, **change},))
+    assert bad and any(what in p for p in bad), bad
+
+
+def test_records_problems_on_the_order_the_jobs_and_the_signoffs(redo_job, monkeypatch):
+    assert G.records_problems(redos=redo_job) == []
+    two = {**REDO, "key": "keep3_redo2", "folder": "drafts/v1/redo2", "heading": "## Kept drafts (keep3 redo2)",
+           "kept": {}}
+    monkeypatch.setitem(F.JOBS, "keep3_redo2", REDO_JOB)
+    assert G.records_problems(redos=(REDO, two)) == []                    # a round where every brief was "none"
+    assert any("the rounds go in order" in p for p in G.records_problems(redos=(two, REDO)))
+    assert G.records_problems(redos=(REDO,)) == ["JOBS['keep3_redo2']: no redo round of that key in REDOS"]
+    assert G.records_problems(redos=({**REDO, "extra": 1}, two)) == [
+        f"REDOS[0]: a redo round holds exactly {list(G.REDO_FIELDS)}",
+        "JOBS['keep3_redo1']: no redo round of that key in REDOS"]
+    retossed = {"batch": "b1106-signoff-2", "job": 13720000, "tossed": ("drafts/v1/redo1/d01_horn.ls",)}
+    assert G.records_problems(redos=(REDO, two), signoffs=(LISTEN, retossed)) == []
+    assert any("which neither keep3 nor a redo round kept" in p
+               for p in G.records_problems(redos=(), signoffs=(LISTEN, retossed), jobs={}))
+    assert any("not a job id above the listen before it" in p for p in G.records_problems(
+        redos=(REDO, two), signoffs=(LISTEN, {**retossed, "job": LISTEN["job"]})))
+    assert any("not a b<MMDD>-signoff[-<k>] name of its own" in p for p in G.records_problems(
+        redos=(REDO, two), signoffs=(LISTEN, {**retossed, "batch": LISTEN["batch"]})))
+
+
+LATER = "b1106-signoff-2"
+
+
+@pytest.mark.parametrize("item, want", [
+    ("- **Tossed:** none.", ()),
+    ("- **Tossed:** None", ()),
+    ("- **Tossed**: none.", ()),
+    ("- **Tossed:** `drafts/v1/d01_chords.ls` and `drafts/v1/d06_horn.ls`.",
+     ("drafts/v1/d01_chords.ls", "drafts/v1/d06_horn.ls")),
+    ("- **Tossed:** two, as he marked them:\n  - `drafts/v1/d01_chords.ls`\n  - `drafts/v1/d06_horn.ls`",
+     ("drafts/v1/d01_chords.ls", "drafts/v1/d06_horn.ls")),
+], ids=["none", "none-capital-no-period", "colon-outside-the-bold", "backticked", "backticked-sub-bullets"])
+def test_a_tossed_item_gives_its_backticked_files_or_none(item, want):
+    assert G.tossed_item(["", *item.splitlines(), ""], "x") == want
+
+
+@pytest.mark.parametrize("item", [
+    "- **Tossed:** d01_chords.ls and d06_horn.ls (he marked them Toss).",
+    "- **Tossed:**",
+    "- **Tossed:** none of them, though d01_chords.ls came close.",
+    "- **Tossed:** none.\n  - and d01_chords.ls, on a second listen",
+], ids=["plain-text-files", "empty", "none-and-more", "none-then-a-sub-bullet"])
+def test_a_tossed_item_with_no_backticked_file_must_be_none(item):
+    with pytest.raises(G.GateError, match=r"^x: its \*\*Tossed:\*\* item names no backticked file and is not `none.`"):
+        G.tossed_item(item.splitlines(), "x")
+
+
+def test_a_passing_listen_whose_section_names_files_in_plain_text_fails():
+    """SIGNOFFS records a later listen as passing, but its section names the files he tossed without backticks: the
+    gate file does not confirm the record, so `freeze check --gate` fails on it."""
+    later = {"batch": LATER, "job": 13720000, "tossed": ()}
+    text = _edit(GATE, "## How to approve", f"## Sign-off listen 2: voted 2026-11-06 (batch {LATER}; job 13720000)\n\n"
+                                            "- **Tossed:** d01_chords.ls and d06_horn.ls (he marked them Toss).\n\n"
+                                            "## How to approve")
+    assert G.picks_problems(text, signoffs=(LISTEN, later)) == [
+        f"## Sign-off listen ({LATER}): its **Tossed:** item names no backticked file and is not `none.`: "
+        "'d01_chords.ls and d06_horn.ls (he marked them Toss).'"]
+
+
+@pytest.mark.parametrize("signoff, what", [
+    ({"batch": LATER, "job": 13720000}, "SIGNOFFS[1]: a sign-off listen holds exactly ['batch', 'job', 'tossed']"),
+    ({"batch": LATER, "job": 13720000, "tossed": (), "words": "Great"},
+     "SIGNOFFS[1]: a sign-off listen holds exactly ['batch', 'job', 'tossed']"),
+    ("b1106-signoff-2", "SIGNOFFS[1]: a sign-off listen holds exactly ['batch', 'job', 'tossed']"),
+    ({"batch": LATER, "job": 13720000, "tossed": "drafts/v1/d02_chords.ls"},
+     f"SIGNOFFS[1] ({LATER}): its tossed files are a list, each once"),
+    ({"batch": LATER, "job": 13720000, "tossed": None},
+     f"SIGNOFFS[1] ({LATER}): its tossed files are a list, each once"),
+    ({"batch": LATER, "job": 13720000, "tossed": ("drafts/v1/d02_chords.ls", "drafts/v1/d02_chords.ls")},
+     f"SIGNOFFS[1] ({LATER}): its tossed files are a list, each once"),
+], ids=["tossed-forgotten", "a-field-more", "not-a-mapping", "tossed-a-string", "tossed-none", "a-file-twice"])
+def test_records_problems_names_a_malformed_signoff_and_never_reads_it(signoff, what):
+    assert G.records_problems(redos=(), signoffs=(LISTEN, signoff)) == [what]
+
+
+FIELDS = f"REDOS[0]: a redo round holds exactly {list(G.REDO_FIELDS)}"
+ORPHAN = "JOBS['keep3_redo1']: no redo round of that key in REDOS"     # its job, once the round itself is refused
+
+
+@pytest.mark.parametrize("redo, want", [
+    ({**REDO, "kept": ["drafts/v1/redo1/d01_horn.ls"]}, ["REDOS[0] (keep3_redo1): its kept picks are a mapping of "
+                                                         "brief to file"]),
+    ({k: v for k, v in REDO.items() if k != "kept"}, [FIELDS, ORPHAN]),
+    ("keep3_redo1", [FIELDS, ORPHAN]),
+], ids=["kept-a-list", "kept-forgotten", "not-a-mapping"])
+def test_records_problems_names_a_malformed_redo_round_and_never_reads_it(redo, want):
+    assert G.records_problems(redos=(redo,), signoffs=(LISTEN,),
+                              jobs={**R.TODAY["JOBS"], REDO["key"]: REDO_JOB}) == want
+
+
+def test_a_tossed_file_stays_tossed_until_another_file_replaces_it():
+    assert [(b, f) for b, f, _ in F.tossed_kept()] == [(b, f) for b, f in F.kept_now().items()
+                                                        if f in LISTEN["tossed"]]
+    assert [b for b, _f, _s in F.tossed_kept()] == ["d01", "d06", "d07", "d10"]
+    assert [b for b, _f, _s in F.tossed_kept(redos=(REDO,))] == ["d07"]          # d07 had no pick: still tossed
+    again = {**REDO, "kept": {**REDO["kept"], "d07": KEPT["d07"]}}                # a pick of the same file again
+    assert ("d07", KEPT["d07"], (LISTEN["batch"],)) in F.tossed_kept(redos=(again,))
+    assert F.kept_rounds(redos=(REDO,))["d01"] == ("drafts/v1/redo1/d01_horn.ls", "keep3_redo1")
+    assert F.kept_rounds(redos=(REDO,))["d02"] == (KEPT["d02"], "keep3")

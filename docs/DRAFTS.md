@@ -257,11 +257,28 @@ whole report. Exit 0 when every check passes, 1 when one fails, 2 for bad argume
 
 ## 6. Redrafts
 
-"None acceptable" (G) for a brief labels its three drafts Toss and asks for new ones. The three writers redraft that
-brief into a new folder beside the old drafts, which stay as the labelled negatives: `drafts/v1/redo1/` (then
-`redo2/`, …), holding only `<brief>_<persona>.ls` for the named briefs; its briefs come from `drafts/v1/briefs.yaml`.
-Check it with `--briefs` and `--against drafts/v1` (and every earlier redo folder), so no redraft repeats a draft it
-replaces, and render it with the same arguments (§7). A redraft batch is named `b<MMDD>-keep3-redo`, then `-redo2`, ….
+"None acceptable" (G) for a brief labels its three drafts Toss and asks for new ones. A brief also reopens when a
+sign-off listen tosses its kept loop and his words name the loops, not the palette (docs/FREEZE.md §5.1): b1103-signoff
+reopened d01, d06, d07 and d10. The three writers redraft that brief into a new folder beside the old drafts, which
+stay as the labelled negatives: `drafts/v1/redo1/` (then `redo2/`, …), holding only `<brief>_<persona>.ls` for the named
+briefs; its briefs come from `drafts/v1/briefs.yaml`. Check it with `--briefs` and `--against drafts/v1` (and every
+earlier redo folder), so no redraft repeats a draft it replaces, and render it with the same arguments (§7). A
+redraft batch is named `b<MMDD>-keep3-redo`, then `-redo2`, … among the redraft batches of its date, so the suffix
+need not be its folder's k.
+
+**How a redo pick enters the kept list.** Only his picks in the redo batch do, recorded by his words alone, in two
+places that `python -m lofi_rl.freeze check --gate` compares:
+- **The gate file:** the round's own section, `## Kept drafts (keep3 redo<k>): voted <date> (batch <name>; job <id>)`,
+  with a Brief/Kept table, as keep3's, of the briefs he kept a loop for. A brief he answered "none acceptable" stays out
+  of the table (it is named in prose) and goes to the next round.
+- **The constants:** a `lofi_rl.freeze.REDOS` entry with the same picks (its key `keep3_redo<k>`, folder, batch, job and
+  heading), and its job in `JOBS` under that key.
+
+The kept list in effect is `lofi_rl.freeze.kept_now()`: keep3's table with each redo round's picks over it, in order. A
+kept file that a sign-off listen tossed (`SIGNOFFS`) counts as tossed until a pick of another file replaces it. Then
+`checks expect` writes `drafts/v1/keep3_kept10.json` again, with the redo round's renders as a second source, and the
+sign-off job runs again on the new kept list (§7.1). A redo file shares its stem with the drafts/v1 file of its brief
+and persona, so the tools read every kept draft by its file path.
 
 ## 7. The render job
 
@@ -301,8 +318,11 @@ and none is queued for listening.
 ### 7.1 The sign-off mode
 
 ```bash
-python -m lofi_rl.freeze.checks expect --keep3 runs/drafts-13656049/summary/renders.json   # writes drafts/v1/keep3_kept10.json
-python -m lofi_rl.freeze.checks report --gate gates/GATE_palette.md --keep3 runs/drafts-13656049/summary/renders.json --verify
+# writes drafts/v1/keep3_kept10.json: one --renders per round that supplies a kept loop (--keep3 PATH = --renders keep3=PATH)
+python -m lofi_rl.freeze.checks expect --renders keep3=runs/drafts-13656049/summary/renders.json \
+    [--renders keep3_redo1=runs/drafts-<job>/summary/renders.json ...] [--allow-tossed]
+python -m lofi_rl.freeze.checks report --gate gates/GATE_palette.md \
+    --renders keep3=runs/drafts-13656049/summary/renders.json [--renders keep3_redo1=...] --verify
 make submit JOB=jobs/drafts.sbatch ARGS='--drafts drafts/v1 --signoff palettes/lofi_rain_v1.yaml'
 ```
 
@@ -312,32 +332,49 @@ job type: `lofi_rl.drafts.job` hands a `--signoff PALETTE` run to `lofi_rl.freez
 `--against` or `--palette`. `--runs-root` (default: the run's parent, `$REMOTE_SCR/runs`) is where it looks for earlier
 jobs' files, which it reads only to cross-check.
 
-- **What keep3 rendered, committed.** `drafts/v1/keep3_kept10.json` (schema `lofi-rl/keep3-kept10/1`, written by
-  `checks expect`) holds:
-  - keep3's `summary/renders.json` path, job and sha256 (`94ee7e1e…`);
-  - S\*, the draft palette's, which every kept bus record's `lu` was computed with;
-  - the kept list, which is the gate file's keep3 table;
-  - per kept loop: its file and sha256, the brief, persona, keys and kit, the render palette, n, pcm_sha256,
-    music_sha256, LUFS, true peak, master gain, and each bus's record.
+- **The kept loops** are `lofi_rl.freeze.kept_now()`: keep3's table with each redo round's picks over it (§6). Each
+  comes from one round, its source: keep3, or the redo round that picked it. Every kept draft is read by its file
+  path, never by its stem, since a redo file shares its stem with a drafts/v1 file.
+- **What their rounds rendered, committed.** `drafts/v1/keep3_kept10.json` (schema `lofi-rl/keep3-kept10/2`, written
+  by `checks expect`; docs/FREEZE.md §5.3) holds:
+  - `sources`: each round's `summary/renders.json` path, job (`lofi_rl.freeze.JOBS[key]`) and sha256, keep3 first
+    (`94ee7e1e…`), then each redo round that supplies a kept loop;
+  - S\*, the draft palette's, which every source's bus records were computed with;
+  - the kept list, `kept_now()` in brief order;
+  - per kept loop, keyed by its stem: its file, its source, the file's sha256, the brief, persona, keys and kit, the
+    render palette, n, pcm_sha256, music_sha256, LUFS, true peak, master gain, and each bus's record, from exactly one
+    ok record of that file in its own source's renders.json;
+  - `allow_tossed` and `tossed`: `expect` refuses while a kept file is one a sign-off listen tossed, unless
+    `--allow-tossed` is given, and then lists those loops here.
 
-  `runs/` is never committed or synced, so this file carries keep3's values to the job, and a scratch purge cannot
-  remove them.
+  `runs/` is never committed or synced, so this file carries the rounds' values to the job, and a scratch purge cannot
+  remove them. The committed file (2026-11-03) is keep3's 10 with `--allow-tossed`: no redo pick has replaced the four
+  tossed at b1103-signoff yet.
+- **The drafts folders:** drafts/v1 (every brief), then each redo folder in k order, `REDOS`'s and every
+  `drafts/v1/redo<k>/` present. A redo folder covers the briefs that have files there, against drafts/v1 and the
+  earlier redo folders, as `python -m lofi_rl.drafts.check` runs it (§5, §6).
 - **The laptop checks** (`checks report`):
-  - (a) each kept file is the text keep3 rendered and passes gate, compile, energy and mood under the frozen palette,
-    and the validator (§5) passes every draft with it (`check_folder(..., palette=)`);
+  - (a) each kept file is the text its source rendered and passes gate, compile, energy and mood under the frozen
+    palette, and the validator (§5) passes every draft of every drafts folder with it (`check_folder(..., palette=)`);
   - (b) prompt v2 gives its 9 references under it, strict and identical to dev_gu's;
-  - (c) its regex is 3,408 characters, sha256 `5c081828…`, and every draft fullmatches it;
+  - (c) its regex is 3,408 characters, sha256 `5c081828…`, and every draft of every folder fullmatches it;
   - (d) `python -m lofi_rl.freeze check --verify` (with `--verify`);
   - (e) the kept loops' bus levels table: each bus's median off its target relative to S\*, its range, the keys per
     instrument and against each loop's own sax;
-  - (g) `freeze check --gate` and the keep3 table (with `--gate`);
-  - (h) a fresh `expect` equals the committed file (with `--keep3`);
+  - (g) `freeze check --gate` (the picks, the redo rounds and the sign-off listens against the gate file), and the
+    kept list against the gate file's keep3 table with each redo round's table over it (with `--gate`);
+  - (h) a fresh `expect` equals the committed file (with `--renders` for every source it names);
+  - (i) the kept list against the constants (`kept_now()`, each loop's source, the sources' jobs, the tossed record),
+    and no kept file tossed at a sign-off listen. On 2026-11-03 it fails on exactly the four loops tossed at
+    b1103-signoff, and every other check passes;
   - once the file is sealed (`frozen:` set), (d) and (g) add `--sealed`, so `frozen` must be the date of the APPROVED
     line: the one in the `--gate` file for (g), the one in gates/GATE_palette.md for (d).
 - **Stages.** Each goes into summary/stages.json, and the first that fails ends the job, so nothing reaches the inbox:
-  1. **check** (summary/check.json): the laptop checks (a)-(c) and (g) again in the job's snapshot, and every kept
-     loop's brief and every reference's cell in briefs.yaml. When keep3's summary/renders.json is still under
-     `--runs-root`, it must have the pinned sha256 and give the same records; when it is not there, that is recorded.
+  1. **check** (summary/check.json): the laptop checks (a)-(c), (g) and (i) again in the job's snapshot, and every kept
+     loop's brief and every reference's cell in briefs.yaml. A kept file tossed at a sign-off listen stops the job here,
+     the problem naming the brief, the file and the sign-off batch. Each source's summary/renders.json that is still
+     under `--runs-root` (`drafts-<its job>`) must have the pinned sha256 and give the same records; each one that is
+     not there is recorded.
   2. **palettes** (summary/palettes/): `freeze check --verify` runs, with `--levels-day1/2/3` when all three shootout
      levels files are under `--runs-root`; absent files are recorded as not on scratch. The bed must be the picks':
      the excerpt of `lofi_rl.freeze.BED`'s `excerpt_from` variant and only the level of its `delta_from` variant
@@ -348,16 +385,18 @@ jobs' files, which it reads only to cross-check.
      with `bed: null`.
   3. **render** (summary/renders.json):
      - (a) each kept loop with the frozen palette and with each twin, 8 at a time with 1 worker each, FLACs kept;
-     - (b) the 20 drafts he did not keep and prompt v2's 9 references, in this process, one at a time with 4 workers, as
-       junk's render step runs (a reference in its own cell's brief, d01-d09);
+     - (b) every draft of every drafts folder that is not kept (20 with drafts/v1 alone) and prompt v2's 9 references,
+       in this process, one at a time with 4 workers, as junk's render step runs (a reference in its own cell's brief,
+       d01-d09);
      - (c) each frozen kept render again in a fresh process (`python -m lofi_rl.render.pipeline … --no-verify --workers
        4`, `PYTHONHASHSEED=4093`).
 
      A record holds n, LUFS, true peak, the loudness iterations, master gain, music_lufs, the bed report with `bed_lu`
      (the bed as heard), pre_limiter_sha256, pcm_sha256, music_sha256 and `render_s` (`process_s` for a repeat); a kept
      loop's records also hold each bus's effective trim, fader and loudness.
-  4. **verify** (summary/verify.json). Any failure exits 3:
-     - N is keep3's n and `loop_samples(bpm)`;
+  4. **verify** (summary/verify.json). Each kept loop is checked against its own source (keep3's renders, or its redo
+     round's). Any failure exits 3:
+     - N is its source's n and `loop_samples(bpm)`;
      - every render (the twins included) sits at −14 LUFS within 0.1 LU, with a true peak at or below −1 dBTP;
      - G1-G7 pass with no repair;
      - every loudness iteration count is recorded, and a G7 failure fails the job;
@@ -365,15 +404,18 @@ jobs' files, which it reads only to cross-check.
        24 LU under the music within 0.01 LU, with its gain and own loudness exactly the manifest's;
      - the bed as heard is recorded, not gated, and flagged when it sits more than 2.015 LU closer than −24;
      - the frozen render equals its fresh-process repeat, the whole manifest included;
-     - twin0's audio is keep3's pcm_sha256;
+     - twin0's audio is its source's pcm_sha256;
      - the music under the bed (pre_limiter_sha256, music_lufs) is the twin's;
-     - each bus's pre-fader loudness, effective trim and fader are keep3's, and a change of his moves only its own
-       fader;
+     - each bus's pre-fader loudness, effective trim and fader are its source's, and a change of his moves only its
+       own fader;
      - the render times are recorded, with the Phase-1 gate's projection: 50 × the slowest one-at-a-time render,
        against 300 s.
 
-     On a twin mismatch it names the bus inputs that differ from keep3's manifests
-     (`<runs-root>/drafts-<keep3's job>/renders/<render id>/manifest.json`), if scratch still holds them.
+     On a twin mismatch it names the bus inputs that differ from its source's manifest
+     (`<runs-root>/drafts-<its source's job>/renders/<its stem>/manifest.json`), if scratch still holds it. In this
+     job a drafts/v1 draft's render id is its stem and a redo folder's draft's id carries its folder
+     (`redo1_d01_horn`), so the ids never repeat; summary/renders.json maps each kept render id to its loop
+     (`kept_loops`).
   5. **build** (summary/draw.json, summary/batch.json): the triage batch, checked by `python -m lofi_rl.ui.manifest
      check` before it moves into place. Then `SIGNOFF_OK`, and the script's `DRAFTS_OK`.
 - **The batch** goes to `inbox/<date>/b<MMDD>-signoff/` (`lofi_rl.freeze.batch`). A later sign-off batch gets
@@ -384,7 +426,9 @@ jobs' files, which it reads only to cross-check.
   - **Order:** drawn from a fresh 64-bit seed with no two consecutive rounds in one energy × mood cell (d02 and d10
     share low/wistful). Opaque ids are drawn under the leak rules.
   - **The note** names the one change from keep3, in plain words: the rain he picked in Day 3, at 24 below the music, a
-    pairing Day 3 never played, and the bed as measured after the final limiter in these loops.
+    pairing Day 3 never played, and the bed as measured after the final limiter in these loops. A later sign-off (a
+    listen is already in `lofi_rl.freeze.SIGNOFFS`) says "Sign-off again: your 10 kept loops, …, as in your last
+    sign-off listen" instead, since that listen played this rain at this level and redo picks may be among the loops.
   - **The hidden manifest:** category `signoff`, every round kind `none`. Per clip it holds keep3's fields, the
     palette label `lofi_rain_v1@<sha8>`, the sax, and the bed as placed and as heard.
   - summary/batch.json also holds the push text.
