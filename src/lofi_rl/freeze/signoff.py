@@ -97,6 +97,7 @@ from lofi_rl.ui.manifest import BATCH_RE
 
 from . import batch as SB
 from . import checks as C
+from . import gate as G
 
 ARGS_SCHEMA = "lofi-rl/signoff-args/1"
 CHECK_SCHEMA = "lofi-rl/signoff-check/2"           # /2: the kept loops' sources, the tossed check, every folder
@@ -662,6 +663,9 @@ def check_stage(pal: Palette, frozen_path: Path, drafts: Path, briefs: Mapping[s
     doc["expect"] = {"path": J._label(expect_path), "sha256": C.file_sha256(expect_path), "sources": expect["sources"],
                      "kept": expect["kept"]}
     doc["kept_vs_constants"] = C.constants_problems(expect)
+    if G.records_problems():                # REDOS or SIGNOFFS break their own rules: nothing below can read them
+        doc["problems"] += doc["kept_vs_constants"]
+        return doc
     doc["kept_vs_gate"] = C.kept_problems(expect, GATE)
     doc["tossed"] = C.tossed_problems()
     doc["problems"] += doc["kept_vs_constants"] + doc["kept_vs_gate"] + doc["tossed"]

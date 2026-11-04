@@ -556,6 +556,15 @@ def test_a_tossed_file_still_kept_stops_the_job_at_the_check(world, tmp_path, mo
     assert not (world.tmp / "runs" / "drafts-tossed" / "renders").exists() and not (world.tmp / "inbox-tossed").exists()
 
 
+def test_constants_that_break_their_own_rules_stop_the_job_at_the_check(world, monkeypatch):
+    monkeypatch.setattr(FZ, "REDOS", ({"key": "keep3_redo1", "folder": "drafts/v1/redo1"},))
+    assert J.main(argv(world, run="drafts-records", inbox="inbox-records"), renderer=world.renderer) == 3
+    check = summary(world, "check.json", "drafts-records")
+    assert check["problems"] == check["kept_vs_constants"] and any("a redo round holds exactly" in x
+                                                                   for x in check["problems"])
+    assert [s["stage"] for s in summary(world, "stages.json", "drafts-records")["stages"]] == ["check"]
+
+
 def test_scratch_cross_checks_absent_recorded_present_with_another_sha_refused(world, tmp_path, monkeypatch):
     expect = world.expect
     absent = S.sources_cross_check(expect, tmp_path)

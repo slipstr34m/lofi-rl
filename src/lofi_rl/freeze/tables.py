@@ -437,11 +437,13 @@ def collect(runs: Path, inbox: Path, jobs: Mapping[str, int] = JOBS,
                              maps=maps, batches=tables, public_maps=public_maps))
     out.append(_keep3(runs, inbox, int(jobs["keep3"]), problems))
     for r in redos:
-        job = jobs.get(r["key"])
-        if job is None or int(job) != int(r["job"]):
-            problems.append(f"{job_name(r['key'])}: REDOS names job {r['job']}, the jobs {job}")
+        r = r if isinstance(r, Mapping) else {}
+        key = r.get("key") if isinstance(r.get("key"), str) else "keep3_redo?"
+        job = jobs.get(key)
+        if job is None or job != r.get("job"):
+            problems.append(f"{job_name(key)}: REDOS names job {r.get('job')}, the jobs {job}")
             continue
-        out.append(_keep3(runs, inbox, int(job), problems, key=r["key"]))
+        out.append(_keep3(runs, inbox, int(job), problems, key=key))
     if problems:
         raise TablesError(problems)
     return out

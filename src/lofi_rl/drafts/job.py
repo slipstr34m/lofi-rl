@@ -12,8 +12,9 @@ and optionally `--date YYYY-MM-DD` (the inbox's date folder; default today, Paci
 
     --drafts drafts/v1 --signoff palettes/lofi_rain_v1.yaml          # the sign-off render of the kept loops
 
-is the sign-off mode (docs/DRAFTS.md §7): the kept loops with the frozen palette, checked against what keep3 rendered
-(drafts/v1/keep3_kept10.json), then one triage batch for Shresth's sign-off listen. This module only parses it and
+is the sign-off mode (docs/DRAFTS.md §7.1): the kept loops with the frozen palette, each checked against what its own
+round rendered (keep3, or a redo round: drafts/v1/keep3_kept10.json), then one triage batch for Shresth's sign-off
+listen. Its drafts folders are drafts/v1 and the redo folders under it. This module only parses it and
 hands the run to lofi_rl.freeze.signoff, whose docstring has its stages; `--runs-root` (where earlier jobs' run folders
 are, for its cross-checks) belongs to that mode alone, and `--briefs`, `--against` and `--palette` do not.
 

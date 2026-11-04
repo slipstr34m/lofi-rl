@@ -459,6 +459,21 @@ def test_the_report_on_a_standin_fails_on_exactly_the_tossed_loops(tmp_path):
     assert text.splitlines()[-1].startswith("ok:" if doc["ok"] else f"{len(doc['problems'])} problem(s):")
 
 
+def test_the_report_refuses_constants_that_break_their_own_rules(tmp_path, monkeypatch, capsys):
+    """REDOS and SIGNOFFS are read by every check of the report, so a malformed entry is bad input (exit 2)."""
+    pal = standin(tmp_path / "lofi_rain_v1.yaml")
+    monkeypatch.setattr(FZ, "REDOS", ({"key": "keep3_redo1", "folder": "drafts/v1/redo1"},))
+    with pytest.raises(C.ChecksError, match="a redo round holds exactly"):
+        C.report(pal, runner=Recorder())
+    monkeypatch.setattr(C, "freeze_check", Recorder())
+    assert C.main(["report", "--palette", str(pal)]) == 2
+    assert "error: REDOS[0]: a redo round holds exactly" in capsys.readouterr().err
+    monkeypatch.setattr(FZ, "REDOS", ())
+    monkeypatch.setattr(FZ, "SIGNOFFS", ({"batch": "b1103-signoff", "job": 13701026, "tossed": ("drafts/v1/x.ls",)},))
+    with pytest.raises(C.ChecksError, match="which neither keep3 nor a redo round kept"):
+        C.report(pal, runner=Recorder())
+
+
 def test_the_bus_table_is_keep3s_and_puts_the_keys_to_shresth():
     expect = C.load_expectations(EXPECT)
     e = C.bus_table(expect)

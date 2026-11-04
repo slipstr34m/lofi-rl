@@ -210,6 +210,9 @@ def drafts_folders(drafts: Path | str, *, redos: Sequence[Mapping] | None = None
             continue
         found[int(m.group(1))] = p
     for r in redos:
+        if not isinstance(r, Mapping) or not isinstance(r.get("folder"), str) or not isinstance(r.get("key"), str):
+            problems.append(f"REDOS entry {r!r} names no key and folder (gate.records_problems)")
+            continue
         p = root / r["folder"]
         m = REDO_DIR.fullmatch(p.name)
         if not m or p.resolve().parent != drafts.resolve():
@@ -663,6 +666,9 @@ def report(palette_path: Path, *, drafts: Path = DRAFTS, gate: Path | None = Non
         if "keep3" in given:
             raise ChecksError("--keep3 and --renders keep3= name keep3's renders twice")
         given["keep3"] = Path(keep3)
+    records = G.records_problems()          # every check below reads REDOS and SIGNOFFS: they must keep their rules
+    if records:
+        raise ChecksError(records)
     try:
         pal = load_palette(palette_path, verify=False, root=root)
         dev = None if dev_palette is None else load_palette(dev_palette, verify=False, root=root)
@@ -749,7 +755,7 @@ def report_text(doc: Mapping) -> str:
              f"(a) the kept loops: {sum(r['rendered'] for r in a['kept'].values())} of {n_kept} files are the texts "
              f"their sources rendered, {sum(not r['problems'] for r in a['kept'].values())} of {n_kept} pass gate, "
              f"compile, energy and mood; check_folder with this palette: {a['folder']['ok']} of "
-             f"{a['folder']['drafts']} drafts pass in {len(a['folders'])} folders "
+             f"{a['folder']['drafts']} drafts pass in {len(a['folders'])} folder{'' if len(a['folders']) == 1 else 's'} "
              f"({', '.join(r['folder'] for r in a['folders'])}), {len(a['folder']['missing'])} missing",
              f"(b) prompt v2: {b['count']} of {b.get('of', 9)} references under strict=True"
              + (f", identical to {b['identical_to']}'s: {b['identical']}" if b.get("identical_to") else ""),
