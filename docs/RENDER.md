@@ -200,10 +200,10 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
   (render minus music.wav, against music.wav) is not −Δ. On the cluster (job 13706355,
   `runs/drafts-13706355/summary/verify.json`) the bed was placed at −24.0 LU in all 51 renders, and as heard it sat
   22.64–23.93 LU under the music on the kept 10. Two drafts he did not keep sat 2.556 (d04_chords) and 2.074
-  (d04_groove) LU closer than −24, flagged as information. The four Day-3 renders at Δ 24 he judged (W2,
-  `runs/shootout-13656048/summary/renders.json`) sat 21.99–23.98 LU under the music. So the −Δ ± 0.5 LU of
-  `tests/test_render.py` (§12) holds on its synthetic fixture only. With the rain the bed is checked as placed, and
-  its level as heard is recorded, not gated (docs/DECISIONS.md D-022).
+  (d04_groove) LU closer than −24, flagged as information. The four Day-3 renders at Δ 24 he judged (W2's
+  `rain_d24`, on excerpt e1: shootouts/plan.yaml; `runs/shootout-13656048/summary/renders.json`) sat 21.99–23.98 LU
+  under the music. So the −Δ ± 0.5 LU of `tests/test_render.py` (§12) holds on its synthetic fixture only. With the
+  rain the bed is checked as placed, and its level as heard is recorded, not gated (docs/DECISIONS.md D-022).
 - **`bed: null`** (as in `dev_gu`) renders without a bed, and music.wav equals render.wav.
 
 ### 3.5 Loudness and gate G7 (§2, §4 Loudness)
