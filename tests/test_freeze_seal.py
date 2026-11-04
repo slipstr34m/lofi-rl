@@ -392,12 +392,24 @@ def test_the_latest_recorded_listen_decides_with_the_real_record(tmp_path):
 
 
 def test_the_seal_reads_lofi_rl_freeze_signoffs(tmp_path, monkeypatch):
-    """With no `signoffs` given the seal reads the constant: today's (b1103-signoff, 4 Toss) refuses this world's job
-    on both counts; a record of this job's passing listen seals."""
-    w = make_world(tmp_path)
-    problems = refused(w, signoffs=None)
-    assert len(problems) == 2 and "is b1103-signoff (job 13701026)" in problems[0]
-    assert problems[1].startswith("the latest sign-off listen b1103-signoff (job 13701026) tossed 4 kept loops")
+    """With no `signoffs` given the seal reads the constant. This world's sign-off job, later than every listen it
+    records and of a batch of its own, is not its latest listen (today b1103-signoff, job 13701026, with 4 Toss), so
+    the seal refuses, and for that listen's Toss too while it has one; a record of this job's passing listen after it
+    seals."""
+    last = F.SIGNOFFS[-1]
+    job = last["job"] + 1
+    batch = next(b for b in ("b1105-signoff", *(f"b1105-signoff-{k}" for k in range(2, 100)))
+                 if b not in {s["batch"] for s in F.SIGNOFFS})
+    w = make_world(tmp_path, signoff=False)
+    w.signoff(job, batch=batch)
+    want = [f"the latest sign-off job under runs is {job} ({batch}), but the latest sign-off listen recorded in "
+            f"lofi_rl.freeze.SIGNOFFS is {last['batch']} (job {last['job']}): his marks of {batch} are recorded first"]
+    if last["tossed"]:
+        n = len(last["tossed"])
+        want.append(f"the latest sign-off listen {last['batch']} (job {last['job']}) tossed {n} kept "
+                    f"loop{'' if n == 1 else 's'} ({', '.join(last['tossed'])}): it did not pass, so nothing is sealed "
+                    f"until a later sign-off listen passes (docs/FREEZE.md §5)")
+    assert refused(w, signoffs=None) == want
     monkeypatch.setattr(F, "SIGNOFFS", (*F.SIGNOFFS, *w.recorded()))
     assert S.seal(**w.kwargs(cli=FakeCLI(w), signoffs=None)).written
 
