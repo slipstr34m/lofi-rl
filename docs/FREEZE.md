@@ -247,7 +247,8 @@ line number:
   the briefs he kept a loop for);
 - each sign-off listen by its `## Sign-off listen` heading that names its batch (`batch b1103-signoff`, a whole word,
   so `b1103-signoff-2` is another listen) and its job, and the backticked files of its `- **Tossed:**` item (`- **Tossed:**
-  none.` for a listen that passed).
+  none.` for a listen that passed; an item that names no backticked file and is not `none.`, such as file names in
+  plain text, fails closed).
 
 `picks_problems` names the heading of every difference: a heading, job, batch, confirmation, label, id, kept file or
 tossed file that is missing or differs, and a redo round or sign-off listen the gate file records that `REDOS` or
@@ -394,8 +395,8 @@ Each is overridable.
 - The redo rounds and the sign-off listens are constants beside `PICKS` (`REDOS`, `SIGNOFFS`), each traced to its own
   gate section and compared with it by `freeze check --gate`, so the kept list in effect never comes from a file that
   the gate file does not confirm. A tossed file stays tossed for good (a later pick of it again is refused), and a
-  `## Sign-off listen` section always carries a `- **Tossed:**` item (`none.` when it passed), so a missing record
-  fails closed.
+  `## Sign-off listen` section always carries a `- **Tossed:**` item (its backticked files, or exactly `none.` when it
+  passed), so a missing record, or one that names its files in plain text, fails closed.
 - keep3_kept10.json is regenerated with `--allow-tossed` while the tossed loops are still kept, so it keeps recording
   their renders, and the flag is written into the file; the report and job B refuse those loops from the constants,
   never from the file.

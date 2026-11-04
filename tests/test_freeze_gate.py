@@ -502,6 +502,42 @@ def test_records_problems_on_the_order_the_jobs_and_the_signoffs(redo_job, monke
 LATER = "b1106-signoff-2"
 
 
+@pytest.mark.parametrize("item, want", [
+    ("- **Tossed:** none.", ()),
+    ("- **Tossed:** None", ()),
+    ("- **Tossed**: none.", ()),
+    ("- **Tossed:** `drafts/v1/d01_chords.ls` and `drafts/v1/d06_horn.ls`.",
+     ("drafts/v1/d01_chords.ls", "drafts/v1/d06_horn.ls")),
+    ("- **Tossed:** two, as he marked them:\n  - `drafts/v1/d01_chords.ls`\n  - `drafts/v1/d06_horn.ls`",
+     ("drafts/v1/d01_chords.ls", "drafts/v1/d06_horn.ls")),
+], ids=["none", "none-capital-no-period", "colon-outside-the-bold", "backticked", "backticked-sub-bullets"])
+def test_a_tossed_item_gives_its_backticked_files_or_none(item, want):
+    assert G.tossed_item(["", *item.splitlines(), ""], "x") == want
+
+
+@pytest.mark.parametrize("item", [
+    "- **Tossed:** d01_chords.ls and d06_horn.ls (he marked them Toss).",
+    "- **Tossed:**",
+    "- **Tossed:** none of them, though d01_chords.ls came close.",
+    "- **Tossed:** none.\n  - and d01_chords.ls, on a second listen",
+], ids=["plain-text-files", "empty", "none-and-more", "none-then-a-sub-bullet"])
+def test_a_tossed_item_with_no_backticked_file_must_be_none(item):
+    with pytest.raises(G.GateError, match=r"^x: its \*\*Tossed:\*\* item names no backticked file and is not `none.`"):
+        G.tossed_item(item.splitlines(), "x")
+
+
+def test_a_passing_listen_whose_section_names_files_in_plain_text_fails():
+    """SIGNOFFS records a later listen as passing, but its section names the files he tossed without backticks: the
+    gate file does not confirm the record, so `freeze check --gate` fails on it."""
+    later = {"batch": LATER, "job": 13720000, "tossed": ()}
+    text = _edit(GATE, "## How to approve", f"## Sign-off listen 2: voted 2026-11-06 (batch {LATER}; job 13720000)\n\n"
+                                            "- **Tossed:** d01_chords.ls and d06_horn.ls (he marked them Toss).\n\n"
+                                            "## How to approve")
+    assert G.picks_problems(text, signoffs=(LISTEN, later)) == [
+        f"## Sign-off listen ({LATER}): its **Tossed:** item names no backticked file and is not `none.`: "
+        "'d01_chords.ls and d06_horn.ls (he marked them Toss).'"]
+
+
 @pytest.mark.parametrize("signoff, what", [
     ({"batch": LATER, "job": 13720000}, "SIGNOFFS[1]: a sign-off listen holds exactly ['batch', 'job', 'tossed']"),
     ({"batch": LATER, "job": 13720000, "tossed": (), "words": "Great"},

@@ -22,7 +22,8 @@ by line number:
 - keep3's table by its header row (the `Brief` and `Kept` columns), and each redo round's table the same way under its
   own heading (`## Kept drafts (keep3 redo<k>)`, lofi_rl.freeze.REDOS: the loops he kept in that round's batch);
 - each sign-off listen by its heading (`## Sign-off listen...`, naming its batch and its job) and the backticked files
-  of its `- **Tossed:**` item (lofi_rl.freeze.SIGNOFFS);
+  of its `- **Tossed:**` item, or `none.` for a listen that passed (lofi_rl.freeze.SIGNOFFS; an item that is neither
+  fails closed);
 - the approval by its exact line under `## Approval`.
 
 `picks_problems(text)` compares all of it with lofi_rl.freeze.PICKS, REDOS and SIGNOFFS and names the heading of each
@@ -59,6 +60,7 @@ _QUOTES = re.compile(r'"([^"]*)"')
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9]*")
 _CONFIRMATION = re.compile(r"^\*\*Shresth['’]s confirmation, (\d{4}-\d{2}-\d{2}):\*\*(.*)$")
 _JOB = re.compile(r"\bjob (\d+)\b")
+_NONE = re.compile(r"none\.?", re.I)                          # a passing listen's **Tossed:** item: `none.`
 APPROVAL_HEADING = "## Approval"
 APPROVED = re.compile(r"^APPROVED by Shresth Rana (\d{4}-\d{2}-\d{2})$")   # trailing whitespace aside
 _ATTEMPT = re.compile(r"^\s*approved\b", re.I)          # a line that starts as an approval: the exact form or refused
@@ -306,7 +308,8 @@ def _names(heading: str, name: str) -> bool:
 
 def tossed_item(body: list[str], where: str) -> tuple[str, ...]:
     """The backticked files of a sign-off section's one `- **Tossed:**` item (its indented lines included); none for
-    `- **Tossed:** none.`"""
+    `- **Tossed:** none.`, the one other form (that word alone, in any case, its period optional). An item that names
+    no backticked file and is not `none.` (file names in plain text, say) fails closed: GateError, never nothing."""
     hits = []
     for k, line in enumerate(body):
         m = _ITEM.match(line)
@@ -316,12 +319,16 @@ def tossed_item(body: list[str], where: str) -> tuple[str, ...]:
         while j < len(body) and body[j][:1].isspace() and body[j].strip():
             block.append(body[j])
             j += 1
-        hits.append(tuple(_TICKS.findall("\n".join(block))))
+        rest = " ".join([line[m.end():], *block[1:]]).strip().lstrip(":").strip()
+        hits.append((tuple(_TICKS.findall("\n".join(block))), rest))
     if not hits:
         raise GateError(f"{where}: no `- **Tossed:**` item (the kept files he tossed, or none)")
     if len(hits) > 1:
         raise GateError(f"{where}: {len(hits)} **Tossed:** items")
-    return hits[0]
+    files, rest = hits[0]
+    if not files and not _NONE.fullmatch(rest):
+        raise GateError(f"{where}: its **Tossed:** item names no backticked file and is not `none.`: {rest!r}")
+    return files
 
 
 def records_problems(*, kept: Mapping[str, str] | None = None, redos: Sequence[Mapping[str, Any]] | None = None,
