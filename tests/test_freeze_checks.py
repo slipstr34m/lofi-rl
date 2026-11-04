@@ -349,6 +349,47 @@ def test_expect_writes_schema_2_with_two_sources_and_the_redo_files_own_values(t
         C.expect_from_files({**tree["renders"], "keep3_redo2": tree["renders"]["keep3"]}, draft=P.load())
 
 
+def expect_args(tree, out: Path, *extra: str, rounds=("keep3", "keep3_redo1")) -> list[str]:
+    return ["expect", *[x for k in rounds for x in ("--renders", f"{k}={tree['renders'][k]}")], "--gate",
+            str(tree["gate"]), "--out", str(out), *extra]
+
+
+def test_the_expect_command_checks_the_record_before_it_writes(tree, capsys, monkeypatch):
+    """`checks expect` on the tree (no runs/ needed): it writes the file from both rounds. It refuses (exit 2) and
+    writes nothing without --renders, with keep3's renders given twice, when the gate file's kept list is not
+    kept_now(), and when REDOS breaks its rules. With the redo round left out of REDOS the four he tossed are kept
+    again: refused unless --allow-tossed, which writes them under `tossed` and says so."""
+    out = tree["tmp"] / "k.json"
+    assert C.main(expect_args(tree, out)) == 0
+    assert C.load_expectations(out)["kept"] == list(FZ.kept_now().values())
+    out.unlink()
+    capsys.readouterr()
+
+    def refused(args: list[str], what: str) -> str:
+        assert C.main(args) == 2
+        err = capsys.readouterr().err
+        assert what in err and not out.exists(), err
+        return err
+    refused(["expect", "--gate", str(tree["gate"]), "--out", str(out)], "error: give --renders keep3=")
+    refused(expect_args(tree, out, "--keep3", str(tree["renders"]["keep3"])), "--renders keep3 is given twice")
+    gate, text = tree["gate"], tree["gate"].read_text(encoding="utf-8")
+    gate.write_text(text.replace(f"`{tree['redo1'] / 'd06_horn.ls'}`", f"`{tree['redo1'] / 'd06_groove.ls'}`"),
+                    encoding="utf-8")
+    refused(expect_args(tree, out), "is not lofi_rl.freeze.kept_now()")
+    gate.write_text(text, encoding="utf-8")
+    (redo,) = FZ.REDOS
+    monkeypatch.setattr(FZ, "REDOS", ({**redo, "heading": "## Kept drafts (keep3 redo2)"},))
+    refused(expect_args(tree, out), "error: REDOS[0] (keep3_redo1): its heading '## Kept drafts (keep3 redo2)'")
+    monkeypatch.setattr(FZ, "REDOS", ())
+    monkeypatch.setattr(FZ, "JOBS", {k: v for k, v in FZ.JOBS.items() if k != "keep3_redo1"})
+    err = refused(expect_args(tree, out, rounds=("keep3",)), "is still kept, but Shresth tossed it")
+    assert err.splitlines() == [f"error: {x}" for x in C.tossed_problems()] and len(C.tossed_problems()) == 4
+    assert C.main(expect_args(tree, out, "--allow-tossed", rounds=("keep3",))) == 0
+    doc = C.load_expectations(out)
+    assert doc["allow_tossed"] is True and [t["brief"] for t in doc["tossed"]] == list(H.REOPENED)
+    assert "--allow-tossed: 4 of them tossed at a sign-off listen" in capsys.readouterr().out
+
+
 def test_a_kept_redo_file_is_read_by_its_path_never_the_same_stem_v1_file(tree):
     doc = C.expect_from_files(tree["renders"], draft=P.load())
     got = C.kept_drafts(doc)
