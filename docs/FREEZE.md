@@ -11,6 +11,11 @@ that **the file never changes** (D-017, docs/DECISIONS.md).
   `tests/test_freeze_*.py`.
 - **Files:** `palettes/lofi_rain_v1.yaml`, written by `python -m lofi_rl.freeze build`, never by hand;
   `drafts/v1/keep3_kept10.json` (§5.3).
+- **Status (2026-11-04): sealed.** His four redo picks came from b1103-keep3-redo (job 13703830), and the second
+  sign-off listen passed (b1103-signoff-2, job 13706355: Great 3, Good 4, Fine 3, Toss 0; gates/GATE_palette.md). His
+  line `APPROVED by Shresth Rana 2026-11-04` sealed the file: A `d3590c8d…`, the one he heard, became B `09f80a64…`
+  with `frozen: '2026-11-04'`, and the drawn round tables are published in the gate file (docs/DECISIONS.md D-022).
+  The line below is the build's history.
 - **Status (2026-11-03):** built with `frozen: null`. The first sign-off listen (b1103-signoff) did not pass: 4 Toss,
   and Shresth's words were "The loops themselves", so the palette does not change and briefs d01, d06, d07 and d10
   reopen through the drafts redo path (§5).

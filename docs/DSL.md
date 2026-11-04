@@ -74,6 +74,8 @@ B: q1' e7 e1' q5 q3 | er e3 e4 eb5 h5 | qr e4 e3 q2 q1 | h.6 qr
 
 - **Default vocabulary:** it parses with no repairs.
 - **`dev_gu` vocabulary:** it logs one free alias, `dusty` → `jazz`.
+- **The frozen palette's vocabulary** (§5): it fails G4, since `drums: dusty` and `sax: tenor` are not its names and
+  it has no aliases. With `drums: jazz` and `sax: alto` it passes.
 - **Text is canonical:** `canon` prints this text back unchanged (`tests/test_dsl_canon.py`).
 - **The examples below** change or add a line or two of it.
 

@@ -41,7 +41,7 @@ comment = ("#"|"//") (SPACE|EOL) {any} ;           (* "#" inside a token is a sh
 - **Names:** KEYS, KIT and SAX come from the palette lists.
 - **Never written by the model:** pitches or note names, tempo, key or mode, swing, effects, levels, the bed.
 
-**Example.** Brief: city at night, wistful (D dorian), energy mid, 82 BPM. The model sees neither key nor mode. The names are placeholders until the palette is frozen.
+**Example.** Brief: city at night, wistful (D dorian), energy mid, 82 BPM. The model sees neither key nor mode. The names are `DEFAULT_VOCAB`'s (`tests/fixtures/loops/example.ls`). The frozen palette's names are rhodes, wurli and piano, studio and jazz, and alto (DSL.md §5), and under it `drums: dusty` and `sax: tenor` are G4.
 ```
 vamp: Im9 IV13 span 2
 keys: rhodes rootless

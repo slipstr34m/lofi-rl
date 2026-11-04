@@ -1,9 +1,11 @@
 # SHOOTOUTS.md: the Phase-1 shootouts
 
-Shresth hears the shootouts in the rating page (`make rate`, docs/RATING.md) on **Nov 3–4** (51 minutes planned,
-inside the plan's "about 55 min") and on **Nov 6** (about 15 minutes: rain, and the hidden checks his vote rules
-call for). They prune each sound choice to its survivors; the survivors go into `palettes/lofi_rain_v1.yaml`,
-which froze on Nov 4 (the plan said Nov 6) and never changes after (docs/DECISIONS.md D-017, D-022).
+Shresth heard the shootouts in the rating page (`make rate`, docs/RATING.md) on **Oct 31**, **Nov 1** and **Nov 3**
+(gates/GATE_palette.md, each day's "voted" heading). The plan served them on Nov 3–4 (51 minutes planned, inside its
+"about 55 min") and Nov 6 (about 15 minutes: rain, and the hidden checks his vote rules call for), the dates the batch
+names keep (b1103, b1104, b1106). They prune each sound choice to its survivors; the survivors went into
+`palettes/lofi_rain_v1.yaml`, which froze on Nov 4 (the plan said Nov 6) and never changes after (docs/DECISIONS.md
+D-017, D-022).
 
 - **Status (2026-11-04): done and frozen.** Days 1–3 are voted and confirmed (gates/GATE_palette.md). keep3 kept 10
   of the 30 drafts. The first sign-off listen tossed 4 of them ("The loops themselves"), and he kept one redraft of
