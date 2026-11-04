@@ -559,6 +559,19 @@ def test_a_tossed_file_still_kept_stops_the_job_at_the_check(world, tmp_path, mo
     assert not (world.tmp / "runs" / "drafts-tossed" / "renders").exists() and not (world.tmp / "inbox-tossed").exists()
 
 
+def test_constants_that_disagree_with_the_file_stop_the_job_at_the_check(world, monkeypatch):
+    """keep3_kept10.json and the gate file agree, but lofi_rl.freeze.JOBS names another job for keep3 than the file's
+    source: only the constants disagree (check (i)), and the job stops at its check stage on that alone."""
+    monkeypatch.setitem(FZ.JOBS, "keep3", 8)
+    assert J.main(argv(world, run="drafts-consts", inbox="inbox-consts"), renderer=world.renderer) == 3
+    check = summary(world, "check.json", "drafts-consts")
+    assert check["kept_vs_constants"] == [
+        "keep3_kept10.json's source keep3 is job 7, not lofi_rl.freeze.JOBS['keep3'] (8)"]
+    assert check["problems"] == check["kept_vs_constants"] and check["kept_vs_gate"] == check["tossed"] == []
+    assert [s["stage"] for s in summary(world, "stages.json", "drafts-consts")["stages"]] == ["check"]
+    assert not (world.tmp / "runs" / "drafts-consts" / "renders").exists() and not (world.tmp / "inbox-consts").exists()
+
+
 def test_constants_that_break_their_own_rules_stop_the_job_at_the_check(world, monkeypatch):
     monkeypatch.setattr(FZ, "REDOS", ({"key": "keep3_redo1", "folder": "drafts/v1/redo1"},))
     assert J.main(argv(world, run="drafts-records", inbox="inbox-records"), renderer=world.renderer) == 3

@@ -367,6 +367,35 @@ def test_a_kept_redo_file_is_read_by_its_path_never_the_same_stem_v1_file(tree):
                for x in C.vocabulary_check(pal, tree["v1"], by_stem)["problems"])
 
 
+def test_check_i_names_each_way_the_file_and_the_constants_differ(tree):
+    """constants_problems (the report's (i), the sign-off check stage's kept_vs_constants) on copies of the tree's
+    schema-2 document, each edited one way: each edit names its own problem, and only it."""
+    doc = C.expect_from_files(tree["renders"], draft=P.load())
+    assert C.constants_problems(doc) == []
+    d01, d02 = str(tree["redo1"] / "d01_horn.ls"), doc["kept"][1]
+    now = list(FZ.kept_now().values())
+
+    def edited(edit) -> list[str]:
+        d = copy.deepcopy(doc)
+        edit(d)
+        return C.constants_problems(d)
+    assert edited(lambda d: d["loops"]["d01_horn"].update(source="keep3")) == [
+        f"{d01}: keep3_kept10.json has it from keep3, but keep3_redo1 picked it"]
+    assert edited(lambda d: d["sources"][1].update(job=11)) == [
+        "keep3_kept10.json's source keep3_redo1 is job 11, not lofi_rl.freeze.JOBS['keep3_redo1'] (10)"]
+    assert edited(lambda d: d["sources"].reverse()) == [
+        "keep3_kept10.json's sources are ['keep3_redo1', 'keep3']; the rounds that supply the kept loops are "
+        "['keep3', 'keep3_redo1']"]
+    assert edited(lambda d: d["sources"].pop()) == [
+        "keep3_kept10.json's sources are ['keep3']; the rounds that supply the kept loops are ['keep3', 'keep3_redo1']"]
+    assert edited(lambda d: d.update(tossed=[{"brief": "d02", "file": d02, "signoffs": ["b1103-signoff"]}])) == [
+        f"keep3_kept10.json records the tossed loops [('d02', '{d02}')]; the sign-off listens toss [] of the kept list "
+        f"now: run `checks expect` again"]
+    assert edited(lambda d: d["kept"].reverse()) == [
+        f"keep3_kept10.json keeps {now[::-1]}, but lofi_rl.freeze.kept_now() keeps {now}: run `python -m "
+        f"lofi_rl.freeze.checks expect` again"]
+
+
 def test_the_report_with_the_synthetic_redo_round_passes(tree, monkeypatch):
     expect = tree["v1"] / C.EXPECT_NAME
     expect.write_text(C.expect_text(C.expect_from_files(tree["renders"], draft=P.load())), encoding="utf-8")
