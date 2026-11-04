@@ -286,3 +286,254 @@ Add one line of your own, exactly in this form:
     APPROVED by Shresth Rana <yyyy-mm-dd>
 
 ## Approval
+
+APPROVED by Shresth Rana 2026-11-04
+
+## Drawn round tables (published after the freeze)
+
+What the batch builders drew at job time, published now that the freeze is approved (SHOOTOUTS.md §2.3; his approval line above is dated 2026-11-04). Written by `python -m lofi_rl.freeze.tables` from each job's `summary/draw.json` and `summary/batches.json` (keep3 and its redo rounds: `summary/batch.json`), and checked against every batch's `manifest.json` and `manifest.hidden.json`. Left out: the 64-bit seeds, the opaque round and clip ids, the real clip ids and the audio hashes. Each job's files are named by their sha256.
+
+- Rounds: each shootout batch's design rounds by slot, and keep3's rounds (and each redo round's) in serving order. Tiles: left to right as served, each `option` (what it played).
+- Left out: 8 rounds, the hidden checks (RATING.md, "Checks you won't see"). Phase 2's votes and the final A/B use the same checks, and the rater is never told which rounds those are. The full tables are kept privately, never committed.
+
+### Drawn, Day 1 (job 13635646)
+
+- `runs/shootout-13635646/summary/draw.json` sha256 `50465af89860bb0d879ebcbec6b65e2c78e779a29c4ae545a44792a3dbb20cc7`
+- `runs/shootout-13635646/summary/batches.json` sha256 `9c6307dcfa122a2bd1f91c0d3052faa6756fa9bf11a11b050e2b23e0e634c3ec`
+
+Symbol to option, per stage:
+
+| stage | symbol | option |
+|---|---|---|
+| K1 | P1a | `jrhodes3d` |
+| K1 | P1b | `gu_tine_ep` |
+| K1 | P2a | `fp_fsbs_jazz_guitar` |
+| K1 | P2b | `gu_organ` |
+| K1 | P3a | `vcsl_upright_knight` |
+| K1 | P3b | `fp_upright_kw` |
+| K1 | P4a | `gs_wurli_ep200` |
+| K1 | P4b | `fp_fm_ep1` |
+| R1 | k1 | `kit_swirly` |
+| R1 | k2 | `kit_gu_jazz` |
+| R1 | k3 | `kit_virtuosity` |
+| R2 | b1 | `bass_gu_acoustic` |
+| R2 | b2 | `bass_vsco2_pizz` |
+| R2 | b3 | `bass_fp_finger_yr` |
+| S1 | t1 | `sax_gu_tenor` |
+| S1 | t2 | `sax_mtg_tenor` |
+| S1 | t3 | `sax_fp_tenor` |
+| S1 | a1 | `sax_mtg_alto` |
+| S1 | a2 | `sax_gu_alto` |
+| S1 | a3 | `sax_weresax_alto` |
+
+#### b1103-1-keys (`inbox/2026-11-03/b1103-1-keys/`)
+
+| slot | loop | tile 1 | tile 2 | tile 3 | tile 4 |
+|---|---|---|---|---|---|
+| K1.1 | l5_wistful_mid | `jrhodes3d` (rootless) | `gu_tine_ep` (rootless) | `fp_fsbs_jazz_guitar` (rootless) | `gu_organ` (rootless) |
+| K1.2 | l1_melancholy_low | `gu_tine_ep` (rootless) | `vcsl_upright_knight` (rootless) | `fp_upright_kw` (rootless) | `jrhodes3d` (rootless) |
+| K1.3 | l9_hopeful_high | `gs_wurli_ep200` (rootless) | `fp_fm_ep1` (rootless) | `jrhodes3d` (rootless) | `gu_tine_ep` (rootless) |
+| K1.4 | l5_wistful_mid | `vcsl_upright_knight` (rootless) | `fp_upright_kw` (rootless) | `gs_wurli_ep200` (rootless) | `fp_fm_ep1` (rootless) |
+| K1.5 | l1_melancholy_low | `gu_organ` (rootless) | `gs_wurli_ep200` (rootless) | `fp_fm_ep1` (rootless) | `fp_fsbs_jazz_guitar` (rootless) |
+| K1.6 | l9_hopeful_high | `fp_fsbs_jazz_guitar` (rootless) | `gu_organ` (rootless) | `vcsl_upright_knight` (rootless) | `fp_upright_kw` (rootless) |
+
+#### b1103-2-groove (`inbox/2026-11-03/b1103-2-groove/`)
+
+| slot | loop | tile 1 | tile 2 | tile 3 |
+|---|---|---|---|---|
+| R1.1 | l3_melancholy_high | `kit_swirly` (kit, GU acoustic bass, 3 patterns at 55 %, no humanize) | `kit_gu_jazz` (kit, GU acoustic bass, 3 patterns at 55 %, no humanize) | `kit_virtuosity` (kit, GU acoustic bass, 3 patterns at 55 %, no humanize) |
+| R1.2 | l4_wistful_low | `kit_gu_jazz` (kit, GU acoustic bass, 3 patterns at 55 %, no humanize) | `kit_virtuosity` (kit, GU acoustic bass, 3 patterns at 55 %, no humanize) | `kit_swirly` (kit, GU acoustic bass, 3 patterns at 55 %, no humanize) |
+| R1.3 | l8_hopeful_mid | `kit_virtuosity` (kit, GU acoustic bass, 3 patterns at 55 %, no humanize) | `kit_swirly` (kit, GU acoustic bass, 3 patterns at 55 %, no humanize) | `kit_gu_jazz` (kit, GU acoustic bass, 3 patterns at 55 %, no humanize) |
+| R2.1 | l6_wistful_high | `bass_gu_acoustic` (bass on the round's kit) | `bass_vsco2_pizz` (bass on the round's kit) | `bass_fp_finger_yr` (bass on the round's kit) |
+| R2.2 | l7_hopeful_low | `bass_vsco2_pizz` (bass on the round's kit) | `bass_fp_finger_yr` (bass on the round's kit) | `bass_gu_acoustic` (bass on the round's kit) |
+| R2.3 | l2_melancholy_mid | `bass_fp_finger_yr` (bass on the round's kit) | `bass_gu_acoustic` (bass on the round's kit) | `bass_vsco2_pizz` (bass on the round's kit) |
+
+#### b1103-3-sax (`inbox/2026-11-03/b1103-3-sax/`)
+
+| slot | loop | tile 1 | tile 2 | tile 3 | tile 4 |
+|---|---|---|---|---|---|
+| S1.1 | l4_wistful_low | `sax_fp_tenor` (sax source) | `sax_mtg_alto` (sax source) | `sax_gu_alto` (sax source) | `sax_weresax_alto` (sax source) |
+| S1.2 | l3_melancholy_high | `sax_weresax_alto` (sax source) | `sax_gu_tenor` (sax source) | `sax_mtg_tenor` (sax source) | `sax_fp_tenor` (sax source) |
+| S1.3 | l1_melancholy_low | `sax_gu_tenor` (sax source) | `sax_gu_alto` (sax source) | `sax_weresax_alto` (sax source) | `sax_mtg_alto` (sax source) |
+| S1.4 | l5_wistful_mid | `sax_mtg_alto` (sax source) | `sax_mtg_tenor` (sax source) | `sax_fp_tenor` (sax source) | `sax_gu_tenor` (sax source) |
+| S1.5 | l9_hopeful_high | `sax_mtg_tenor` (sax source) | `sax_weresax_alto` (sax source) | `sax_mtg_alto` (sax source) | `sax_gu_alto` (sax source) |
+| S1.6 | l7_hopeful_low | `sax_gu_alto` (sax source) | `sax_fp_tenor` (sax source) | `sax_gu_tenor` (sax source) | `sax_mtg_tenor` (sax source) |
+
+### Drawn, Day 2 (job 13651610)
+
+- `runs/shootout-13651610/summary/draw.json` sha256 `e09fab10a3a48e969169ea013ddfc60010bed98a31a2ecf0907e2e7ad7998e7a`
+- `runs/shootout-13651610/summary/batches.json` sha256 `2526161c00c77f1d7a37d22bb46e3f025514202a6ac0062fb8f05cc8ccce539b`
+
+Symbol to option, per stage:
+
+| stage | symbol | option |
+|---|---|---|
+| K2 | u1 | `vcsl_upright_knight` |
+| K2 | u2 | `gu_tine_ep` |
+| K2 | u3 | `gs_wurli_ep200` |
+| R2r | b1 | `bass_vsco2_pizz` |
+| R2r | b2 | `bass_fp_finger_yr` |
+| R2r | b3 | `bass_gu_acoustic` |
+| R3a | w1 | `swing_50` |
+| R3a | w2 | `swing_split` |
+| R3a | w3 | `swing_55` |
+| R3a | w4 | `swing_58` |
+| R3b | n1 | `humanize_h1` |
+| R3b | n2 | `humanize_h2` |
+| R3b | n3 | `humanize_off` |
+| S1f | f1 | `sax_mtg_alto` |
+| S1f | f2 | `sax_mtg_tenor` |
+| S2a | m1 | `sax_plain` |
+| S2a | m2 | `sax_expr_off` |
+| S2a | m3 | `sax_warm_on` |
+| S2b | g1 | `timing_swung` |
+| S2b | g2 | `timing_lag` |
+| S2b | g3 | `timing_grid` |
+| V (V.1, V.2, V.3) | v1 | `rise` |
+| V (V.1, V.2, V.3) | v2 | `plagal` |
+| V (V.1, V.2, V.3) | v3 | `backdoor` |
+| V (V.1, V.2, V.3) | v4 | `drift` |
+| V (V.4, V.5, V.6) | v1 | `step` |
+| V (V.4, V.5, V.6) | v2 | `i_iv` |
+| V (V.4, V.5, V.6) | v3 | `float` |
+| V (V.4, V.5, V.6) | v4 | `pulse` |
+| V (V.7, V.8, V.9) | v1 | `aruarian` |
+| V (V.7, V.8, V.9) | v2 | `lift` |
+| V (V.7, V.8, V.9) | v3 | `two_of_us` |
+| V (V.7, V.8, V.9) | v4 | `royal_half` |
+
+#### b1104-1-groove (`inbox/2026-11-04/b1104-1-groove/`)
+
+| slot | loop | tile 1 | tile 2 | tile 3 | tile 4 |
+|---|---|---|---|---|---|
+| R2r.1 | l1_melancholy_low | `bass_vsco2_pizz` (bass re-listen on the round's kit, swing 0.55, no humanize) | `bass_fp_finger_yr` (bass re-listen on the round's kit, swing 0.55, no humanize) | `bass_gu_acoustic` (bass re-listen on the round's kit, swing 0.55, no humanize) |  |
+| R2r.2 | l5_wistful_mid | `bass_fp_finger_yr` (bass re-listen on the round's kit, swing 0.55, no humanize) | `bass_gu_acoustic` (bass re-listen on the round's kit, swing 0.55, no humanize) | `bass_vsco2_pizz` (bass re-listen on the round's kit, swing 0.55, no humanize) |  |
+| R2r.3 | l9_hopeful_high | `bass_gu_acoustic` (bass re-listen on the round's kit, swing 0.55, no humanize) | `bass_vsco2_pizz` (bass re-listen on the round's kit, swing 0.55, no humanize) | `bass_fp_finger_yr` (bass re-listen on the round's kit, swing 0.55, no humanize) |  |
+| R3a.1 | l9_hopeful_high | `swing_50` (swing, humanize off (advisory, CD-13)) | `swing_split` (swing, humanize off (advisory, CD-13)) | `swing_55` (swing, humanize off (advisory, CD-13)) | `swing_58` (swing, humanize off (advisory, CD-13)) |
+| R3a.2 | l4_wistful_low | `swing_58` (swing, humanize off (advisory, CD-13)) | `swing_55` (swing, humanize off (advisory, CD-13)) | `swing_split` (swing, humanize off (advisory, CD-13)) | `swing_50` (swing, humanize off (advisory, CD-13)) |
+| R3b.1 | l3_melancholy_high | `humanize_h1` (humanize at swing 0.55) | `humanize_h2` (humanize at swing 0.55) | `humanize_off` (humanize at swing 0.55) |  |
+| R3b.2 | l7_hopeful_low | `humanize_h2` (humanize at swing 0.55) | `humanize_off` (humanize at swing 0.55) | `humanize_h1` (humanize at swing 0.55) |  |
+| R3b.3 | l5_wistful_mid | `humanize_off` (humanize at swing 0.55) | `humanize_h1` (humanize at swing 0.55) | `humanize_h2` (humanize at swing 0.55) |  |
+
+#### b1104-2-sax (`inbox/2026-11-04/b1104-2-sax/`)
+
+| slot | loop | tile 1 | tile 2 | tile 3 |
+|---|---|---|---|---|
+| S1f.1 | l2_melancholy_mid | `sax_mtg_alto` (sax final) | `sax_mtg_tenor` (sax final) |  |
+| S1f.2 | l6_wistful_high | `sax_mtg_tenor` (sax final) | `sax_mtg_alto` (sax final) |  |
+| S1f.3 | l8_hopeful_mid | `sax_mtg_alto` (sax final) | `sax_mtg_tenor` (sax final) |  |
+| S2a.1 | l1_melancholy_low | `sax_plain` (the S1 leader's warmth, with the expression-off control) | `sax_expr_off` (the S1 leader's warmth, with the expression-off control) | `sax_warm_on` (the S1 leader's warmth, with the expression-off control) |
+| S2a.2 | l4_wistful_low | `sax_expr_off` (the S1 leader's warmth, with the expression-off control) | `sax_warm_on` (the S1 leader's warmth, with the expression-off control) | `sax_plain` (the S1 leader's warmth, with the expression-off control) |
+| S2a.3 | l9_hopeful_high | `sax_warm_on` (the S1 leader's warmth, with the expression-off control) | `sax_plain` (the S1 leader's warmth, with the expression-off control) | `sax_expr_off` (the S1 leader's warmth, with the expression-off control) |
+| S2b.1 | l3_melancholy_high | `timing_swung` (the S1 leader's timing at warm off (CD-19)) | `timing_lag` (the S1 leader's timing at warm off (CD-19)) | `timing_grid` (the S1 leader's timing at warm off (CD-19)) |
+| S2b.2 | l5_wistful_mid | `timing_lag` (the S1 leader's timing at warm off (CD-19)) | `timing_grid` (the S1 leader's timing at warm off (CD-19)) | `timing_swung` (the S1 leader's timing at warm off (CD-19)) |
+| S2b.3 | l7_hopeful_low | `timing_grid` (the S1 leader's timing at warm off (CD-19)) | `timing_swung` (the S1 leader's timing at warm off (CD-19)) | `timing_lag` (the S1 leader's timing at warm off (CD-19)) |
+
+#### b1104-3-keys (`inbox/2026-11-04/b1104-3-keys/`)
+
+| slot | loop | tile 1 | tile 2 | tile 3 |
+|---|---|---|---|---|
+| K2.1 | l3_melancholy_high | `vcsl_upright_knight` (spread) | `gu_tine_ep` (spread) | `gs_wurli_ep200` (spread) |
+| K2.2 | l8_hopeful_mid | `gu_tine_ep` (spread) | `gs_wurli_ep200` (spread) | `vcsl_upright_knight` (spread) |
+
+#### b1104-4-vamps (`inbox/2026-11-04/b1104-4-vamps/`)
+
+| slot | loop | tile 1 | tile 2 | tile 3 | tile 4 |
+|---|---|---|---|---|---|
+| V.1 | l1_melancholy_low | `rise` (sax muted) | `plagal` (sax muted) | `backdoor` (sax muted) | `drift` (sax muted) |
+| V.2 | l2_melancholy_mid | `plagal` (sax muted) | `rise` (sax muted) | `drift` (sax muted) | `backdoor` (sax muted) |
+| V.3 | l3_melancholy_high | `backdoor` (sax muted) | `drift` (sax muted) | `rise` (sax muted) | `plagal` (sax muted) |
+| V.4 | l4_wistful_low | `step` (sax muted) | `i_iv` (sax muted) | `float` (sax muted) | `pulse` (sax muted) |
+| V.5 | l5_wistful_mid | `i_iv` (sax muted) | `step` (sax muted) | `pulse` (sax muted) | `float` (sax muted) |
+| V.6 | l6_wistful_high | `float` (sax muted) | `pulse` (sax muted) | `step` (sax muted) | `i_iv` (sax muted) |
+| V.7 | l7_hopeful_low | `aruarian` (sax muted) | `lift` (sax muted) | `two_of_us` (sax muted) | `royal_half` (sax muted) |
+| V.8 | l8_hopeful_mid | `lift` (sax muted) | `aruarian` (sax muted) | `royal_half` (sax muted) | `two_of_us` (sax muted) |
+| V.9 | l9_hopeful_high | `two_of_us` (sax muted) | `royal_half` (sax muted) | `aruarian` (sax muted) | `lift` (sax muted) |
+
+### Drawn, Day 3 (job 13656048)
+
+- `runs/shootout-13656048/summary/draw.json` sha256 `834b370537ee41013a1a545653522c13828f830eb3d6709e38ea65d85fca9977`
+- `runs/shootout-13656048/summary/batches.json` sha256 `ee3b2008af7303b02e6103e5d6eada22be97d79a7e6da3e04208ebd8d7aa022c`
+
+Symbol to option, per stage:
+
+| stage | symbol | option |
+|---|---|---|
+| W1 | z1 | `excerpt_e1` |
+| W1 | z2 | `excerpt_e2` |
+| W1 | z3 | `excerpt_e3` |
+| W2 | y1 | `rain_none` |
+| W2 | y2 | `rain_d18` |
+| W2 | y3 | `rain_d24` |
+| W2 | y4 | `rain_d30` |
+
+#### b1106-1-mix (`inbox/2026-11-06/b1106-1-mix/`)
+
+| slot | loop | tile 1 | tile 2 | tile 3 | tile 4 |
+|---|---|---|---|---|---|
+| W1.1 | l1_melancholy_low | `excerpt_e1` (rain excerpt at delta 18 (CD-20)) | `excerpt_e2` (rain excerpt at delta 18 (CD-20)) | `excerpt_e3` (rain excerpt at delta 18 (CD-20)) |  |
+| W1.2 | l7_hopeful_low | `excerpt_e2` (rain excerpt at delta 18 (CD-20)) | `excerpt_e3` (rain excerpt at delta 18 (CD-20)) | `excerpt_e1` (rain excerpt at delta 18 (CD-20)) |  |
+| W1.3 | l5_wistful_mid | `excerpt_e3` (rain excerpt at delta 18 (CD-20)) | `excerpt_e1` (rain excerpt at delta 18 (CD-20)) | `excerpt_e2` (rain excerpt at delta 18 (CD-20)) |  |
+| W2.1 | l2_melancholy_mid | `rain_none` (rain level on excerpt e1) | `rain_d18` (rain level on excerpt e1) | `rain_d24` (rain level on excerpt e1) | `rain_d30` (rain level on excerpt e1) |
+| W2.2 | l4_wistful_low | `rain_d18` (rain level on excerpt e1) | `rain_d24` (rain level on excerpt e1) | `rain_d30` (rain level on excerpt e1) | `rain_none` (rain level on excerpt e1) |
+
+#### b1106-2-mix (`inbox/2026-11-06/b1106-2-mix/`)
+
+| slot | loop | tile 1 | tile 2 | tile 3 | tile 4 |
+|---|---|---|---|---|---|
+| W2.3 | l6_wistful_high | `rain_d24` (rain level on excerpt e1) | `rain_d30` (rain level on excerpt e1) | `rain_none` (rain level on excerpt e1) | `rain_d18` (rain level on excerpt e1) |
+| W2.4 | l8_hopeful_mid | `rain_d30` (rain level on excerpt e1) | `rain_none` (rain level on excerpt e1) | `rain_d18` (rain level on excerpt e1) | `rain_d24` (rain level on excerpt e1) |
+
+### Drawn, keep3 (job 13656049)
+
+- `runs/drafts-13656049/summary/draw.json` sha256 `57148c55d4606676c147e456e1f4ac15c14d2a23bd56ea4bb7ec4a9344ca323a`
+- `runs/drafts-13656049/summary/batch.json` sha256 `7ab93c2b5e11b5623665ce13863f042b369cf7ba174db869d4b2cdc10a6a196f`
+
+The persona on each tile of each row of the Latin square:
+
+| row | tile 1 | tile 2 | tile 3 |
+|---|---|---|---|
+| 0 | `chords` | `horn` | `groove` |
+| 1 | `horn` | `groove` | `chords` |
+| 2 | `groove` | `chords` | `horn` |
+
+Round order: drawn with no two consecutive rounds in one energy and mood cell.
+
+#### b1101-keep3 (`inbox/2026-11-01/b1101-keep3/`)
+
+| # | brief | energy, mood | row | tile 1 | tile 2 | tile 3 |
+|---|---|---|---|---|---|---|
+| 1 | d06 | mid, hopeful | 2 | `groove` (`drafts/v1/d06_groove.ls`) | `chords` (`drafts/v1/d06_chords.ls`) | `horn` (`drafts/v1/d06_horn.ls`) |
+| 2 | d09 | high, hopeful | 0 | `chords` (`drafts/v1/d09_chords.ls`) | `horn` (`drafts/v1/d09_horn.ls`) | `groove` (`drafts/v1/d09_groove.ls`) |
+| 3 | d01 | low, melancholy | 2 | `groove` (`drafts/v1/d01_groove.ls`) | `chords` (`drafts/v1/d01_chords.ls`) | `horn` (`drafts/v1/d01_horn.ls`) |
+| 4 | d05 | mid, wistful | 0 | `chords` (`drafts/v1/d05_chords.ls`) | `horn` (`drafts/v1/d05_horn.ls`) | `groove` (`drafts/v1/d05_groove.ls`) |
+| 5 | d04 | mid, melancholy | 0 | `chords` (`drafts/v1/d04_chords.ls`) | `horn` (`drafts/v1/d04_horn.ls`) | `groove` (`drafts/v1/d04_groove.ls`) |
+| 6 | d07 | high, melancholy | 1 | `horn` (`drafts/v1/d07_horn.ls`) | `groove` (`drafts/v1/d07_groove.ls`) | `chords` (`drafts/v1/d07_chords.ls`) |
+| 7 | d08 | high, wistful | 1 | `horn` (`drafts/v1/d08_horn.ls`) | `groove` (`drafts/v1/d08_groove.ls`) | `chords` (`drafts/v1/d08_chords.ls`) |
+| 8 | d02 | low, wistful | 1 | `horn` (`drafts/v1/d02_horn.ls`) | `groove` (`drafts/v1/d02_groove.ls`) | `chords` (`drafts/v1/d02_chords.ls`) |
+| 9 | d03 | low, hopeful | 2 | `groove` (`drafts/v1/d03_groove.ls`) | `chords` (`drafts/v1/d03_chords.ls`) | `horn` (`drafts/v1/d03_horn.ls`) |
+| 10 | d10 | low, wistful | 2 | `groove` (`drafts/v1/d10_groove.ls`) | `chords` (`drafts/v1/d10_chords.ls`) | `horn` (`drafts/v1/d10_horn.ls`) |
+
+### Drawn, keep3 redo1 (job 13703830)
+
+- `runs/drafts-13703830/summary/draw.json` sha256 `fc834ea9982d37ec1f6eb800eb1ebd9045bcda3120217b467cdb289feb584192`
+- `runs/drafts-13703830/summary/batch.json` sha256 `5f08a612beaa53ccfd8e8792e96daac596890d2dce170026208cba0b3de55e3b`
+
+The persona on each tile of each row of the Latin square:
+
+| row | tile 1 | tile 2 | tile 3 |
+|---|---|---|---|
+| 0 | `groove` | `horn` | `chords` |
+| 1 | `horn` | `chords` | `groove` |
+| 2 | `chords` | `groove` | `horn` |
+
+Round order: drawn with no two consecutive rounds in one energy and mood cell.
+
+#### b1103-keep3-redo (`inbox/2026-11-03/b1103-keep3-redo/`)
+
+| # | brief | energy, mood | row | tile 1 | tile 2 | tile 3 |
+|---|---|---|---|---|---|---|
+| 1 | d01 | low, melancholy | 2 | `chords` (`drafts/v1/redo1/d01_chords.ls`) | `groove` (`drafts/v1/redo1/d01_groove.ls`) | `horn` (`drafts/v1/redo1/d01_horn.ls`) |
+| 2 | d06 | mid, hopeful | 1 | `horn` (`drafts/v1/redo1/d06_horn.ls`) | `chords` (`drafts/v1/redo1/d06_chords.ls`) | `groove` (`drafts/v1/redo1/d06_groove.ls`) |
+| 3 | d07 | high, melancholy | 0 | `groove` (`drafts/v1/redo1/d07_groove.ls`) | `horn` (`drafts/v1/redo1/d07_horn.ls`) | `chords` (`drafts/v1/redo1/d07_chords.ls`) |
+| 4 | d10 | low, wistful | 1 | `horn` (`drafts/v1/redo1/d10_horn.ls`) | `chords` (`drafts/v1/redo1/d10_chords.ls`) | `groove` (`drafts/v1/redo1/d10_groove.ls`) |

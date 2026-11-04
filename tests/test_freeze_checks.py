@@ -476,7 +476,9 @@ def test_a_redo_gate_table_that_disagrees_with_redos_fails_the_report(tree):
 def test_freeze_check_gate_compares_a_redo_rounds_table_with_redos(tmp_path, monkeypatch):
     """`python -m lofi_rl.freeze check --gate` (lofi_rl.freeze.palette.check, in this process so REDOS can hold a
     synthetic round) on a copy of the real gate file with a redo round's section added: the round after the last one
-    REDOS records (keep3_redo1 while none is), so it never meets a recorded round's section."""
+    REDOS records (keep3_redo1 while none is), so it never meets a recorded round's section. The real file is checked
+    as it stands: sealed once his APPROVED line froze it, so (i) then reads `frozen` against that line's date."""
+    sealed = F.load(FROZEN).palette.frozen is not None
     k = 1 + max((int(r["key"].removeprefix("keep3_redo")) for r in FZ.REDOS), default=0)
     key, folder, job, rounds, listens = f"keep3_redo{k}", f"drafts/v1/redo{k}", 13710000 + k, len(FZ.REDOS), \
         len(FZ.SIGNOFFS)
@@ -491,15 +493,15 @@ def test_freeze_check_gate_compares_a_redo_rounds_table_with_redos(tmp_path, mon
     assert real.count("\n## How to approve\n") == 1
     gate = tmp_path / "GATE_palette.md"
     gate.write_text(real.replace("\n## How to approve\n", "\n" + section + "## How to approve\n"), encoding="utf-8")
-    assert F.check(FROZEN, gate=gate)[1] == [f"{heading}: a redo round the gate file records and lofi_rl.freeze.REDOS "
+    assert F.check(FROZEN, gate=gate, sealed=sealed)[1] == [f"{heading}: a redo round the gate file records and lofi_rl.freeze.REDOS "
                                              f"lacks"]
     monkeypatch.setattr(FZ, "REDOS", (*FZ.REDOS, redo))
     monkeypatch.setitem(FZ.JOBS, key, job)
-    _fp, bad, done = F.check(FROZEN, gate=gate)
+    _fp, bad, done = F.check(FROZEN, gate=gate, sealed=sealed)
     assert bad == [] and "(c) picks = " in done[-1]
     assert f"{rounds + 1} redo rounds, {listens} sign-off listens" in done[-1]
     gate.write_text(gate.read_text().replace(f"`{folder}/d06_horn.ls`", f"`{folder}/d06_groove.ls`"), encoding="utf-8")
-    assert F.check(FROZEN, gate=gate)[1] == [
+    assert F.check(FROZEN, gate=gate, sealed=sealed)[1] == [
         f"{head}: the kept table differs from REDOS {key}'s picks: "
         f"[('d06', '{folder}/d06_groove.ls'), ('d06', '{folder}/d06_horn.ls')]"]
 

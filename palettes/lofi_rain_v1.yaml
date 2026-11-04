@@ -134,7 +134,7 @@
 #|     chains: 'the draft chains without their chain-head trim slots, which are the dev_gu chains', bed: the excerpt of excerpt_e2
 #|       (W1) and only the delta_lu of rain_d24 (W2)}
 id: lofi_rain_v1
-frozen: null
+frozen: '2026-11-04'
 sr: 44100
 assets_root: $LOFI_ASSETS
 sources:

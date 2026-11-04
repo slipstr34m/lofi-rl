@@ -18,7 +18,34 @@ Newest entry first. Every number cites the file or command output it was read fr
     - the scorer server (smoke 13651611, `SCORER_SMOKE_OK`);
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
-- **Waiting on Shresth:** his APPROVED line under `## Approval` in `gates/GATE_palette.md`; then the seal.
+- **The palette is frozen:** `palettes/lofi_rain_v1.yaml`, `frozen: '2026-11-04'` (sha256 `09f80a64…`), on Shresth's APPROVED line of 2026-11-04.
+- **Next:** D-022, the switches to the frozen palette and the Phase-1 gate's render step (the freeze spec §5.3–5.6), then the Phase-1 gate.
+
+---
+
+## 2026-11-04 (10:50 PST): the palette is frozen: `lofi_rain_v1` sealed on Shresth's APPROVED line
+
+**What was done**
+- **His line**, written by him under `## Approval` in gates/GATE_palette.md: `APPROVED by Shresth Rana 2026-11-04`.
+  - His first save put the date in angle brackets (`<2026-11-04>`), as the How-to-approve placeholder showed it. The seal refused that line, and he fixed it in the file. (Earlier, an edit in the app's file pane never reached the disk.)
+- **`python -m lofi_rl.freeze.seal`:**
+  - It read his line under `## Approval`, and found that the palette (sha256 A `d3590c8d…`) is what sign-off job 13706355 rendered for b1103-signoff-2.
+  - `freeze check --gate`: ok ("Days 1-3, keep3, 1 redo rounds, 2 sign-off listens").
+  - The rebuild with `frozen: '2026-11-04'` differs from A in that one line. `freeze check --sealed --verify` on it: ok, with sources, presets and coverage verified.
+  - **A** `d3590c8da2e186de2b5a113a585f17646dfec9390f1eb9de569b1bacaa47bc8a` (signed off) → **B** `09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183` (frozen).
+- **`python -m lofi_rl.freeze.tables --write gates/GATE_palette.md --private`:**
+  - the full tables, 8 hidden-check rounds included, in the private `data/votes/audit/drawn_round_tables.md` (sha256 `7c6c679c…`);
+  - the design rounds published in the gate file's `## Drawn round tables (published after the freeze)` (section sha256 `8b4b6a8c…`): Days 1–3, keep3 and keep3 redo1.
+- **`tests/test_palette_frozen.py`** pins B forever (D-017), with:
+  - A as B with `frozen: null`, exactly one line apart;
+  - the regex (3,408 characters, `5c081828…`) and prompt v2's 9 references;
+  - his one line under `## Approval`.
+- **One test adjusted:** `test_freeze_check_gate_compares_a_redo_rounds_table_with_redos` ran `freeze check` on the real file without `--sealed`. It now checks the real file as it stands.
+- **Suite:** 3390 passed, 5 skipped.
+
+**SU spent:** 0.
+
+**Next** (the freeze spec's order, §5.6): D-022; the switches of §5.5 (junk-rate's default palette, the scorer server's comment, the docs); and the Phase-1 gate's render step, since job B's projection is 869.5 s against 300 s. Then the Phase-1 gate submit.
 
 ---
 
