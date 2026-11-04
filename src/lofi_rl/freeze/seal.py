@@ -24,6 +24,10 @@ Four steps. A step that finds problems lists every one and refuses (exit 3). Not
      `stages.json` exited 0, `verify` and `build` among them. Its batch `<inbox>/<date>/<batch>/` has `manifest.json`
      and a hidden manifest of category `signoff`, and every clip there plays `<palette id>@<sha8>`.
    - A sha256 that only an earlier sign-off job recorded refuses: a §4.5 loop has run since.
+   - **The listen passed.** That job and its batch are the latest sign-off listen recorded in
+     lofi_rl.freeze.SIGNOFFS (his marks of it are recorded before the seal), and that listen tossed no kept loop
+     (`tossed` is empty). A listen with a Toss reopens its loops (docs/FREEZE.md §5), and only a later sign-off job
+     that passes can be sealed.
    - His date is not before that batch's date (a Pacific date: the job's `--date`, or its Pacific today).
    - `python -m lofi_rl.freeze check --gate` passes on the file.
 3. **The rebuild.** `python -m lofi_rl.freeze build --frozen <his date>` writes a candidate next to the file. It must
@@ -58,6 +62,7 @@ from pathlib import Path
 
 import yaml
 
+from lofi_rl import freeze as F
 from lofi_rl.drafts import job as J
 from lofi_rl.palette import ROOT, PaletteError, parse_palette
 
@@ -244,6 +249,25 @@ def latest_signoff(runs: Path, inbox: Path, sha256: str, label: str) -> Signoff:
     return last
 
 
+def listen_problems(job: Signoff, signoffs: Sequence[Mapping] | None = None) -> list[str]:
+    """The latest sign-off job found under runs (latest_signoff) against the latest sign-off listen recorded
+    (lofi_rl.freeze.SIGNOFFS, unless given): the same job and batch, and no kept loop tossed in it."""
+    signoffs = F.SIGNOFFS if signoffs is None else signoffs
+    if not signoffs:
+        return [f"no sign-off listen is recorded in lofi_rl.freeze.SIGNOFFS: his marks of {job.batch} (job {job.job}) "
+                f"are recorded before the seal"]
+    last, out = signoffs[-1], []
+    if (job.job, job.batch) != (last["job"], last["batch"]):
+        out.append(f"the latest sign-off job under runs is {job.job} ({job.batch}), but the latest sign-off listen "
+                   f"recorded in lofi_rl.freeze.SIGNOFFS is {last['batch']} (job {last['job']}): his marks of "
+                   f"{job.batch} are recorded first")
+    if last["tossed"]:
+        out.append(f"the latest sign-off listen {last['batch']} (job {last['job']}) tossed {len(last['tossed'])} kept "
+                   f"loop{'' if len(last['tossed']) == 1 else 's'} ({', '.join(last['tossed'])}): it did not pass, so "
+                   f"nothing is sealed until a later sign-off listen passes (docs/FREEZE.md §5)")
+    return out
+
+
 # --------------------------------------------------------------------------------------------- the freeze CLI
 @dataclass(frozen=True)
 class CLIResult:
@@ -323,10 +347,10 @@ class Sealed:
 
 def seal(*, gate: Path, palette: Path, runs: Path, inbox: Path, levels_day3: Path, cli: FreezeCLI = freeze_cli,
          today: date | None = None, dry_run: bool = False, verify: bool = True,
-         log: Callable[[str], None] = print) -> Sealed:
+         signoffs: Sequence[Mapping] | None = None, log: Callable[[str], None] = print) -> Sealed:
     """The four steps of the module doc. SealError (BadInput for a missing file) at the first step that fails, before
-    anything is written. `today` defaults to `pacific_today()`, the calendar of the sign-off batch's date.
-    `verify=False` leaves `--verify` out of step 4's check; only tests pass it."""
+    anything is written. `today` defaults to `pacific_today()`, the calendar of the sign-off batch's date; `signoffs`
+    to lofi_rl.freeze.SIGNOFFS. `verify=False` leaves `--verify` out of step 4's check; only tests pass it."""
     gate, palette, runs, inbox, levels_day3 = (Path(x) for x in (gate, palette, runs, inbox, levels_day3))
     today = pacific_today() if today is None else today
 
@@ -354,6 +378,9 @@ def seal(*, gate: Path, palette: Path, runs: Path, inbox: Path, levels_day3: Pat
     if pal.frozen is not None:
         raise SealError([f"{palette} is already frozen ({pal.frozen}): after the freeze it never changes (D-017)"])
     job = latest_signoff(runs, inbox, a, f"{pal.id}@{a[:8]}")
+    problems = listen_problems(job, signoffs)
+    if problems:
+        raise SealError(problems)
     if when < date.fromisoformat(job.date):
         raise SealError([f"his APPROVED date {when} is before the latest sign-off batch, {job.batch} of {job.date}"])
     log(f"seal: {palette} (sha256 A {a}) is what sign-off job {job.job} rendered for {job.batch} ({job.date})")

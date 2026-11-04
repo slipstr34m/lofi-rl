@@ -4,8 +4,10 @@ that line of palettes/lofi_rain_v1.yaml changes.
 The world here is synthetic: a gate file with his three confirmations, a palette standing in for the signed-off file
 (dev_gu.yaml under the frozen id), sign-off runs and their batches as the lofi-drafts job writes them, and a fake
 freeze CLI that records its calls. The seal refuses without his line, with two, with a malformed or too-early one, with
-his line only inside an HTML comment or a code fence, on an already-frozen file and on the palette of an earlier
-sign-off job. It accepts his line with a note beside it, and checks that exactly one line changes. Its today is the
+his line only inside an HTML comment or a code fence, on an already-frozen file, on the palette of an earlier
+sign-off job, after a sign-off listen with a Toss, and when the latest sign-off job is not the latest listen recorded
+in lofi_rl.freeze.SIGNOFFS (each world records its latest job's listen as passed unless a test says otherwise). It
+accepts his line with a note beside it, and checks that exactly one line changes. Its today is the
 Pacific date, the calendar the sign-off job dates its batch in, whatever the machine's zone. Then the same runs on
 copies of the real runs, inbox and gate in a temporary folder, with the fake CLI and with the real one (skipped where
 the files are not on this machine)."""
@@ -20,6 +22,7 @@ from pathlib import Path
 
 import pytest
 
+from lofi_rl import freeze as F
 from lofi_rl.freeze import FROZEN, JOBS
 from lofi_rl.freeze import gate as G
 from lofi_rl.freeze import seal as S
@@ -70,9 +73,16 @@ class World:
     def sha(self) -> str:
         return _sha(self.palette.read_bytes())
 
+    def recorded(self) -> tuple:
+        """The sign-off listens as lofi_rl.freeze.SIGNOFFS holds them once his marks of this world's latest sign-off
+        job are in, with nothing tossed: the listen passed. A test of another record passes its own `signoffs`."""
+        jobs = S.signoff_runs(self.runs) if self.runs.is_dir() else []
+        return ({"batch": jobs[-1].batch, "job": jobs[-1].job, "tossed": ()},) if jobs else ()
+
     def kwargs(self, **kw) -> dict:
         return {"gate": self.gate, "palette": self.palette, "runs": self.runs, "inbox": self.inbox,
-                "levels_day3": self.levels, "today": TODAY, "log": lambda _line: None, **kw}
+                "levels_day3": self.levels, "today": TODAY, "log": lambda _line: None, "signoffs": self.recorded(),
+                **kw}
 
     def signoff(self, job: int = 13700001, *, sha: str | None = None, batch: str = "b1105-signoff",
                 day: str = "2026-11-05", label: str | None = None, category: str = "signoff",
@@ -338,6 +348,44 @@ def test_the_latest_signoff_job_is_the_highest_job_id(tmp_path):
     assert S.seal(**w.kwargs(cli=FakeCLI(w))).job == 13700009
 
 
+def test_the_seal_refuses_after_a_signoff_with_tossed_loops(tmp_path):
+    """His marks of the latest sign-off listen hold a Toss: the listen did not pass (docs/FREEZE.md §5), so nothing is
+    sealed, his APPROVED line or not, and the freeze CLI never runs."""
+    w = make_world(tmp_path)
+    tossed = ({"batch": "b1105-signoff", "job": 13700001, "tossed": ("drafts/v1/d01_chords.ls",)},)
+    cli = FakeCLI(w)
+    assert refused(w, cli, signoffs=tossed) == [
+        "the latest sign-off listen b1105-signoff (job 13700001) tossed 1 kept loop (drafts/v1/d01_chords.ls): it did "
+        "not pass, so nothing is sealed until a later sign-off listen passes (docs/FREEZE.md §5)"]
+    assert cli.calls == []
+    assert S.seal(**w.kwargs(cli=FakeCLI(w), signoffs=({**tossed[0], "tossed": ()},))).written
+
+
+def test_the_seal_takes_only_the_latest_recorded_listen(tmp_path):
+    w = make_world(tmp_path, signoff=False)
+    w.signoff(13700001, day="2026-11-04", batch="b1104-signoff")
+    w.signoff(13700002, day="2026-11-05", batch="b1105-signoff-2")      # rendered this file too, last
+    first = {"batch": "b1104-signoff", "job": 13700001, "tossed": ()}
+    assert refused(w, signoffs=(first,)) == [
+        "the latest sign-off job under runs is 13700002 (b1105-signoff-2), but the latest sign-off listen recorded in "
+        "lofi_rl.freeze.SIGNOFFS is b1104-signoff (job 13700001): his marks of b1105-signoff-2 are recorded first"]
+    assert refused(w, signoffs=()) == ["no sign-off listen is recorded in lofi_rl.freeze.SIGNOFFS: his marks of "
+                                       "b1105-signoff-2 (job 13700002) are recorded before the seal"]
+    passed = {"batch": "b1105-signoff-2", "job": 13700002, "tossed": ()}
+    assert S.seal(**w.kwargs(cli=FakeCLI(w), signoffs=(first, passed))).job == 13700002
+
+
+def test_the_seal_reads_lofi_rl_freeze_signoffs(tmp_path, monkeypatch):
+    """With no `signoffs` given the seal reads the constant: today's (b1103-signoff, 4 Toss) refuses this world's job
+    on both counts; a record of this job's passing listen seals."""
+    w = make_world(tmp_path)
+    problems = refused(w, signoffs=None)
+    assert len(problems) == 2 and "is b1103-signoff (job 13701026)" in problems[0]
+    assert problems[1].startswith("the latest sign-off listen b1103-signoff (job 13701026) tossed 4 kept loops")
+    monkeypatch.setattr(F, "SIGNOFFS", (*F.SIGNOFFS, *w.recorded()))
+    assert S.seal(**w.kwargs(cli=FakeCLI(w), signoffs=None)).written
+
+
 def test_a_palette_no_signoff_job_rendered_refuses(tmp_path):
     w = make_world(tmp_path, signoff=False)
     w.signoff(sha="e" * 64)
@@ -451,8 +499,9 @@ def _argv(w: World, *extra: str) -> list[str]:
             "--levels-day3", str(w.levels), *extra]
 
 
-def test_the_cli_exit_codes(tmp_path, capsys):
+def test_the_cli_exit_codes(tmp_path, capsys, monkeypatch):
     w = make_world(tmp_path)
+    monkeypatch.setattr(F, "SIGNOFFS", w.recorded())          # the command line reads lofi_rl.freeze.SIGNOFFS
     assert S.main(_argv(w, "--dry-run"), cli=FakeCLI(w), today=TODAY) == 0
     assert "seal: dry run" in capsys.readouterr().out and w.palette.read_text() == stand_in()
     assert S.main(_argv(w), cli=FakeCLI(w), today=TODAY) == 0
@@ -532,7 +581,12 @@ def test_on_copies_of_the_real_runs_inbox_and_gate(tmp_path):
     assert (w.runs / f"drafts-{JOBS['keep3']}" / "summary" / "args.json").is_file()    # keep3's run is no sign-off
     if not S.signoff_runs(w.runs):
         assert any("no sign-off job under" in p for p in refused(w))
-    w.signoff(99999999, day=ok.isoformat(), batch=f"b{ok:%m%d}-signoff")
+    elif F.SIGNOFFS and F.SIGNOFFS[-1]["tossed"]:
+        # the real record: b1103-signoff (job 13701026) tossed 4 of the kept loops, so the real state refuses
+        last = F.SIGNOFFS[-1]
+        assert any(p.startswith(f"the latest sign-off listen {last['batch']} (job {last['job']}) tossed "
+                                f"{len(last['tossed'])} kept loop") for p in refused(w, signoffs=None))
+    w.signoff(99999999, day=ok.isoformat(), batch=f"b{ok:%m%d}-signoff")   # a later sign-off job; its listen passed
     old = w.palette.read_text()
     cli = FakeCLI(w)
     got = S.seal(**w.kwargs(cli=cli))

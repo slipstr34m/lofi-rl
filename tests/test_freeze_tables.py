@@ -1,13 +1,14 @@
 """The drawn round tables (lofi_rl.freeze.tables; the freeze spec §5.2; SHOOTOUTS.md §2.3 "Published after the freeze").
 
-On a synthetic world: three shootout jobs and a keep3 job, written as the batch builders write their summaries and
-the inbox manifests. It has design rounds, an anchor, a repeat of an earlier job's round, and a stage whose maps share
-symbols. The tests check that the tables come out deterministic, cross-checked against the manifests, without a seed
-or an id, and only after the APPROVED line. The section published in the gate file holds the design rounds only, with
-no serving position, no hidden-check row and no word of how one is built (Phase 2 and the final A/B use the same
-checks); the full tables go only to a private file under data/, which every test here moves to a temporary folder.
-The section goes where lofi_rl.freeze.gate sees the Approval section end. Then the same runs on copies of the real
-runs, inbox and gate in a temporary folder (skipped where `make pull` has not brought them)."""
+On a synthetic world: three shootout jobs and a keep3 job (and, in one test, a redo round's job of
+lofi_rl.freeze.REDOS), written as the batch builders write their summaries and the inbox manifests. It has design
+rounds, an anchor, a repeat of an earlier job's round, and a stage whose maps share symbols. The tests check that
+the tables come out deterministic, cross-checked against the manifests, without a seed or an id, and only after the
+APPROVED line. The section published in the gate file holds the design rounds only, with no serving position, no
+hidden-check row and no word of how one is built (Phase 2 and the final A/B use the same checks); the full tables go
+only to a private file under data/, which every test here moves to a temporary folder. The section goes where
+lofi_rl.freeze.gate sees the Approval section end. Then the same runs on copies of the real runs, inbox and gate in a
+temporary folder (skipped where `make pull` has not brought them)."""
 import copy
 import hashlib
 import json
@@ -18,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from lofi_rl import freeze as FZ
 from lofi_rl.freeze import JOBS as REAL_JOBS
 from lofi_rl.freeze import PICKS
 from lofi_rl.freeze import gate as G
@@ -171,18 +173,26 @@ def world(jobs: dict[str, int] = JOBS, design: dict = DESIGN) -> dict[str, dict]
                                                               "rounds": hid_rounds}
         docs[f"runs/shootout-{job}/summary/draw.json"] = draw
         docs[f"runs/shootout-{job}/summary/batches.json"] = out
-    job, d, name = jobs["keep3"], DATES["keep3"], "b0104-keep3"
-    draw = {"schema": "lofi-rl/draft-draw/1", "seed": _h("keep3|seed", 16), "square": SQUARE, "symbols": SYMBOLS,
+    drafts_job(docs, jobs["keep3"], DATES["keep3"], "b0104-keep3", KEEP3_ROUNDS)
+    return copy.deepcopy(docs)                          # no test's change reaches DESIGN or another test
+
+
+def drafts_job(docs: dict[str, dict], job: int, d: str, name: str, rounds: list[dict], tag: str = "keep3",
+               folder: str = "drafts/v1") -> None:
+    """A lofi-drafts job's summary/draw.json and summary/batch.json and its batch's two manifests, into `docs`: keep3,
+    or a redo round (`tag` its key, `folder` its drafts folder)."""
+    draw = {"schema": "lofi-rl/draft-draw/1", "seed": _h(f"{tag}|seed", 16), "square": SQUARE, "symbols": SYMBOLS,
             "rounds": [], "order_constraint_met": True, "same_cell_neighbours": 0}
     b_rounds, pub_rounds, hid_rounds = [], [], {}
-    for index, r in enumerate(KEEP3_ROUNDS, start=1):
+    for index, r in enumerate(rounds, start=1):
         personas = [SYMBOLS[i] for i in SQUARE[r["row"]]]
         draw["rounds"].append({"brief": r["brief"], "row": r["row"], "tiles": personas})
-        rnd_id = rid("keep3", name, index)
-        clips = [{"id": oid("keep3", name, index, pos), "pos": pos, "persona": p,
-                  "draft": f"drafts/v1/{r['brief']}_{p}.ls", "render": f"{r['brief']}_{p}",
-                  "clip": "c" + _h(f"{r['brief']}_{p}", 16), "pcm_sha256": _h(f"{r['brief']}_{p}|pcm", 64),
-                  "flac_sha256": _h(f"{r['brief']}_{p}|flac", 64)} for pos, p in enumerate(personas, start=1)]
+        rnd_id = rid(tag, name, index)
+        seed = (lambda p: f"{r['brief']}_{p}") if folder == "drafts/v1" else (lambda p: f"{folder}/{r['brief']}_{p}")
+        clips = [{"id": oid(tag, name, index, pos), "pos": pos, "persona": p,
+                  "draft": f"{folder}/{r['brief']}_{p}.ls", "render": f"{r['brief']}_{p}",
+                  "clip": "c" + _h(seed(p), 16), "pcm_sha256": _h(f"{seed(p)}|pcm", 64),
+                  "flac_sha256": _h(f"{seed(p)}|flac", 64)} for pos, p in enumerate(personas, start=1)]
         b_rounds.append({"id": rnd_id, "index": index, "brief": r["brief"], "row": r["row"], "clips": clips})
         pub_rounds.append({"id": rnd_id, "bpm": r["bpm"], "clips": [{"id": c["id"], "file": f"{c['id']}.flac",
                                                                     "sha256": c["flac_sha256"]} for c in clips]})
@@ -202,7 +212,6 @@ def world(jobs: dict[str, int] = JOBS, design: dict = DESIGN) -> dict[str, dict]
                                                "rounds": pub_rounds}
     docs[f"inbox/{d}/{name}/manifest.hidden.json"] = {"v": 1, "batch": name, "category": "drafts",
                                                       "rounds": hid_rounds}
-    return copy.deepcopy(docs)                          # no test's change reaches DESIGN or another test
 
 
 def write(root: Path, docs: dict[str, dict]) -> Path:
@@ -324,6 +333,40 @@ def _cells_match_headers(lines: list[str]) -> int:
                     break
                 assert r.count("|") - r.count("\\|") == width, (lines[i - 1], r)
     return tables
+
+
+REDO = {"key": "keep3_redo1", "folder": "drafts/v1/redo1", "batch": "b0105-keep3-redo", "job": 105,
+        "heading": "## Kept drafts (keep3 redo1)", "kept": {"d01": "drafts/v1/redo1/d01_horn.ls"}}
+REDO_ROUNDS = [{"brief": "d01", "energy": "low", "mood": "melancholy", "bpm": 79, "row": 2}]
+
+
+def test_a_redo_rounds_job_is_published_as_keep3s_is(tmp_path, monkeypatch):
+    """A REDOS round's lofi-drafts job: its tables after keep3's, under its own heading, cross-checked the same way."""
+    jobs = {**JOBS, "keep3_redo1": 105}
+    monkeypatch.setattr(T, "JOBS", jobs)
+    monkeypatch.setattr(FZ, "REDOS", (REDO,))
+    docs = world()
+    drafts_job(docs, 105, "2026-01-05", "b0105-keep3-redo", REDO_ROUNDS, tag="keep3_redo1", folder="drafts/v1/redo1")
+    root = write(tmp_path, docs)
+    tabs = collect(root, jobs)
+    assert [t.key for t in tabs] == ["day1", "day2", "day3", "keep3", "keep3_redo1"]
+    redo = tabs[-1]
+    assert redo.job == 105 and redo.square == tabs[3].square and redo.files[0][0] == "runs/drafts-105/summary/draw.json"
+    assert [(r.slot, r.loop, r.row, [t.option for t in r.tiles]) for r in redo.batches[0].rows] == [
+        ("d01", "low, melancholy", 2, ["groove", "chords", "horn"])]
+    assert redo.batches[0].rows[0].tiles[0].what == "drafts/v1/redo1/d01_groove.ls"
+    text = T.render(tabs, D)
+    assert "### Drawn, keep3 redo1 (job 105)" in text and "`groove` (`drafts/v1/redo1/d01_groove.ls`)" in text
+    assert "#### b0105-keep3-redo (`inbox/2026-01-05/b0105-keep3-redo/`)" in text
+    assert "## Drawn, keep3 redo1 (job 105)" in T.render_private(tabs, D) and RECIPE.findall(text) == []
+    with pytest.raises(T.TablesError, match="keep3 redo1: REDOS names job 105, the jobs 106"):
+        T.collect(root / "runs", root / "inbox", {**jobs, "keep3_redo1": 106})
+    bad = copy.deepcopy(docs)
+    bad["runs/drafts-105/summary/draw.json"]["rounds"][0]["row"] = 1
+    with pytest.raises(T.TablesError, match=r"keep3 redo1 \(job 105\) b0105-keep3-redo #1 \(d01\): the draw's brief"):
+        collect(write(tmp_path / "bad", bad), jobs)
+    monkeypatch.setattr(FZ, "REDOS", ())                     # read at call time: no round, no redo tables
+    assert [t.key for t in collect(root, jobs)] == ["day1", "day2", "day3", "keep3"]
 
 
 def test_the_section_lists_the_design_rounds_by_slot(synth):
@@ -806,7 +849,8 @@ def real_copy(tmp: Path) -> tuple[Path, list[Path]]:
     pull` has not brought them to this machine). Returns (root, the batch folders)."""
     files = [f"runs/shootout-{REAL_JOBS[d]}/summary/{f}" for d in ("day1", "day2", "day3")
              for f in ("draw.json", "batches.json")]
-    files += [f"runs/drafts-{REAL_JOBS['keep3']}/summary/{f}" for f in ("draw.json", "batch.json")]
+    files += [f"runs/drafts-{REAL_JOBS[k]}/summary/{f}" for k in ["keep3", *(r["key"] for r in FZ.REDOS)]
+              for f in ("draw.json", "batch.json")]
     for rel in files:
         if not (ROOT / rel).is_file():
             pytest.skip(f"{rel} is not on this machine (make pull brings it to the laptop)")
@@ -855,7 +899,7 @@ def test_on_copies_of_the_real_runs_inbox_and_gate(tmp_path, capsys, private_roo
     assert G.approval_date(new) == G.approval_date(old)
     assert G.picks_problems(new) == G.picks_problems(old)  # the gate file's pick reader sees what it saw
     # the section: the design rounds only; the private file: every round
-    design = sum(1 for t in tabs if t.key != "keep3" for b in t.batches for r in b.rows if r.kind == "design")
+    design = sum(1 for t in tabs if not T.is_drafts(t.key) for b in t.batches for r in b.rows if r.kind == "design")
     assert RECIPE.findall(section) == [] and len(SHOOTOUT_ROW.findall(section)) == design
     assert not PRIVATE_ROW.findall(section) and T.hidden_checks(tabs) > 0
     assert f"- Left out: {T.hidden_checks(tabs)} rounds, the hidden checks" in section
@@ -865,7 +909,8 @@ def test_on_copies_of_the_real_runs_inbox_and_gate(tmp_path, capsys, private_roo
     assert full == T.render_private(tabs, when)
     assert len(PRIVATE_ROW.findall(full)) == design + T.hidden_checks(tabs)
     assert len(section.splitlines()) > 100
-    assert [t.job for t in tabs] == [REAL_JOBS[k] for k in ("day1", "day2", "day3", "keep3")]
+    assert [t.job for t in tabs] == [REAL_JOBS[k] for k in ("day1", "day2", "day3", "keep3", *(r["key"] for r in
+                                                                                             FZ.REDOS))]
     assert sum(len(b.rows) for t in tabs for b in t.batches) == sum(
         len(json.loads((f / "manifest.json").read_text())["rounds"]) for f in folders)
     assert [x[5:].split(" (")[0] for x in section.splitlines() if x.startswith("#### ")] == [f.name for f in folders]
