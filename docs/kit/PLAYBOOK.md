@@ -149,8 +149,12 @@ job: `srun --jobid <id> --overlap --pty bash`.
 * A gate = files pulled into `artifacts/review/<gate>/`, a `gates/GATE_<n>.md` (what to look at, the
   question, how to approve), a commit, a message to the human — then keep working on anything the
   gate does not block. Approval is an explicit "approve" in chat (recorded in the file by the agent)
-  or an `APPROVED by <Name> <YYYY-MM-DD>` line of its own (`kit.gates.gate_approved`; a plain grep
-  also matches the file's own "how to approve" line). Praise is feedback, not approval.
+  or an approval line of its own, the name and the date written bare, e.g. `APPROVED by Ada Lovelace
+  2026-12-09` (`kit.gates.gate_approved`; a plain grep also matches the file's own "how to approve"
+  line). The gate's How-to-approve section comes from `python -m kit.gates --how-to-approve --name
+  "Ada Lovelace"`: the line written out with a real date, never a placeholder, which gets copied
+  brackets and all (LESSONS 55). `python -m kit.gates gates/GATE_<n>.md --name "Ada Lovelace"` names
+  what to change in a line that starts as an approval but is not one. Praise is feedback, not approval.
 * Publishing always needs an explicit go, every time: `python -m kit.publish` is a dry run unless given
   `--go` and an approved gate file.
 * Never change a scoring rule, threshold or prompt silently: a CHANGELOG row with before/after evidence.
