@@ -266,7 +266,8 @@ def test_his_line_is_found_under_the_heading_beside_a_note():
     ("APPROVED by Shresth Rana 2026-11-5\n", "write the date as 2026-11-05, not 2026-11-5"),
     ("APPROVED by Shresth Rana 2026-02-30\n", "2026-02-30 is not a date on the calendar"),
     ("Approved by Shresth Rana 2026-11-05\n", "write APPROVED in capitals, not Approved"),
-    ("APPROVED by Shresth 2026-11-05\n", "the name is Shresth Rana, not Shresth"),
+    ("APPROVED by Shresth 2026-11-05\n",
+     "is an approval by Shresth, not by Shresth Rana: Shresth Rana's own line is needed"),
     ("    APPROVED by Shresth Rana 2026-11-05\n", "no spaces or tabs before APPROVED"),
     ("APPROVED by Shresth Rana <2026-11-05>\n", "write the date bare: 2026-11-05, not <2026-11-05>"),
     ("APPROVED by Shresth  Rana 2026-11-05\n", "one space between the words"),
@@ -294,6 +295,19 @@ def test_a_line_that_is_not_his_is_told_what_to_change_and_how_it_counts(line, w
     assert msg.startswith(f"under ## Approval: `{line}` is not an approval line: ") and why in msg, msg
     assert msg.endswith(f"(the line that counts: APPROVED by Shresth Rana {counts})"), msg
     assert G.approval_date(GATE + f"APPROVED by Shresth Rana {counts}\n") == counts, "the line it shows counts"
+
+
+def test_another_persons_approval_is_named_as_theirs_and_never_rewritten_into_his():
+    """An approval line in another name is not his, and the refusal never builds his line from it (kit.gates.explain):
+    his line is his to write, or his chat line entered verbatim."""
+    line = "APPROVED by Ada Lovelace 2026-11-04"
+    want = ("`APPROVED by Ada Lovelace 2026-11-04` is an approval by Ada Lovelace, not by Shresth Rana: Shresth Rana's "
+            "own line is needed")
+    assert G.approval_problem(line, today="2026-11-08") == want
+    with pytest.raises(G.GateError) as err:
+        G.approval_date(GATE + line + "\n", today="2026-11-08")
+    assert str(err.value) == f"under ## Approval: {want}"
+    assert "line that counts" not in str(err.value) and "APPROVED by Shresth Rana" not in str(err.value)
 
 
 def test_the_approval_heading_is_needed_once():

@@ -203,7 +203,10 @@ section rather than renumbered.
     out with the approver's name and a real date, bare (`kit.gates.how_to_approve`, `example_line`;
     `python -m kit.gates --how-to-approve --name "Ada Lovelace"`), and have a refusal name each fault
     and show the line as it would count, e.g. "write the date bare: 2026-11-04, not <2026-11-04>"
-    (`kit.gates.explain`). The accepted form stays as strict as #52 says.
+    (`kit.gates.explain`). The accepted form stays as strict as #52 says. Only the approver's own line
+    is shown that way: an approval (or near miss) in another name is named as that person's, "Grace
+    Hopper's own line is needed", and never rewritten into the approver's line, which an agent that
+    records approvals could otherwise append for someone who never wrote it.
 
 ## Building with LLM-generated content
 

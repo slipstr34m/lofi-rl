@@ -261,6 +261,17 @@ def test_a_bracketed_date_is_told_to_be_written_bare(tmp_path):
     assert cli.calls == []
 
 
+def test_another_persons_approval_is_named_as_theirs_and_never_rewritten_into_his(tmp_path):
+    """An approval line in another name refuses, says whose it is and that his own line is needed, and never shows his
+    line built from it: the seal's caller could otherwise enter a line he never wrote."""
+    w = make_world(tmp_path, "APPROVED by Ada Lovelace 2026-11-05\n")
+    cli = FakeCLI(w)
+    assert refused(w, cli) == [
+        "under ## Approval: `APPROVED by Ada Lovelace 2026-11-05` is an approval by Ada Lovelace, not by Shresth Rana: "
+        "Shresth Rana's own line is needed. His line is his to change"]
+    assert cli.calls == []
+
+
 def test_without_his_line_the_refusal_shows_it_written_out_with_todays_date(tmp_path):
     """No line yet: the refusal shows the form with a real date, the seal's today (Pacific), bare."""
     w = make_world(tmp_path, "")

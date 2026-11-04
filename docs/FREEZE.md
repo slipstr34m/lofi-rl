@@ -268,8 +268,10 @@ nothing. `kept_now_table` is keep3's table with each redo round's table over it,
 date as bare year-month-day digits, as in `APPROVED by Shresth Rana 2026-11-04` (trailing whitespace aside). A note
 beside it is ignored; a second such line, or a line that starts as an approval in another form, is refused. The
 refusal names what to change and shows his line as it would count (`approval_problem`, from kit.gates.explain): "write
-the date bare: 2026-11-04, not <2026-11-04>". The seal's refusal without a line shows it with a bare date too, never
-the placeholder form (LESSONS 55). `confirmations` and `kept` give the seal and the checks what they read.
+the date bare: 2026-11-04, not <2026-11-04>". A line in another name is named as that person's ("an approval by Ada
+Lovelace, not by Shresth Rana: Shresth Rana's own line is needed"), and his line is never built from it. The seal's
+refusal without a line shows it with a bare date too, never the placeholder form (LESSONS 55). `confirmations` and
+`kept` give the seal and the checks what they read.
 
 ## 5. The sign-off loop and the kept list
 

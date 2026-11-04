@@ -18,6 +18,11 @@ and all, after a How-to-approve line that read `<yyyy-mm-dd>`, and the refusal h
 form is shown written out, with the approver's name and a real date, bare (`example_line`, `how_to_approve`), and a
 line that starts as an approval but is not one is told what to change (`fixes`, `explain`, `attempts`): "write the
 date bare: 2026-11-04, not <2026-11-04>". The accepted form (`APPROVAL_LINE`, `approvals`) is unchanged.
+
+Another approver's line is never rewritten into the one asked for. An approval line by Ada Lovelace, checked for Grace
+Hopper, is "an approval by Ada Lovelace, not by Grace Hopper: Grace Hopper's own line is needed", and so is a near miss
+in another name (`fixes`); neither is shown as "the line that counts" in Grace Hopper's name (`corrected`), since an
+agent that records approvals itself could append that line for someone who never wrote one.
 """
 from __future__ import annotations
 
@@ -189,15 +194,37 @@ def _accepts(line: str, name: str | None) -> bool:
     return hit is not None and (name is None or hit[0] == " ".join(name.split()))
 
 
+def _other(line: str, name: str | None) -> str | None:
+    """The name `line` gives when it is another approver's than `name`: an approval line by another name (as
+    `gate_approved` compares them), or a line that starts as one and names, plainly, someone whose name differs from
+    `name` in more than case and spacing. None without `name`, and for a near miss of `name`'s own line."""
+    if not name:
+        return None
+    want, text = " ".join(name.split()), line.rstrip()
+    hit = _approval(text)
+    if hit is not None:
+        return hit[0] if hit[0] != want else None
+    p = _parts(text)
+    if p is None or not p.who or _NAME_BAD.search(p.who):
+        return None
+    who = " ".join(p.who.split())
+    return who if who.casefold() != want.casefold() else None
+
+
 def fixes(line: str, name: str | None = None, *, today: dt.date | str | None = None) -> list[str]:
     """What to change, in plain words, so that `line` counts as an approval (by `name`, when given); [] when it does.
     Each item names its own fault, e.g. "write the date bare: 2026-11-04, not <2026-11-04>". A date the line has no
-    use for (a placeholder, or none) is shown as `today` (default: today's date)."""
+    use for (a placeholder, or none) is shown as `today` (default: today's date). Another approver's approval line
+    needs nothing changed in it, only `name`'s own line ("Grace Hopper's own line is needed"), and a near miss in
+    another name is told the same, beside its other faults."""
     text = line.rstrip()
     if _accepts(text, name):
         return []
     p = _parts(text)
     want = " ".join(name.split()) if name else None
+    other = _other(text, name)
+    if other is not None and _approval(text) is not None:
+        return [f"{want}'s own line is needed"]
     if p is None:
         return [f"start the line with APPROVED by{' ' + want if want else ''}"]
     out = []
@@ -211,6 +238,8 @@ def fixes(line: str, name: str | None = None, *, today: dt.date | str | None = N
         out.append(f"write by and the name after APPROVED{': APPROVED by ' + want if want else ''}")
     elif not p.who:
         out.append(f"write the name after by{': APPROVED by ' + want if want else ''}")
+    elif other is not None:
+        out.append(f"it names {other}, not {want}: {want}'s own line is needed")
     elif want and " ".join(p.who.split()) != want:
         out.append(f"the name is {want}, not {p.who}")
     elif _NAME_BAD.search(p.who):
@@ -237,7 +266,10 @@ def fixes(line: str, name: str | None = None, *, today: dt.date | str | None = N
 
 def corrected(line: str, name: str | None = None, *, today: dt.date | str | None = None) -> str | None:
     """The line as it would count: `name` (or the line's own name, if that one is plain), and the line's date when it
-    is a real one written in year-month-day order, else `today`. None when no name can be given."""
+    is a real one written in year-month-day order, else `today`. None when no name can be given, and when the line is
+    another approver's (`_other`): it is never rewritten into `name`'s."""
+    if _other(line, name) is not None:
+        return None
     p = _parts(line.rstrip())
     who = " ".join(name.split()) if name else (p.who if p and p.who and not _NAME_BAD.search(p.who) else None)
     if not who:
@@ -252,10 +284,15 @@ def corrected(line: str, name: str | None = None, *, today: dt.date | str | None
 def explain(line: str, name: str | None = None, *, today: dt.date | str | None = None) -> str:
     """One line for a refusal: the line, everything to change, and the line as it would count, e.g.
     "`APPROVED by Ada Lovelace <2026-12-09>` is not an approval line: write the date bare: 2026-12-09, not
-    <2026-12-09> (the line that counts: APPROVED by Ada Lovelace 2026-12-09)"."""
+    <2026-12-09> (the line that counts: APPROVED by Ada Lovelace 2026-12-09)". Another approver's approval line is
+    named as theirs, with no line shown: "`APPROVED by Ada Lovelace 2026-12-09` is an approval by Ada Lovelace, not by
+    Grace Hopper: Grace Hopper's own line is needed"."""
     todo, shown = fixes(line, name, today=today), line.rstrip()     # leading spaces kept: they may be the fault
     if not todo:
         return f"`{shown}` is an approval line"
+    hit = _approval(shown)
+    if hit is not None and _other(line, name) is not None:
+        return f"`{shown}` is an approval by {hit[0]}, not by {' '.join(name.split())}: " + "; ".join(todo)
     fixed = corrected(line, name, today=today)
     return (f"`{shown}` is not an approval line: " + "; ".join(todo)
             + (f" (the line that counts: {fixed})" if fixed else ""))

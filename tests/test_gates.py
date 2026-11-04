@@ -164,7 +164,8 @@ def test_how_to_approve_shows_a_real_bare_date_and_its_example_never_counts(tmp_
     ("  APPROVED by Ada Lovelace 2026-12-09", None,
      ["start the line at its first character: no spaces or tabs before APPROVED"]),
     ("- APPROVED by Ada Lovelace 2026-12-09", None, ["write the line plain, with nothing before APPROVED (here '-')"]),
-    ("APPROVED by Ada 2026-12-09", "Ada Lovelace", ["the name is Ada Lovelace, not Ada"]),
+    ("approved by ada lovelace 2026-12-09", "Ada Lovelace",
+     ["write APPROVED in capitals, not approved", "the name is Ada Lovelace, not ada lovelace"]),
     ("APPROVED by [Ada Lovelace] 2026-12-09", None,
      ["write the name plainly: [Ada Lovelace] holds a placeholder or markup character"]),
     ("APPROVED Ada Lovelace 2026-12-09", "Ada Lovelace",
@@ -180,6 +181,50 @@ def test_a_near_miss_is_told_what_to_change(tmp_path, line, name, fixes):
     if fixed is not None:
         assert why.endswith(f" (the line that counts: {fixed})")
         assert gate_approved(_gate(tmp_path, fixed), name), f"{fixed!r} counts"
+
+
+# Another approver's line, checked for --name: an approval by someone else is no near miss of the approver's own line,
+# and the refusal never builds the approver's line from it, since an agent that records approvals could append it.
+@pytest.mark.parametrize("line, who, name", [
+    ("APPROVED by Ada Lovelace 2026-12-09", "Ada Lovelace", "Grace Hopper"),
+    ("APPROVED by Ada 2026-12-09", "Ada", "Ada Lovelace"),
+    ("APPROVED by ada lovelace 2026-12-09", "ada lovelace", "Ada Lovelace"),
+])
+def test_another_approvers_line_is_named_as_theirs_and_never_rewritten(tmp_path, line, who, name):
+    g = _gate(tmp_path, line)
+    assert approvals(g) == [(who, "2026-12-09")] and gate_approved(g, who) and not gate_approved(g, name)
+    assert gates.fixes(line) == [] and gates.fixes(line, who) == [], "it counts, for its own approver"
+    assert gates.fixes(line, name, today=TODAY) == [f"{name}'s own line is needed"]
+    why = gates.explain(line, name, today=TODAY)
+    assert why == f"`{line}` is an approval by {who}, not by {name}: {name}'s own line is needed"
+    assert gates.corrected(line, name, today=TODAY) is None
+    number = g.read_text().splitlines().index(line) + 1
+    assert gates.attempts(g, name, today=TODAY) == [(number, line, why)]
+
+
+def test_a_near_miss_in_another_name_is_never_rewritten_into_the_approvers():
+    line = "APPROVED by Ada Lovelace <2026-12-09>"
+    assert gates.fixes(line, "Grace Hopper", today=TODAY) == [
+        "it names Ada Lovelace, not Grace Hopper: Grace Hopper's own line is needed",
+        "write the date bare: 2026-12-09, not <2026-12-09>"]
+    assert gates.corrected(line, "Grace Hopper", today=TODAY) is None
+    assert gates.explain(line, "Grace Hopper", today=TODAY) == (
+        f"`{line}` is not an approval line: it names Ada Lovelace, not Grace Hopper: Grace Hopper's own line is "
+        "needed; write the date bare: 2026-12-09, not <2026-12-09>")
+    assert gates.corrected(line, "Ada Lovelace", today=TODAY) == "APPROVED by Ada Lovelace 2026-12-09", (
+        "for its own approver the same near miss is shown as it counts")
+    assert gates.corrected(line, " ada  LOVELACE ", today=TODAY) == "APPROVED by ada LOVELACE 2026-12-09", (
+        "a name that differs only in case and spacing is the approver's own near miss")
+
+
+def test_gates_cli_names_another_approvers_line_and_shows_no_line_for_the_one_asked(tmp_path, capsys):
+    g = _gate(tmp_path, "APPROVED by Ada Lovelace 2026-12-09")
+    assert gates_main([str(g), "--name", "Grace Hopper"]) == 1
+    out = capsys.readouterr().out
+    assert "NOT approved (approval lines: Ada Lovelace 2026-12-09)" in out
+    assert ("`APPROVED by Ada Lovelace 2026-12-09` is an approval by Ada Lovelace, not by Grace Hopper: Grace Hopper's "
+            "own line is needed") in out
+    assert "is not an approval line" not in out and "line that counts" not in out and "APPROVED by Grace" not in out
 
 
 def test_the_bracketed_date_he_wrote_is_shown_bare():

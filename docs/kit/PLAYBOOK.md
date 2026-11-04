@@ -154,7 +154,8 @@ job: `srun --jobid <id> --overlap --pty bash`.
   line). The gate's How-to-approve section comes from `python -m kit.gates --how-to-approve --name
   "Ada Lovelace"`: the line written out with a real date, never a placeholder, which gets copied
   brackets and all (LESSONS 55). `python -m kit.gates gates/GATE_<n>.md --name "Ada Lovelace"` names
-  what to change in a line that starts as an approval but is not one. Praise is feedback, not approval.
+  what to change in a line that starts as an approval but is not one, and names a line in another name
+  as that person's, never rewritten into Ada Lovelace's. Praise is feedback, not approval.
 * Publishing always needs an explicit go, every time: `python -m kit.publish` is a dry run unless given
   `--go` and an approved gate file.
 * Never change a scoring rule, threshold or prompt silently: a CHANGELOG row with before/after evidence.
