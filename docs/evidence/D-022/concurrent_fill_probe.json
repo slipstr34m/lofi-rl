@@ -1,0 +1,31 @@
+{
+ "rc": 0,
+ "drafts": [
+  "d01_groove",
+  "d01_chords",
+  "redo1/d01_chords"
+ ],
+ "pick": [
+  0,
+  2,
+  1
+ ],
+ "spans": {
+  "0": {
+   "start": 0.017,
+   "end": 5.674
+  },
+  "2": {
+   "start": 0.018,
+   "end": 5.684
+  },
+  "1": {
+   "start": 5.674,
+   "end": 7.66
+  }
+ },
+ "writes": 72,
+ "distinct_written": 36,
+ "writes_while_two_renders_ran": 72,
+ "files_left": 36
+}

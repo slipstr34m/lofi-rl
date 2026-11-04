@@ -1,0 +1,1148 @@
+{
+ "identical_to_first_1x4": {
+  "1x4#1": {
+   "differs": [],
+   "same": 51
+  },
+  "1x4#2": {
+   "differs": [],
+   "same": 51
+  },
+  "2x2#1": {
+   "differs": [],
+   "same": 51
+  },
+  "2x2#2": {
+   "differs": [],
+   "same": 51
+  }
+ },
+ "machine": {
+  "cpu": "Apple M4",
+  "ncpu": 10
+ },
+ "mean_wall_by_order": {
+  "1x4": 117.92,
+  "2x2": 68.84
+ },
+ "meta": {
+  "kinds": {
+   "draft": 42,
+   "reference": 9
+  },
+  "n": 51,
+  "source": "/Users/shresthrana/csci596-project/runs/drafts-13706355/summary/renders.json",
+  "source_sha256": "5cc9054b8e2012416c29cb566baa35e2c2135ffa952abd3305ef3611511204c6"
+ },
+ "orders": [
+  {
+   "cpu_s": 140.54,
+   "cpus_busy": 1.24,
+   "jobs": 1,
+   "n": 51,
+   "ok": 51,
+   "order": "1x4",
+   "render_wall_s": {
+    "max": 2.782,
+    "median": 2.236,
+    "min": 1.771,
+    "sum": 113.04
+   },
+   "rep": 1,
+   "wall_s": 113.03,
+   "workers": 4
+  },
+  {
+   "cpu_s": 144.84,
+   "cpus_busy": 2.15,
+   "jobs": 2,
+   "n": 51,
+   "ok": 51,
+   "order": "2x2",
+   "render_wall_s": {
+    "max": 3.662,
+    "median": 2.603,
+    "min": 2.08,
+    "sum": 132.86
+   },
+   "rep": 1,
+   "wall_s": 67.39,
+   "workers": 2
+  },
+  {
+   "cpu_s": 149.15,
+   "cpus_busy": 1.21,
+   "jobs": 1,
+   "n": 51,
+   "ok": 51,
+   "order": "1x4",
+   "render_wall_s": {
+    "max": 4.572,
+    "median": 2.294,
+    "min": 1.799,
+    "sum": 122.81
+   },
+   "rep": 2,
+   "wall_s": 122.81,
+   "workers": 4
+  },
+  {
+   "cpu_s": 150.0,
+   "cpus_busy": 2.13,
+   "jobs": 2,
+   "n": 51,
+   "ok": 51,
+   "order": "2x2",
+   "render_wall_s": {
+    "max": 4.474,
+    "median": 2.691,
+    "min": 2.122,
+    "sum": 138.38
+   },
+   "rep": 2,
+   "wall_s": 70.28,
+   "workers": 2
+  }
+ ],
+ "palette": {
+  "path": "/Users/shresthrana/csci596-project/.claude/worktrees/wf_93640418-d43-1/palettes/lofi_rain_v1.yaml",
+  "sha256": "09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183"
+ },
+ "per_render": {
+  "d01_chords": {
+   "1x4#1": 1.84,
+   "1x4#2": 1.799,
+   "2x2#1": 2.299,
+   "2x2#2": 2.499
+  },
+  "d01_groove": {
+   "1x4#1": 2.167,
+   "1x4#2": 2.091,
+   "2x2#1": 2.559,
+   "2x2#2": 2.761
+  },
+  "d01_horn": {
+   "1x4#1": 1.771,
+   "1x4#2": 1.829,
+   "2x2#1": 2.112,
+   "2x2#2": 2.162
+  },
+  "d02_chords": {
+   "1x4#1": 1.944,
+   "1x4#2": 1.924,
+   "2x2#1": 2.218,
+   "2x2#2": 2.304
+  },
+  "d02_groove": {
+   "1x4#1": 2.307,
+   "1x4#2": 2.294,
+   "2x2#1": 3.662,
+   "2x2#2": 2.8
+  },
+  "d02_horn": {
+   "1x4#1": 2.024,
+   "1x4#2": 2.009,
+   "2x2#1": 3.073,
+   "2x2#2": 2.308
+  },
+  "d03_chords": {
+   "1x4#1": 2.263,
+   "1x4#2": 2.276,
+   "2x2#1": 3.074,
+   "2x2#2": 2.631
+  },
+  "d03_groove": {
+   "1x4#1": 2.296,
+   "1x4#2": 2.275,
+   "2x2#1": 3.018,
+   "2x2#2": 2.691
+  },
+  "d03_horn": {
+   "1x4#1": 2.121,
+   "1x4#2": 2.469,
+   "2x2#1": 2.692,
+   "2x2#2": 2.774
+  },
+  "d04_chords": {
+   "1x4#1": 2.342,
+   "1x4#2": 2.363,
+   "2x2#1": 2.85,
+   "2x2#2": 2.961
+  },
+  "d04_groove": {
+   "1x4#1": 2.259,
+   "1x4#2": 2.25,
+   "2x2#1": 2.676,
+   "2x2#2": 2.678
+  },
+  "d04_horn": {
+   "1x4#1": 2.114,
+   "1x4#2": 2.135,
+   "2x2#1": 2.504,
+   "2x2#2": 2.499
+  },
+  "d05_chords": {
+   "1x4#1": 1.996,
+   "1x4#2": 1.977,
+   "2x2#1": 2.416,
+   "2x2#2": 2.372
+  },
+  "d05_groove": {
+   "1x4#1": 2.474,
+   "1x4#2": 2.411,
+   "2x2#1": 2.699,
+   "2x2#2": 2.688
+  },
+  "d05_horn": {
+   "1x4#1": 2.091,
+   "1x4#2": 2.092,
+   "2x2#1": 2.366,
+   "2x2#2": 2.392
+  },
+  "d06_chords": {
+   "1x4#1": 1.973,
+   "1x4#2": 2.146,
+   "2x2#1": 2.243,
+   "2x2#2": 2.178
+  },
+  "d06_groove": {
+   "1x4#1": 2.204,
+   "1x4#2": 2.224,
+   "2x2#1": 2.884,
+   "2x2#2": 2.667
+  },
+  "d06_horn": {
+   "1x4#1": 1.939,
+   "1x4#2": 1.923,
+   "2x2#1": 2.293,
+   "2x2#2": 2.161
+  },
+  "d07_chords": {
+   "1x4#1": 2.236,
+   "1x4#2": 2.232,
+   "2x2#1": 2.792,
+   "2x2#2": 2.633
+  },
+  "d07_groove": {
+   "1x4#1": 2.317,
+   "1x4#2": 2.321,
+   "2x2#1": 2.766,
+   "2x2#2": 2.657
+  },
+  "d07_horn": {
+   "1x4#1": 2.339,
+   "1x4#2": 2.312,
+   "2x2#1": 2.682,
+   "2x2#2": 2.703
+  },
+  "d08_chords": {
+   "1x4#1": 2.565,
+   "1x4#2": 2.592,
+   "2x2#1": 2.826,
+   "2x2#2": 2.895
+  },
+  "d08_groove": {
+   "1x4#1": 2.575,
+   "1x4#2": 2.702,
+   "2x2#1": 3.106,
+   "2x2#2": 2.795
+  },
+  "d08_horn": {
+   "1x4#1": 2.606,
+   "1x4#2": 2.999,
+   "2x2#1": 2.912,
+   "2x2#2": 2.761
+  },
+  "d09_chords": {
+   "1x4#1": 2.597,
+   "1x4#2": 2.756,
+   "2x2#1": 2.858,
+   "2x2#2": 2.843
+  },
+  "d09_groove": {
+   "1x4#1": 2.462,
+   "1x4#2": 2.557,
+   "2x2#1": 2.825,
+   "2x2#2": 2.779
+  },
+  "d09_horn": {
+   "1x4#1": 2.566,
+   "1x4#2": 2.895,
+   "2x2#1": 3.002,
+   "2x2#2": 3.137
+  },
+  "d10_chords": {
+   "1x4#1": 2.253,
+   "1x4#2": 2.908,
+   "2x2#1": 2.529,
+   "2x2#2": 2.464
+  },
+  "d10_groove": {
+   "1x4#1": 2.485,
+   "1x4#2": 3.494,
+   "2x2#1": 2.865,
+   "2x2#2": 2.978
+  },
+  "d10_horn": {
+   "1x4#1": 2.782,
+   "1x4#2": 2.896,
+   "2x2#1": 3.142,
+   "2x2#2": 3.271
+  },
+  "redo1_d01_chords": {
+   "1x4#1": 2.0,
+   "1x4#2": 2.046,
+   "2x2#1": 2.212,
+   "2x2#2": 2.342
+  },
+  "redo1_d01_groove": {
+   "1x4#1": 2.004,
+   "1x4#2": 2.035,
+   "2x2#1": 2.189,
+   "2x2#2": 2.38
+  },
+  "redo1_d01_horn": {
+   "1x4#1": 2.184,
+   "1x4#2": 2.531,
+   "2x2#1": 2.425,
+   "2x2#2": 2.694
+  },
+  "redo1_d06_chords": {
+   "1x4#1": 1.88,
+   "1x4#2": 2.203,
+   "2x2#1": 2.101,
+   "2x2#2": 2.372
+  },
+  "redo1_d06_groove": {
+   "1x4#1": 1.948,
+   "1x4#2": 2.069,
+   "2x2#1": 2.203,
+   "2x2#2": 2.868
+  },
+  "redo1_d06_horn": {
+   "1x4#1": 1.817,
+   "1x4#2": 1.889,
+   "2x2#1": 2.136,
+   "2x2#2": 2.783
+  },
+  "redo1_d07_chords": {
+   "1x4#1": 2.343,
+   "1x4#2": 2.917,
+   "2x2#1": 2.587,
+   "2x2#2": 4.474
+  },
+  "redo1_d07_groove": {
+   "1x4#1": 2.193,
+   "1x4#2": 3.086,
+   "2x2#1": 2.498,
+   "2x2#2": 4.077
+  },
+  "redo1_d07_horn": {
+   "1x4#1": 2.34,
+   "1x4#2": 2.395,
+   "2x2#1": 2.606,
+   "2x2#2": 2.9
+  },
+  "redo1_d10_chords": {
+   "1x4#1": 2.411,
+   "1x4#2": 2.578,
+   "2x2#1": 2.844,
+   "2x2#2": 3.137
+  },
+  "redo1_d10_groove": {
+   "1x4#1": 2.505,
+   "1x4#2": 2.791,
+   "2x2#1": 2.935,
+   "2x2#2": 2.853
+  },
+  "redo1_d10_horn": {
+   "1x4#1": 2.162,
+   "1x4#2": 2.283,
+   "2x2#1": 2.459,
+   "2x2#2": 2.497
+  },
+  "ref_example": {
+   "1x4#1": 2.337,
+   "1x4#2": 2.407,
+   "2x2#1": 2.69,
+   "2x2#2": 3.113
+  },
+  "ref_l1_melancholy_low": {
+   "1x4#1": 2.016,
+   "1x4#2": 2.033,
+   "2x2#1": 2.275,
+   "2x2#2": 2.666
+  },
+  "ref_l2_melancholy_mid": {
+   "1x4#1": 1.878,
+   "1x4#2": 1.964,
+   "2x2#1": 2.179,
+   "2x2#2": 2.376
+  },
+  "ref_l3_melancholy_high": {
+   "1x4#1": 2.217,
+   "1x4#2": 2.705,
+   "2x2#1": 2.533,
+   "2x2#2": 2.641
+  },
+  "ref_l4_wistful_low": {
+   "1x4#1": 1.941,
+   "1x4#2": 2.166,
+   "2x2#1": 2.168,
+   "2x2#2": 2.298
+  },
+  "ref_l6_wistful_high": {
+   "1x4#1": 2.397,
+   "1x4#2": 4.572,
+   "2x2#1": 2.688,
+   "2x2#2": 2.842
+  },
+  "ref_l7_hopeful_low": {
+   "1x4#1": 2.268,
+   "1x4#2": 2.548,
+   "2x2#1": 2.509,
+   "2x2#2": 2.766
+  },
+  "ref_l8_hopeful_mid": {
+   "1x4#1": 1.854,
+   "1x4#2": 1.991,
+   "2x2#1": 2.08,
+   "2x2#2": 2.122
+  },
+  "ref_l9_hopeful_high": {
+   "1x4#1": 2.433,
+   "1x4#2": 2.454,
+   "2x2#1": 2.603,
+   "2x2#2": 2.734
+  }
+ },
+ "rows": [
+  {
+   "brief": {
+    "bpm": 81,
+    "energy": "low",
+    "mood": "melancholy",
+    "tonic": 3
+   },
+   "cluster_pcm_sha256": "aea0f40f0bb1378611772495b12f9470061f336d2f31c3838a57a61d5c6508d2",
+   "cluster_render_s": 3.9,
+   "file": "drafts/v1/d01_chords.ls",
+   "finish_reason": "stop",
+   "i": 0,
+   "rid": "d01_chords"
+  },
+  {
+   "brief": {
+    "bpm": 81,
+    "energy": "low",
+    "mood": "melancholy",
+    "tonic": 3
+   },
+   "cluster_pcm_sha256": "961accf6e2a3939482b65c1dfe29334e31500d6e0f7227a82036bc2e46960b20",
+   "cluster_render_s": 5.95,
+   "file": "drafts/v1/d01_groove.ls",
+   "finish_reason": "stop",
+   "i": 1,
+   "rid": "d01_groove"
+  },
+  {
+   "brief": {
+    "bpm": 81,
+    "energy": "low",
+    "mood": "melancholy",
+    "tonic": 3
+   },
+   "cluster_pcm_sha256": "b66e9d98786cbc7a577ad9260d9e0483d1193febebfc19fdf415d26996ea8f09",
+   "cluster_render_s": 3.44,
+   "file": "drafts/v1/d01_horn.ls",
+   "finish_reason": "stop",
+   "i": 2,
+   "rid": "d01_horn"
+  },
+  {
+   "brief": {
+    "bpm": 85,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 10
+   },
+   "cluster_pcm_sha256": "4234f141c0074072f6458b5a7869a9f4a81815799207bb7eaef6b7e0d0668bd3",
+   "cluster_render_s": 13.03,
+   "file": "drafts/v1/d02_chords.ls",
+   "finish_reason": "stop",
+   "i": 3,
+   "rid": "d02_chords"
+  },
+  {
+   "brief": {
+    "bpm": 85,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 10
+   },
+   "cluster_pcm_sha256": "a75735661f9f1d5e12ee193755858f3c13644d8371d400425925e51db64c7ce6",
+   "cluster_render_s": 8.38,
+   "file": "drafts/v1/d02_groove.ls",
+   "finish_reason": "stop",
+   "i": 4,
+   "rid": "d02_groove"
+  },
+  {
+   "brief": {
+    "bpm": 85,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 10
+   },
+   "cluster_pcm_sha256": "60d1d25f6ac7b0086e7c5358317075f36b808fcc968f56d45156568879fc3a75",
+   "cluster_render_s": 7.48,
+   "file": "drafts/v1/d02_horn.ls",
+   "finish_reason": "stop",
+   "i": 5,
+   "rid": "d02_horn"
+  },
+  {
+   "brief": {
+    "bpm": 71,
+    "energy": "low",
+    "mood": "hopeful",
+    "tonic": 1
+   },
+   "cluster_pcm_sha256": "8b539855dc5fb01b4956a0844ad1645afa7b4a5b5941af7621098f5de46deea1",
+   "cluster_render_s": 8.16,
+   "file": "drafts/v1/d03_chords.ls",
+   "finish_reason": "stop",
+   "i": 6,
+   "rid": "d03_chords"
+  },
+  {
+   "brief": {
+    "bpm": 71,
+    "energy": "low",
+    "mood": "hopeful",
+    "tonic": 1
+   },
+   "cluster_pcm_sha256": "8bdaa91df06e0781884b362dd1e5d1fe10c2b7c7d9abd201d3bcd59420ca35e6",
+   "cluster_render_s": 5.2,
+   "file": "drafts/v1/d03_groove.ls",
+   "finish_reason": "stop",
+   "i": 7,
+   "rid": "d03_groove"
+  },
+  {
+   "brief": {
+    "bpm": 71,
+    "energy": "low",
+    "mood": "hopeful",
+    "tonic": 1
+   },
+   "cluster_pcm_sha256": "72070503fd0d98b44cdc07c065b19194a9d77a718846d0206cb106135ddeffb3",
+   "cluster_render_s": 16.98,
+   "file": "drafts/v1/d03_horn.ls",
+   "finish_reason": "stop",
+   "i": 8,
+   "rid": "d03_horn"
+  },
+  {
+   "brief": {
+    "bpm": 89,
+    "energy": "mid",
+    "mood": "melancholy",
+    "tonic": 11
+   },
+   "cluster_pcm_sha256": "0215c29146d0b49d9ffaa168aab7294823d40456a4138338eb98c5f0d3cc4d1a",
+   "cluster_render_s": 11.28,
+   "file": "drafts/v1/d04_chords.ls",
+   "finish_reason": "stop",
+   "i": 9,
+   "rid": "d04_chords"
+  },
+  {
+   "brief": {
+    "bpm": 89,
+    "energy": "mid",
+    "mood": "melancholy",
+    "tonic": 11
+   },
+   "cluster_pcm_sha256": "b9fab66147e213f88bb93aff85b38690a362b26b847eb74ebf0e7d6085835410",
+   "cluster_render_s": 11.59,
+   "file": "drafts/v1/d04_groove.ls",
+   "finish_reason": "stop",
+   "i": 10,
+   "rid": "d04_groove"
+  },
+  {
+   "brief": {
+    "bpm": 89,
+    "energy": "mid",
+    "mood": "melancholy",
+    "tonic": 11
+   },
+   "cluster_pcm_sha256": "72677b262a2892e2b140f7edd32dfc5825b18f49aaddd9722df1328bcaf7dc14",
+   "cluster_render_s": 13.03,
+   "file": "drafts/v1/d04_horn.ls",
+   "finish_reason": "stop",
+   "i": 11,
+   "rid": "d04_horn"
+  },
+  {
+   "brief": {
+    "bpm": 82,
+    "energy": "mid",
+    "mood": "wistful",
+    "tonic": 9
+   },
+   "cluster_pcm_sha256": "384dabf2f15adce8b1ad37af0a325f3ac5a9a74034ae44ef878ce736069b0d89",
+   "cluster_render_s": 3.23,
+   "file": "drafts/v1/d05_chords.ls",
+   "finish_reason": "stop",
+   "i": 12,
+   "rid": "d05_chords"
+  },
+  {
+   "brief": {
+    "bpm": 82,
+    "energy": "mid",
+    "mood": "wistful",
+    "tonic": 9
+   },
+   "cluster_pcm_sha256": "5d38a1bc1c18fdcfd6cb5a02c668530d38a521b267e14616a4a54271ba4b55cc",
+   "cluster_render_s": 4.97,
+   "file": "drafts/v1/d05_groove.ls",
+   "finish_reason": "stop",
+   "i": 13,
+   "rid": "d05_groove"
+  },
+  {
+   "brief": {
+    "bpm": 82,
+    "energy": "mid",
+    "mood": "wistful",
+    "tonic": 9
+   },
+   "cluster_pcm_sha256": "c91443c1496728daddee5e093a4516682fa896b4c1d2e85e59dfe4b008c25237",
+   "cluster_render_s": 3.49,
+   "file": "drafts/v1/d05_horn.ls",
+   "finish_reason": "stop",
+   "i": 14,
+   "rid": "d05_horn"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "mid",
+    "mood": "hopeful",
+    "tonic": 4
+   },
+   "cluster_pcm_sha256": "a3cfc0b7fcd261e410f4c891ccd6c944e317551cd2588fc0e88b18d2a90fded8",
+   "cluster_render_s": 4.35,
+   "file": "drafts/v1/d06_chords.ls",
+   "finish_reason": "stop",
+   "i": 15,
+   "rid": "d06_chords"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "mid",
+    "mood": "hopeful",
+    "tonic": 4
+   },
+   "cluster_pcm_sha256": "b55a3b1ee0cfca59b521b35e51e01f48bdcdb6dee55cf6a24f60e1c0029dc846",
+   "cluster_render_s": 6.09,
+   "file": "drafts/v1/d06_groove.ls",
+   "finish_reason": "stop",
+   "i": 16,
+   "rid": "d06_groove"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "mid",
+    "mood": "hopeful",
+    "tonic": 4
+   },
+   "cluster_pcm_sha256": "7ccd209151ba8774839edf613ffa32084346e6e3a6760a16ca3e2157ff3597d9",
+   "cluster_render_s": 12.58,
+   "file": "drafts/v1/d06_horn.ls",
+   "finish_reason": "stop",
+   "i": 17,
+   "rid": "d06_horn"
+  },
+  {
+   "brief": {
+    "bpm": 86,
+    "energy": "high",
+    "mood": "melancholy",
+    "tonic": 8
+   },
+   "cluster_pcm_sha256": "8183eb24aed483a682a1362984a256dee5e9c9810b206176695ceb3aa6fd8ec8",
+   "cluster_render_s": 17.39,
+   "file": "drafts/v1/d07_chords.ls",
+   "finish_reason": "stop",
+   "i": 18,
+   "rid": "d07_chords"
+  },
+  {
+   "brief": {
+    "bpm": 86,
+    "energy": "high",
+    "mood": "melancholy",
+    "tonic": 8
+   },
+   "cluster_pcm_sha256": "65acebf8e521453eb75c5fb8f02302995bf34c931511045922c2b7310ee8e2aa",
+   "cluster_render_s": 4.72,
+   "file": "drafts/v1/d07_groove.ls",
+   "finish_reason": "stop",
+   "i": 19,
+   "rid": "d07_groove"
+  },
+  {
+   "brief": {
+    "bpm": 86,
+    "energy": "high",
+    "mood": "melancholy",
+    "tonic": 8
+   },
+   "cluster_pcm_sha256": "48038474fa14e43a013792b070f1508a6b301e75469a4c72646e7d2e4b59e9f5",
+   "cluster_render_s": 4.08,
+   "file": "drafts/v1/d07_horn.ls",
+   "finish_reason": "stop",
+   "i": 20,
+   "rid": "d07_horn"
+  },
+  {
+   "brief": {
+    "bpm": 77,
+    "energy": "high",
+    "mood": "wistful",
+    "tonic": 2
+   },
+   "cluster_pcm_sha256": "31a7d2dac3346878728f9a78e1890ed534d5c4a3fae14e1e835e4f5486faeb1e",
+   "cluster_render_s": 8.99,
+   "file": "drafts/v1/d08_chords.ls",
+   "finish_reason": "stop",
+   "i": 21,
+   "rid": "d08_chords"
+  },
+  {
+   "brief": {
+    "bpm": 77,
+    "energy": "high",
+    "mood": "wistful",
+    "tonic": 2
+   },
+   "cluster_pcm_sha256": "a3f24af0e669f354f3749cca0c15a542c38c6c41c5957a276a362890102a3d83",
+   "cluster_render_s": 7.85,
+   "file": "drafts/v1/d08_groove.ls",
+   "finish_reason": "stop",
+   "i": 22,
+   "rid": "d08_groove"
+  },
+  {
+   "brief": {
+    "bpm": 77,
+    "energy": "high",
+    "mood": "wistful",
+    "tonic": 2
+   },
+   "cluster_pcm_sha256": "9ee7613fe9c657c4776b1dd5e780f26aed75cf555717166630edaeb6bc4b64de",
+   "cluster_render_s": 7.05,
+   "file": "drafts/v1/d08_horn.ls",
+   "finish_reason": "stop",
+   "i": 23,
+   "rid": "d08_horn"
+  },
+  {
+   "brief": {
+    "bpm": 76,
+    "energy": "high",
+    "mood": "hopeful",
+    "tonic": 6
+   },
+   "cluster_pcm_sha256": "ec8faa32d04c271d1ec67e365db0a51cc562ee1b94f9166d4f09b7dbedd981b2",
+   "cluster_render_s": 6.62,
+   "file": "drafts/v1/d09_chords.ls",
+   "finish_reason": "stop",
+   "i": 24,
+   "rid": "d09_chords"
+  },
+  {
+   "brief": {
+    "bpm": 76,
+    "energy": "high",
+    "mood": "hopeful",
+    "tonic": 6
+   },
+   "cluster_pcm_sha256": "fd79f5a77c132f5d747afbaf8b25136dac2217f2bf86d3f485a5dafc17533a33",
+   "cluster_render_s": 3.88,
+   "file": "drafts/v1/d09_groove.ls",
+   "finish_reason": "stop",
+   "i": 25,
+   "rid": "d09_groove"
+  },
+  {
+   "brief": {
+    "bpm": 76,
+    "energy": "high",
+    "mood": "hopeful",
+    "tonic": 6
+   },
+   "cluster_pcm_sha256": "04a2eee63ff5e5fbe2b26bb89e8c0754fa6088aaaf003ec8c619ef56a88c0d16",
+   "cluster_render_s": 14.56,
+   "file": "drafts/v1/d09_horn.ls",
+   "finish_reason": "stop",
+   "i": 26,
+   "rid": "d09_horn"
+  },
+  {
+   "brief": {
+    "bpm": 66,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 0
+   },
+   "cluster_pcm_sha256": "464132fff0d273ca05a766119b9829ca653158aea55378183246a61f694388d0",
+   "cluster_render_s": 7.52,
+   "file": "drafts/v1/d10_chords.ls",
+   "finish_reason": "stop",
+   "i": 27,
+   "rid": "d10_chords"
+  },
+  {
+   "brief": {
+    "bpm": 66,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 0
+   },
+   "cluster_pcm_sha256": "d56d3933f6d69a46662097a74422fb62d54bf88de3b2125e4e7801b75c81fc9b",
+   "cluster_render_s": 9.18,
+   "file": "drafts/v1/d10_groove.ls",
+   "finish_reason": "stop",
+   "i": 28,
+   "rid": "d10_groove"
+  },
+  {
+   "brief": {
+    "bpm": 66,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 0
+   },
+   "cluster_pcm_sha256": "dfaa51b794aa9a8a9f813d1641180d242326dc08b5ab081b6bc51f35abbc44da",
+   "cluster_render_s": 5.98,
+   "file": "drafts/v1/d10_horn.ls",
+   "finish_reason": "stop",
+   "i": 29,
+   "rid": "d10_horn"
+  },
+  {
+   "brief": {
+    "bpm": 81,
+    "energy": "low",
+    "mood": "melancholy",
+    "tonic": 3
+   },
+   "cluster_pcm_sha256": "9f919a5c3e5f91cf522d6f15df95f8655fea47171475d208a6d2da551e069d90",
+   "cluster_render_s": 9.7,
+   "file": "drafts/v1/redo1/d01_chords.ls",
+   "finish_reason": "stop",
+   "i": 30,
+   "rid": "redo1_d01_chords"
+  },
+  {
+   "brief": {
+    "bpm": 81,
+    "energy": "low",
+    "mood": "melancholy",
+    "tonic": 3
+   },
+   "cluster_pcm_sha256": "8e8d990788453c14071fb3024bf2a5c1e17987234a766d62f6353b2125ba0be6",
+   "cluster_render_s": 25.89,
+   "file": "drafts/v1/redo1/d01_groove.ls",
+   "finish_reason": "stop",
+   "i": 31,
+   "rid": "redo1_d01_groove"
+  },
+  {
+   "brief": {
+    "bpm": 81,
+    "energy": "low",
+    "mood": "melancholy",
+    "tonic": 3
+   },
+   "cluster_pcm_sha256": "f5169ddf13093d9156c9b077e5d9b403b528f995f120781d5f5b8fe1cc91ec76",
+   "cluster_render_s": 15.46,
+   "file": "drafts/v1/redo1/d01_horn.ls",
+   "finish_reason": "stop",
+   "i": 32,
+   "rid": "redo1_d01_horn"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "mid",
+    "mood": "hopeful",
+    "tonic": 4
+   },
+   "cluster_pcm_sha256": "f68dddad3991bfb6bbe9a7d9a5e4990586124e3ba427c98d7acc5eb44f3a11bf",
+   "cluster_render_s": 13.59,
+   "file": "drafts/v1/redo1/d06_chords.ls",
+   "finish_reason": "stop",
+   "i": 33,
+   "rid": "redo1_d06_chords"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "mid",
+    "mood": "hopeful",
+    "tonic": 4
+   },
+   "cluster_pcm_sha256": "dca0f1f7b21de8deed9c99c0b9dde170bb2dc29bcee66325b23d18fbde356f30",
+   "cluster_render_s": 4.59,
+   "file": "drafts/v1/redo1/d06_groove.ls",
+   "finish_reason": "stop",
+   "i": 34,
+   "rid": "redo1_d06_groove"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "mid",
+    "mood": "hopeful",
+    "tonic": 4
+   },
+   "cluster_pcm_sha256": "8d5dbbf40daa1d39eefefa9bce80bbea25c975bf62f79247cae5e537580331d3",
+   "cluster_render_s": 3.0,
+   "file": "drafts/v1/redo1/d06_horn.ls",
+   "finish_reason": "stop",
+   "i": 35,
+   "rid": "redo1_d06_horn"
+  },
+  {
+   "brief": {
+    "bpm": 86,
+    "energy": "high",
+    "mood": "melancholy",
+    "tonic": 8
+   },
+   "cluster_pcm_sha256": "aac6313e95fc561f51f20eaa9d7af90893e1605932d7de935834644f86a3bf30",
+   "cluster_render_s": 5.83,
+   "file": "drafts/v1/redo1/d07_chords.ls",
+   "finish_reason": "stop",
+   "i": 36,
+   "rid": "redo1_d07_chords"
+  },
+  {
+   "brief": {
+    "bpm": 86,
+    "energy": "high",
+    "mood": "melancholy",
+    "tonic": 8
+   },
+   "cluster_pcm_sha256": "63a19424a5d48f17b757324984ce22fabae7d5a6e34edc4389a6607aec1b42e6",
+   "cluster_render_s": 4.66,
+   "file": "drafts/v1/redo1/d07_groove.ls",
+   "finish_reason": "stop",
+   "i": 37,
+   "rid": "redo1_d07_groove"
+  },
+  {
+   "brief": {
+    "bpm": 86,
+    "energy": "high",
+    "mood": "melancholy",
+    "tonic": 8
+   },
+   "cluster_pcm_sha256": "67a436eb23c3ccb0dd969714f2ec573ddb8e08b0b118f713fd40f964160f1db8",
+   "cluster_render_s": 6.27,
+   "file": "drafts/v1/redo1/d07_horn.ls",
+   "finish_reason": "stop",
+   "i": 38,
+   "rid": "redo1_d07_horn"
+  },
+  {
+   "brief": {
+    "bpm": 66,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 0
+   },
+   "cluster_pcm_sha256": "9e9ff597ec2181aeb212081868d62394dc18d0dcfe16763f2845126775a22c0a",
+   "cluster_render_s": 13.03,
+   "file": "drafts/v1/redo1/d10_chords.ls",
+   "finish_reason": "stop",
+   "i": 39,
+   "rid": "redo1_d10_chords"
+  },
+  {
+   "brief": {
+    "bpm": 66,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 0
+   },
+   "cluster_pcm_sha256": "2d8be3b0820d20fb1d2419644e400909d1996f88c264066ac3603fc7a283cd89",
+   "cluster_render_s": 4.28,
+   "file": "drafts/v1/redo1/d10_groove.ls",
+   "finish_reason": "stop",
+   "i": 40,
+   "rid": "redo1_d10_groove"
+  },
+  {
+   "brief": {
+    "bpm": 66,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 0
+   },
+   "cluster_pcm_sha256": "99c954ae2b1529d4cf9679a4ad68dd152814916e05c5ab70e6abf3640d87de30",
+   "cluster_render_s": 5.01,
+   "file": "drafts/v1/redo1/d10_horn.ls",
+   "finish_reason": "stop",
+   "i": 41,
+   "rid": "redo1_d10_horn"
+  },
+  {
+   "brief": {
+    "bpm": 82,
+    "energy": "mid",
+    "mood": "wistful",
+    "tonic": 9
+   },
+   "cluster_pcm_sha256": "75fbaaa462cff7ca85bb6cc1ded069f7ef0f3d90d82d9f5463a6a0912e9f62de",
+   "cluster_render_s": 10.15,
+   "file": "prompt_v2:example",
+   "finish_reason": "stop",
+   "i": 42,
+   "rid": "ref_example"
+  },
+  {
+   "brief": {
+    "bpm": 81,
+    "energy": "low",
+    "mood": "melancholy",
+    "tonic": 3
+   },
+   "cluster_pcm_sha256": "bfb468369c9cd86bf3a3132a2bae17d971f6c1bbdbd340e5348a4abe64d1049b",
+   "cluster_render_s": 3.63,
+   "file": "prompt_v2:l1_melancholy_low",
+   "finish_reason": "stop",
+   "i": 43,
+   "rid": "ref_l1_melancholy_low"
+  },
+  {
+   "brief": {
+    "bpm": 89,
+    "energy": "mid",
+    "mood": "melancholy",
+    "tonic": 11
+   },
+   "cluster_pcm_sha256": "b2adb46e6ced65df0c60f4bc06c7956d42b027874e45f887dcb071aa60c9fdac",
+   "cluster_render_s": 2.9,
+   "file": "prompt_v2:l2_melancholy_mid",
+   "finish_reason": "stop",
+   "i": 44,
+   "rid": "ref_l2_melancholy_mid"
+  },
+  {
+   "brief": {
+    "bpm": 86,
+    "energy": "high",
+    "mood": "melancholy",
+    "tonic": 8
+   },
+   "cluster_pcm_sha256": "b8e0ec8da56194df15765081a18673fa142b9e8f5484e5bbb86cd01099b563f5",
+   "cluster_render_s": 10.51,
+   "file": "prompt_v2:l3_melancholy_high",
+   "finish_reason": "stop",
+   "i": 45,
+   "rid": "ref_l3_melancholy_high"
+  },
+  {
+   "brief": {
+    "bpm": 85,
+    "energy": "low",
+    "mood": "wistful",
+    "tonic": 10
+   },
+   "cluster_pcm_sha256": "47af8d3ae164a6ef5bb471a8f793a86a655a3731600bd4a63edd9c8ec95e82e0",
+   "cluster_render_s": 9.25,
+   "file": "prompt_v2:l4_wistful_low",
+   "finish_reason": "stop",
+   "i": 46,
+   "rid": "ref_l4_wistful_low"
+  },
+  {
+   "brief": {
+    "bpm": 77,
+    "energy": "high",
+    "mood": "wistful",
+    "tonic": 2
+   },
+   "cluster_pcm_sha256": "56b6b86d3634ea256c96963e7e5355ac97114505f049dd5fff754d8cd86f5e1f",
+   "cluster_render_s": 6.09,
+   "file": "prompt_v2:l6_wistful_high",
+   "finish_reason": "stop",
+   "i": 47,
+   "rid": "ref_l6_wistful_high"
+  },
+  {
+   "brief": {
+    "bpm": 71,
+    "energy": "low",
+    "mood": "hopeful",
+    "tonic": 1
+   },
+   "cluster_pcm_sha256": "f5f99e356d7195a8601b8eeccadc980fc1c55847827728bfabed3f78bb841034",
+   "cluster_render_s": 16.91,
+   "file": "prompt_v2:l7_hopeful_low",
+   "finish_reason": "stop",
+   "i": 48,
+   "rid": "ref_l7_hopeful_low"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "mid",
+    "mood": "hopeful",
+    "tonic": 4
+   },
+   "cluster_pcm_sha256": "576b2db9a100d9de44935e2b3bacd5130bb9a31baa5d4dd12f7f5a3b19d55835",
+   "cluster_render_s": 4.98,
+   "file": "prompt_v2:l8_hopeful_mid",
+   "finish_reason": "stop",
+   "i": 49,
+   "rid": "ref_l8_hopeful_mid"
+  },
+  {
+   "brief": {
+    "bpm": 76,
+    "energy": "high",
+    "mood": "hopeful",
+    "tonic": 6
+   },
+   "cluster_pcm_sha256": "9577ea8e35036b7a8c10c885b61db55714509741b2d57e5637339cf342bffe85",
+   "cluster_render_s": 9.34,
+   "file": "prompt_v2:l9_hopeful_high",
+   "finish_reason": "stop",
+   "i": 50,
+   "rid": "ref_l9_hopeful_high"
+  }
+ ],
+ "set": "drafts",
+ "speedup_2x2": 1.713,
+ "wall_by_order": {
+  "1x4": [
+   113.03,
+   122.81
+  ],
+  "2x2": [
+   67.39,
+   70.28
+  ]
+ },
+ "warm_s": 5.62
+}

@@ -1,0 +1,29 @@
+{
+ "one": {
+  "run": "/private/tmp/claude-501/-Users-shresthrana-csci596-project/1fee16e5-4162-472d-ab8f-ddc709802fb2/scratchpad/s5/armb/run1",
+  "jobs": 1,
+  "workers": 4,
+  "n": 50,
+  "render_s_sum": 116.92
+ },
+ "two": {
+  "run": "/private/tmp/claude-501/-Users-shresthrana-csci596-project/1fee16e5-4162-472d-ab8f-ddc709802fb2/scratchpad/s5/armb/run",
+  "jobs": 2,
+  "workers": 2,
+  "n": 50,
+  "render_s_sum": 132.01
+ },
+ "same_order": true,
+ "clips_differ": [],
+ "clips_same": 50,
+ "palette": [
+  {
+   "id": "lofi_rain_v1",
+   "sha256": "09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183"
+  },
+  {
+   "id": "lofi_rain_v1",
+   "sha256": "09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183"
+  }
+ ]
+}

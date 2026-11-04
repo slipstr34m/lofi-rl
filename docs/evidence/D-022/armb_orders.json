@@ -1,0 +1,1340 @@
+{
+ "identical_to_first_1x4": {
+  "1x4#1": {
+   "differs": [],
+   "same": 50
+  },
+  "1x4#2": {
+   "differs": [],
+   "same": 50
+  },
+  "2x2#1": {
+   "differs": [],
+   "same": 50
+  },
+  "2x2#2": {
+   "differs": [],
+   "same": 50
+  }
+ },
+ "machine": {
+  "cpu": "Apple M4",
+  "ncpu": 10
+ },
+ "mean_wall_by_order": {
+  "1x4": 115.37,
+  "2x2": 65.37
+ },
+ "meta": {
+  "completions_sha256": "a24be3711a408764a63f3e6f8b56bd411065bbf533579cde1d7ea1dbb4d21e6a",
+  "failures": {
+   "G4": 188
+  },
+  "keys_kits": [
+   [
+    "rhodes",
+    "jazz"
+   ]
+  ],
+  "pass_count": 312,
+  "pass_not_copy": 276,
+  "passing_not_copy": 276,
+  "pick": [
+   452,
+   385,
+   54,
+   475,
+   368,
+   121,
+   60,
+   84,
+   439,
+   242,
+   251,
+   472,
+   274,
+   407,
+   18,
+   422,
+   457,
+   31,
+   295,
+   462,
+   253,
+   236,
+   468,
+   90,
+   245,
+   169,
+   329,
+   3,
+   158,
+   69,
+   110,
+   123,
+   438,
+   491,
+   271,
+   125,
+   214,
+   87,
+   446,
+   454,
+   322,
+   252,
+   45,
+   393,
+   495,
+   389,
+   264,
+   355,
+   174,
+   299
+  ],
+  "rescored_with": "/Users/shresthrana/csci596-project/.claude/worktrees/wf_93640418-d43-1/palettes/lofi_rain_v1.yaml",
+  "score_headline": "JUNK n=500/500 pass 312 = 62.4% [58.1, 66.5] | near-copies 54 (pass, not a copy: 276) | G4 188 | truncated 0 | in the regex's language: not counted (the regex is not the one generate recorded) | quasi-copies 211 (pass, not a quasi-copy: 183) | prompt v2",
+  "seed": 2026,
+  "source": "/Users/shresthrana/csci596-project/runs/junk-13640325/summary"
+ },
+ "orders": [
+  {
+   "cpu_s": 141.76,
+   "cpus_busy": 1.22,
+   "jobs": 1,
+   "n": 50,
+   "ok": 50,
+   "order": "1x4",
+   "render_wall_s": {
+    "max": 3.077,
+    "median": 2.283,
+    "min": 1.757,
+    "sum": 115.83
+   },
+   "rep": 1,
+   "wall_s": 115.83,
+   "workers": 4
+  },
+  {
+   "cpu_s": 143.58,
+   "cpus_busy": 2.15,
+   "jobs": 2,
+   "n": 50,
+   "ok": 50,
+   "order": "2x2",
+   "render_wall_s": {
+    "max": 3.716,
+    "median": 2.637,
+    "min": 2.025,
+    "sum": 133.52
+   },
+   "rep": 1,
+   "wall_s": 66.89,
+   "workers": 2
+  },
+  {
+   "cpu_s": 140.48,
+   "cpus_busy": 1.22,
+   "jobs": 1,
+   "n": 50,
+   "ok": 50,
+   "order": "1x4",
+   "render_wall_s": {
+    "max": 3.32,
+    "median": 2.287,
+    "min": 1.709,
+    "sum": 114.91
+   },
+   "rep": 2,
+   "wall_s": 114.91,
+   "workers": 4
+  },
+  {
+   "cpu_s": 138.0,
+   "cpus_busy": 2.16,
+   "jobs": 2,
+   "n": 50,
+   "ok": 50,
+   "order": "2x2",
+   "render_wall_s": {
+    "max": 3.601,
+    "median": 2.505,
+    "min": 1.889,
+    "sum": 127.41
+   },
+   "rep": 2,
+   "wall_s": 63.85,
+   "workers": 2
+  }
+ ],
+ "palette": {
+  "path": "/Users/shresthrana/csci596-project/.claude/worktrees/wf_93640418-d43-1/palettes/lofi_rain_v1.yaml",
+  "sha256": "09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183"
+ },
+ "per_render": {
+  "0003": {
+   "1x4#1": 2.167,
+   "1x4#2": 2.136,
+   "2x2#1": 2.464,
+   "2x2#2": 2.293
+  },
+  "0018": {
+   "1x4#1": 2.253,
+   "1x4#2": 2.227,
+   "2x2#1": 2.547,
+   "2x2#2": 2.429
+  },
+  "0031": {
+   "1x4#1": 2.139,
+   "1x4#2": 2.192,
+   "2x2#1": 2.5,
+   "2x2#2": 2.366
+  },
+  "0045": {
+   "1x4#1": 1.88,
+   "1x4#2": 1.884,
+   "2x2#1": 2.182,
+   "2x2#2": 2.127
+  },
+  "0054": {
+   "1x4#1": 2.115,
+   "1x4#2": 2.057,
+   "2x2#1": 2.432,
+   "2x2#2": 2.488
+  },
+  "0060": {
+   "1x4#1": 1.916,
+   "1x4#2": 1.936,
+   "2x2#1": 2.335,
+   "2x2#2": 2.19
+  },
+  "0069": {
+   "1x4#1": 2.552,
+   "1x4#2": 2.505,
+   "2x2#1": 2.693,
+   "2x2#2": 2.79
+  },
+  "0084": {
+   "1x4#1": 2.614,
+   "1x4#2": 2.429,
+   "2x2#1": 2.967,
+   "2x2#2": 2.686
+  },
+  "0087": {
+   "1x4#1": 2.146,
+   "1x4#2": 2.104,
+   "2x2#1": 2.413,
+   "2x2#2": 2.358
+  },
+  "0090": {
+   "1x4#1": 2.06,
+   "1x4#2": 2.038,
+   "2x2#1": 2.429,
+   "2x2#2": 2.233
+  },
+  "0110": {
+   "1x4#1": 2.14,
+   "1x4#2": 2.183,
+   "2x2#1": 2.451,
+   "2x2#2": 2.379
+  },
+  "0121": {
+   "1x4#1": 2.75,
+   "1x4#2": 2.78,
+   "2x2#1": 3.159,
+   "2x2#2": 3.042
+  },
+  "0123": {
+   "1x4#1": 2.197,
+   "1x4#2": 2.162,
+   "2x2#1": 2.461,
+   "2x2#2": 2.402
+  },
+  "0125": {
+   "1x4#1": 2.136,
+   "1x4#2": 2.256,
+   "2x2#1": 2.381,
+   "2x2#2": 2.344
+  },
+  "0158": {
+   "1x4#1": 2.729,
+   "1x4#2": 2.718,
+   "2x2#1": 3.022,
+   "2x2#2": 2.912
+  },
+  "0169": {
+   "1x4#1": 2.164,
+   "1x4#2": 2.155,
+   "2x2#1": 2.542,
+   "2x2#2": 2.333
+  },
+  "0174": {
+   "1x4#1": 2.282,
+   "1x4#2": 2.393,
+   "2x2#1": 2.605,
+   "2x2#2": 2.527
+  },
+  "0214": {
+   "1x4#1": 2.536,
+   "1x4#2": 2.522,
+   "2x2#1": 2.901,
+   "2x2#2": 2.964
+  },
+  "0236": {
+   "1x4#1": 2.488,
+   "1x4#2": 2.541,
+   "2x2#1": 2.916,
+   "2x2#2": 2.716
+  },
+  "0242": {
+   "1x4#1": 1.871,
+   "1x4#2": 1.709,
+   "2x2#1": 2.241,
+   "2x2#2": 1.955
+  },
+  "0245": {
+   "1x4#1": 2.616,
+   "1x4#2": 2.569,
+   "2x2#1": 2.987,
+   "2x2#2": 2.788
+  },
+  "0251": {
+   "1x4#1": 2.392,
+   "1x4#2": 2.321,
+   "2x2#1": 2.712,
+   "2x2#2": 2.555
+  },
+  "0252": {
+   "1x4#1": 2.487,
+   "1x4#2": 2.38,
+   "2x2#1": 2.784,
+   "2x2#2": 2.805
+  },
+  "0253": {
+   "1x4#1": 2.295,
+   "1x4#2": 2.287,
+   "2x2#1": 2.681,
+   "2x2#2": 2.503
+  },
+  "0264": {
+   "1x4#1": 2.793,
+   "1x4#2": 2.808,
+   "2x2#1": 3.143,
+   "2x2#2": 3.048
+  },
+  "0271": {
+   "1x4#1": 3.077,
+   "1x4#2": 3.32,
+   "2x2#1": 3.587,
+   "2x2#2": 3.601
+  },
+  "0274": {
+   "1x4#1": 2.367,
+   "1x4#2": 2.315,
+   "2x2#1": 2.563,
+   "2x2#2": 2.516
+  },
+  "0295": {
+   "1x4#1": 1.956,
+   "1x4#2": 1.927,
+   "2x2#1": 2.411,
+   "2x2#2": 2.169
+  },
+  "0299": {
+   "1x4#1": 2.523,
+   "1x4#2": 2.41,
+   "2x2#1": 2.691,
+   "2x2#2": 2.631
+  },
+  "0322": {
+   "1x4#1": 2.196,
+   "1x4#2": 2.008,
+   "2x2#1": 2.415,
+   "2x2#2": 2.406
+  },
+  "0329": {
+   "1x4#1": 2.283,
+   "1x4#2": 2.269,
+   "2x2#1": 2.538,
+   "2x2#2": 2.442
+  },
+  "0355": {
+   "1x4#1": 2.563,
+   "1x4#2": 2.555,
+   "2x2#1": 2.82,
+   "2x2#2": 2.806
+  },
+  "0368": {
+   "1x4#1": 2.191,
+   "1x4#2": 2.21,
+   "2x2#1": 2.736,
+   "2x2#2": 2.529
+  },
+  "0385": {
+   "1x4#1": 2.361,
+   "1x4#2": 2.287,
+   "2x2#1": 2.98,
+   "2x2#2": 2.817
+  },
+  "0389": {
+   "1x4#1": 1.917,
+   "1x4#2": 1.889,
+   "2x2#1": 2.146,
+   "2x2#2": 2.071
+  },
+  "0393": {
+   "1x4#1": 2.328,
+   "1x4#2": 2.303,
+   "2x2#1": 2.637,
+   "2x2#2": 2.555
+  },
+  "0407": {
+   "1x4#1": 2.174,
+   "1x4#2": 2.176,
+   "2x2#1": 2.473,
+   "2x2#2": 2.371
+  },
+  "0422": {
+   "1x4#1": 1.757,
+   "1x4#2": 1.74,
+   "2x2#1": 2.025,
+   "2x2#2": 1.889
+  },
+  "0438": {
+   "1x4#1": 2.383,
+   "1x4#2": 2.484,
+   "2x2#1": 2.784,
+   "2x2#2": 2.695
+  },
+  "0439": {
+   "1x4#1": 2.051,
+   "1x4#2": 1.988,
+   "2x2#1": 2.238,
+   "2x2#2": 2.154
+  },
+  "0446": {
+   "1x4#1": 2.706,
+   "1x4#2": 2.626,
+   "2x2#1": 3.716,
+   "2x2#2": 3.149
+  },
+  "0452": {
+   "1x4#1": 2.071,
+   "1x4#2": 2.014,
+   "2x2#1": 2.638,
+   "2x2#2": 2.478
+  },
+  "0454": {
+   "1x4#1": 2.342,
+   "1x4#2": 2.309,
+   "2x2#1": 3.136,
+   "2x2#2": 2.59
+  },
+  "0457": {
+   "1x4#1": 2.111,
+   "1x4#2": 2.099,
+   "2x2#1": 2.299,
+   "2x2#2": 2.309
+  },
+  "0462": {
+   "1x4#1": 2.898,
+   "1x4#2": 2.98,
+   "2x2#1": 3.492,
+   "2x2#2": 3.124
+  },
+  "0468": {
+   "1x4#1": 2.208,
+   "1x4#2": 2.18,
+   "2x2#1": 2.451,
+   "2x2#2": 2.34
+  },
+  "0472": {
+   "1x4#1": 2.363,
+   "1x4#2": 2.361,
+   "2x2#1": 2.639,
+   "2x2#2": 2.505
+  },
+  "0475": {
+   "1x4#1": 2.618,
+   "1x4#2": 2.499,
+   "2x2#1": 2.915,
+   "2x2#2": 2.828
+  },
+  "0491": {
+   "1x4#1": 2.183,
+   "1x4#2": 2.216,
+   "2x2#1": 2.477,
+   "2x2#2": 2.439
+  },
+  "0495": {
+   "1x4#1": 2.487,
+   "1x4#2": 2.448,
+   "2x2#1": 2.768,
+   "2x2#2": 2.762
+  }
+ },
+ "rows": [
+  {
+   "brief": {
+    "bpm": 85,
+    "energy": "low",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 10
+   },
+   "example": "l7_hopeful_low",
+   "finish_reason": "stop",
+   "i": 452,
+   "n_tokens": 262,
+   "prompt_sha256": "24139987927cf40f063096d04c18919eecc28ca8477edcc2bdcae9ec11217e61",
+   "prompt_tokens": 1379,
+   "prompt_version": "v2",
+   "rid": "0452"
+  },
+  {
+   "brief": {
+    "bpm": 86,
+    "energy": "high",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 3
+   },
+   "example": "l3_melancholy_high",
+   "finish_reason": "stop",
+   "i": 385,
+   "n_tokens": 299,
+   "prompt_sha256": "8c2ba334ea59c58d916451f61d38ac5bde3d868666a91fbdbe5b9271bdbb71ff",
+   "prompt_tokens": 1408,
+   "prompt_version": "v2",
+   "rid": "0385"
+  },
+  {
+   "brief": {
+    "bpm": 82,
+    "energy": "low",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 0
+   },
+   "example": "l7_hopeful_low",
+   "finish_reason": "stop",
+   "i": 54,
+   "n_tokens": 245,
+   "prompt_sha256": "24139987927cf40f063096d04c18919eecc28ca8477edcc2bdcae9ec11217e61",
+   "prompt_tokens": 1379,
+   "prompt_version": "v2",
+   "rid": "0054"
+  },
+  {
+   "brief": {
+    "bpm": 77,
+    "energy": "high",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 9
+   },
+   "example": "l9_hopeful_high",
+   "finish_reason": "stop",
+   "i": 475,
+   "n_tokens": 292,
+   "prompt_sha256": "5f1e206701c8a4901a7c78b1527d42ca5851d3735ea7296044def3da5dcac640",
+   "prompt_tokens": 1396,
+   "prompt_version": "v2",
+   "rid": "0475"
+  },
+  {
+   "brief": {
+    "bpm": 75,
+    "energy": "low",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 2
+   },
+   "example": "l1_melancholy_low",
+   "finish_reason": "stop",
+   "i": 368,
+   "n_tokens": 216,
+   "prompt_sha256": "559461b84681aaf43453ecdd24387d55593bdbc0705f400204674de42a3565a4",
+   "prompt_tokens": 1322,
+   "prompt_version": "v2",
+   "rid": "0368"
+  },
+  {
+   "brief": {
+    "bpm": 60,
+    "energy": "mid",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 8
+   },
+   "example": "l8_hopeful_mid",
+   "finish_reason": "stop",
+   "i": 121,
+   "n_tokens": 249,
+   "prompt_sha256": "1a8a10d3df83acd2686e9c9e3322759748535cc8280008b61a33f9b178ca53c5",
+   "prompt_tokens": 1366,
+   "prompt_version": "v2",
+   "rid": "0121"
+  },
+  {
+   "brief": {
+    "bpm": 89,
+    "energy": "low",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 2
+   },
+   "example": "l7_hopeful_low",
+   "finish_reason": "stop",
+   "i": 60,
+   "n_tokens": 254,
+   "prompt_sha256": "24139987927cf40f063096d04c18919eecc28ca8477edcc2bdcae9ec11217e61",
+   "prompt_tokens": 1379,
+   "prompt_version": "v2",
+   "rid": "0060"
+  },
+  {
+   "brief": {
+    "bpm": 80,
+    "energy": "high",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 9
+   },
+   "example": "l9_hopeful_high",
+   "finish_reason": "stop",
+   "i": 84,
+   "n_tokens": 291,
+   "prompt_sha256": "5f1e206701c8a4901a7c78b1527d42ca5851d3735ea7296044def3da5dcac640",
+   "prompt_tokens": 1396,
+   "prompt_version": "v2",
+   "rid": "0084"
+  },
+  {
+   "brief": {
+    "bpm": 85,
+    "energy": "low",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 8
+   },
+   "example": "l1_melancholy_low",
+   "finish_reason": "stop",
+   "i": 439,
+   "n_tokens": 211,
+   "prompt_sha256": "559461b84681aaf43453ecdd24387d55593bdbc0705f400204674de42a3565a4",
+   "prompt_tokens": 1322,
+   "prompt_version": "v2",
+   "rid": "0439"
+  },
+  {
+   "brief": {
+    "bpm": 83,
+    "energy": "low",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 4
+   },
+   "example": "l7_hopeful_low",
+   "finish_reason": "stop",
+   "i": 242,
+   "n_tokens": 257,
+   "prompt_sha256": "24139987927cf40f063096d04c18919eecc28ca8477edcc2bdcae9ec11217e61",
+   "prompt_tokens": 1379,
+   "prompt_version": "v2",
+   "rid": "0242"
+  },
+  {
+   "brief": {
+    "bpm": 84,
+    "energy": "mid",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 6
+   },
+   "example": "l8_hopeful_mid",
+   "finish_reason": "stop",
+   "i": 251,
+   "n_tokens": 249,
+   "prompt_sha256": "1a8a10d3df83acd2686e9c9e3322759748535cc8280008b61a33f9b178ca53c5",
+   "prompt_tokens": 1366,
+   "prompt_version": "v2",
+   "rid": "0251"
+  },
+  {
+   "brief": {
+    "bpm": 83,
+    "energy": "mid",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 5
+   },
+   "example": "l8_hopeful_mid",
+   "finish_reason": "stop",
+   "i": 472,
+   "n_tokens": 248,
+   "prompt_sha256": "1a8a10d3df83acd2686e9c9e3322759748535cc8280008b61a33f9b178ca53c5",
+   "prompt_tokens": 1366,
+   "prompt_version": "v2",
+   "rid": "0472"
+  },
+  {
+   "brief": {
+    "bpm": 84,
+    "energy": "high",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 11
+   },
+   "example": "l3_melancholy_high",
+   "finish_reason": "stop",
+   "i": 274,
+   "n_tokens": 300,
+   "prompt_sha256": "8c2ba334ea59c58d916451f61d38ac5bde3d868666a91fbdbe5b9271bdbb71ff",
+   "prompt_tokens": 1408,
+   "prompt_version": "v2",
+   "rid": "0274"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "mid",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 4
+   },
+   "example": "l8_hopeful_mid",
+   "finish_reason": "stop",
+   "i": 407,
+   "n_tokens": 239,
+   "prompt_sha256": "1a8a10d3df83acd2686e9c9e3322759748535cc8280008b61a33f9b178ca53c5",
+   "prompt_tokens": 1366,
+   "prompt_version": "v2",
+   "rid": "0407"
+  },
+  {
+   "brief": {
+    "bpm": 75,
+    "energy": "mid",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 2
+   },
+   "example": "l8_hopeful_mid",
+   "finish_reason": "stop",
+   "i": 18,
+   "n_tokens": 251,
+   "prompt_sha256": "1a8a10d3df83acd2686e9c9e3322759748535cc8280008b61a33f9b178ca53c5",
+   "prompt_tokens": 1366,
+   "prompt_version": "v2",
+   "rid": "0018"
+  },
+  {
+   "brief": {
+    "bpm": 84,
+    "energy": "low",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 4
+   },
+   "example": "l7_hopeful_low",
+   "finish_reason": "stop",
+   "i": 422,
+   "n_tokens": 261,
+   "prompt_sha256": "24139987927cf40f063096d04c18919eecc28ca8477edcc2bdcae9ec11217e61",
+   "prompt_tokens": 1379,
+   "prompt_version": "v2",
+   "rid": "0422"
+  },
+  {
+   "brief": {
+    "bpm": 80,
+    "energy": "low",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 4
+   },
+   "example": "l1_melancholy_low",
+   "finish_reason": "stop",
+   "i": 457,
+   "n_tokens": 210,
+   "prompt_sha256": "559461b84681aaf43453ecdd24387d55593bdbc0705f400204674de42a3565a4",
+   "prompt_tokens": 1322,
+   "prompt_version": "v2",
+   "rid": "0457"
+  },
+  {
+   "brief": {
+    "bpm": 76,
+    "energy": "low",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 7
+   },
+   "example": "l7_hopeful_low",
+   "finish_reason": "stop",
+   "i": 31,
+   "n_tokens": 253,
+   "prompt_sha256": "24139987927cf40f063096d04c18919eecc28ca8477edcc2bdcae9ec11217e61",
+   "prompt_tokens": 1379,
+   "prompt_version": "v2",
+   "rid": "0031"
+  },
+  {
+   "brief": {
+    "bpm": 88,
+    "energy": "low",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 8
+   },
+   "example": "l1_melancholy_low",
+   "finish_reason": "stop",
+   "i": 295,
+   "n_tokens": 212,
+   "prompt_sha256": "559461b84681aaf43453ecdd24387d55593bdbc0705f400204674de42a3565a4",
+   "prompt_tokens": 1322,
+   "prompt_version": "v2",
+   "rid": "0295"
+  },
+  {
+   "brief": {
+    "bpm": 66,
+    "energy": "high",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 4
+   },
+   "example": "l9_hopeful_high",
+   "finish_reason": "stop",
+   "i": 462,
+   "n_tokens": 291,
+   "prompt_sha256": "5f1e206701c8a4901a7c78b1527d42ca5851d3735ea7296044def3da5dcac640",
+   "prompt_tokens": 1396,
+   "prompt_version": "v2",
+   "rid": "0462"
+  },
+  {
+   "brief": {
+    "bpm": 73,
+    "energy": "low",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 7
+   },
+   "example": "l7_hopeful_low",
+   "finish_reason": "stop",
+   "i": 253,
+   "n_tokens": 256,
+   "prompt_sha256": "24139987927cf40f063096d04c18919eecc28ca8477edcc2bdcae9ec11217e61",
+   "prompt_tokens": 1379,
+   "prompt_version": "v2",
+   "rid": "0253"
+  },
+  {
+   "brief": {
+    "bpm": 78,
+    "energy": "high",
+    "mood": "melancholy",
+    "scene": "city at night",
+    "tonic": 4
+   },
+   "example": "l6_wistful_high",
+   "finish_reason": "stop",
+   "i": 236,
+   "n_tokens": 293,
+   "prompt_sha256": "46951b85cf95a2e1514e2bdd8b95c5e067f9ba02f439e46316ae3eb9535524d7",
+   "prompt_tokens": 1398,
+   "prompt_version": "v2",
+   "rid": "0236"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "high",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 5
+   },
+   "example": "l9_hopeful_high",
+   "finish_reason": "stop",
+   "i": 468,
+   "n_tokens": 292,
+   "prompt_sha256": "5f1e206701c8a4901a7c78b1527d42ca5851d3735ea7296044def3da5dcac640",
+   "prompt_tokens": 1396,
+   "prompt_version": "v2",
+   "rid": "0468"
+  },
+  {
+   "brief": {
+    "bpm": 82,
+    "energy": "mid",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 4
+   },
+   "example": "l8_hopeful_mid",
+   "finish_reason": "stop",
+   "i": 90,
+   "n_tokens": 249,
+   "prompt_sha256": "1a8a10d3df83acd2686e9c9e3322759748535cc8280008b61a33f9b178ca53c5",
+   "prompt_tokens": 1366,
+   "prompt_version": "v2",
+   "rid": "0090"
+  },
+  {
+   "brief": {
+    "bpm": 75,
+    "energy": "high",
+    "mood": "melancholy",
+    "scene": "city at night",
+    "tonic": 4
+   },
+   "example": "l6_wistful_high",
+   "finish_reason": "stop",
+   "i": 245,
+   "n_tokens": 306,
+   "prompt_sha256": "46951b85cf95a2e1514e2bdd8b95c5e067f9ba02f439e46316ae3eb9535524d7",
+   "prompt_tokens": 1398,
+   "prompt_version": "v2",
+   "rid": "0245"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "mid",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 9
+   },
+   "example": "l8_hopeful_mid",
+   "finish_reason": "stop",
+   "i": 169,
+   "n_tokens": 253,
+   "prompt_sha256": "1a8a10d3df83acd2686e9c9e3322759748535cc8280008b61a33f9b178ca53c5",
+   "prompt_tokens": 1366,
+   "prompt_version": "v2",
+   "rid": "0169"
+  },
+  {
+   "brief": {
+    "bpm": 86,
+    "energy": "high",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 5
+   },
+   "example": "l9_hopeful_high",
+   "finish_reason": "stop",
+   "i": 329,
+   "n_tokens": 292,
+   "prompt_sha256": "5f1e206701c8a4901a7c78b1527d42ca5851d3735ea7296044def3da5dcac640",
+   "prompt_tokens": 1396,
+   "prompt_version": "v2",
+   "rid": "0329"
+  },
+  {
+   "brief": {
+    "bpm": 79,
+    "energy": "low",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 9
+   },
+   "example": "l1_melancholy_low",
+   "finish_reason": "stop",
+   "i": 3,
+   "n_tokens": 212,
+   "prompt_sha256": "559461b84681aaf43453ecdd24387d55593bdbc0705f400204674de42a3565a4",
+   "prompt_tokens": 1322,
+   "prompt_version": "v2",
+   "rid": "0003"
+  },
+  {
+   "brief": {
+    "bpm": 71,
+    "energy": "high",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 7
+   },
+   "example": "l9_hopeful_high",
+   "finish_reason": "stop",
+   "i": 158,
+   "n_tokens": 289,
+   "prompt_sha256": "5f1e206701c8a4901a7c78b1527d42ca5851d3735ea7296044def3da5dcac640",
+   "prompt_tokens": 1396,
+   "prompt_version": "v2",
+   "rid": "0158"
+  },
+  {
+   "brief": {
+    "bpm": 78,
+    "energy": "high",
+    "mood": "melancholy",
+    "scene": "city at night",
+    "tonic": 1
+   },
+   "example": "l6_wistful_high",
+   "finish_reason": "stop",
+   "i": 69,
+   "n_tokens": 303,
+   "prompt_sha256": "46951b85cf95a2e1514e2bdd8b95c5e067f9ba02f439e46316ae3eb9535524d7",
+   "prompt_tokens": 1398,
+   "prompt_version": "v2",
+   "rid": "0069"
+  },
+  {
+   "brief": {
+    "bpm": 78,
+    "energy": "low",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 8
+   },
+   "example": "l1_melancholy_low",
+   "finish_reason": "stop",
+   "i": 110,
+   "n_tokens": 212,
+   "prompt_sha256": "559461b84681aaf43453ecdd24387d55593bdbc0705f400204674de42a3565a4",
+   "prompt_tokens": 1322,
+   "prompt_version": "v2",
+   "rid": "0110"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "high",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 3
+   },
+   "example": "l9_hopeful_high",
+   "finish_reason": "stop",
+   "i": 123,
+   "n_tokens": 288,
+   "prompt_sha256": "5f1e206701c8a4901a7c78b1527d42ca5851d3735ea7296044def3da5dcac640",
+   "prompt_tokens": 1396,
+   "prompt_version": "v2",
+   "rid": "0123"
+  },
+  {
+   "brief": {
+    "bpm": 79,
+    "energy": "mid",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 1
+   },
+   "example": "l8_hopeful_mid",
+   "finish_reason": "stop",
+   "i": 438,
+   "n_tokens": 251,
+   "prompt_sha256": "1a8a10d3df83acd2686e9c9e3322759748535cc8280008b61a33f9b178ca53c5",
+   "prompt_tokens": 1366,
+   "prompt_version": "v2",
+   "rid": "0438"
+  },
+  {
+   "brief": {
+    "bpm": 76,
+    "energy": "low",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 11
+   },
+   "example": "l1_melancholy_low",
+   "finish_reason": "stop",
+   "i": 491,
+   "n_tokens": 213,
+   "prompt_sha256": "559461b84681aaf43453ecdd24387d55593bdbc0705f400204674de42a3565a4",
+   "prompt_tokens": 1322,
+   "prompt_version": "v2",
+   "rid": "0491"
+  },
+  {
+   "brief": {
+    "bpm": 60,
+    "energy": "high",
+    "mood": "melancholy",
+    "scene": "city at night",
+    "tonic": 4
+   },
+   "example": "l6_wistful_high",
+   "finish_reason": "stop",
+   "i": 271,
+   "n_tokens": 301,
+   "prompt_sha256": "46951b85cf95a2e1514e2bdd8b95c5e067f9ba02f439e46316ae3eb9535524d7",
+   "prompt_tokens": 1398,
+   "prompt_version": "v2",
+   "rid": "0271"
+  },
+  {
+   "brief": {
+    "bpm": 89,
+    "energy": "mid",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 4
+   },
+   "example": "l8_hopeful_mid",
+   "finish_reason": "stop",
+   "i": 125,
+   "n_tokens": 250,
+   "prompt_sha256": "1a8a10d3df83acd2686e9c9e3322759748535cc8280008b61a33f9b178ca53c5",
+   "prompt_tokens": 1366,
+   "prompt_version": "v2",
+   "rid": "0125"
+  },
+  {
+   "brief": {
+    "bpm": 77,
+    "energy": "high",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 2
+   },
+   "example": "l3_melancholy_high",
+   "finish_reason": "stop",
+   "i": 214,
+   "n_tokens": 301,
+   "prompt_sha256": "8c2ba334ea59c58d916451f61d38ac5bde3d868666a91fbdbe5b9271bdbb71ff",
+   "prompt_tokens": 1408,
+   "prompt_version": "v2",
+   "rid": "0214"
+  },
+  {
+   "brief": {
+    "bpm": 79,
+    "energy": "low",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 2
+   },
+   "example": "l7_hopeful_low",
+   "finish_reason": "stop",
+   "i": 87,
+   "n_tokens": 254,
+   "prompt_sha256": "24139987927cf40f063096d04c18919eecc28ca8477edcc2bdcae9ec11217e61",
+   "prompt_tokens": 1379,
+   "prompt_version": "v2",
+   "rid": "0087"
+  },
+  {
+   "brief": {
+    "bpm": 71,
+    "energy": "high",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 7
+   },
+   "example": "l9_hopeful_high",
+   "finish_reason": "stop",
+   "i": 446,
+   "n_tokens": 275,
+   "prompt_sha256": "5f1e206701c8a4901a7c78b1527d42ca5851d3735ea7296044def3da5dcac640",
+   "prompt_tokens": 1396,
+   "prompt_version": "v2",
+   "rid": "0446"
+  },
+  {
+   "brief": {
+    "bpm": 84,
+    "energy": "mid",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 9
+   },
+   "example": "l8_hopeful_mid",
+   "finish_reason": "stop",
+   "i": 454,
+   "n_tokens": 251,
+   "prompt_sha256": "1a8a10d3df83acd2686e9c9e3322759748535cc8280008b61a33f9b178ca53c5",
+   "prompt_tokens": 1366,
+   "prompt_version": "v2",
+   "rid": "0454"
+  },
+  {
+   "brief": {
+    "bpm": 83,
+    "energy": "low",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 1
+   },
+   "example": "l7_hopeful_low",
+   "finish_reason": "stop",
+   "i": 322,
+   "n_tokens": 251,
+   "prompt_sha256": "24139987927cf40f063096d04c18919eecc28ca8477edcc2bdcae9ec11217e61",
+   "prompt_tokens": 1379,
+   "prompt_version": "v2",
+   "rid": "0322"
+  },
+  {
+   "brief": {
+    "bpm": 79,
+    "energy": "high",
+    "mood": "melancholy",
+    "scene": "city at night",
+    "tonic": 7
+   },
+   "example": "l6_wistful_high",
+   "finish_reason": "stop",
+   "i": 252,
+   "n_tokens": 304,
+   "prompt_sha256": "46951b85cf95a2e1514e2bdd8b95c5e067f9ba02f439e46316ae3eb9535524d7",
+   "prompt_tokens": 1398,
+   "prompt_version": "v2",
+   "rid": "0252"
+  },
+  {
+   "brief": {
+    "bpm": 90,
+    "energy": "low",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 11
+   },
+   "example": "l1_melancholy_low",
+   "finish_reason": "stop",
+   "i": 45,
+   "n_tokens": 214,
+   "prompt_sha256": "559461b84681aaf43453ecdd24387d55593bdbc0705f400204674de42a3565a4",
+   "prompt_tokens": 1322,
+   "prompt_version": "v2",
+   "rid": "0045"
+  },
+  {
+   "brief": {
+    "bpm": 71,
+    "energy": "low",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 2
+   },
+   "example": "l7_hopeful_low",
+   "finish_reason": "stop",
+   "i": 393,
+   "n_tokens": 259,
+   "prompt_sha256": "24139987927cf40f063096d04c18919eecc28ca8477edcc2bdcae9ec11217e61",
+   "prompt_tokens": 1379,
+   "prompt_version": "v2",
+   "rid": "0393"
+  },
+  {
+   "brief": {
+    "bpm": 68,
+    "energy": "mid",
+    "mood": "melancholy",
+    "scene": "city at night",
+    "tonic": 4
+   },
+   "example": "example",
+   "finish_reason": "stop",
+   "i": 495,
+   "n_tokens": 280,
+   "prompt_sha256": "842594325f00985def64e2658c74aac2e4f586b563ea983d2a2916fda2ec7b12",
+   "prompt_tokens": 1390,
+   "prompt_version": "v2",
+   "rid": "0495"
+  },
+  {
+   "brief": {
+    "bpm": 89,
+    "energy": "low",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 0
+   },
+   "example": "l1_melancholy_low",
+   "finish_reason": "stop",
+   "i": 389,
+   "n_tokens": 221,
+   "prompt_sha256": "559461b84681aaf43453ecdd24387d55593bdbc0705f400204674de42a3565a4",
+   "prompt_tokens": 1322,
+   "prompt_version": "v2",
+   "rid": "0389"
+  },
+  {
+   "brief": {
+    "bpm": 68,
+    "energy": "mid",
+    "mood": "hopeful",
+    "scene": "city at night",
+    "tonic": 11
+   },
+   "example": "l2_melancholy_mid",
+   "finish_reason": "stop",
+   "i": 264,
+   "n_tokens": 227,
+   "prompt_sha256": "e76c4cc4f00ebfabd2bbe9d8b3f372af87d1bce66189fd435285fb2ffdef2a6f",
+   "prompt_tokens": 1364,
+   "prompt_version": "v2",
+   "rid": "0264"
+  },
+  {
+   "brief": {
+    "bpm": 76,
+    "energy": "high",
+    "mood": "wistful",
+    "scene": "city at night",
+    "tonic": 6
+   },
+   "example": "l9_hopeful_high",
+   "finish_reason": "stop",
+   "i": 355,
+   "n_tokens": 289,
+   "prompt_sha256": "5f1e206701c8a4901a7c78b1527d42ca5851d3735ea7296044def3da5dcac640",
+   "prompt_tokens": 1396,
+   "prompt_version": "v2",
+   "rid": "0355"
+  },
+  {
+   "brief": {
+    "bpm": 87,
+    "energy": "high",
+    "mood": "melancholy",
+    "scene": "city at night",
+    "tonic": 5
+   },
+   "example": "l6_wistful_high",
+   "finish_reason": "stop",
+   "i": 174,
+   "n_tokens": 303,
+   "prompt_sha256": "46951b85cf95a2e1514e2bdd8b95c5e067f9ba02f439e46316ae3eb9535524d7",
+   "prompt_tokens": 1398,
+   "prompt_version": "v2",
+   "rid": "0174"
+  },
+  {
+   "brief": {
+    "bpm": 82,
+    "energy": "high",
+    "mood": "melancholy",
+    "scene": "city at night",
+    "tonic": 11
+   },
+   "example": "l6_wistful_high",
+   "finish_reason": "stop",
+   "i": 299,
+   "n_tokens": 302,
+   "prompt_sha256": "46951b85cf95a2e1514e2bdd8b95c5e067f9ba02f439e46316ae3eb9535524d7",
+   "prompt_tokens": 1398,
+   "prompt_version": "v2",
+   "rid": "0299"
+  }
+ ],
+ "set": "armb",
+ "speedup_2x2": 1.765,
+ "wall_by_order": {
+  "1x4": [
+   115.83,
+   114.91
+  ],
+  "2x2": [
+   66.89,
+   63.85
+  ]
+ },
+ "warm_s": 4.54
+}
