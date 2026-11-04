@@ -14,7 +14,10 @@ each, for Shresth's sign-off listen.
 - **Note**: plain words naming the one change from keep3, where the same loops played with no bed: the rain he picked
   in Day 3 at its level, a pairing Day 3 never played (W1 played the excerpt at another level and W2 the level on another
   excerpt, shootouts/plan.yaml), and the bed as measured after the final limiter in these loops. It names no option, so
-  the leak check passes it. A level change of his (the freeze spec §4.2) is named too.
+  the leak check passes it. A level change of his (the freeze spec §4.2) is named too. A later sign-off (an earlier
+  listen is in lofi_rl.freeze.SIGNOFFS: the loops reopened, docs/FREEZE.md §5) says "again" instead: that listen
+  played this rain at this level, and redo picks may be among the kept loops, so neither "new to your ears" nor "the
+  same loops" holds.
 - **Hidden manifest**: category `signoff`, every round kind `none` (no hidden controls, as keep3: DRAFTS.md §8); per clip
   the real clip id, the draft file and its sha256, the persona and brief id, the knobs, tempo and key, the instruments,
   the palette label (`<id>@<sha8>` of the signed-off file), the render id, pcm_sha256, LUFS, true peak, and the bed as
@@ -93,10 +96,17 @@ def _below(heard: tuple[float, float]) -> str:
     return f"{lo:.1f}-{hi:.1f}"
 
 
-def note_text(kept: int, bed: Mapping, heard: tuple[float, float], change: bool = False) -> str:
+def note_text(kept: int, bed: Mapping, heard: tuple[float, float], change: bool = False, *, again: bool = False) -> str:
     """The page's note. `bed`: the frozen bed's `delta_lu`, and `w1_delta_lu`, the level Day 3 played its excerpt at;
-    `heard`: the range, in LU below the music, of the bed as measured after the final limiter in these loops."""
+    `heard`: the range, in LU below the music, of the bed as measured after the final limiter in these loops. `again`:
+    an earlier sign-off listen played this rain at this level (lofi_rl.freeze.SIGNOFFS is not empty), so the note
+    neither calls it new to his ears nor the loops the same ones (redo picks may be among them)."""
     d, w1 = bed["delta_lu"], bed["w1_delta_lu"]
+    if again:
+        what = f"and {CHANGE_WORDS}" if change else "as in your last sign-off listen"
+        return (f"Sign-off again: your {kept} kept loops, with the rain you picked in Day 3 at {d:g} below the music, "
+                f"{what}. After the final limiter it measures {_below(heard)} below in these loops. Toss, Fine, Good "
+                f"or Great?")
     tail = (f"This rain at this level is new to your ears: Day 3 played it at {w1:g} below, and {d:g} below on another "
             f"rain. After the final limiter it measures {_below(heard)} below")
     if not change:
@@ -106,10 +116,15 @@ def note_text(kept: int, bed: Mapping, heard: tuple[float, float], change: bool 
             f"{tail}. Toss, Fine, Good or Great?")
 
 
-def push_text(name: str, kept: int, bed: Mapping, heard: tuple[float, float], change: bool = False) -> str:
-    """The push notification after the job (the freeze spec §4.3), in plain words."""
+def push_text(name: str, kept: int, bed: Mapping, heard: tuple[float, float], change: bool = False, *,
+              again: bool = False) -> str:
+    """The push notification after the job (the freeze spec §4.3), in plain words; `again` as in note_text."""
     d, w1 = bed["delta_lu"], bed["w1_delta_lu"]
     extra = " The keys play at the levels you gave." if change else ""
+    if again:
+        return (f"Needs ear check: {name}. Your {kept} kept loops again, with the rain you picked in Day 3 at {d:g} "
+                f"below the music, as in your last sign-off listen.{extra} After the final limiter it measures "
+                f"{_below(heard)} below in these {kept}.")
     return (f"Needs ear check: {name}. The same {kept} loops you kept, now with the rain you picked in Day 3, at {d:g} "
             f"below the music.{extra} You have not heard that rain at that level together: Day 3 played it at {w1:g} "
             f"below, and {d:g} below on another rain. After the final limiter it measures {_below(heard)} below in "

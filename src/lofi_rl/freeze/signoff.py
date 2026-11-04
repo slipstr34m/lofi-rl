@@ -10,20 +10,30 @@ lofi_rl.drafts.job hands the run to `run` here. Optional: `--date` (the inbox's 
 holding earlier jobs' runs, read for cross-checks only; default --run's parent, $REMOTE_SCR/runs), `--dry-run`, and
 `--seed` (tests only).
 
-**Inputs** come from the job's code snapshot: the frozen palette, the drafts folder with its briefs.yaml and
-keep3_kept10.json (`python -m lofi_rl.freeze.checks expect`), gates/GATE_palette.md, shootouts/plan.yaml and
-shootouts/rain_excerpts.json, the draft palette (whose `#| ` levels keep3 played) and prompt v2's references (code);
-the sources come from $LOFI_ASSETS. Scratch is read only for cross-checks, so a purge cannot stop the job.
+**Inputs** come from the job's code snapshot: the frozen palette, the drafts folder (drafts/v1) with its briefs.yaml,
+its redo folders (drafts/v1/redo<k>/) and keep3_kept10.json (`python -m lofi_rl.freeze.checks expect`),
+gates/GATE_palette.md, shootouts/plan.yaml and shootouts/rain_excerpts.json, the draft palette (whose `#| ` levels
+keep3 and the redo rounds played) and prompt v2's references (code); the sources come from $LOFI_ASSETS. Scratch is
+read only for cross-checks, so a purge cannot stop the job.
+
+**The kept loops** are lofi_rl.freeze.kept_now() (keep3's picks with each redo round's over them), each from its own
+source round (keep3_kept10.json's `sources`). Each is read by its file path, never by its stem: a redo file shares its
+stem with a drafts/v1 file. **Render ids** are unique across the job: a drafts/v1 draft's id is its stem (d02_chords),
+a redo folder's draft's id carries its folder (redo1_d01_horn, lofi_rl.freeze.checks.render_id), so every kept
+render maps to its one kept loop, and that loop to its one source record.
 
 **Stages**, each one's exit code and wall time in summary/stages.json; the first that fails ends the job, and nothing
 reaches the inbox:
 1. `check` (summary/check.json): the laptop checks again in the snapshot (lofi_rl.freeze.checks): keep3_kept10.json's
-   schema and its kept list against the gate file's keep3 table; each kept file is the text keep3 rendered and passes
-   check_one under the frozen palette, and check_folder passes every draft (a); prompt v2's 9 references, strict and
-   identical to dev_gu's (b); the regex's length and sha256, and every draft fullmatches it (c); `python -m
-   lofi_rl.freeze check --gate` (g); every kept loop's brief is its briefs.yaml brief, and every reference's cell has a
-   brief. When keep3's summary/renders.json is still under --runs-root, it must have keep3_kept10.json's sha256 and
-   give its records; when it is not, that is recorded.
+   schema, its kept list against the constants (kept_now(), each loop's source, the sources' jobs) and against the
+   gate file's (keep3's table with each redo round's over it); no kept file tossed at a sign-off listen
+   (lofi_rl.freeze.SIGNOFFS: the problem names the brief, the file and the sign-off batch); each kept file is the text
+   its source rendered and passes check_one under the frozen palette, and check_folder passes every draft of drafts/v1
+   and of each redo folder (a); prompt v2's 9 references, strict and identical to dev_gu's (b); the regex's length and
+   sha256, and every draft of every folder fullmatches it (c); `python -m lofi_rl.freeze check --gate` (g); every
+   kept loop's brief is its briefs.yaml brief, and every reference's cell has a brief. Each source's
+   summary/renders.json that is still under --runs-root (`drafts-<its job>`) must have keep3_kept10.json's sha256 and
+   give its records; each one that is not there is recorded.
 2. `palettes` (summary/palettes/index.json): `python -m lofi_rl.freeze check --verify` (sources hashed, presets,
    coverage), with `--levels-day1/2/3` when all three shootout levels files are under --runs-root (absent ones are
    recorded as not on scratch); the bed is the picks' (the excerpt of the `excerpt_from` variant and the level of the
@@ -32,22 +42,24 @@ reaches the inbox:
    document with no bed at the levels keep3 played (the draft palette's `#| ` levels), and, when the frozen levels
    differ from those (a level change of Shresth's, spec §4.2), `twin1`, the frozen document with no bed.
 3. `render` (summary/renders.json): (a) the kept loops with the frozen palette and with each twin, `--jobs` at a time
-   with one worker each (lofi_rl.drafts.render.render_one, FLACs kept); (b) the drafts he did not keep and prompt v2's
-   9 references with the frozen palette, in this process, one at a time with 4 workers, as junk's render step runs (a
-   reference in its own cell, with the brief of that cell's first brief id); (c) each frozen kept render again in a
-   fresh process (`python -m lofi_rl.render.pipeline ... --no-verify --workers 4`, PYTHONHASHSEED=4093), one at a
-   time, its wall time `process_s`. A record holds n, LUFS, true peak, the loudness iterations, master gain,
-   music_lufs, the bed report with `bed_lu` and pre_limiter_sha256 (lofi_rl.shootout.render.bed_record), pcm_sha256,
-   music_sha256 and `render_s`; a kept loop's records also hold each bus's effective trim, fader and loudness.
+   with one worker each (lofi_rl.drafts.render.render_one, FLACs kept); (b) every draft of every folder that is not
+   kept and prompt v2's 9 references with the frozen palette, in this process, one at a time with 4 workers, as junk's
+   render step runs (a reference in its own cell, with the brief of that cell's first brief id); (c) each frozen kept
+   render again in a fresh process (`python -m lofi_rl.render.pipeline ... --no-verify --workers 4`,
+   PYTHONHASHSEED=4093), one at a time, its wall time `process_s`. A record holds n, LUFS, true peak, the loudness
+   iterations, master gain, music_lufs, the bed report with `bed_lu` and pre_limiter_sha256
+   (lofi_rl.shootout.render.bed_record), pcm_sha256, music_sha256 and `render_s`; a kept loop's records also hold
+   each bus's effective trim, fader and loudness.
 4. `verify` (summary/verify.json): N; -14 LUFS within 0.1 LU and a true peak at or below -1 dBTP; G1-G7 with no repair;
    the iterations of every render (a G7 failure fails the job); the bed as placed, measured on the rebuilt stem
    (bed.place(bed.bed_loop(palette, n), music_lufs, delta) within PLACED_TOL_LU of -delta, its gain and own loudness
    the manifest's exactly); the bed as heard, recorded and flagged above HEARD_FLAG_LU closer than -delta; the frozen
-   render equals its fresh-process repeat (the whole manifest); twin0 is what he kept (keep3's pcm_sha256); the music
-   under the bed is the twin's (pre_limiter_sha256 and music_lufs); each bus's pre-fader loudness, effective trim and
-   fader are keep3's (a changed level moves only by its change); and the render times, with the Phase-1 gate's
-   projection (PROJECTION_CLIPS x the slowest one-at-a-time render against PROJECTION_LIMIT_S). On a twin mismatch it
-   names the stems that differ from keep3's manifests, when scratch still holds them.
+   render equals its fresh-process repeat (the whole manifest); twin0 is what he kept (its own source's pcm_sha256:
+   keep3's, or its redo round's); the music under the bed is the twin's (pre_limiter_sha256 and music_lufs); each
+   bus's pre-fader loudness, effective trim and fader are its source's (a changed level moves only by its change); and
+   the render times, with the Phase-1 gate's projection (PROJECTION_CLIPS x the slowest one-at-a-time render against
+   PROJECTION_LIMIT_S). On a twin mismatch it names the stems that differ from its source's manifest
+   (<runs-root>/drafts-<its source's job>/renders/<its stem>/manifest.json), when scratch still holds it.
 5. `build` (summary/draw.json, summary/batch.json): the triage batch (lofi_rl.freeze.batch), checked by `python -m
    lofi_rl.ui.manifest check` before it is moved into place.
 Then SIGNOFF_OK (and the job script's DRAFTS_OK). Exit 0; 2 for bad arguments or a batch that exists; 3 for a failed
@@ -71,6 +83,7 @@ from pathlib import Path
 
 import yaml
 
+from lofi_rl import freeze as F
 from lofi_rl import prompt_v2
 from lofi_rl.brief import Brief
 from lofi_rl.compile.timeline import loop_samples
@@ -86,9 +99,9 @@ from . import batch as SB
 from . import checks as C
 
 ARGS_SCHEMA = "lofi-rl/signoff-args/1"
-CHECK_SCHEMA = "lofi-rl/signoff-check/1"
+CHECK_SCHEMA = "lofi-rl/signoff-check/2"           # /2: the kept loops' sources, the tossed check, every folder
 PALETTES_SCHEMA = "lofi-rl/signoff-palettes/1"
-RENDERS_SCHEMA = "lofi-rl/signoff-renders/1"
+RENDERS_SCHEMA = "lofi-rl/signoff-renders/2"       # /2: kept records under render ids, `kept_loops` maps them
 VERIFY_SCHEMA = "lofi-rl/signoff-verify/1"
 OK_LINE = "SIGNOFF_OK"
 GATE = C.GATE
@@ -351,15 +364,17 @@ def placed_bed(pal: Palette, n: int, music_lufs: float, delta: float, cache: dic
     return float(lufs(scaled, SR) - music_lufs), float(gain), float(own)
 
 
-def stem_diff(mine: Path, theirs: Path) -> list[str]:
-    """Which bus inputs (`stems`) and one-shots of two render manifests differ, or why they cannot be compared."""
+def stem_diff(mine: Path, theirs: Path, source: str = "keep3") -> list[str]:
+    """Which bus inputs (`stems`) and one-shots of two render manifests differ, or why they cannot be compared:
+    `theirs` is the kept loop's render in its source round (`source`: keep3 or a redo round's key)."""
     if not mine.is_file():
         return [f"{mine} is missing"]
     if not theirs.is_file():
-        return [f"keep3's manifest {theirs} is not on scratch"]
+        return [f"{source}'s manifest {theirs} is not on scratch"]
     a, b = (json.loads(p.read_text(encoding="utf-8")) for p in (mine, theirs))
     sa, sb = a.get("stems") or {}, b.get("stems") or {}
-    out = [f"stem {k}: {sa.get(k)} here, {sb.get(k)} in keep3" for k in sorted(set(sa) | set(sb)) if sa.get(k) != sb.get(k)]
+    out = [f"stem {k}: {sa.get(k)} here, {sb.get(k)} in {source}" for k in sorted(set(sa) | set(sb))
+           if sa.get(k) != sb.get(k)]
     if a.get("oneshots") != b.get("oneshots"):
         out.append("the one-shots differ")
     return out or ["no bus input differs: the difference comes after the bus inputs"]
@@ -372,10 +387,10 @@ def instrument_path(rec: Mapping, bus: str) -> str:
 
 
 def bus_expectation(want: Mapping, change: Mapping | None) -> dict:
-    """What a bus of a frozen or twin1 render must read, given keep3's record of it (`want`): keep3's pre-fader
-    loudness, effective trim and fader; under a level change of his (spec §4.2) the frozen fader instead (bus_gain_db
-    is 0, so the effective fader is the instrument's field), and, when the trim moved, no loudness or trim to compare
-    (recorded only)."""
+    """What a bus of a frozen or twin1 render must read, given its source's record of it (`want`, keep3's or a redo
+    round's, which played keep3's levels): that pre-fader loudness, effective trim and fader; under a level change of
+    his (spec §4.2) the frozen fader instead (bus_gain_db is 0, so the effective fader is the instrument's field), and,
+    when the trim moved, no loudness or trim to compare (recorded only)."""
     if change is None:
         return {k: want[k] for k in ("lufs", "trim_db", "fader_db")}
     (k3_trim, k3_fader), (trim, fader) = change["keep3"], change["frozen"]
@@ -391,10 +406,13 @@ def _g7(rec: Mapping) -> bool:
 
 def verify_doc(st: Mapping) -> dict:
     """Stage 4 (module doc) over the render stage's records (`st`: the job state): one document, its `problems`
-    empty when every check passes."""
+    empty when every check passes. Each kept render id maps to its kept loop (`st["kept_ids"]`; a render id that is
+    the loop's own stem when the job state has no map), and each kept loop is checked against its own source."""
     pal, expect, bed, changes = st["pal"], st["expect"], st["bed"], st["changes"]
     delta = bed["delta_lu"]
     kept, others = st["records"]["kept"], st["records"]["others"]
+    loop_of = st.get("kept_ids") or {rid: rid for rid in kept}
+    jobs = {s["key"]: s["job"] for s in expect["sources"]}
     twin = "twin1" if changes else "twin0"
     every = [(f"{rid}.{k}", row[k]) for rid, row in kept.items() for k in KINDS if k in row] + list(others.items())
     frozen = [(rid, row["frozen"]) for rid, row in kept.items() if "frozen" in row] + list(others.items())
@@ -414,10 +432,11 @@ def verify_doc(st: Mapping) -> dict:
     ns = [f"{w}: n {r['n']} is not loop_samples({r['bpm']}) = {loop_samples(r['bpm'])}" for w, r in every
           if r.get("n") is not None and r["n"] != loop_samples(r["bpm"])]
     for rid, row in kept.items():
-        want = expect["loops"][rid]["n"]
+        e = expect["loops"][loop_of[rid]]
+        want = e["n"]
         got = {**{k: row[k].get("n") for k in KINDS if k in row}, "repeat": (row.get("repeat") or {}).get("n")}
-        ns += [f"{rid}.{k}: n {v} is not keep3's {want}" for k, v in got.items() if v is not None and v != want]
-    add("n", "N = keep3's n = loop_samples(bpm), exactly", ns)
+        ns += [f"{rid}.{k}: n {v} is not {e['source']}'s {want}" for k, v in got.items() if v is not None and v != want]
+    add("n", "N = its source's n (keep3's or its redo round's) = loop_samples(bpm), exactly", ns)
     add("loudness", "-14 LUFS within 0.1 LU and a true peak at or below -1 dBTP (every render, the twins included)",
         [f"{w}: {x}" for w, r in every if r.get("status") in rendered for x in level_problems(r)])
     add("gates", "G1-G6 and G7 pass with no repair",
@@ -453,7 +472,8 @@ def verify_doc(st: Mapping) -> dict:
 
     rep_bad, twin_bad, music_bad, bus_bad, diffs = [], [], [], [], {}
     for rid, row in kept.items():
-        e, fz, rep = expect["loops"][rid], row.get("frozen") or {}, row.get("repeat")
+        key = loop_of[rid]
+        e, fz, rep = expect["loops"][key], row.get("frozen") or {}, row.get("repeat")
         if fz.get("status") == "ok":
             if rep is None:
                 rep_bad.append(f"{rid}: no fresh-process repeat")
@@ -468,10 +488,12 @@ def verify_doc(st: Mapping) -> dict:
                                        f"{str(mine)[:12]}...")
         t0 = row.get("twin0") or {}
         if t0.get("pcm_sha256") != e["pcm_sha256"]:
-            twin_bad.append(f"{rid}: twin0's pcm_sha256 {str(t0.get('pcm_sha256'))[:12]}... is not keep3's "
+            twin_bad.append(f"{rid}: twin0's pcm_sha256 {str(t0.get('pcm_sha256'))[:12]}... is not {e['source']}'s "
                             f"{e['pcm_sha256'][:12]}...")
+            # the source job rendered the loop under its stem (lofi_rl.drafts.job), the loop's key here
             diffs[rid] = stem_diff(st["run"] / "renders" / "twin0" / rid / "manifest.json",
-                                   st["runs_root"] / f"drafts-{expect['keep3']['job']}" / "renders" / rid / "manifest.json")
+                                   st["runs_root"] / f"drafts-{jobs[e['source']]}" / "renders" / key / "manifest.json",
+                                   e["source"])
         tw = row.get(twin) or {}
         for k in ("pre_limiter_sha256", "music_lufs"):
             if fz.get(k) is None or fz.get(k) != tw.get(k):
@@ -485,13 +507,14 @@ def verify_doc(st: Mapping) -> dict:
                 for k, v in bus_expectation(e["buses"][b], change).items():
                     if rec["buses"][b][k] != v:
                         bus_bad.append(f"{rid}.{kind}: the {b} bus's {k} is {rec['buses'][b][k]!r}, not "
-                                       f"{'keep3' if change is None else 'the changed level'}'s {v!r}")
+                                       f"{e['source'] if change is None else 'the changed level'}'s {v!r}")
     add("repeat", "the frozen render = its fresh-process repeat: audio_sha256, music_sha256 and the whole manifest",
         rep_bad, process_s={rid: (row.get("repeat") or {}).get("process_s") for rid, row in kept.items()})
-    add("twin_is_kept", "twin0's audio_sha256 = keep3's pcm_sha256 (keep3_kept10.json)", twin_bad, stem_diffs=diffs)
+    add("twin_is_kept", "twin0's audio_sha256 = its source's pcm_sha256 (keep3_kept10.json: keep3's or its redo "
+        "round's)", twin_bad, stem_diffs=diffs, sources={rid: expect["loops"][loop_of[rid]]["source"] for rid in kept})
     add("music_under_bed", f"pre_limiter_sha256 and music_lufs: the frozen render = {twin}", music_bad)
-    add("bus_levels", "each bus's pre-fader LUFS, effective trim and fader = keep3's; a level change of his moves only "
-        "its own fader (spec §4.2)", bus_bad, changes=changes)
+    add("bus_levels", "each bus's pre-fader LUFS, effective trim and fader = its source's; a level change of his moves "
+        "only its own fader (spec §4.2)", bus_bad, changes=changes)
     one = {rid: r.get("render_s") for rid, r in others.items()}
     slow = max((v for v in one.values() if v is not None), default=None)
     proj = None if slow is None else round(PROJECTION_CLIPS * slow, 2)
@@ -587,8 +610,9 @@ def run(a: argparse.Namespace, argv: Sequence[str], *, renderer=None) -> int:
         beds = st["verify"]["checks"]["bed_placed"]["beds"]
         lo_hi = tuple(st["verify"]["checks"]["bed_heard"]["kept_below"])
         change = bool(st["changes"])
-        note = SB.note_text(len(kept), st["bed"], lo_hi, change)
-        push = SB.push_text(name, len(kept), st["bed"], lo_hi, change)
+        again = bool(F.SIGNOFFS)                # an earlier sign-off listen played this rain at this level
+        note = SB.note_text(len(kept), st["bed"], lo_hi, change, again=again)
+        push = SB.push_text(name, len(kept), st["bed"], lo_hi, change, again=again)
         folder = SB.build({rid: row["frozen"] for rid, row in kept.items()}, a.run / "renders" / "signoff",
                           beds=beds, note=note, push=push, name=name, date=day.isoformat(), out_root=a.inbox,
                           seed=seed, summary_dir=summary)
@@ -608,10 +632,10 @@ def run(a: argparse.Namespace, argv: Sequence[str], *, renderer=None) -> int:
         for task in other_tasks(st):
             print(f"would render {task['render']} ({task['file']}, brief {task['brief_id']}) with {frozen_path.name}, "
                   f"one at a time with {ONE_AT_A_TIME_WORKERS} workers")
-        for rid in st["expect"]["loops"]:
+        for rid in st["kept_ids"]:
             print(f"would repeat {rid} with {frozen_path.name} in a fresh process (PYTHONHASHSEED={REPEAT_HASHSEED}, "
                   f"--workers {REPEAT_WORKERS})")
-        print(f"would build {a.inbox / day.isoformat() / name} ({len(st['expect']['loops'])} triage rounds)")
+        print(f"would build {a.inbox / day.isoformat() / name} ({len(st['kept_ids'])} triage rounds)")
         return 0
     for stage_name, fn in (("render", render), ("verify", verify), ("build", build)):
         rc = stages.run(stage_name, fn)
@@ -635,16 +659,29 @@ def check_stage(pal: Palette, frozen_path: Path, drafts: Path, briefs: Mapping[s
         doc["problems"] += err.errors
         return doc
     st["expect"] = expect
-    doc["expect"] = {"path": J._label(expect_path), "sha256": C.file_sha256(expect_path), "keep3": expect["keep3"],
+    doc["expect"] = {"path": J._label(expect_path), "sha256": C.file_sha256(expect_path), "sources": expect["sources"],
                      "kept": expect["kept"]}
+    doc["kept_vs_constants"] = C.constants_problems(expect)
     doc["kept_vs_gate"] = C.kept_problems(expect, GATE)
-    doc["problems"] += doc["kept_vs_gate"]
-    va, rep = C.vocabulary_check(pal, drafts, expect, with_report=True)
-    st["drafts"] = {d.path.stem: d for d in rep.drafts}
+    doc["tossed"] = C.tossed_problems()
+    doc["problems"] += doc["kept_vs_constants"] + doc["kept_vs_gate"] + doc["tossed"]
+    va, reports = C.vocabulary_check(pal, drafts, expect, with_report=True)
+    every = [d for _fo, rep in reports for d in rep.drafts]
+    st["drafts"] = {C.render_id(d.path, drafts): d for d in every}
+    if len(st["drafts"]) != len(every):
+        ids = [C.render_id(d.path, drafts) for d in every]
+        twice = sorted({i for i in ids if ids.count(i) > 1})
+        doc["problems"].append(f"render ids repeat across the drafts folders: {twice}")
+    # each kept render id -> its kept loop (keep3_kept10.json's key, the kept file's stem), in brief order
+    st["kept_ids"] = {C.render_id(ROOT / f, drafts): Path(f).stem for f in expect["kept"]}
+    lost = [f for f in expect["kept"] if C.render_id(ROOT / f, drafts) not in st["drafts"]]
+    if lost:
+        doc["problems"].append(f"kept files outside the drafts folders {[r['folder'] for r in va['folders']]}: {lost}")
     doc["a"] = va
     dev = load_palette(DEV_PALETTE, verify=False)
     doc["b"] = C.reference_check(pal, dev)
-    doc["c"] = C.regex_check(pal, drafts, expect["kept"])
+    folders, _ = C.drafts_folders(drafts)
+    doc["c"] = C.regex_check(pal, C.draft_files(folders), expect["kept"])
     doc["problems"] += va["problems"] + doc["b"]["problems"] + doc["c"]["problems"]
     rc, out = freeze_check(["--palette", frozen_path, "--gate", GATE])
     doc["g"] = {"cmd": "python -m lofi_rl.freeze check --gate", "exit": rc, "output": out[-4000:]}
@@ -657,7 +694,7 @@ def check_stage(pal: Palette, frozen_path: Path, drafts: Path, briefs: Mapping[s
         want = None if b is None else {"energy": b.brief.energy, "mood": b.brief.mood, "bpm": b.brief.bpm,
                                        "tonic": b.brief.tonic}
         if want != e["brief"]:
-            briefs_bad.append(f"{rid}: keep3 played brief {e['brief']}, briefs.yaml's {bid} is {want}")
+            briefs_bad.append(f"{rid}: {e['source']} played brief {e['brief']}, briefs.yaml's {bid} is {want}")
     cells: dict[tuple[str, str], str] = {}
     for bid in sorted(briefs):
         cells.setdefault(briefs[bid].cell, bid)
@@ -673,30 +710,41 @@ def check_stage(pal: Palette, frozen_path: Path, drafts: Path, briefs: Mapping[s
     doc["briefs"] = {"problems": briefs_bad, "reference_briefs": {ex_id: cells.get(cell) for ex_id, (cell, _) in
                                                                    refs.items()}}
     doc["problems"] += briefs_bad
-    doc["keep3_scratch"] = keep3_cross_check(expect, runs_root)
-    doc["problems"] += doc["keep3_scratch"]["problems"]
+    doc["sources_scratch"] = sources_cross_check(expect, runs_root)
+    doc["problems"] += doc["sources_scratch"]["problems"]
     return doc
 
 
-def keep3_cross_check(expect: Mapping, runs_root: Path) -> dict:
-    """keep3's summary/renders.json under runs_root, if scratch still holds it: its sha256 and records must be
-    keep3_kept10.json's."""
-    job = expect["keep3"]["job"]
-    p = runs_root / f"drafts-{job}" / "summary" / "renders.json"
+def source_cross_check(expect: Mapping, source: Mapping, runs_root: Path, s_star: float) -> dict:
+    """One source's summary/renders.json under runs_root (`drafts-<its job>`), if scratch still holds it: its sha256
+    must be the one keep3_kept10.json pins, and it must give the records of the loops it supplies."""
+    p = runs_root / f"drafts-{source['job']}" / "summary" / "renders.json"
     if not p.is_file():
         return {"path": str(p), "present": False, "note": "not on scratch: keep3_kept10.json stands", "problems": []}
     data = p.read_bytes()
     sha = C.sha256_bytes(data)
     out = {"path": str(p), "present": True, "sha256": sha, "problems": []}
-    if sha != expect["keep3"]["sha256"]:
-        out["problems"].append(f"{p} has sha256 {sha[:12]}..., keep3_kept10.json pins {expect['keep3']['sha256'][:12]}...")
+    if sha != source["sha256"]:
+        out["problems"].append(f"{p} has sha256 {sha[:12]}..., keep3_kept10.json pins {source['sha256'][:12]}... for "
+                               f"{source['key']}")
         return out
-    fresh = C.expectations(json.loads(data.decode("utf-8")), renders_sha256=sha, renders_path=expect["keep3"]["path"],
-                           job=job, kept=expect["kept"], draft=DP.load(DRAFT_PALETTE))
-    out["equal"] = fresh["loops"] == expect["loops"] and fresh["s_star"] == expect["s_star"]
+    mine = {rid: e for rid, e in expect["loops"].items() if e["source"] == source["key"]}
+    src = C.Source(source["key"], source["path"], source["job"], sha, json.loads(data.decode("utf-8")))
+    fresh, errors = C.source_loops(src, [e["file"] for e in mine.values()], s_star=s_star)
+    out["equal"] = not errors and fresh == mine and s_star == expect["s_star"]
     if not out["equal"]:
-        out["problems"].append(f"{p}'s records are not keep3_kept10.json's")
+        out["problems"].append(f"{p}'s records are not keep3_kept10.json's for {source['key']}" +
+                               (f": {errors}" if errors else ""))
     return out
+
+
+def sources_cross_check(expect: Mapping, runs_root: Path) -> dict:
+    """Each source of keep3_kept10.json against its summary/renders.json under runs_root (source_cross_check), with
+    the draft palette's S*; each one scratch no longer holds is recorded."""
+    s_star = DP.load(DRAFT_PALETTE).levels.get("S_star")
+    rows = {s["key"]: source_cross_check(expect, s, runs_root, s_star) for s in expect["sources"]}
+    return {"sources": rows, "absent": [k for k, r in rows.items() if not r["present"]],
+            "problems": [x for r in rows.values() for x in r["problems"]]}
 
 
 def palettes_stage(pal: Palette, frozen_path: Path, frozen_text: str, out: Path, runs_root: Path, st: dict) -> dict:
@@ -773,14 +821,16 @@ def palettes_stage(pal: Palette, frozen_path: Path, frozen_text: str, out: Path,
 
 
 def kept_items(st: Mapping, frozen_path: Path, renders: Path) -> list[tuple[str, dict, Path]]:
-    """Render (a)'s (kind, task, out dir): each kept loop with the frozen palette and with each twin."""
+    """Render (a)'s (kind, task, out dir): each kept loop with the frozen palette and with each twin, under its render
+    id (st["kept_ids"], in brief order), its draft the one read from its own file."""
     out = []
     pals = {"frozen": frozen_path, **st.get("twins", {})}
-    for rid, e in st["expect"]["loops"].items():
+    for rid, key in st["kept_ids"].items():
         d = st["drafts"][rid]
         b = d.brief
-        task = {"render": rid, "file": J._label(d.path), "loop_path": str(d.path), "text": d.text,
-                "brief_id": d.brief_id, "brief": {"energy": b.energy, "mood": b.mood, "bpm": b.bpm, "tonic": b.tonic},
+        task = {"render": rid, "loop": key, "source": st["expect"]["loops"][key]["source"], "file": J._label(d.path),
+                "loop_path": str(d.path), "text": d.text, "brief_id": d.brief_id,
+                "brief": {"energy": b.energy, "mood": b.mood, "bpm": b.bpm, "tonic": b.tonic},
                 "persona": d.persona, "keys": d.loop.keys.instrument, "kit": d.loop.kit, "s_star": st["expect"]["s_star"]}
         for kind in KINDS:
             if kind in pals:
@@ -789,10 +839,11 @@ def kept_items(st: Mapping, frozen_path: Path, renders: Path) -> list[tuple[str,
 
 
 def other_tasks(st: Mapping) -> list[dict]:
-    """Render (b)'s tasks: every draft not kept, then prompt v2's references, each with its cell's brief."""
+    """Render (b)'s tasks: every draft of every folder that is not kept (by its path), then prompt v2's references,
+    each with its cell's brief."""
     out = []
     for rid, d in sorted(st["drafts"].items()):
-        if rid in st["expect"]["loops"] or d.brief is None:
+        if rid in st["kept_ids"] or d.brief is None:
             continue
         b = d.brief
         out.append({"render": rid, "kind": "draft", "file": J._label(d.path), "text": d.text, "brief_id": d.brief_id,
@@ -809,7 +860,7 @@ def other_tasks(st: Mapping) -> list[dict]:
 def render_stage(st: dict, frozen_path: Path, renders: Path, *, jobs: int, cache: Path | None, renderer) -> dict:
     """Stage 3 (module doc): renders (a), (b) and (c); the records go into `st` and the returned document."""
     t0 = time.perf_counter()
-    kept: dict[str, dict] = {rid: {} for rid in st["expect"]["loops"]}
+    kept: dict[str, dict] = {rid: {} for rid in st["kept_ids"]}
     items = kept_items(st, frozen_path, renders)
     for (kind, task, _), (_, rec) in zip(items, render_kept(items, jobs=jobs, cache=cache, renderer=renderer)):
         kept[task["render"]][kind] = rec
@@ -828,5 +879,6 @@ def render_stage(st: dict, frozen_path: Path, renders: Path, *, jobs: int, cache
     t3 = time.perf_counter()
     st["records"] = {"kept": kept, "others": others}
     return {"schema": RENDERS_SCHEMA, "palette": st["palette_record"],
-            "twins": {k: Path(v).name for k, v in st.get("twins", {}).items()}, "kept": kept, "others": others,
+            "twins": {k: Path(v).name for k, v in st.get("twins", {}).items()}, "kept_loops": dict(st["kept_ids"]),
+            "kept": kept, "others": others,
             "seconds": {"kept": round(t1 - t0, 1), "others": round(t2 - t1, 1), "repeats": round(t3 - t2, 1)}}
