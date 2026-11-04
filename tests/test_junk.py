@@ -1176,6 +1176,60 @@ def test_render_two_at_a_time_gives_one_at_a_times_clips_for_real(tmp_path, pal)
     assert two_files == one_files
 
 
+# three committed drafts of brief d01's cell that play the frozen palette's three keys and both kits:
+# wurli and studio, piano and jazz, rhodes and studio (runs/drafts-13706355/summary/renders.json)
+FROZEN_DRAFTS = ("d01_chords", "d01_groove", "d01_horn")
+
+
+def _frozen_sources_missing() -> list[str]:
+    """The frozen palette's source files that are not on this machine: the fetch-only ones live under $LOFI_ASSETS
+    (by default assets/big, never committed), so a fresh checkout has none of them."""
+    frozen = load_palette(FROZEN, verify=False)
+    missing = []
+    for src in sorted(frozen.sources):
+        try:
+            path = frozen.source_path(src)
+        except Exception as err:  # noqa: BLE001: an unset assets variable, say
+            return [f"{src}: {err}"]
+        if not path.is_file():
+            missing.append(str(path))
+    return missing
+
+
+@needs_audio
+def test_render_two_at_a_time_gives_one_at_a_times_clips_with_the_frozen_palette(tmp_path):
+    """The Phase-1 gate's own configuration (the freeze spec §5.5 (iii); D-022): the frozen palette with its rain bed
+    and banks. Two at a time with 2 workers each, on a cold one-shot cache that both lanes fill, then one at a time with
+    4 workers: the same records in the same order (render_s aside), byte-identical FLACs and manifests. Skipped where
+    the fetch-only sources are not here."""
+    missing = _frozen_sources_missing()
+    if missing:
+        pytest.skip(f"the frozen palette's fetch-only sources are not here ({len(missing)}, e.g. {missing[0]})")
+    frozen = load_palette(FROZEN, verify=False)
+    cases = [((ROOT / "drafts" / "v1" / f"{d}.ls").read_text(encoding="utf-8"), "stop", "low", "melancholy", 300)
+             for d in FROZEN_DRAFTS]
+    out = {}
+    for jobs in ("2", "1"):
+        run = tmp_path / f"jobs{jobs}"
+        _write_run(run, frozen, cases, drift=None, version="v2")
+        assert junk.main(["score", "--run", str(run), "--palette", str(FROZEN)]) == 0
+        assert junk.main(["render", "--run", str(run), "--k", "3", "--palette", str(FROZEN), "--no-verify",
+                          "--workers", "4", "--jobs", jobs, "--cache", str(tmp_path / "cache")]) == 0
+        doc = json.loads((run / "summary" / "clips.json").read_text())
+        files = {c["clip"]: ((run / c["clip"]).read_bytes(),
+                             (run / c["clip"]).with_suffix(".manifest.json").read_bytes()) for c in doc["clips"]}
+        out[jobs] = (doc, files)
+    (one, one_files), (two, two_files) = out["1"], out["2"]
+    assert (one["jobs"], one["workers"], two["jobs"], two["workers"]) == (1, 4, 2, 2)
+    assert one["palette"] == {"id": "lofi_rain_v1", "sha256": frozen.sha256}
+    assert len(one["clips"]) == 3 and all(c["ok"] for c in one["clips"]), one["clips"]
+    strip = [{k: v for k, v in c.items() if k != "render_s"} for c in one["clips"]]
+    assert [{k: v for k, v in c.items() if k != "render_s"} for c in two["clips"]] == strip
+    assert two_files == one_files
+    manifest = json.loads(next(iter(one_files.values()))[1])
+    assert manifest["bed"]["src"] == "rain" and manifest["bed"]["delta_lu"] == 24.0, "the frozen bed renders"
+
+
 @pytest.mark.cluster
 def test_render_writes_one_pass_flacs_for_real(tmp_path, pal):
     sf = pytest.importorskip("soundfile")
