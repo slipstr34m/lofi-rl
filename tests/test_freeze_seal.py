@@ -375,6 +375,22 @@ def test_the_seal_takes_only_the_latest_recorded_listen(tmp_path):
     assert S.seal(**w.kwargs(cli=FakeCLI(w), signoffs=(first, passed))).job == 13700002
 
 
+def test_the_latest_recorded_listen_decides_with_the_real_record(tmp_path):
+    """A world whose latest sign-off job is the latest SIGNOFFS entry's (today b1103-signoff, job 13701026): its one
+    refusal is that listen's Toss, or, once a listen passes, it seals."""
+    last = F.SIGNOFFS[-1]
+    w = make_world(tmp_path, signoff=False)
+    w.signoff(last["job"], day="2026-11-03", batch=last["batch"])
+    if last["tossed"]:
+        n = len(last["tossed"])
+        assert refused(w, signoffs=None) == [
+            f"the latest sign-off listen {last['batch']} (job {last['job']}) tossed {n} kept loop{'' if n == 1 else 's'} "
+            f"({', '.join(last['tossed'])}): it did not pass, so nothing is sealed until a later sign-off listen passes "
+            f"(docs/FREEZE.md §5)"]
+    else:
+        assert S.seal(**w.kwargs(cli=FakeCLI(w), signoffs=None)).written
+
+
 def test_the_seal_reads_lofi_rl_freeze_signoffs(tmp_path, monkeypatch):
     """With no `signoffs` given the seal reads the constant: today's (b1103-signoff, 4 Toss) refuses this world's job
     on both counts; a record of this job's passing listen seals."""
@@ -579,13 +595,16 @@ def test_on_copies_of_the_real_runs_inbox_and_gate(tmp_path):
         assert any("no line `APPROVED by Shresth Rana" in p for p in refused(w)), name
     w = real_world(tmp_path / "ok", f"\nHis line, given in chat, entered verbatim:\nAPPROVED by Shresth Rana {ok}\n")
     assert (w.runs / f"drafts-{JOBS['keep3']}" / "summary" / "args.json").is_file()    # keep3's run is no sign-off
-    if not S.signoff_runs(w.runs):
+    real_jobs = S.signoff_runs(w.runs)
+    if not real_jobs:
         assert any("no sign-off job under" in p for p in refused(w))
     elif F.SIGNOFFS and F.SIGNOFFS[-1]["tossed"]:
-        # the real record: b1103-signoff (job 13701026) tossed 4 of the kept loops, so the real state refuses
-        last = F.SIGNOFFS[-1]
-        assert any(p.startswith(f"the latest sign-off listen {last['batch']} (job {last['job']}) tossed "
-                                f"{len(last['tossed'])} kept loop") for p in refused(w, signoffs=None))
+        # the real record: b1103-signoff (job 13701026) tossed 4 of the kept loops, so the real state refuses; with
+        # its batch pulled to inbox/, the refusal is that one
+        last, job, problems = F.SIGNOFFS[-1], real_jobs[-1], refused(w, signoffs=None)
+        if (w.inbox / str(job.date) / str(job.batch) / "manifest.hidden.json").is_file():
+            assert any(p.startswith(f"the latest sign-off listen {last['batch']} (job {last['job']}) tossed "
+                                    f"{len(last['tossed'])} kept loop") for p in problems), problems
     w.signoff(99999999, day=ok.isoformat(), batch=f"b{ok:%m%d}-signoff")   # a later sign-off job; its listen passed
     old = w.palette.read_text()
     cli = FakeCLI(w)
