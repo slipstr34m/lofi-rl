@@ -27,6 +27,7 @@ from lofi_rl.drafts import palette as P
 from lofi_rl.drafts.render import render_all
 from lofi_rl.freeze import batch as SB
 from lofi_rl.freeze import checks as C
+from lofi_rl.freeze import gate as G
 from lofi_rl.freeze import signoff as S
 from lofi_rl.palette import load_palette
 from lofi_rl.render.pipeline import manifest_json
@@ -131,6 +132,19 @@ def kept_ids() -> dict[str, str]:
     """The kept loops' render ids here: a drafts/v1 pick's is its stem, a redo1 pick's carries its folder."""
     return {**{s: s for s in ("d02_chords", "d03_chords", "d04_horn", "d05_groove", "d08_horn", "d09_chords")},
             **{f"redo1_{b}_{H.PICKS[b]}": f"{b}_{H.PICKS[b]}" for b in H.REOPENED}}
+
+
+def test_the_worlds_record_keeps_its_rules_and_its_gate_file_confirms_it(tmp_path):
+    """The record this world puts on lofi_rl.freeze (tests/helpers_redo.py: keep3's 10, redo1's four picks,
+    b1103-signoff's four Toss, its own jobs) keeps every rule of gate.records_problems and is what its gate file
+    records, whatever the live record holds; with it the four tossed loops are replaced."""
+    v1, redo1 = H.write_tree(tmp_path / "drafts")
+    consts = H.constants(v1, redo1, keep3_job=7, redo_job=8)
+    assert G.records_problems(**{k.lower(): v for k, v in consts.items()}) == []
+    assert G.records_compare(H.gate_text(consts), redos=consts["REDOS"], signoffs=consts["SIGNOFFS"]) == []
+    assert FZ.tossed_kept(consts["KEPT"], consts["REDOS"], consts["SIGNOFFS"]) == []
+    assert [f for f, key in FZ.kept_rounds(consts["KEPT"], consts["REDOS"]).values() if key == "keep3_redo1"] == [
+        str(redo1 / f"{b}_{H.PICKS[b]}.ls") for b in H.REOPENED]
 
 
 def test_the_job_signs_off_the_new_kept_ten(world):

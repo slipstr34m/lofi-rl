@@ -220,6 +220,13 @@ They find what they read by heading, bold label and backticked id (§4's reader,
 counts, the drawn tables) does not break them. An edit to what the reader reads (a pick, a confirmation, a keep3 row,
 a heading written twice) fails them, as it fails the check.
 
+**Nor does a new record break the tests.** Recording a redo round or a listen (§5.1) adds to `REDOS`, `JOBS` and
+`SIGNOFFS`. The synthetic worlds pin the record they were written for (tests/helpers_record.py: the jobs of
+2026-11-03, no redo round, b1103-signoff). The tests of the real files read the kept list by what keep3_kept10.json
+and the constants record. tests/test_freeze_record.py reruns representative tests of each freeze test module in a
+pytest process of their own, with a recorded-shaped record on `lofi_rl.freeze` (two redo rounds, a second listen that
+passed).
+
 **With `--levels-day1 L1 --levels-day2 L2 --levels-day3 L3`:** each file's sha256 is the one recorded (L1
 `9cf78680…`, L2 `8f4f6e9f…`, L3 `b313ff9a…`); every provenance number equals its value there (each instrument's t and
 F in each job, job 2's instrument, the K2 spread F, S\*, the targets, what Day 3 measured); `drafts.palette build` from
