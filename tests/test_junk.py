@@ -1176,9 +1176,23 @@ def test_render_two_at_a_time_gives_one_at_a_times_clips_for_real(tmp_path, pal)
     assert two_files == one_files
 
 
-# three committed drafts of brief d01's cell that play the frozen palette's three keys and both kits:
-# wurli and studio, piano and jazz, rhodes and studio (runs/drafts-13706355/summary/renders.json)
-FROZEN_DRAFTS = ("d01_chords", "d01_groove", "d01_horn")
+# three committed drafts of brief d01's cell that play the frozen palette's three keys and both kits (their keys: and
+# drums: lines): piano and jazz, wurli and studio, rhodes and jazz. The sample takes them as [0, 2, 1] (the brief seed
+# 1), so the two renders that start together both play the jazz kit, whose one-shots are SoundFont notes rendered into
+# the one-shot cache (lofi_rl.render.sampler.note_shot); the studio kit's are files, read from their source
+FROZEN_DRAFTS = ("d01_groove", "d01_chords", "redo1/d01_chords")
+
+
+def _kit(text: str) -> str:
+    return re.search(r"^drums: (\w+)$", text, re.M)[1]
+
+
+def _cached_shots(pal, kit: str) -> set[str]:
+    """The one-shot cache keys of a kit's SoundFont shots, as kit_shots loads them (each distinct shot once)."""
+    from lofi_rl.render import sampler        # here, not at the top: it needs the audio libraries (needs_audio)
+    lanes = pal.kits[kit].lanes
+    wanted = dict.fromkeys(s for lane in sampler.LANES for layer in sampler.LAYERS for s in lanes[lane].layers[layer])
+    return {sampler.settings_key(sampler.note_settings(s, pal.sources[s.src].sha256)) for s in wanted if s.file is None}
 
 
 def _frozen_sources_missing() -> list[str]:
@@ -1199,27 +1213,39 @@ def _frozen_sources_missing() -> list[str]:
 @needs_audio
 def test_render_two_at_a_time_gives_one_at_a_times_clips_with_the_frozen_palette(tmp_path):
     """The Phase-1 gate's own configuration (the freeze spec §5.5 (iii); D-022): the frozen palette with its rain bed
-    and banks. Two at a time with 2 workers each, on a cold one-shot cache that both lanes fill, then one at a time with
-    4 workers: the same records in the same order (render_s aside), byte-identical FLACs and manifests. Skipped where
-    the fetch-only sources are not here."""
+    and banks. Two at a time with 2 workers each on a cold one-shot cache, where the two renders that start together
+    both play the jazz kit and so both fill its one-shots at once, then one at a time with 4 workers on the filled
+    cache: the same records in the same order (render_s aside), byte-identical FLACs and manifests, and each one-shot
+    cached once. Skipped where the fetch-only sources are not here."""
     missing = _frozen_sources_missing()
     if missing:
         pytest.skip(f"the frozen palette's fetch-only sources are not here ({len(missing)}, e.g. {missing[0]})")
     frozen = load_palette(FROZEN, verify=False)
     cases = [((ROOT / "drafts" / "v1" / f"{d}.ls").read_text(encoding="utf-8"), "stop", "low", "melancholy", 300)
              for d in FROZEN_DRAFTS]
+    assert sorted({_kit(text) for text, *_ in cases}) == ["jazz", "studio"]
+    oneshots, jazz = tmp_path / "cache" / "oneshots", _cached_shots(frozen, "jazz")
+    assert jazz and not _cached_shots(frozen, "studio"), "only the jazz kit's one-shots go through the cache"
     out = {}
     for jobs in ("2", "1"):
         run = tmp_path / f"jobs{jobs}"
         _write_run(run, frozen, cases, drift=None, version="v2")
         assert junk.main(["score", "--run", str(run), "--palette", str(FROZEN)]) == 0
+        if jobs == "2":
+            assert not oneshots.exists(), "the two-lane run starts on a cold cache"
         assert junk.main(["render", "--run", str(run), "--k", "3", "--palette", str(FROZEN), "--no-verify",
                           "--workers", "4", "--jobs", jobs, "--cache", str(tmp_path / "cache")]) == 0
         doc = json.loads((run / "summary" / "clips.json").read_text())
         files = {c["clip"]: ((run / c["clip"]).read_bytes(),
                              (run / c["clip"]).with_suffix(".manifest.json").read_bytes()) for c in doc["clips"]}
         out[jobs] = (doc, files)
+        cached = sorted(p.name for p in oneshots.iterdir())
+        assert cached == sorted(f"{k}.{ext}" for k in jazz for ext in ("json", "wav")), (
+            "each jazz one-shot cached once, with its record, and no temporary file left")
     (one, one_files), (two, two_files) = out["1"], out["2"]
+    pick = [c["i"] for c in two["clips"]]
+    assert pick == junk.sample_indices([0, 1, 2], 3, seed=1) == [0, 2, 1]
+    assert [_kit(cases[i][0]) for i in pick[:2]] == ["jazz", "jazz"], "the two lanes' first renders fill one kit"
     assert (one["jobs"], one["workers"], two["jobs"], two["workers"]) == (1, 4, 2, 2)
     assert one["palette"] == {"id": "lofi_rain_v1", "sha256": frozen.sha256}
     assert len(one["clips"]) == 3 and all(c["ok"] for c in one["clips"]), one["clips"]
