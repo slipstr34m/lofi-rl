@@ -38,9 +38,11 @@
 #   5.5; D-022): job B (lofi-drafts 13706355) rendered it one at a time with 4 workers in 2.90-17.39 s (mean 7.71 s,
 #   runs/drafts-13706355/summary/verify.json), so 50 renders take at most 50 x 17.39 = 869.5 s that way; two at a
 #   time with 2 workers each ran 1.713 times as fast on the laptop (the 42 drafts and 9 references; 1.765 on 50 of
-#   D-020 arm B's loops), so at most 869.5 / 1.713 = 507.6 s, and about 50 x 7.71 / 1.713 = 225 s at job B's mean.
-#   535 s deadline (no render starts after it), 595 s timeout: the three timeouts and their kill grace are 1,560 s,
-#   a minute under the 27 min walltime (25 min, a 360 s deadline and 420 s timeout until 2026-11-04).
+#   D-020 arm B's loops; docs/evidence/D-022), so at most 869.5 / 1.713 = 507.6 s, and about 50 x 7.71 / 1.713 = 225 s
+#   at job B's mean. 535 s deadline (no render starts after it), 595 s timeout, 60 s apart so that a render started
+#   just before the deadline ends before the timeout: the three timeouts and their kill grace are 1,560 s, a minute
+#   under the 27 min walltime (25 min, a 360 s deadline and 420 s timeout until 2026-11-04). Whether the gate runs at
+#   27 min or at 28 (504 SU, his to approve) is Shresth's call before it is submitted (D-022).
 #   Expected: about 6.2 min, 112 SU (about 11 min, 197 SU, at the 507.6 s worst): D-020's arms took 5.2 and 5.5 min
 #   (93.0 and 99.0 SU), of which their dev_gu renders took 160 and 184 s (runs/junk-1364032{4,5}/summary/clips.json
 #   render_s), and this render step takes about 225 s. v0 (13632676) took 4.8 min, 86.4 SU. CONSTRAINED=1 adds the

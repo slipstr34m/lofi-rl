@@ -126,7 +126,7 @@ DEFAULT_N, DEFAULT_SEED, DEFAULT_CHUNK, RENDER_K = 500, 2026, 128, 50
 # renders at a time in the render step, --workers split between them (the freeze spec §5.5 (iii), D-022): job B's
 # slowest one-at-a-time render (17.39 s, runs/drafts-13706355) puts 50 renders at 869.5 s; two at a time with 2
 # workers each ran 1.713 times as fast on the laptop on the 42 drafts and 9 references, and 1.765 times on 50 of
-# D-020 arm B's loops, with every clip, manifest and FLAC identical
+# D-020 arm B's loops, with every clip, manifest and FLAC identical (docs/evidence/D-022)
 RENDER_JOBS = 2
 # taste_pipeline §6: GRPO's sampling, which make junk-rate shares; top_k 0 is "every token" in vLLM
 SAMPLING = {"temperature": 1.0, "top_p": 1.0, "top_k": 0, "min_p": 0.0, "repetition_penalty": 1.0,
