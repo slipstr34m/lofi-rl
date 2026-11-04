@@ -485,7 +485,8 @@ def test_freeze_check_gate_compares_a_redo_rounds_table_with_redos(tmp_path, mon
             "kept": {"d01": f"{folder}/d01_horn.ls", "d06": f"{folder}/d06_horn.ls"}}
     heading = f"{head}: voted 2026-11-05 (batch b1105-keep3-redo; job {job})"
     section = (f"{heading}\n\n| Brief | Energy, mood | Kept |\n|---|---|---|\n"
-               f"| d01 | low, melancholy | `{folder}/d01_horn.ls` |\n| d06 | mid, hopeful | `{folder}/d06_horn.ls` |\n\n")
+               f"| d01 | low, melancholy | `{folder}/d01_horn.ls` |\n"
+               f"| d06 | mid, hopeful | `{folder}/d06_horn.ls` |\n\n")
     real = GATE.read_text(encoding="utf-8")
     assert real.count("\n## How to approve\n") == 1
     gate = tmp_path / "GATE_palette.md"
@@ -527,7 +528,8 @@ def test_the_report_on_a_standin_fails_on_exactly_the_tossed_loops(tmp_path):
     b1103-signoff that no redo pick has replaced yet."""
     pal = standin(tmp_path / "lofi_rain_v1.yaml")
     rec = Recorder()
-    renders = {s["key"]: ROOT / s["path"] for s in C.load_expectations(EXPECT)["sources"] if (ROOT / s["path"]).is_file()}
+    renders = {s["key"]: ROOT / s["path"] for s in C.load_expectations(EXPECT)["sources"]
+               if (ROOT / s["path"]).is_file()}
     doc = C.report(pal, gate=GATE, renders=renders, verify=True, runner=rec)
     assert doc["problems"] == doc["i"]["problems"] == C.tossed_problems()
     assert [p.split(":")[0] for p in doc["problems"]] == [b for b, _f, _s in FZ.tossed_kept()]
@@ -575,15 +577,15 @@ def test_the_bus_table_is_the_kept_loops_and_names_a_bus_over_one_lu():
     keys = sorted({x["keys"] for x in loops.values()})
     assert {i: v["median"] for i, v in e["keys_by_instrument"].items()} == {
         i: statistics.median(x["buses"]["keys"]["off_lu"] for x in loops.values() if x["keys"] == i) for i in keys}
+    k, s = ({r: x["buses"][b] for r, x in loops.items()} for b in ("keys", "sax"))
     assert e["keys_vs_own_sax"]["median"] == statistics.median(
-        (x["buses"]["keys"]["lu"] - x["buses"]["sax"]["lu"]) - (x["buses"]["keys"]["target_lu"]
-                                                                  - x["buses"]["sax"]["target_lu"]) for x in loops.values())
+        (k[r]["lu"] - s[r]["lu"]) - (k[r]["target_lu"] - s[r]["target_lu"]) for r in loops)
     assert e["uses"]["keys"] == {i: sorted(r for r, x in loops.items() if x["keys"] == i) for i in keys}
 
 
 def keep3_ten() -> dict:
-    """keep3's ten loops as a keep3_kept10.json document: the committed file while its kept list is keep3's (2026-11-03),
-    else rebuilt from keep3's renders.json where runs/ holds it (skip otherwise)."""
+    """keep3's ten loops as a keep3_kept10.json document: the committed file while its kept list is keep3's
+    (2026-11-03), else rebuilt from keep3's renders.json where runs/ holds it (skip otherwise)."""
     doc = C.load_expectations(EXPECT)
     if [s["key"] for s in doc["sources"]] == ["keep3"] and doc["kept"] == list(FZ.KEPT.values()):
         return doc

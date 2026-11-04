@@ -10,8 +10,8 @@ the validator over the tree lifts lofi_rl.drafts.check.J5_MAX (`lift_near_copy_l
 (the stem of the tossed keep3 pick drafts/v1/d06_horn.ls), d07 groove and d10 chords.
 
 `constants(...)` gives KEPT, REDOS, SIGNOFFS and JOBS for the tree (keep3's picks as in the real gate file, at the
-tree's paths; one redo round; b1103-signoff with its four Toss at the tree's paths; the jobs of the record of 2026-11-03,
-tests/helpers_record.py, with the tree's keep3 and redo jobs, never the live JOBS), `patch` puts them on
+tree's paths; one redo round; b1103-signoff with its four Toss at the tree's paths; the jobs of the record of
+2026-11-03, tests/helpers_record.py, with the tree's keep3 and redo jobs, never the live JOBS), `patch` puts them on
 lofi_rl.freeze with monkeypatch, and `gate_text` writes a gate file that records them. Tests only: nothing here is a
 draft anyone wrote, and nothing is claimed about sound."""
 from __future__ import annotations

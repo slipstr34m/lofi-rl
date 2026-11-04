@@ -545,7 +545,8 @@ def test_a_passing_listen_whose_section_names_files_in_plain_text_fails():
     ("b1106-signoff-2", "SIGNOFFS[1]: a sign-off listen holds exactly ['batch', 'job', 'tossed']"),
     ({"batch": LATER, "job": 13720000, "tossed": "drafts/v1/d02_chords.ls"},
      f"SIGNOFFS[1] ({LATER}): its tossed files are a list, each once"),
-    ({"batch": LATER, "job": 13720000, "tossed": None}, f"SIGNOFFS[1] ({LATER}): its tossed files are a list, each once"),
+    ({"batch": LATER, "job": 13720000, "tossed": None},
+     f"SIGNOFFS[1] ({LATER}): its tossed files are a list, each once"),
     ({"batch": LATER, "job": 13720000, "tossed": ("drafts/v1/d02_chords.ls", "drafts/v1/d02_chords.ls")},
      f"SIGNOFFS[1] ({LATER}): its tossed files are a list, each once"),
 ], ids=["tossed-forgotten", "a-field-more", "not-a-mapping", "tossed-a-string", "tossed-none", "a-file-twice"])

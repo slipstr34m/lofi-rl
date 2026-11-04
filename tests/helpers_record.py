@@ -9,9 +9,9 @@ the record agree. So every synthetic world pins the record it was written for:
 - **RECORDED** is a recorded-shaped future, for tests only (nobody's picks): redo1 keeps d01, d06 and d10 (d07 "none
   acceptable"), redo2 keeps d07, and a second listen passes. It keeps every rule of gate.records_problems.
 
-`pin(monkeypatch, record)` puts a record on lofi_rl.freeze for one test. `put(record)` puts it there for a whole process,
-JOBS updated in place (every `from lofi_rl.freeze import JOBS` holds that one dict), as a recorded state would be:
-tests/test_freeze_record.py reruns representative tests of each freeze test module under RECORDED that way.
+`pin(monkeypatch, record)` puts a record on lofi_rl.freeze for one test. `put(record)` puts it there for a whole
+process, JOBS updated in place (every `from lofi_rl.freeze import JOBS` holds that one dict), as a recorded state would
+be: tests/test_freeze_record.py reruns representative tests of each freeze test module under RECORDED that way.
 `live()` reads the live constants (a module that pins TODAY reads them at import, for its real-record test). Tests
 only; nothing is claimed about sound."""
 from __future__ import annotations
@@ -50,7 +50,7 @@ def pin(monkeypatch, record: Mapping[str, Any] = TODAY) -> None:
 
 
 def put(record: Mapping[str, Any] = RECORDED) -> None:
-    """`record` on lofi_rl.freeze for the whole process: REDOS and SIGNOFFS replaced, its jobs added to JOBS in place."""
+    """`record` on lofi_rl.freeze for the whole process: REDOS and SIGNOFFS replaced, its jobs put in JOBS in place."""
     F.REDOS, F.SIGNOFFS = tuple(record["REDOS"]), tuple(record["SIGNOFFS"])
     F.JOBS.update(record["JOBS"])
 
