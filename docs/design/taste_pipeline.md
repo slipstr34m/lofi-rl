@@ -82,6 +82,15 @@ Other event types: `triage{tier}`, `keep3`, `shootout{category,options}`, `ab{le
 - `make votes-backup` commits and pushes it, then copies to `$REMOTE_DATA/votes/` with `rsync -a` (no `--delete`).
 - `tests/test_privacy.py` fails if anything under `data/votes` is tracked.
 - Shootout votes cast before the palette freeze never train the RM.
+- **Sign-off votes** (the freeze's listens, category `signoff`, triage mode; docs/FREEZE.md) are triage tiers like
+  any other (§4): each loop's tier is an acceptability label at weight 1. Each round holds one loop of its own brief,
+  so no within-brief pairs arise. Their clip ids carry the signed-off palette, `lofi_rain_v1@d3590c8d` (sha256 A),
+  whose audio is the frozen file's (sha256 B, `09f80a64…`): the two differ only in `frozen:`, which no render reads
+  (D-022). The RM loader maps or filters them by that category and label.
+- **A sign-off batch whose palette did not freeze** never trains the RM (Claude's default, F9 of the freeze spec; he
+  can override it): its votes judged a palette no pool clip will ever play, the reason the shootout votes stay out.
+  Both sign-off batches so far, `b1103-signoff` (job 13701026) and `b1103-signoff-2` (job 13706355), played
+  `lofi_rain_v1@d3590c8d`, the palette that froze, so neither is excluded.
 
 **Clip transport**
 - Canonical WAVs stay in `$REMOTE_SCR/renders/`. Voted clips persist as LoopScript plus features, since renders are deterministic.

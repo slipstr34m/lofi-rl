@@ -195,6 +195,15 @@ C = `cycles` = 2 in production ("two cycles, keep the second"). The seam test us
 - **Level.** LUFS_bed = LUFS_music − Δ, with Δ = `delta_lu` (24 by default) and the music measured after the
   master chain and before the limiter. On `example.ls` with a synthetic noise bed, the bed (render minus
   music.wav) sat 17.998, 23.997 and 29.996 LU below music.wav for Δ = 18, 24 and 30 (measured 2026-10-31).
+- **As heard, with the rain** (the frozen palette, `palettes/lofi_rain_v1.yaml`: excerpt e2 at Δ 24). The bed is
+  placed at exactly −Δ before the limiter, and the limiter then works on music and bed together, so the bed as heard
+  (render minus music.wav, against music.wav) is not −Δ. On the cluster (job 13706355,
+  `runs/drafts-13706355/summary/verify.json`) the bed was placed at −24.0 LU in all 51 renders, and as heard it sat
+  22.64–23.93 LU under the music on the kept 10. Two drafts he did not keep sat 2.556 (d04_chords) and 2.074
+  (d04_groove) LU closer than −24, flagged as information. The four Day-3 renders at Δ 24 he judged (W2,
+  `runs/shootout-13656048/summary/renders.json`) sat 21.99–23.98 LU under the music. So the −Δ ± 0.5 LU of
+  `tests/test_render.py` (§12) holds on its synthetic fixture only. With the rain the bed is checked as placed, and
+  its level as heard is recorded, not gated (docs/DECISIONS.md D-022).
 - **`bed: null`** (as in `dev_gu`) renders without a bed, and music.wav equals render.wav.
 
 ### 3.5 Loudness and gate G7 (§2, §4 Loudness)
@@ -453,7 +462,7 @@ Each is pinned by a test and can be changed.
 | §7 row | file | what it checks |
 |---|---|---|
 | `test_sampler` | `tests/test_sampler.py` | layers and fallback, round-robin from compiled hits, the 8 ms choke (also into the next cycle), folding at the seam, the pan law, order independence, file one-shots, the GU kit build, cache reuse and rebuild, the drum-channel program, a missing drum kit as an error, a user config that never reaches the cache, each lane's own pan and dB through `kit_shots` and `render_drums` |
-| `test_render` | `tests/test_render.py` | length N, −14 ± 0.1 LUFS, true peak ≤ −1 dBTP on the repeating loop, the manifest against the audio, the bed at −Δ ± 0.5 LU, gates G1–G6 and G7. On synthetic loops (no FluidSynth): a loop that needs 2–4 loudness iterations (and fails G7 with `iters: 1`), the bed at Δ = 18, 24 and 30 with the reported level, the G7 music floor at −55 and −45 LUFS, the G7 true-peak limit at −0.69 and −0.94 dBTP, an overshoot at the seam. With the audio stages stubbed: parser plus compiler repairs and P_fix in the manifest, and a bare numeral parsed in the brief's mode |
+| `test_render` | `tests/test_render.py` | length N, −14 ± 0.1 LUFS, true peak ≤ −1 dBTP on the repeating loop, the manifest against the audio, the bed at −Δ ± 0.5 LU (on its synthetic fixture: with the frozen palette's rain the bed as heard sits 22.64–23.93 LU under the music on the kept 10, §3.4), gates G1–G6 and G7. On synthetic loops (no FluidSynth): a loop that needs 2–4 loudness iterations (and fails G7 with `iters: 1`), the bed at Δ = 18, 24 and 30 with the reported level, the G7 music floor at −55 and −45 LUFS, the G7 true-peak limit at −0.69 and −0.94 dBTP, an overshoot at the seam. With the audio stages stubbed: parser plus compiler repairs and P_fix in the manifest, and a bare numeral parsed in the brief's mode |
 | `test_seam` | `tests/test_seam.py` | 3-cycle render, cycle 2 vs cycle 3 < 1e-5 for the whole chain (§4, Linux); the render keeps exactly cycle 2; the pre-roll case; the 3× limiter tile; `-m cluster`: 5 fixtures × 4 tempos |
 | `test_determinism` | `tests/test_determinism.py` | the same process in A-B-A order; a fresh CLI process with 1 worker against the in-process render with 4 (WAV, FLAC and manifest), run alongside the A-B-A renders to save wall time; golden hashes; the kit's one-shots built into an empty cache against their golden hashes and the warm cache's |
 | `test_fluid_cli` | `tests/test_fluid_cli.py` | version 2.6.1, the exact flags, the version check and its memo, the rejected limiter flag, one process per non-empty stem with the pre-roll; an empty home for every render, a user config that cannot reach the PCM, the two config files FluidSynth tries, a system config that stops the render, substituted presets, errors in the log, a render past its 120 s, short, silent and wrong-rate output as `FluidSynthError` |

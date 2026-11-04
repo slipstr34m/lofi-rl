@@ -166,11 +166,15 @@ decides what a loop may name.
 
 | vocabulary | keys | kits | sax | aliases |
 |---|---|---|---|---|
+| `palettes/lofi_rain_v1.yaml` (the frozen palette, sha256 `09f80a64…`, frozen 2026-11-04) | rhodes, wurli, piano | studio, jazz | alto (lead: alto) | none |
 | `palettes/dev_gu.yaml` (the development palette) | rhodes, organ | jazz | tenor, alto (lead: tenor) | ep, wurli, piano, guitar → rhodes; dusty, brushes → jazz |
 | `DEFAULT_VOCAB` (no palette) | rhodes, piano, guitar, organ, wurli, ep | dusty, brushes, jazz | tenor, alto | none |
 
-- **Placeholders.** These are not the project's names. `palettes/lofi_rain_v1.yaml`, frozen at the end of Phase 1
-  from the shootouts, will set those (instrument.md §6; docs/DECISIONS.md D-017).
+- **The project's names** are the frozen palette's, set from the shootouts and fixed for good (instrument.md §6;
+  docs/DECISIONS.md D-017, D-022). They are the names the model writes from the Phase-1 gate on, and its grammar's
+  (GRAMMAR.md §2). With no aliases, a name outside them fails G4, never a repair.
+- **Placeholders.** dev_gu's and `DEFAULT_VOCAB`'s names are not the project's. dev_gu stays for the tests, the
+  scorer smoke's fixtures and the records of the runs made on it (D-019, D-020, the GRPO smokes).
 - **Case.** Names are case-folded.
 - **Aliases** follow §6.
 

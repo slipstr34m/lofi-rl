@@ -3,8 +3,14 @@
 Shresth hears the shootouts in the rating page (`make rate`, docs/RATING.md) on **Nov 3–4** (51 minutes planned,
 inside the plan's "about 55 min") and on **Nov 6** (about 15 minutes: rain, and the hidden checks his vote rules
 call for). They prune each sound choice to its survivors; the survivors go into `palettes/lofi_rain_v1.yaml`,
-which freezes on Nov 6 and never changes after (docs/DECISIONS.md D-017).
+which froze on Nov 4 (the plan said Nov 6) and never changes after (docs/DECISIONS.md D-017, D-022).
 
+- **Status (2026-11-04): done and frozen.** Days 1–3 are voted and confirmed (gates/GATE_palette.md). keep3 kept 10
+  of the 30 drafts. The first sign-off listen tossed 4 of them ("The loops themselves"), and he kept one redraft of
+  each (`b1103-keep3-redo`). The second sign-off listen passed (`b1103-signoff-2`, job 13706355: Toss 0).
+  `palettes/lofi_rain_v1.yaml` froze on his line `APPROVED by Shresth Rana 2026-11-04` (sha256 `09f80a64…`; D-022),
+  and the drawn round tables are published in gates/GATE_palette.md (§2.3). The status lines below are the build's
+  history.
 - **Status (2026-10-31, revised after two reviews):** the job-1 tooling of §7.11 is built and integrated on one
   plan (§7.1–§7.8, below). Job 1 (`lofi-shootout` 13635646, 25.8 SU; CHANGELOG 2026-10-31 17:45) rendered Day 1
   on the cluster into `inbox/2026-11-03/`. Since CD-52 each clip takes its own fader on the bus its round varies,
@@ -875,8 +881,10 @@ at (0, 0)). Its outputs become fetch-mode sources with `converted_from` set, und
      by 0.0007 LU (0.1007, the −70 LUFS gate).
   7. A changed base-palette sha or compiled digest makes `--prior` re-measure, and both values are recorded.
   8. A value outside −40 … +40, or a field on an unknown key, is a `PaletteError`.
-- **Built (2026-10-31, the tool only; the palette fields and tests 1–3 and 8 wait for the frozen palette):**
-  `src/lofi_rl/shootout/levels.py`, tests 4–7 in `tests/test_shootout_levels.py` (6 is `-m cluster`). Choices the
+- **Built (2026-10-31, the tool; the palette fields and tests 1–3 and 8 followed on 2026-11-03 for the frozen
+  palette, in `src/lofi_rl/palette.py` and the renderer, tested in `tests/test_palette_fields.py`; CHANGELOG
+  2026-11-03 15:17):** `src/lofi_rl/shootout/levels.py`, tests 4–7 in `tests/test_shootout_levels.py` (6 is
+  `-m cluster`). Every instrument of `palettes/lofi_rain_v1.yaml` carries its `trim_db` and `fader_db`. Choices the
   spec left open:
   - **P is read 40 dB up** (`input_lufs`). BS.1770's −70 LUFS absolute gate is its only level-dependent part. Plain,
     the VSCO 2 pizz bass input reads −inf on L4 and L6 and up to 7.37 LU high on the other loops (the gate keeps only
