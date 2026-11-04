@@ -849,7 +849,9 @@ def check(path: Path | str = FROZEN, *, gate: Path | str | None = None,
     done.append(f"(i) frozen {fp.palette.frozen or 'null'}" + (" = the APPROVED line's date" if sealed else ""))
     if gate is not None:
         bad += G.picks_problems(gate_text) + G.constants_problems()
-        done.append(f"(c) picks = {label(gate)} (Days 1-3, keep3)")
+        from lofi_rl import freeze as FZ
+        done.append(f"(c) picks = {label(gate)} (Days 1-3, keep3, {len(FZ.REDOS)} redo rounds, "
+                    f"{len(FZ.SIGNOFFS)} sign-off listens)")
     if levels is not None:
         bad += levels_problems(fp, *levels)
         done.append("levels " + ", ".join(f"{label(p)}" for p in levels) + " equal; draft rebuild byte-identical; "

@@ -19,12 +19,19 @@ by line number:
 - in a day's section, Shresth's confirmation by its bold label `**Shresth's confirmation, <date>:**` and the quoted
   words on that line; each pick by the bold label of its item in the **Survivors** or **Results** list and every
   backticked id the item holds, its sub-bullets included, in order (a sub-bullet is also found by its first word);
-- keep3's table by its header row (the `Brief` and `Kept` columns);
+- keep3's table by its header row (the `Brief` and `Kept` columns), and each redo round's table the same way under its
+  own heading (`## Kept drafts (keep3 redo<k>)`, lofi_rl.freeze.REDOS: the loops he kept in that round's batch);
+- each sign-off listen by its heading (`## Sign-off listen...`, naming its batch and its job) and the backticked files
+  of its `- **Tossed:**` item (lofi_rl.freeze.SIGNOFFS);
 - the approval by its exact line under `## Approval`.
 
-`picks_problems(text)` compares all of it with lofi_rl.freeze.PICKS and names the heading of each difference: a label,
-its ids, a confirmation or a heading that is missing or differs. A line moved within its section, or a line added
-anywhere outside these items, changes nothing. `approval_date(text)` gives the date of Shresth's line, as the seal
+`picks_problems(text)` compares all of it with lofi_rl.freeze.PICKS, REDOS and SIGNOFFS and names the heading of each
+difference: a label, its ids, a confirmation, a kept table, a tossed list or a heading that is missing or differs, and a
+redo round or sign-off listen the gate file records that the constants do not (or the other way round). It also runs
+`records_problems`, the constants' own rules (each redo round's key, folder, heading, batch, job and picks; each
+sign-off's batch, job and tossed files). A line moved within its section, or a line added anywhere outside these
+items, changes nothing. `kept_now_table(text)` is keep3's table overridden by each redo round's table in order, the
+gate file's side of lofi_rl.freeze.kept_now(). `approval_date(text)` gives the date of Shresth's line, as the seal
 (lofi_rl.freeze.seal) and `check --sealed` read it.
 
 Sound claims: none.
@@ -33,11 +40,13 @@ from __future__ import annotations
 
 import datetime as _dt
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from lofi_rl import freeze as F
+from lofi_rl.drafts.personas import DRAFT_RE, PERSONAS
 from lofi_rl.freeze import BED, GATE, PICKS
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
@@ -53,6 +62,13 @@ _JOB = re.compile(r"\bjob (\d+)\b")
 APPROVAL_HEADING = "## Approval"
 APPROVED = re.compile(r"^APPROVED by Shresth Rana (\d{4}-\d{2}-\d{2})$")   # trailing whitespace aside
 _ATTEMPT = re.compile(r"^\s*approved\b", re.I)          # a line that starts as an approval: the exact form or refused
+REDO_PREFIX = "## Kept drafts (keep3 redo"              # every redo round's heading starts so (REDOS `heading`)
+SIGNOFF_PREFIX = "## Sign-off listen"                   # every sign-off listen's heading starts so (SIGNOFFS)
+REDO_FIELDS = ("key", "folder", "batch", "job", "heading", "kept")
+SIGNOFF_FIELDS = ("batch", "job", "tossed")
+_REDO_KEY = re.compile(r"keep3_redo([1-9]\d*)")
+_REDO_BATCH = re.compile(r"b\d{4}-keep3-redo\d*")      # lofi_rl.drafts.job.batch_name for a redraft
+_SIGNOFF_BATCH = re.compile(r"b\d{4}-signoff(?:-\d+)?")  # lofi_rl.freeze.batch.NAME_RE
 
 
 class GateError(ValueError):
@@ -267,9 +283,181 @@ def _ids(ids: tuple[str, ...]) -> str:
     return ", ".join(f"`{i}`" for i in ids) or "no ids"
 
 
-def picks_problems(text: str, picks: Mapping[str, Mapping[str, Any]] = PICKS) -> list[str]:
+def sections_starting(text: str, prefix: str) -> list[tuple[str, list[str]]]:
+    """(heading line, body lines) of every section whose heading starts with `prefix`, in file order, read through
+    `_lines`: each runs to the next heading of its level or above."""
+    lines = _lines(text)
+    out = []
+    for i, line in enumerate(lines):
+        m = _HEADING.match(line)
+        if not m or not line.startswith(prefix):
+            continue
+        level = len(m.group(1))
+        end = next((k for k in range(i + 1, len(lines))
+                    if (h := _HEADING.match(lines[k])) and len(h.group(1)) <= level), len(lines))
+        out.append((line.rstrip(), lines[i + 1:end]))
+    return out
+
+
+def _names(heading: str, name: str) -> bool:
+    """Whether `heading` names `name` as a whole token (so b1103-signoff is not b1103-signoff-2)."""
+    return re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", heading) is not None
+
+
+def tossed_item(body: list[str], where: str) -> tuple[str, ...]:
+    """The backticked files of a sign-off section's one `- **Tossed:**` item (its indented lines included); none for
+    `- **Tossed:** none.`"""
+    hits = []
+    for k, line in enumerate(body):
+        m = _ITEM.match(line)
+        if not m or m.group(1).strip().rstrip(":").strip() != "Tossed":
+            continue
+        block, j = [line], k + 1
+        while j < len(body) and body[j][:1].isspace() and body[j].strip():
+            block.append(body[j])
+            j += 1
+        hits.append(tuple(_TICKS.findall("\n".join(block))))
+    if not hits:
+        raise GateError(f"{where}: no `- **Tossed:**` item (the kept files he tossed, or none)")
+    if len(hits) > 1:
+        raise GateError(f"{where}: {len(hits)} **Tossed:** items")
+    return hits[0]
+
+
+def records_problems(*, kept: Mapping[str, str] | None = None, redos: Sequence[Mapping[str, Any]] | None = None,
+                     signoffs: Sequence[Mapping[str, Any]] | None = None,
+                     jobs: Mapping[str, int] | None = None) -> list[str]:
+    """lofi_rl.freeze.REDOS and SIGNOFFS against their own rules (each defaults to the constant, read at call time):
+    - a redo round holds exactly REDO_FIELDS; its key is keep3_redo<k>, k rising from round to round; its folder is
+      redo<k>, its heading `## Kept drafts (keep3 redo<k>)`, its batch b<MMDD>-keep3-redo[<n>] and its job JOBS[key];
+      each pick is a brief of keep3's (KEPT) and a `<brief>_<persona>.ls` draft of that brief in the round's folder;
+    - JOBS holds no keep3_redo<k> key without its round;
+    - a sign-off listen holds exactly SIGNOFF_FIELDS; its batch is b<MMDD>-signoff[-<k>], its job a rising integer, and
+      every file it tossed was kept by keep3 or by a redo round.
+    Empty when they hold."""
+    kept = F.KEPT if kept is None else kept
+    redos = F.REDOS if redos is None else redos
+    signoffs = F.SIGNOFFS if signoffs is None else signoffs
+    jobs = F.JOBS if jobs is None else jobs
+    out: list[str] = []
+    ever, keys, last = set(kept.values()), set(), 0
+    for i, r in enumerate(redos):
+        if not isinstance(r, Mapping) or set(r) != set(REDO_FIELDS):
+            out.append(f"REDOS[{i}]: a redo round holds exactly {list(REDO_FIELDS)}")
+            continue
+        where = f"REDOS[{i}] ({r['key']})"
+        m = _REDO_KEY.fullmatch(str(r["key"]))
+        if not m:
+            out.append(f"{where}: its key is not keep3_redo<k>")
+            continue
+        k = int(m.group(1))
+        if k <= last or r["key"] in keys:
+            out.append(f"{where}: the rounds go in order, each once (redo{last} came before it)")
+        last = max(last, k)
+        keys.add(r["key"])
+        if Path(str(r["folder"])).name != f"redo{k}":
+            out.append(f"{where}: its folder {r['folder']} is not redo{k}")
+        if r["heading"] != f"{REDO_PREFIX}{k})":
+            out.append(f"{where}: its heading {r['heading']!r} is not {REDO_PREFIX + str(k) + ')'!r}")
+        if not isinstance(r["batch"], str) or not _REDO_BATCH.fullmatch(r["batch"]):
+            out.append(f"{where}: its batch {r['batch']!r} is not b<MMDD>-keep3-redo[<n>]")
+        if isinstance(r["job"], bool) or not isinstance(r["job"], int) or jobs.get(r["key"]) != r["job"]:
+            out.append(f"{where}: its job {r['job']!r} is not JOBS[{r['key']!r}] ({jobs.get(r['key'])!r})")
+        if not isinstance(r["kept"], Mapping):
+            out.append(f"{where}: its kept picks are a mapping of brief to file")
+            continue
+        for b, f in r["kept"].items():
+            p = Path(str(f))
+            name = DRAFT_RE.fullmatch(p.name)
+            ok = name is not None and name["brief"] == b and name["persona"] in PERSONAS
+            if b not in kept:
+                out.append(f"{where}: brief {b} is not one of keep3's briefs")
+            elif p.parent != Path(str(r["folder"])) or not ok:
+                out.append(f"{where}: {b} keeps {f}, not a <brief>_<persona>.ls draft of {b} in {r['folder']}")
+            ever.add(f)
+    out += [f"JOBS[{k!r}]: no redo round of that key in REDOS" for k in jobs
+            if _REDO_KEY.fullmatch(k) and k not in keys]
+    batches, last = set(), 0
+    for i, s in enumerate(signoffs):
+        if not isinstance(s, Mapping) or set(s) != set(SIGNOFF_FIELDS):
+            out.append(f"SIGNOFFS[{i}]: a sign-off listen holds exactly {list(SIGNOFF_FIELDS)}")
+            continue
+        where = f"SIGNOFFS[{i}] ({s['batch']})"
+        if not isinstance(s["batch"], str) or not _SIGNOFF_BATCH.fullmatch(s["batch"]) or s["batch"] in batches:
+            out.append(f"{where}: its batch is not a b<MMDD>-signoff[-<k>] name of its own")
+        batches.add(s["batch"])
+        if isinstance(s["job"], bool) or not isinstance(s["job"], int) or s["job"] <= last:
+            out.append(f"{where}: its job {s['job']!r} is not a job id above the listen before it")
+        else:
+            last = s["job"]
+        if not isinstance(s["tossed"], (tuple, list)) or len(set(s["tossed"])) != len(s["tossed"]):
+            out.append(f"{where}: its tossed files are a list, each once")
+            continue
+        out += [f"{where}: it tossed {f}, which neither keep3 nor a redo round kept" for f in s["tossed"]
+                if f not in ever]
+    return out
+
+
+def records_compare(text: str, *, redos: Sequence[Mapping[str, Any]] | None = None,
+                    signoffs: Sequence[Mapping[str, Any]] | None = None) -> list[str]:
+    """The gate file against REDOS and SIGNOFFS (which records_problems must pass first): each redo round's section,
+    its heading's job and batch and its kept table; each sign-off listen's section (the one `## Sign-off listen`
+    heading naming its batch), its heading's job and its **Tossed:** files; and no redo round or sign-off listen in
+    the gate file that the constants lack. Each problem names its heading."""
+    redos = F.REDOS if redos is None else redos
+    signoffs = F.SIGNOFFS if signoffs is None else signoffs
+    out: list[str] = []
+    for r in redos:
+        where = r["heading"]
+        try:
+            heading, body = section(text, where)
+        except GateError as err:
+            out.append(str(err))
+            continue
+        if _job(heading) != r["job"]:
+            out.append(f"{where}: the heading names job {_job(heading)}, not {r['job']}")
+        if not _names(heading, r["batch"]):
+            out.append(f"{where}: the heading does not name its batch {r['batch']}")
+        try:
+            got = kept_table(body, where)
+        except GateError as err:
+            out.append(str(err))
+            continue
+        if got != dict(r["kept"]):
+            diff = sorted(set(got.items()) ^ set(dict(r["kept"]).items()))
+            out.append(f"{where}: the kept table differs from REDOS {r['key']}'s picks: {diff}")
+    out += [f"{heading}: a redo round the gate file records and lofi_rl.freeze.REDOS lacks"
+            for heading, _ in sections_starting(text, REDO_PREFIX) if not any(heading.startswith(r["heading"])
+                                                                              for r in redos)]
+    found, used = sections_starting(text, SIGNOFF_PREFIX), set()
+    for s in signoffs:
+        where = f"{SIGNOFF_PREFIX} ({s['batch']})"
+        hits = [i for i, (heading, _) in enumerate(found) if _names(heading, s["batch"])]
+        if len(hits) != 1:
+            out.append(f"{where}: {len(hits)} `{SIGNOFF_PREFIX}` headings name its batch, not one")
+            continue
+        used.add(hits[0])
+        heading, body = found[hits[0]]
+        if _job(heading) != s["job"]:
+            out.append(f"{where}: the heading names job {_job(heading)}, not {s['job']}")
+        try:
+            tossed = tossed_item(body, where)
+        except GateError as err:
+            out.append(str(err))
+            continue
+        if sorted(tossed) != sorted(s["tossed"]):
+            out.append(f"{where}: **Tossed:** holds {_ids(tossed)}; SIGNOFFS has {_ids(tuple(s['tossed']))}")
+    out += [f"{heading}: a sign-off listen the gate file records and lofi_rl.freeze.SIGNOFFS lacks"
+            for i, (heading, _) in enumerate(found) if i not in used]
+    return out
+
+
+def picks_problems(text: str, picks: Mapping[str, Mapping[str, Any]] = PICKS, *,
+                   redos: Sequence[Mapping[str, Any]] | None = None,
+                   signoffs: Sequence[Mapping[str, Any]] | None = None) -> list[str]:
     """The gate file against `picks`: every heading, job, confirmation, labelled item (its ids and named sub-bullets)
-    and keep3's kept table. Each problem names its heading. Empty when they agree."""
+    and keep3's kept table; then the redo rounds and sign-off listens (records_problems, then records_compare, with
+    REDOS and SIGNOFFS unless given). Each problem names its heading. Empty when they agree."""
     out: list[str] = []
     for key, want in picks.items():
         where = want["heading"]
@@ -318,7 +506,8 @@ def picks_problems(text: str, picks: Mapping[str, Mapping[str, Any]] = PICKS) ->
             if got_kept != dict(want["kept"]):
                 diff = sorted(set(got_kept.items()) ^ set(dict(want["kept"]).items()))
                 out.append(f"{where}: the kept table differs from the kept 10: {diff}")
-    return out
+    records = records_problems(redos=redos, signoffs=signoffs)
+    return out + (records or records_compare(text, redos=redos, signoffs=signoffs))
 
 
 def constants_problems(picks: Mapping[str, Mapping[str, Any]] = PICKS) -> list[str]:
@@ -359,6 +548,18 @@ def kept(text: str, picks: Mapping[str, Mapping[str, Any]] = PICKS) -> dict[str,
     want = picks["keep3"]
     _, body = section(text, want["heading"])
     return kept_table(body, want["heading"])
+
+
+def kept_now_table(text: str, picks: Mapping[str, Mapping[str, Any]] = PICKS, *,
+                   redos: Sequence[Mapping[str, Any]] | None = None) -> dict[str, str]:
+    """The kept list as the gate file has it: keep3's table overridden by each redo round's table (REDOS, unless
+    given), in order; {brief: kept draft file}, in keep3's brief order. GateError for a section or table that is not
+    there."""
+    now = kept(text, picks)
+    for r in (F.REDOS if redos is None else redos):
+        _, body = section(text, r["heading"])
+        now.update(kept_table(body, r["heading"]))
+    return now
 
 
 def approval_lines(text: str) -> tuple[list[str], list[str]]:
