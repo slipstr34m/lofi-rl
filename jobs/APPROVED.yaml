@@ -7,7 +7,7 @@ jobs/env_policy.sbatch: {sha: 2bafd8e52ab13bc0, max_su: 960, by: Shresth, date: 
 jobs/env_scorer.sbatch: {sha: 948d77571a5bb968, max_su: 960, by: Shresth, date: 2026-10-30}
 jobs/fetch.sbatch: {sha: 68298be22c7a752b, max_su: 720, by: Shresth, date: 2026-10-30}
 jobs/grpo_smoke.sbatch: {sha: 1dded12d386c7fab, max_su: 500, by: Claude, date: 2026-11-01}
-jobs/junk_rate.sbatch: {sha: 4a9d8685231fd573, max_su: 450, by: Claude, date: 2026-10-31}
+jobs/junk_rate.sbatch: {sha: a7c7ea3502cf395c, max_su: 486, by: Claude, date: 2026-11-04}
 jobs/mask_preflight.sbatch: {sha: 87c428d71435c4f4, max_su: 320, by: Claude, date: 2026-11-02}
 jobs/render_check.sbatch: {sha: 6f3e8d4d00d3f64c, max_su: 360, by: Claude, date: 2026-10-31}
 jobs/scorer_smoke.sbatch: {sha: eaf0423e7072e564, max_su: 480, by: Claude, date: 2026-10-31}
