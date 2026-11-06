@@ -25,12 +25,12 @@ triage batch for Shresth's ear check (D-021 "What follows" item 1: at least 15 o
   batch folder, and the hidden manifest and batch.json keep it.
 - **The render's manifest** (`<i>.manifest.json`, which junk's render step writes beside each FLAC) is read when it
   was copied with the FLAC, and must then agree with clips.json and the run: `audio_sha256`, `n`, `sr`, the loop's
-  `canon_sha256` (and scored.jsonl's), the palette, the brief, LUFS and true peak to clips.json's 3 decimals, and its
-  gates passed. The real clip id (taste_pipeline.md §2, lofi_rl.drafts.render.clip_id) hashes its schema and chain;
+  `canon_sha256`, the palette, the brief, LUFS and true peak to clips.json's 3 decimals, and its gates passed. The real clip id (taste_pipeline.md §2, lofi_rl.drafts.render.clip_id) hashes its schema and chain;
   without it, the render's schema and chain come from lofi_rl.render.pipeline, as junk.render_clip renders (cycles
   2), and batch.json says which clips had no manifest.
 - **The brief** is the measurement stream's brief i (`brief.sample_brief(2026, i)`, D-021 item 1), in clips.json and
-  in completions.jsonl alike.
+  in completions.jsonl alike, and clips.json's `canon_sha256` (the render's) is scored.jsonl's (score's): one text,
+  parsed with one palette.
 - **Mode triage** (docs/RATING.md): one loop a round, answered A Toss, S Fine, D Good or F Great; the page plays the
   8 bars, then bars 1-2 again, so the seam is heard.
 - **Order:** drawn from a fresh 64-bit seed with no two consecutive rounds in one energy x mood cell, as
@@ -235,13 +235,11 @@ def manifest_problems(side: Path, rec: Mapping, run: G.Run, want: Mapping, at: s
     mb = m.get("brief") if isinstance(m.get("brief"), dict) else {}
     pal = m.get("palette") if isinstance(m.get("palette"), dict) else {}
     loop = m.get("loop") if isinstance(m.get("loop"), dict) else {}
-    s = run.scored[rec["i"]]
     checks = (
         ("audio_sha256", m.get("audio_sha256"), rec.get("audio_sha256")),
         ("n", m.get("n"), rec.get("n")),
         ("sr", m.get("sr"), SR),
         ("loop.canon_sha256", loop.get("canon_sha256"), rec.get("canon_sha256")),
-        ("scored.jsonl canon_sha256", s.get("canon_sha256"), rec.get("canon_sha256")),
         ("palette", [pal.get("id"), pal.get("sha256")], [run.palette.get("id"), run.palette.get("sha256")]),
         ("brief", {k: mb.get(k) for k in ("energy", "mood", "bpm", "tonic")},
          {k: want[k] for k in ("energy", "mood", "bpm", "tonic")}),
@@ -274,6 +272,9 @@ def clip_item(run: G.Run, rec: Mapping, clips_dir: Path, measure: Measure) -> tu
     for key in ("audio_sha256", "canon_sha256"):
         if not (isinstance(rec.get(key), str) and re.fullmatch(r"[0-9a-f]{64}", rec[key])):
             errs.append(f"{at}: clips.json's {key} {rec.get(key)!r} is not a sha256")
+    if s.get("canon_sha256") != rec.get("canon_sha256"):        # score and render parse one text with one palette
+        errs.append(f"{at}: scored.jsonl's canon_sha256 {s.get('canon_sha256')!r} is not the render's "
+                    f"{rec.get('canon_sha256')!r} (clips.json)")
     if errs:
         return None, errs
     flac = clips_dir / f"{i:04d}.flac"

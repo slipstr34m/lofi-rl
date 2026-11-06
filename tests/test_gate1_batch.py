@@ -334,6 +334,7 @@ def test_a_manifest_that_disagrees_with_clips_json_refuses(run_dir, tmp_path, fa
     ("clip", "clips/9999.flac", "not clips/"),
     ("n", 12345, "clips.json records n 12345"),
     ("audio_sha256", "abc", "audio_sha256 'abc' is not a sha256"),
+    ("canon_sha256", "e" * 64, "is not the render's 'eeee"),    # score's canonical loop is not the render's
     ("brief", {"energy": "low", "mood": "hopeful", "bpm": 80, "tonic": 0, "scene": "city at night"},
      "is not brief"),
 ])
