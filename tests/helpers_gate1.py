@@ -96,11 +96,12 @@ def render_manifest(i: int, brief: dict, canon: str, lufs: float, peak: float) -
 
 
 def make_run(root: Path, *, n: int = 500, copies: int = 54, k: int = 8, render_k: int | None = None,
-             flacs: bool = True, manifests: bool = True, job: str = JOB) -> dict:
+             flacs: bool = True, manifests: bool = True, measure: bool = True, job: str = JOB) -> dict:
     """A gate run in `root` (module doc): every row passes, the first `copies` indices are near-copies, and clips.json
     holds junk's sample of `k` (seed 2026) from the rest, the first `render_k` of them recorded (all by default), each
     with its FLAC under root/clips/ when `flacs` and its render manifest beside it when `manifests`. Returns {"pool",
-    "sample", "briefs", "measured"}: measured is clip file name -> (LUFS, true peak) as measure_flac read them."""
+    "sample", "briefs", "measured"}: measured is clip file name -> (LUFS, true peak) as measure_flac read them, or, with
+    `measure` False (faster, for tests that build with a stub measure), the -14.0 and -1.5 clips.json then records."""
     summ, clips_dir = root / "summary", root / "clips"
     summ.mkdir(parents=True, exist_ok=True)
     clips_dir.mkdir(exist_ok=True)
@@ -124,7 +125,7 @@ def make_run(root: Path, *, n: int = 500, copies: int = 54, k: int = 8, render_k
         flac = clips_dir / f"{i:04d}.flac"
         if flacs:
             size = write_flac(flac, frames, i)
-            lufs, peak = GB.measure_flac(flac)
+            lufs, peak = GB.measure_flac(flac) if measure else (-14.0, -1.5)
             measured[flac.name] = (lufs, peak)
             if manifests:
                 (clips_dir / f"{i:04d}.manifest.json").write_text(
