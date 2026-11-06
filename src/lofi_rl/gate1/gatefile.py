@@ -11,7 +11,7 @@ The file, in order:
 5. beside the bar (D-021, never gated): the verbatim A-or-B share among the passing non-copies and among the clips;
 6. his ear check, once tallied (lofi_rl.gate1.tally): the batch, how many were heard, the counts per tier, the "fine"
    count against 15 of 50, the split by verbatim line, the clips not heard and the rounds not voted, where his votes
-   are; before that, what it waits on;
+   are; before that, what it waits on. Counts only: no round's tier, sample or id;
 7. where the gate stands, in one item, from the numbers above;
 8. `## How to approve`, kit.gates' current wording, with the line written out for a bare date (`--date`, default
    today in Pacific time), indented so that no reader counts it;
@@ -24,7 +24,8 @@ heading or more than one (it is not a file this writer made), and a file with a 
 (kit.gates.ATTEMPT) above that heading, which a rewrite would drop. Writing the same text again changes nothing.
 
 `--batch` and `--votes` go together, and the batch must be this run's: every clip's job and palette label are the
-run's, and its clips are exactly the run's rendered ones. Sound claims: none.
+run's, and its clips are exactly the run's rendered ones. Exit 0 when the file is written (or already holds that
+text), 2 on bad input. Sound claims: none.
 """
 from __future__ import annotations
 
@@ -49,7 +50,7 @@ def _cell(text) -> str:
     return str(text).replace("|", "\\|")
 
 
-def _value(text: str) -> str:
+def _value(text) -> str:
     """A table cell for a junk.json value: a 64-hex digest shortened as the gate files print them (`09f80a64…`)."""
     return f"`{_cell(G.short(text))}`" if text not in ("", None) else ""
 
@@ -65,7 +66,7 @@ def _method(m) -> str:
 def batch_problems(batch_dir: Path, run: G.Run) -> list[str]:
     """Why a batch is not this run's (module doc); [] when it is."""
     try:
-        m, h = load_batch(batch_dir, verify_sha=False)
+        m, h = load_batch(batch_dir, check_files=False)
     except ManifestError as err:
         return [f"{batch_dir}: {err}"]
     out, samples = [], []
@@ -76,9 +77,11 @@ def batch_problems(batch_dir: Path, run: G.Run) -> list[str]:
                 out.append(f"round {r.id}: its clip is from job {info.get('job')} with palette {info.get('palette')}; "
                            f"the run is job {run.job} with {run.palette_label}")
     want = [rec["i"] for rec in run.rendered]
-    if sorted(s for s in samples if isinstance(s, int)) != sorted(want) or len(samples) != len(want):
-        out.append(f"{batch_dir} holds samples {sorted(map(str, samples))[:10]}…; the run rendered {len(want)} clips, "
-                   "and the batch must hold each exactly once")
+    if run.clips is None:
+        out.append(f"{run.dir / 'summary' / 'clips.json'} is missing: a batch is checked against the clips it lists")
+    elif len(samples) != len(want) or sorted(s if G._whole(s) else -1 for s in samples) != sorted(want):
+        out.append(f"{batch_dir} holds {len(samples)} clips; the run rendered {len(want)}, and the batch must hold "
+                   "each of them exactly once")
     return out
 
 
@@ -87,7 +90,7 @@ def _run_section(doc: dict, run: G.Run) -> list[str]:
     backend = c.get("backend") if isinstance(c.get("backend"), dict) else {}
     stamp = doc["stamp"]
     same = stamp["generate"] == stamp["score"]
-    briefs = doc.get("briefs") or {}
+    briefs = doc.get("briefs") if isinstance(doc.get("briefs"), dict) else {}
     return [
         f"## The run: `lofi-junk-rate` {doc['job']}",
         "",
@@ -102,6 +105,7 @@ def _run_section(doc: dict, run: G.Run) -> list[str]:
         "of validity (D-020).",
         f"- **Briefs:** {doc.get('n')} of `{briefs.get('sampler')}({briefs.get('seed')}, {briefs.get('count')})`, one "
         "completion each.",
+        f"- **Render step** (recorded, not part of validity, D-020): {C.render_summary(doc.get('render'))}.",
         f"- **Files:** `runs/{run.name}/summary/` `junk.json`, `scored.jsonl`, `completions.jsonl` and `clips.json`.",
     ]
 
@@ -114,7 +118,8 @@ def _validity_section(doc: dict) -> list[str]:
              "", "| group | condition | junk.json shows | needs | holds |", "|---|---|---|---|---|"]
     for x in v["conditions"]:
         tag = "" if x["source"] == "D-020" else f" ({x['source']})"
-        lines.append(f"| {x['group']} | `{_cell(x['name'])}`{tag} | {_value(x['shows'])} | {_value(x['needs'])} | "
+        needs = _cell(x["needs"]) if x["name"] == C.STAMP_NAME else _value(x["needs"])
+        lines.append(f"| {x['group']} | `{_cell(x['name'])}`{tag} | {_value(x['shows'])} | {needs} | "
                      f"{'yes' if x['ok'] else '**no**'} |")
     lines.append("")
     if v["valid"]:
@@ -128,7 +133,7 @@ def _validity_section(doc: dict) -> list[str]:
 
 def _bar_section(doc: dict) -> list[str]:
     b = doc["bar"]["pass_not_copy"]
-    lo, hi = (b["ci95"] or [None, None])[:2]
+    lo, hi = (b["ci95"] or [None, None])[:2] if isinstance(b["ci95"], list) else (None, None)
     return ["## The bar, first half: pass_not_copy", "",
             f"- `pass_not_copy.count` **{b['count']}** of {b['of']} (rate {b['rate']}; {_method(b['method'])} 95 % CI "
             f"{lo}–{hi}, as junk.json gives it). It needs at least {b['need']}: **{'met' if b['met'] else 'not met'}**."]
@@ -136,18 +141,21 @@ def _bar_section(doc: dict) -> list[str]:
 
 def _readout_section(doc: dict) -> list[str]:
     p, k = doc["readouts"]["passing_non_copies"], doc["readouts"]["clips"]
-    sampled = "" if k["n"] == k["sampled"] else f" ({k['n']} of the {k['sampled']} sampled rendered)"
-    return ["## Beside the bar (D-021: reported, never gated)", "",
-            "A verbatim line is the A or B line of the example the loop's own prompt showed, word for word (junk.json "
-            "`copy`, scored.jsonl `verbatim`).",
-            f"- **Among the passing non-copies:** {p['k']} of {p['n']} carry a verbatim A or B line "
-            f"({C.pct(p['k'], p['n'])}); {p['both']} carry both.",
-            f"- **Among the clips:** {k['k']} of {k['n']} ({C.pct(k['k'], k['n'])}); {k['both']} carry both{sampled}.",
-            "- **His \"fine\" count by verbatim line:** in his ear check, below."]
-
-
-def _tiers(t: dict) -> str:
-    return ", ".join(f"{name.capitalize()} {t[name]}" for name in reversed(G.TIERS))
+    lines = ["## Beside the bar (D-021: reported, never gated)", "",
+             "A verbatim line is the A or B line of the example the loop's own prompt showed, word for word "
+             "(scored.jsonl `verbatim`).",
+             f"- **Among the passing non-copies:** {p['k']} of {p['n']} carry a verbatim A or B line "
+             f"({C.pct(p['k'], p['n'])}); {p['both']} carry both."]
+    if k is None:
+        lines.append("- **Among the clips:** not there: `summary/clips.json` is absent.")
+    else:
+        rest = ("" if k["n"] == k["sampled"] else
+                f" Of the whole sample of {k['sampled']}, {k['n']} rendered; {k['sample']['k']} of the "
+                f"{k['sampled']} carry a verbatim line.")
+        lines.append(f"- **Among the clips he hears:** {k['k']} of {k['n']} ({C.pct(k['k'], k['n'])}); {k['both']} "
+                     f"carry both.{rest}")
+    lines.append("- **His \"fine\" count by verbatim line:** in his ear check, below.")
+    return lines
 
 
 def _ear_section(tdoc: dict | None, run: G.Run) -> list[str]:
@@ -157,46 +165,43 @@ def _ear_section(tdoc: dict | None, run: G.Run) -> list[str]:
                 "(`python -m lofi_rl.gate1 batch`), one clip a round in triage mode, and counted with "
                 "`python -m lofi_rl.gate1 tally` once he has voted."]
     s, b = tdoc["split"], tdoc["bar"]
-    heard = tdoc["rounds"] - len(tdoc["not_heard"])
     lines = [f"## His ear check: batch {tdoc['batch']}", "",
              f"Triage mode: one clip a round, played through its seam; Toss, Fine, Good or Great (TASTE.md, Tiers). A "
              f"clip counts as heard once {G.HEARD_MIN_BARS} bar has played, over every attempt of its round (D-013 as "
              "amended).",
-             f"- **Counts:** {heard} of {tdoc['rounds']} heard; {tdoc['counted']} voted and heard. {_tiers(tdoc['tiers'])}.",
-             f"- **\"Fine\" (Fine, Good or Great):** {tdoc['fine_or_better']} of {tdoc['rounds']}. It needs at least "
-             f"{b['need']} of {b['of']}: **{'met' if b['met'] else 'not met'}**"
+             f"- **Counts:** {tdoc['heard']} of {tdoc['rounds']} heard; {tdoc['counted']} voted and heard. "
+             f"{T.tiers_text(tdoc['tiers'])}.",
+             f"- **\"Fine\" (Fine, Good or Great):** {tdoc['fine_or_better']}. It needs at least {b['need']} of "
+             f"{b['of']}: **{'met' if b['met'] else 'not met'}**"
              + ("." if tdoc["complete"] else f", with {len(tdoc['not_voted'])} round(s) still to vote."),
              "- **Split by verbatim line** (D-021):"]
     for key, label in (("verbatim_line", "with a verbatim A or B line"), ("no_verbatim_line", "with neither")):
         x = s[key]
-        lines.append(f"  - {label}: \"fine\" {x['fine_or_better']} of {x['n']} ({_tiers(x['tiers'])}).")
+        lines.append(f"  - {label}: \"fine\" {x['fine_or_better']} of {x['n']} ({T.tiers_text(x['tiers'])}).")
     if tdoc["not_heard"]:
-        lines.append("- **Not heard (under 1 bar):** " + ", ".join(
-            f"round {r['number']}" + (f" (his {r['tier'].capitalize()} there is left out)" if r["tier"] else "")
-            for r in tdoc["not_heard"]) + ".")
+        left = sum(1 for r in tdoc["not_heard"] if r["voted"])
+        lines.append(f"- **Not heard (under 1 bar):** {len(tdoc['not_heard'])} round(s)"
+                     + (f"; {left} vote(s) there are left out of the counts." if left else "."))
     else:
         lines.append("- **Not heard (under 1 bar):** none.")
-    lines.append("- **Not voted:** " + (", ".join(f"round {r['number']}" for r in tdoc["not_voted"]) + "."
-                                         if tdoc["not_voted"] else "none."))
+    lines.append(f"- **Not voted:** {len(tdoc['not_voted']) or 'none'}.")
     lines.append(f"- **Audit file** (private): `data/votes/{tdoc['batch']}.jsonl`.")
     return lines
 
 
 def _standing(doc: dict, tdoc: dict | None) -> list[str]:
-    valid, met = doc["validity"]["valid"], doc["bar"]["pass_not_copy"]["met"]
+    valid, bar = doc["validity"]["valid"], doc["bar"]["pass_not_copy"]
     if not valid:
-        text = ("The run is not valid, so it decides nothing (D-020); the ear check waits for a valid run.")
-    elif not met:
-        text = (f"The first half is not met ({doc['bar']['pass_not_copy']['count']} < "
-                f"{doc['bar']['pass_not_copy']['need']}): the gate fails on the frozen palette, and it goes to Shresth "
-                "with CLAUDE.md §9's next fallback, D-021's Part B.")
+        text = "The run is not valid, so it decides nothing (D-020); the ear check waits for a valid run."
+    elif not bar["met"]:
+        text = (f"The first half is not met ({bar['count']} < {bar['need']}): the gate fails on the frozen palette, and "
+                "it goes to Shresth with CLAUDE.md §9's next fallback, D-021's Part B.")
     elif tdoc is None:
         text = "The first half is met. The second half waits on his ear check."
     elif not tdoc["complete"]:
         text = f"The first half is met. His ear check is not complete: {len(tdoc['not_voted'])} round(s) to vote."
     elif tdoc["bar"]["met"]:
-        text = ("Both halves of the bar are met. The gate passes with his line under `## Approval`; nothing else "
-                "is needed from this file.")
+        text = "Both halves of the bar are met. The gate passes with his line under `## Approval`."
     else:
         text = (f"The first half is met; the ear check is not ({tdoc['fine_or_better']} \"fine\" < "
                 f"{tdoc['bar']['need']}): the gate fails on the frozen palette, and it goes to Shresth with CLAUDE.md "
@@ -245,19 +250,21 @@ def merge(existing: str | None, generated: str) -> str:
     keep = existing.splitlines(keepends=True)
     above = [(k + 1, line.rstrip("\r\n")) for k, line in enumerate(keep[:first]) if KG.ATTEMPT.match(line)]
     if above:
-        raise G.Gate1Error([f"line {k} starts as an approval above `{APPROVAL_HEADING}` ({text!r}); a rewrite keeps only "
-                            f"what is under `{APPROVAL_HEADING}`, so move it there first" for k, text in above])
+        raise G.Gate1Error([f"line {k} starts as an approval above `{APPROVAL_HEADING}` ({text!r}); a rewrite keeps "
+                            f"only what is under `{APPROVAL_HEADING}`, so move it there first" for k, text in above])
     return generated + "".join(keep[first + 1:])
 
 
 def main(a: argparse.Namespace) -> int:
     """The `gate` subcommand (lofi_rl.gate1.cli)."""
     if (a.batch is None) != (a.votes is None):
-        print("error: --batch and --votes go together (the batch folder and its vote log)", file=sys.stderr)
+        print("error: nothing written: --batch and --votes go together (the batch folder and its vote log)",
+              file=sys.stderr)
         return 2
+    path = Path(a.write)
     try:
         day = _date.fromisoformat(a.date) if a.date else today_pacific()
-        run = G.load_run(a.run)
+        run = G.load_run(a.run, need_clips=False)
         doc = C.evaluate(run)
         tdoc = None
         if a.batch is not None:
@@ -265,11 +272,12 @@ def main(a: argparse.Namespace) -> int:
             if bad:
                 raise G.Gate1Error(bad)
             tdoc = T.tally(a.batch, a.votes)
-        path = Path(a.write)
         try:
             existing = path.read_text(encoding="utf-8")
         except FileNotFoundError:
             existing = None
+        except (OSError, UnicodeDecodeError) as err:
+            raise G.Gate1Error([f"{path} is not readable ({err})"]) from None
         text = merge(existing, render(doc, tdoc, run, day))
     except ValueError as err:          # Gate1Error is a ValueError, as is a bad --date
         print(f"error: nothing written:\n{err}", file=sys.stderr)
@@ -287,6 +295,17 @@ def main(a: argparse.Namespace) -> int:
     for number, _line, why in KG.attempts(path, G.APPROVER):
         print(f"  line {number}: {why}")
     print(f"GATE1_GATE run {doc['verdict']}; ear check "
-          + ("not tallied" if tdoc is None else f"\"fine\" {tdoc['fine_or_better']} of {tdoc['rounds']}, "
+          + ("not tallied" if tdoc is None else f"\"fine\" {tdoc['fine_or_better']} of {tdoc['rounds']} rounds, "
              f"{'complete' if tdoc['complete'] else 'incomplete'}"))
     return 0
+
+
+def add_parser(sub) -> None:
+    p = sub.add_parser("gate", help="write gates/GATE_phase1.md from the run (and, once tallied, his ear check)")
+    p.add_argument("--run", type=Path, required=True, help="the run folder, runs/junk-<job>")
+    p.add_argument("--batch", type=Path, default=None, help="the run's gate1 batch folder (with --votes)")
+    p.add_argument("--votes", type=Path, default=None, help="the batch's vote log, data/votes/<batch>.jsonl")
+    p.add_argument("--write", type=Path, required=True, help="the gate file to write, gates/GATE_phase1.md")
+    p.add_argument("--date", default=None,
+                   help="the date the How-to-approve line shows, YYYY-MM-DD (default: today, Pacific)")
+    p.set_defaults(run_command=main)

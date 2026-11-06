@@ -23,7 +23,9 @@ A value must have the registered JSON type too: `partial` 0 is not false, and `n
 
 **Two readouts** (D-021, beside the bar, never gated), from scored.jsonl and clips.json:
 - the passing non-copies (`ok` and not `near_copy`) whose loop carries the shown example's A or B line verbatim;
-- the same among the clips that rendered (clips.json records with `ok` true): the ones his ear check plays.
+- the same among the clips that rendered (clips.json records with `ok` true): the ones his ear check plays; when
+  some did not render, the render step's whole sample is shown beside it. Without clips.json (the render step wrote
+  none, or it was not pulled) this readout is reported as absent: validity reads junk.json alone.
 
 Exit 0 when the run is valid and meets the first half, 3 otherwise (invalid, or under 300), 2 on bad input (a file
 missing or unreadable, or files that are not one run's: lofi_rl.gate1.load_run). Sound claims: none.
@@ -145,18 +147,20 @@ def conditions(j: dict) -> list[Condition]:
 
 
 def readouts(run: Run) -> dict:
-    """The two verbatim readouts (module doc), with the A-and-B counts beside them."""
-    pnc = [run.scored[i] for i in run.pool]
-    clips = [run.scored[r["i"]] for r in run.rendered]
-
+    """The two verbatim readouts (module doc), with the A-and-B counts beside them. The clips' readout is over the
+    clips that rendered, the ones his ear check plays, with the render step's whole sample beside it; None when
+    clips.json is absent."""
     def block(rows: list[dict]) -> dict:
         k = sum(1 for s in rows if verbatim_line(s))
         both = sum(1 for s in rows if (s.get("verbatim") or {}).get("A") is True
                    and (s.get("verbatim") or {}).get("B") is True)
         return {"k": k, "n": len(rows), "share": round(k / len(rows), 4) if rows else None, "both": both}
-    return {"passing_non_copies": block(pnc),
-            "clips": {**block(clips), "sampled": len(run.sample), "recorded": len(run.clip_records),
-                      "rendered": len(run.rendered)}}
+    clips = None
+    if run.clips is not None:
+        clips = {**block([run.scored[r["i"]] for r in run.rendered]), "sampled": len(run.sample),
+                 "recorded": len(run.clip_records), "rendered": len(run.rendered),
+                 "sample": block([run.scored[i] for i in run.sample])}
+    return {"passing_non_copies": block([run.scored[i] for i in run.pool]), "clips": clips}
 
 
 def run_record(run: Run) -> dict:
@@ -194,6 +198,19 @@ def evaluate(run: Run) -> dict:
             "verdict": verdict, "exit": 0 if valid and met else 3}
 
 
+def render_summary(render) -> str:
+    """junk.json's `render` block in words: shown, never judged (D-020: the render step and G7 decide nothing)."""
+    if not isinstance(render, dict):
+        return "junk.json has no render block (render did not run, or ran no clip)"
+    keys = ("attempted", "rendered", "G7", "other_gates", "errors", "skipped")
+    return (", ".join(f"{k} {shown(render.get(k, MISSING))}" for k in keys)
+            + f" (k {shown(render.get('k', MISSING))}, seed {shown(render.get('seed', MISSING))})")
+
+
+def render_line(render) -> str:
+    return f"render step (recorded, not judged): {render_summary(render)}"
+
+
 def pct(k: int, n: int) -> str:
     return f"{100 * k / n:.1f} %" if n else "-"
 
@@ -228,9 +245,15 @@ def format_text(doc: dict) -> str:
     p, k = r["passing_non_copies"], r["clips"]
     lines.append(f"readout: a verbatim A or B line in {p['k']} of the {p['n']} passing non-copies "
                  f"({pct(p['k'], p['n'])}; both lines in {p['both']})")
-    lines.append(f"readout: a verbatim A or B line in {k['k']} of the {k['n']} clips that rendered "
-                 f"({pct(k['k'], k['n'])}; both lines in {k['both']}; sampled {k['sampled']}, recorded "
-                 f"{k['recorded']})")
+    if k is None:
+        lines.append("readout: the clips' share is not there: summary/clips.json is absent (the render step wrote "
+                     "none, or it was not pulled)")
+    else:
+        lines.append(f"readout: a verbatim A or B line in {k['k']} of the {k['n']} clips that rendered "
+                     f"({pct(k['k'], k['n'])}; both lines in {k['both']})"
+                     + ("" if k["n"] == k["sampled"] else
+                        f"; in {k['sample']['k']} of the whole sample of {k['sampled']}, {k['recorded']} recorded"))
+    lines.append(render_line(doc.get("render")))
     lines.append(f"GATE1_CHECK {doc['verdict']}")
     return "\n".join(lines) + "\n"
 
@@ -238,7 +261,7 @@ def format_text(doc: dict) -> str:
 def main(a: argparse.Namespace) -> int:
     """The `check` subcommand (lofi_rl.gate1.cli)."""
     try:
-        doc = evaluate(load_run(a.run))
+        doc = evaluate(load_run(a.run, need_clips=False))
     except Gate1Error as err:
         print(f"error: bad input, nothing decided:\n{err}", file=sys.stderr)
         return 2
