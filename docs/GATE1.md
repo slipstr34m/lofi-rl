@@ -149,8 +149,11 @@ out for a bare date (`--date`, default today in Pacific time), indented so that 
 
 - **Rewriting** keeps everything under `## Approval`, from the line after its heading to the end of the file, byte
   for byte, and writes every line above it again. The heading is found as the seal finds it
-  (`lofi_rl.freeze.gate.sections`). It refuses a file with no `## Approval` or two, and a file with a line that starts
-  as an approval above that heading, which a rewrite would drop.
+  (`lofi_rl.freeze.gate.sections`). It refuses (exit 2, nothing written):
+  - a file it did not make: another first line than the title, no `## Approval` or two, or no `Written by` line
+    above it. Another gate's file (`gates/GATE_palette.md`, say) is never written over, and its approval never
+    stands under this gate's numbers;
+  - a file with a line that starts as an approval above that heading, which a rewrite would drop.
 - `--batch` and `--votes` go together, and the batch must be the run's (its clips' job and palette label, and exactly
   the run's rendered clips).
 - **Exit:** 0 written or unchanged, 2 bad input. It prints whether the file holds his line (`kit.gates`).

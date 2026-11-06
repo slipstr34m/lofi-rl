@@ -19,9 +19,12 @@ The file, in order:
 
 **Rewriting** keeps everything under `## Approval`, from the line after its heading to the end of the file, byte for
 byte; every line above it is written again. The heading is found as the seal finds it (lofi_rl.freeze.gate.sections:
-code fences and HTML comments never read). The writer refuses (exit 2, nothing written) a file with no `## Approval`
-heading or more than one (it is not a file this writer made), and a file with a line that starts as an approval
-(kit.gates.ATTEMPT) above that heading, which a rewrite would drop. Writing the same text again changes nothing.
+code fences and HTML comments never read). Writing the same text again changes nothing. The writer refuses (exit 2,
+nothing written):
+- a file it did not make: its first line is not TITLE, it has no `## Approval` heading or more than one, or it has no
+  `Written by` line (MARK) above that heading. Another gate's file (gates/GATE_palette.md, say) is never written over,
+  so its sections are never dropped and its approval never stands under this gate's numbers;
+- a file with a line that starts as an approval (kit.gates.ATTEMPT) above that heading, which a rewrite would drop.
 
 `--batch` and `--votes` go together, and the batch must be this run's: every clip's job and palette label are the
 run's, and its clips are exactly the run's rendered ones. Exit 0 when the file is written (or already holds that
@@ -44,6 +47,7 @@ from lofi_rl.ui.manifest import ManifestError, load_batch
 
 APPROVAL_HEADING = "## Approval"
 TITLE = "# Gate: Phase 1, the base model on the frozen palette"
+MARK = "Written by `python -m lofi_rl.gate1 gate`"       # the head's line that says which writer made the file
 
 
 def _cell(text) -> str:
@@ -230,8 +234,7 @@ def render(doc: dict, tdoc: dict | None, run: G.Run, day: _date | str) -> str:
             "it); D-022 \"Consequences\" (the frozen palette's two values in the list). The bar is D-020's, "
             "unchanged.",
             "",
-            "Written by `python -m lofi_rl.gate1 gate` (docs/GATE1.md). Writing it again keeps everything under "
-            "`## Approval` exactly as it is.",
+            f"{MARK} (docs/GATE1.md). Writing it again keeps everything under `{APPROVAL_HEADING}` exactly as it is.",
             ""]
     body = [*_run_section(doc, run), "", *_validity_section(doc), "", *_bar_section(doc), "",
             *_readout_section(doc), "", *_ear_section(tdoc, run), "", *_standing(doc, tdoc), ""]
@@ -241,16 +244,25 @@ def render(doc: dict, tdoc: dict | None, run: G.Run, day: _date | str) -> str:
 
 def merge(existing: str | None, generated: str) -> str:
     """The new file: `generated` (which ends with the `## Approval` heading) and, from an existing file, everything
-    after its `## Approval` heading, byte for byte (module doc). Gate1Error when the existing file cannot be rewritten
-    without dropping something."""
+    after its `## Approval` heading, byte for byte (module doc). Gate1Error when the existing file is not one this
+    writer made, or when a rewrite would drop something."""
     if existing is None:
         return generated
-    found = sections(existing, APPROVAL_HEADING)
-    if len(found) != 1:
-        raise G.Gate1Error([f"the gate file has {len(found)} `{APPROVAL_HEADING}` headings, not one: it is not a file "
-                            "this writer made; move it aside first"])
-    first = found[0][0]
     keep = existing.splitlines(keepends=True)
+    top = keep[0].rstrip("\r\n") if keep else ""
+    found = sections(existing, APPROVAL_HEADING)
+    if top != TITLE:
+        why = f"its first line is {top!r}, not {TITLE!r}"
+    elif len(found) != 1:
+        why = f"it has {len(found)} `{APPROVAL_HEADING}` headings, not one"
+    elif not any(line.startswith(MARK) for line in keep[:found[0][0]]):
+        why = f"it has no line `{MARK} …` above `{APPROVAL_HEADING}`"
+    else:
+        why = None
+    if why:
+        raise G.Gate1Error([f"{why}: it is not a file this writer made, and a rewrite would drop what it holds; give "
+                            "--write another path, or move the file aside first"])
+    first = found[0][0]
     above = [(k + 1, line.rstrip("\r\n")) for k, line in enumerate(keep[:first]) if KG.ATTEMPT.match(line)]
     if above:
         raise G.Gate1Error([f"line {k} starts as an approval above `{APPROVAL_HEADING}` ({text!r}); a rewrite keeps "

@@ -4,6 +4,7 @@ wording with a bare date, an empty `## Approval` that a rewrite keeps byte for b
 to temp folders only; gates/GATE_phase1.md itself is not written here."""
 import json
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -236,17 +237,37 @@ def test_an_ear_check_under_15_or_incomplete_says_so(made, run_dir, tmp_path):
 
 
 # --------------------------------------------------------------------------------------------- refusals
-def test_a_file_without_exactly_one_approval_heading_is_refused(run_dir, tmp_path, capsys):
+def test_a_file_this_writer_did_not_make_is_refused(run_dir, tmp_path, capsys):
+    """Another title, no `## Approval` heading or two, no `Written by` line: nothing written over it."""
     out = tmp_path / "GATE_phase1.md"
-    for text in ("# Gate: something else\n\nAPPROVED nothing\n", "## Approval\n\n## Approval\n"):
+    write(run_dir, out)
+    ours = out.read_text()
+    texts = ("# Gate: something else\n\nAPPROVED nothing\n", "## Approval\n\n## Approval\n", ours + "\n## Approval\n",
+             ours.replace("\n## Approval\n", "\n## Approved\n"), ours.replace(GF.MARK, "Written by hand"))
+    for text in texts:
         out.write_text(text)
         assert write(run_dir, out) == 2 and out.read_text() == text
-    assert "not a file this writer made" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert err.count("it is not a file this writer made") == len(texts)
+    for why in ("its first line is '# Gate: something else'", "its first line is '## Approval'",
+                "it has 2 `## Approval` headings, not one", "it has 0 `## Approval` headings, not one",
+                "it has no line `Written by `python -m lofi_rl.gate1 gate` …` above `## Approval`"):
+        assert why in err, why
     write_ok = tmp_path / "ok.md"
     write(run_dir, write_ok)
     fenced = write_ok.read_text().replace("## How to approve", "```\n## Approval\n```\n\n## How to approve")
     write_ok.write_text(fenced)                                    # a heading in a code fence is not read
     assert write(run_dir, write_ok) == 0
+
+
+def test_another_gates_file_is_never_written_over(run_dir, tmp_path, capsys):
+    """Review F3's case: a copy of gates/GATE_palette.md, his palette line under its one `## Approval`. Its sections
+    are not dropped, and his palette line never stands under this gate's numbers."""
+    out = tmp_path / "GATE_palette.md"
+    shutil.copyfile(ROOT / "gates" / "GATE_palette.md", out)
+    before = out.read_bytes()
+    assert write(run_dir, out) == 2 and out.read_bytes() == before
+    assert "its first line is '# Gate: palette_v1 freeze (Phase 1)'" in capsys.readouterr().err
 
 
 def test_an_approval_line_above_the_heading_is_refused(run_dir, tmp_path, capsys):
