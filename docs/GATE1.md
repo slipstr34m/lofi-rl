@@ -170,19 +170,27 @@ out for a bare date (`--date`, default today in Pacific time), indented so that 
 
 ## 6. On the day
 
-1. `make pull`, then `python -m lofi_rl.gate1 check runs/junk-13783877`.
-2. With the clips copied into `runs/junk-13783877/clips/`: `python -m lofi_rl.gate1 batch runs/junk-13783877 --clips
-   runs/junk-13783877/clips`, then the push to Shresth with the line it prints ("needs ear check").
-3. `python -m lofi_rl.gate1 gate --run runs/junk-13783877 --write gates/GATE_phase1.md`, committed, so he can read the
+`<job>` below is the gate run's job id: the `lofi-junk-rate` run of `ARGS='500 2026 1 v2'` on the frozen palette, as
+the CHANGELOG or `make status` names it. **The first launch, job 13783877, is not the gate run:** it is invalid
+(check on the laptop, 2026-11-06: `INVALID, 23 of 27 conditions hold; failing: n, partial, generate.stopped,
+prompt.rows_matching`; `n` 384 of 500, generate stopped by its deadline).
+
+1. `make pull`, then `python -m lofi_rl.gate1 check runs/junk-<job>`. **If the run is invalid, stop here:** it is
+   reported and decides nothing, and it is re-run under D-020's rule for an invalid arm before step 2 (a scoring
+   defect is fixed and re-scored from the run's own completions; anything else is fixed and re-run once, with the fix
+   recorded as an amendment before the run; invalid twice, it goes to Shresth). The re-run or re-score stands in its
+   place (D-020), and `<job>` is then its job. The batch refuses an invalid run anyway (exit 3).
+2. With the clips copied into `runs/junk-<job>/clips/`: `python -m lofi_rl.gate1 batch runs/junk-<job> --clips
+   runs/junk-<job>/clips`, then the push to Shresth with the line it prints ("needs ear check").
+3. `python -m lofi_rl.gate1 gate --run runs/junk-<job> --write gates/GATE_phase1.md`, committed, so he can read the
    run before he listens.
 4. He votes (`make rate BATCH=inbox/<date>/<batch>`); then `python -m lofi_rl.gate1 tally inbox/<date>/<batch> --votes
    data/votes/<batch>.jsonl`.
-5. `python -m lofi_rl.gate1 gate --run runs/junk-13783877 --batch inbox/<date>/<batch> --votes
+5. `python -m lofi_rl.gate1 gate --run runs/junk-<job> --batch inbox/<date>/<batch> --votes
    data/votes/<batch>.jsonl --write gates/GATE_phase1.md`, committed; the votes are backed up (`make backup-votes`).
 6. His line under `## Approval` is his; `python -m kit.gates gates/GATE_phase1.md --name "Shresth Rana"` reads it.
 
-If the run is invalid, it is reported and decides nothing (D-020's rules for an invalid arm apply). If either half of
-the bar fails, the gate goes to Shresth with CLAUDE.md §9's next fallback, D-021's Part B.
+If either half of the bar fails, the gate goes to Shresth with CLAUDE.md §9's next fallback, D-021's Part B.
 
 ## 7. Claude's defaults here
 
