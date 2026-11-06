@@ -53,7 +53,12 @@ from .protocol import MAX_BODY_BYTES, ProtocolError, encode_json
 from .render_pool import RenderPoolDrift
 
 MAX_SUN_PATH = 103 if sys.platform == "darwin" else 107     # sockaddr_un.sun_path, less its NUL
-DEFAULT_PALETTE = ROOT / "palettes" / "dev_gu.yaml"          # until palettes/lofi_rain_v1.yaml is frozen (D-017)
+# dev_gu stays the default after the freeze (D-022), on purpose: jobs/scorer_smoke.sbatch starts its servers without
+# --palette, and the fixtures it scores (tests/fixtures/loops, smoke.GROUP) are written in dev_gu's names and aliases.
+# Under the frozen palette, which has no aliases, 5 of their 6 gate-passing loops fail G4 (kits dusty and brushes, keys
+# ep). Phase-2 jobs pass --palette palettes/lofi_rain_v1.yaml, and a request made for another palette is refused with
+# a 409 (core.Scorer._check_palette: its palette_sha256 is not this server's).
+DEFAULT_PALETTE = ROOT / "palettes" / "dev_gu.yaml"
 
 
 class SocketPathError(RuntimeError):

@@ -219,21 +219,25 @@ def test_his_line_with_a_note_beside_it_seals(tmp_path, approval):
     assert load_palette(w.palette, verify=False).frozen == "2026-11-05"
 
 
+NO_LINE = "no APPROVED line under `## Approval`"
+
+
 @pytest.mark.parametrize("approval, why", [
-    ("", "no line `APPROVED by Shresth Rana <yyyy-mm-dd>`"),
-    ("\nThe line will come after the listen.\n", "no line `APPROVED by Shresth Rana <yyyy-mm-dd>`"),
-    ("APPROVED by Shresth Rana <yyyy-mm-dd>\n", "is not the form"),
+    ("", NO_LINE),
+    ("\nThe line will come after the listen.\n", NO_LINE),
+    ("APPROVED by Shresth Rana <yyyy-mm-dd>\n", "write the day's date in place of <yyyy-mm-dd>, bare: 2026-11-30"),
     (f"{LINE}\nAPPROVED by Shresth Rana 2026-11-06\n", "2 APPROVED lines"),
     (f"{LINE}\n{LINE}\n", "2 APPROVED lines"),
-    ("approved by shresth rana 2026-11-05\n", "is not the form"),
-    ("  APPROVED by Shresth Rana 2026-11-05\n", "is not the form"),
-    ("APPROVED by Shresth Rana 2026-11-5\n", "is not the form"),
-    ("APPROVED by Shresth Rana 2026-02-30\n", "is not the form"),
-    (f"{LINE}\nApproved: yes\n", "is not the form"),
+    ("approved by shresth rana 2026-11-05\n",
+     "write APPROVED in capitals, not approved; the name is Shresth Rana, not shresth rana"),
+    ("  APPROVED by Shresth Rana 2026-11-05\n", "start the line at its first character: no spaces or tabs before"),
+    ("APPROVED by Shresth Rana 2026-11-5\n", "write the date as 2026-11-05, not 2026-11-5"),
+    ("APPROVED by Shresth Rana 2026-02-30\n", "2026-02-30 is not a date on the calendar"),
+    (f"{LINE}\nApproved: yes\n", "`Approved: yes` is not an approval line: write APPROVED in capitals"),
     (f"{LINE}\n\n## Approval\n", "2 '## Approval' headings"),
-    (f"<!-- the form he writes, for example:\n{LINE}\n-->\n", "no line `APPROVED by Shresth Rana <yyyy-mm-dd>`"),
-    (f"~~~~\n```\n{LINE}\n```\n~~~~\n", "no line `APPROVED by Shresth Rana <yyyy-mm-dd>`"),
-    (f"````\n```\n{LINE}\n```\n````\n", "no line `APPROVED by Shresth Rana <yyyy-mm-dd>`"),
+    (f"<!-- the form he writes, for example:\n{LINE}\n-->\n", NO_LINE),
+    (f"~~~~\n```\n{LINE}\n```\n~~~~\n", NO_LINE),
+    (f"````\n```\n{LINE}\n```\n````\n", NO_LINE),
 ])
 def test_without_one_exact_line_it_refuses_and_runs_nothing(tmp_path, approval, why):
     w = make_world(tmp_path, approval)
@@ -241,12 +245,45 @@ def test_without_one_exact_line_it_refuses_and_runs_nothing(tmp_path, approval, 
     problems = refused(w, cli)
     assert any(why in p for p in problems), problems
     assert cli.calls == []
+    assert not any("the form `APPROVED by Shresth Rana <yyyy-mm-dd>`" in p or "no line `APPROVED by" in p
+                   for p in problems), "the refusal never shows the form as the placeholder he copied (2026-11-04)"
+
+
+def test_a_bracketed_date_is_told_to_be_written_bare(tmp_path):
+    """His first save, 2026-11-04: the date in angle brackets, as the How-to-approve placeholder showed it. The refusal
+    says what to change and shows his line as it counts, a bare date, never the placeholder form; the line stays his."""
+    w = make_world(tmp_path, "APPROVED by Shresth Rana <2026-11-05>\n")
+    cli = FakeCLI(w)
+    assert refused(w, cli) == [
+        "under ## Approval: `APPROVED by Shresth Rana <2026-11-05>` is not an approval line: write the date bare: "
+        "2026-11-05, not <2026-11-05> (the line that counts: APPROVED by Shresth Rana 2026-11-05). His line is his to "
+        "change"]
+    assert cli.calls == []
+
+
+def test_another_persons_approval_is_named_as_theirs_and_never_rewritten_into_his(tmp_path):
+    """An approval line in another name refuses, says whose it is and that his own line is needed, and never shows his
+    line built from it: the seal's caller could otherwise enter a line he never wrote."""
+    w = make_world(tmp_path, "APPROVED by Ada Lovelace 2026-11-05\n")
+    cli = FakeCLI(w)
+    assert refused(w, cli) == [
+        "under ## Approval: `APPROVED by Ada Lovelace 2026-11-05` is an approval by Ada Lovelace, not by Shresth Rana: "
+        "Shresth Rana's own line is needed. His line is his to change"]
+    assert cli.calls == []
+
+
+def test_without_his_line_the_refusal_shows_it_written_out_with_todays_date(tmp_path):
+    """No line yet: the refusal shows the form with a real date, the seal's today (Pacific), bare."""
+    w = make_world(tmp_path, "")
+    assert refused(w) == [f"{NO_LINE}: his line is his to write (or his chat line, entered verbatim), with the date "
+                          f"bare, e.g. APPROVED by Shresth Rana {TODAY}"]
+    assert refused(w, today=date(2026, 11, 8))[0].endswith("e.g. APPROVED by Shresth Rana 2026-11-08")
 
 
 def test_his_line_outside_the_approval_section_does_not_count(tmp_path):
     w = make_world(tmp_path, "")
     w.gate.write_text(w.gate.read_text().replace("## How to approve\n", f"## How to approve\n{LINE}\n"))
-    assert any("no line" in p for p in refused(w))
+    assert any(NO_LINE in p for p in refused(w))
 
 
 @pytest.mark.parametrize("line, confs, why", [
@@ -613,14 +650,14 @@ def test_on_copies_of_the_real_runs_inbox_and_gate(tmp_path):
     real = FROZEN.read_bytes() if FROZEN.is_file() else None
     w = real_world(tmp_path / "as_is", None)
     if G.approval_date(w.gate.read_text()) is None:      # before his line: the gate file as it stands refuses
-        assert any("no line" in p for p in refused(w))
+        assert any(NO_LINE in p for p in refused(w))
     w = real_world(tmp_path / "early", f"\nAPPROVED by Shresth Rana {early}\n")
     assert any(f"before his day3 confirmation of {early + timedelta(days=1)}" in p for p in refused(w))
     for name, body in {"comment": f"\n<!-- the form he writes, for example:\nAPPROVED by Shresth Rana {ok}\n-->\n",
                        "fence": f"\n~~~~\n```\nAPPROVED by Shresth Rana {ok}\n```\n~~~~\n"}.items():
         w = real_world(tmp_path / name, body)                 # his line only inside a comment or a fence
         w.signoff(99999999, day=ok.isoformat(), batch=f"b{ok:%m%d}-signoff")
-        assert any("no line `APPROVED by Shresth Rana" in p for p in refused(w)), name
+        assert any(NO_LINE in p for p in refused(w)), name
     w = real_world(tmp_path / "ok", f"\nHis line, given in chat, entered verbatim:\nAPPROVED by Shresth Rana {ok}\n")
     assert (w.runs / f"drafts-{JOBS['keep3']}" / "summary" / "args.json").is_file()    # keep3's run is no sign-off
     real_jobs = S.signoff_runs(w.runs)

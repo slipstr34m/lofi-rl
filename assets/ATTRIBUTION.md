@@ -41,6 +41,8 @@ SF2 is an adaptation of it and keeps its licence.
   (https://github.com/sfzinstruments/virtuosity_drums).
 - **VCSL**, the Versilian Community Sample Library (https://github.com/sgossner/VCSL): Upright Piano, Knight (sampled
   by Simon Dalzell of Ivy Audio) and Shaker, Small and Large.
+- **Soft rain on roof window** by Metadex (Freesound 235827, https://freesound.org/people/Metadex/sounds/235827/),
+  the rain bed of `palettes/lofi_rain_v1.yaml` (excerpt e2). Converted once from 48 to 44.1 kHz for lofi-rl.
 
 ## Committed
 

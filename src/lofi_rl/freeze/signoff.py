@@ -44,8 +44,9 @@ reaches the inbox:
 3. `render` (summary/renders.json): (a) the kept loops with the frozen palette and with each twin, `--jobs` at a time
    with one worker each (lofi_rl.drafts.render.render_one, FLACs kept); (b) every draft of every folder that is not
    kept and prompt v2's 9 references with the frozen palette, in this process, one at a time with 4 workers, as junk's
-   render step runs (a reference in its own cell, with the brief of that cell's first brief id); (c) each frozen kept
-   render again in a fresh process (`python -m lofi_rl.render.pipeline ... --no-verify --workers 4`,
+   render step ran until D-022, when it took two at a time with 2 workers each (lofi_rl.rl.junk.RENDER_JOBS); a
+   reference renders in its own cell, with the brief of that cell's first brief id; (c) each frozen kept render again
+   in a fresh process (`python -m lofi_rl.render.pipeline ... --no-verify --workers 4`,
    PYTHONHASHSEED=4093), one at a time, its wall time `process_s`. A record holds n, LUFS, true peak, the loudness
    iterations, master gain, music_lufs, the bed report with `bed_lu` and pre_limiter_sha256
    (lofi_rl.shootout.render.bed_record), pcm_sha256, music_sha256 and `render_s`; a kept loop's records also hold
@@ -117,7 +118,7 @@ PLACED_TOL_LU = 0.01        # the bed as placed: lufs(scaled stem) - music_lufs 
 HEARD_FLAG_LU = 2.015
 PROJECTION_CLIPS, PROJECTION_LIMIT_S = 50, 300.0     # spec §5.5: nothing changes if 50 x the slowest render <= 300 s
 REPEAT_HASHSEED = "4093"    # the fresh-process repeat's hash seed, as tests/test_determinism.py's CLI render
-REPEAT_WORKERS = 4          # (c) and (b) run with 4 workers, junk's render step (jobs/junk_rate.sbatch)
+REPEAT_WORKERS = 4          # (c) and (b) run with 4 workers, as junk's render step did until D-022 (now 2 x 2)
 ONE_AT_A_TIME_WORKERS = 4
 # A fresh-process repeat that runs longer than this is a fault: on the laptop one took 3.01-4.81 s (docs/DRAFTS.md
 # §7.1), and the whole job's walltime is 15 min (jobs/drafts.sbatch).

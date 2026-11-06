@@ -18,7 +18,7 @@ votes, plus music-theory verifiers and knob checks. Final project for USC CSCI 5
 | `jobs/` | Slurm jobs; each is registered with its SU estimate in `jobs/APPROVED.yaml` |
 | `requirements/` | pinned locks for the laptop, policy and scorer envs |
 | `palettes/` | the frozen sound palette, from Phase 1 |
-| `gates/` | human approvals (`APPROVED by Shresth Rana <date>`) |
+| `gates/` | human approvals: a line of its own, his name and the date written bare, e.g. `APPROVED by Shresth Rana 2026-11-04` (`python -m kit.gates`) |
 
 ## Running it
 

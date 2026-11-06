@@ -81,15 +81,21 @@ regex_sha256(palette)               # sha256 of the regex text (UTF-8): the iden
 | palette | palette sha256 | regex characters | regex sha256 |
 |---|---|---|---|
 | `palettes/dev_gu.yaml` | `b2e4a340…` | 3,395 | `1412f11f9ebdc520b50c263eda14be12829951357c17f43496ab2ddf5235e64e` |
+| `palettes/lofi_rain_v1.yaml` (frozen 2026-11-04) | `09f80a64…` | 3,408 | `5c081828ac50718edc4db82c2a855ea52210debb375280ba01e8442de60f8558` |
 
 - **The source:** `loopscript_regex(load_palette("palettes/dev_gu.yaml", verify=False))` on the laptop, 2026-10-31.
   The constrained dry run (`python -m lofi_rl.rl.train --config configs/grpo_smoke_constrained.yaml --dry-run`)
   reports the same sha256 and length.
+- **The frozen palette's** row is the same call on `palettes/lofi_rain_v1.yaml` (laptop, 2026-11-04). It is the
+  grammar of the Phase-1 gate and of run 1 (D-021, D-022), and tests/test_palette_frozen.py pins its sha256 and
+  length. D-020's two arms (junk-13640324, junk-13640325) and the grammar GRPO smokes (13657200, 13673180) decoded
+  under dev_gu's (`1412f11f`), as their summaries record.
 - **Superseded:** the first build, 2,931 characters with sha256 `bc3381e8…`, took only bare newlines and a final
   one. The line ends of §3.3 replaced it the same day. No run had used it: the constrained base-model test is still
   to come (CHANGELOG, 2026-10-31).
-- **When it changes:** the regex follows the palette's lists, so `palettes/lofi_rain_v1.yaml` will have its own sha.
-  Any change to the lists or to `grammar.py` changes it too.
+- **When it changes:** the regex follows the palette's lists, so each palette has its own sha, as the two rows show.
+  The frozen palette's lists never change (D-017); a change to `grammar.py` would change its regex too, and
+  tests/test_palette_frozen.py would fail.
 
 ## 3. What the regex enforces
 

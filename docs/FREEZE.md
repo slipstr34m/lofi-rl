@@ -2,15 +2,20 @@
 
 The end of Phase 1: the procedure of docs/SHOOTOUTS.md §1 ("From votes to the freeze", step 4). Claude assembles the
 palette from the shootout survivors, their trims and faders (SHOOTOUTS.md §3 "Frozen values") and the rain pick, under
-the plain-word names the model sees (instrument.md §6). Shresth signs it off with `APPROVED by Shresth Rana
-<yyyy-mm-dd>` in gates/GATE_palette.md; then `frozen:` takes that date, and after that **the file never changes**
-(D-017, docs/DECISIONS.md).
+the plain-word names the model sees (instrument.md §6). Shresth signs it off with his line in gates/GATE_palette.md,
+his name and the date written bare (`APPROVED by Shresth Rana 2026-11-04`); then `frozen:` takes that date, and after
+that **the file never changes** (D-017, docs/DECISIONS.md).
 
 - **Code:** `src/lofi_rl/freeze/` (`__init__` holds the constants and the kept-list readers; `palette`: build, check,
   vocab; `gate`: reading the gate file; `checks`, `signoff`, `batch`: the sign-off, §5; `seal`, `tables`), tests
   `tests/test_freeze_*.py`.
 - **Files:** `palettes/lofi_rain_v1.yaml`, written by `python -m lofi_rl.freeze build`, never by hand;
   `drafts/v1/keep3_kept10.json` (§5.3).
+- **Status (2026-11-04): sealed.** His four redo picks came from b1103-keep3-redo (job 13703830), and the second
+  sign-off listen passed (b1103-signoff-2, job 13706355: Great 3, Good 4, Fine 3, Toss 0; gates/GATE_palette.md). His
+  line `APPROVED by Shresth Rana 2026-11-04` sealed the file: A `d3590c8d…`, the one he heard, became B `09f80a64…`
+  with `frozen: '2026-11-04'`, and the drawn round tables are published in the gate file (docs/DECISIONS.md D-022).
+  The line below is the build's history.
 - **Status (2026-11-03):** built with `frozen: null`. The first sign-off listen (b1103-signoff) did not pass: 4 Toss,
   and Shresth's words were "The loops themselves", so the palette does not change and briefs d01, d06, d07 and d10
   reopen through the drafts redo path (§5).
@@ -264,9 +269,14 @@ tossed file that is missing or differs, and a redo round or sign-off listen the 
 `SIGNOFFS` lacks (or the other way round). A line moved within its section, or added outside these items, changes
 nothing. `kept_now_table` is keep3's table with each redo round's table over it, in order: the gate file's side of
 `kept_now()`.
-`approval_date` reads the APPROVED line: under `## Approval`, exactly one line `APPROVED by Shresth Rana <yyyy-mm-dd>`
-with a real date (trailing whitespace aside). A note beside it is ignored; a second such line, or a line that starts
-as an approval in another form, is refused. `confirmations` and `kept` give the seal and the checks what they read.
+`approval_date` reads the APPROVED line: under `## Approval`, exactly one line `APPROVED by Shresth Rana` with a real
+date as bare year-month-day digits, as in `APPROVED by Shresth Rana 2026-11-04` (trailing whitespace aside). A note
+beside it is ignored; a second such line, or a line that starts as an approval in another form, is refused. The
+refusal names what to change and shows his line as it would count (`approval_problem`, from kit.gates.explain): "write
+the date bare: 2026-11-04, not <2026-11-04>". A line in another name is named as that person's ("an approval by Ada
+Lovelace, not by Shresth Rana: Shresth Rana's own line is needed"), and his line is never built from it. The seal's
+refusal without a line shows it with a bare date too, never the placeholder form (LESSONS 55). `confirmations` and
+`kept` give the seal and the checks what they read.
 
 ## 5. The sign-off loop and the kept list
 

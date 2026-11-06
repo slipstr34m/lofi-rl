@@ -386,8 +386,8 @@ jobs' files, which it reads only to cross-check.
   3. **render** (summary/renders.json):
      - (a) each kept loop with the frozen palette and with each twin, 8 at a time with 1 worker each, FLACs kept;
      - (b) every draft of every drafts folder that is not kept (20 with drafts/v1 alone) and prompt v2's 9 references,
-       in this process, one at a time with 4 workers, as junk's render step runs (a reference in its own cell's brief,
-       d01-d09);
+       in this process, one at a time with 4 workers, as junk's render step ran until D-022 (since then two at a
+       time with 2 workers each, rl/junk.py `RENDER_JOBS`), a reference in its own cell's brief, d01-d09;
      - (c) each frozen kept render again in a fresh process (`python -m lofi_rl.render.pipeline … --no-verify --workers
        4`, `PYTHONHASHSEED=4093`).
 

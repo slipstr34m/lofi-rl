@@ -92,7 +92,7 @@ The page switches to a summary of your own answers, in counts only: how many loo
 copies you caught, how often you agreed with yourself on repeats, whether position seemed to sway your picks,
 and the time spent against your hour a day. A shootout also shows how often each option was picked best and
 worst; tell Claude which 2–3 to keep, and Claude writes them into `gates/GATE_palette.md` for your
-`APPROVED by Shresth Rana <date>` line.
+approval line: your name and the day's date, written bare, as in `APPROVED by Shresth Rana 2026-11-04`.
 
 Each round has **Listen** (hear it again; 1–4 switch, 5 from bar 1, Space pauses, Esc stops) and **Take back**
 (that round is asked again, and the summary closes until it has a new answer).

@@ -3,7 +3,7 @@
     python -m lofi_rl.rl.junk generate --run DIR [--n 500] [--seed 2026] [--model REPO@SHA] [--constrained]
                                        [--prompt v1|v2]                                      policy env (vLLM)
     python -m lofi_rl.rl.junk score    --run DIR                                             policy env
-    python -m lofi_rl.rl.junk render   --run DIR [--k 50]                                    scorer env
+    python -m lofi_rl.rl.junk render   --run DIR [--k 50] [--workers 4] [--jobs 2]           scorer env
 
 jobs/junk_rate.sbatch runs the three in order on one GPU node, with DIR = $REMOTE_SCR/runs/junk-<job>.
 
@@ -30,10 +30,18 @@ jobs/junk_rate.sbatch runs the three in order on one GPU node, with DIR = $REMOT
   generate.json's (v1 when it names none; one this file does not know exits 2), and each row is compared with the
   example its own prompt showed. For a constrained run it also counts the completions in the recorded regex's
   language, by finish_reason (stop, length, other).
-- render: a seeded sample of --k gate-passing loops that are not near-copies (D-020), rendered with dev_gu
-  (render.pipeline) to one-pass 16-bit
-  FLACs under DIR/clips/, for a later ear check. G7 comes from these renders and is merged into junk.json.
-  Nothing goes to the inbox.
+- render: a seeded sample of --k gate-passing loops that are not near-copies (D-020), rendered with the palette
+  (render.pipeline) to one-pass 16-bit FLACs under DIR/clips/, for a later ear check. G7 comes from these renders
+  and is merged into junk.json. Nothing goes to the inbox. The renders run --jobs at a time (default 2), each with
+  --workers // --jobs workers (the job passes its 4 CPUs, so 2 each), as drafts/render.py renders: the freeze spec
+  §5.5 (iii), D-022. A render never depends on its workers (render.pipeline.render), and the records are kept in the
+  sample's order, so the clips, their manifests and clips.json's order are those of one-at-a-time rendering (--jobs
+  1); only render_s differs. No render starts after --deadline-s, in either order.
+
+The palette: every step reads --palette, by default the frozen palettes/lofi_rain_v1.yaml (D-017; D-022), whose
+names, grammar and banks the Phase-1 gate runs on. Generate, score and render must read the same file: score records
+its sha256 and whether it matches generate's. D-019's and D-020's runs were made on palettes/dev_gu.yaml (sha256
+b2e4a340...), their junk.json records it, and a re-score of one of them passes --palette palettes/dev_gu.yaml.
 
 Files: DIR/summary/{generate.json, completions.jsonl, scored.jsonl, junk.json, clips.json} (make pull brings
 summary/ back) and DIR/clips/<i>.flac with <i>.manifest.json (they stay on scratch).
@@ -92,7 +100,8 @@ import time
 import traceback
 from bisect import bisect_right
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
@@ -112,8 +121,13 @@ from lofi_rl.smoke import QWEN
 SCHEMA = "lofi-rl/junk/1"
 GENERATE_SCHEMA = "lofi-rl/junk-generate/1"
 CLIPS_SCHEMA = "lofi-rl/junk-clips/1"
-DEFAULT_PALETTE = ROOT / "palettes" / "dev_gu.yaml"
+DEFAULT_PALETTE = ROOT / "palettes" / "lofi_rain_v1.yaml"     # frozen 2026-11-04 (D-017, D-022); D-020 ran on dev_gu
 DEFAULT_N, DEFAULT_SEED, DEFAULT_CHUNK, RENDER_K = 500, 2026, 128, 50
+# renders at a time in the render step, --workers split between them (the freeze spec §5.5 (iii), D-022): job B's
+# slowest one-at-a-time render (17.39 s, runs/drafts-13706355) puts 50 renders at 869.5 s; two at a time with 2
+# workers each ran 1.713 times as fast on the laptop on the 42 drafts and 9 references, and 1.765 times on 50 of
+# D-020 arm B's loops, with every clip, manifest and FLAC identical (docs/evidence/D-022)
+RENDER_JOBS = 2
 # taste_pipeline §6: GRPO's sampling, which make junk-rate shares; top_k 0 is "every token" in vLLM
 SAMPLING = {"temperature": 1.0, "top_p": 1.0, "top_k": 0, "min_p": 0.0, "repetition_penalty": 1.0,
             "presence_penalty": 0.0, "frequency_penalty": 0.0, "max_tokens": 512}
@@ -1045,6 +1059,23 @@ def render_clip(row: dict, palette: Palette, clips_dir: Path, *, cache: Path | N
             "render_s": round(_now() - t, 2), "flac_bytes": flac.stat().st_size}
 
 
+def render_lanes(jobs: int, workers: int) -> tuple[int, int]:
+    """(renders at a time, workers each): `workers` split evenly between at most `workers` renders at a time."""
+    jobs = max(1, min(jobs, workers))
+    return jobs, max(1, workers // jobs)
+
+
+def in_order(fn: Callable[[int], dict], items: Sequence[int], jobs: int) -> Iterator[dict]:
+    """fn over items, `jobs` at a time, yielded in the items' order whatever finishes first. The pool's threads take
+    the items in that order too, so a deadline that fn reads as it starts is passed in the items' order. With one job,
+    fn runs here, one item after another, as the render step always did."""
+    if jobs <= 1:
+        yield from map(fn, items)
+        return
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        yield from ex.map(fn, items)
+
+
 def cmd_render(a: argparse.Namespace) -> int:
     run = Path(a.run)
     summ = run / "summary"
@@ -1061,16 +1092,21 @@ def cmd_render(a: argparse.Namespace) -> int:
     palette = load_palette(a.palette, verify=not a.no_verify)
     clips_dir = run / "clips"
     clips_dir.mkdir(parents=True, exist_ok=True)
+    jobs, each = render_lanes(a.jobs, a.workers)
     clips = {"schema": CLIPS_SCHEMA, "seed": seed, "k": a.k, "passing": len(passing),
-             "palette": {"id": palette.id, "sha256": palette.sha256}, "clips": []}
+             "palette": {"id": palette.id, "sha256": palette.sha256}, "jobs": jobs, "workers": each, "clips": []}
     t0 = _now()
-    for i in pick:
-        if _now() - t0 >= a.deadline_s:
+
+    def one(i: int) -> dict:
+        if _now() - t0 >= a.deadline_s:          # read as the render would start: none starts after the deadline
             rec = {"i": i, "ok": False, "gate": None, "skipped": "render deadline"}
         else:
-            rec = render_clip(rows[i], palette, clips_dir, cache=a.cache, workers=a.workers)
+            rec = render_clip(rows[i], palette, clips_dir, cache=a.cache, workers=each)
         rec.update(brief=rows[i]["brief"], copy_jaccard=scored[i]["copy_jaccard"], near_copy=scored[i]["near_copy"],
                    copy_reference=scored[i].get("copy_reference"), quasi_copy=scored[i].get("quasi_copy"))
+        return rec
+    for k, rec in enumerate(in_order(one, pick, jobs)):
+        i = pick[k]
         clips["clips"].append(rec)
         _write_json(summ / "clips.json", clips)
         print(f"[junk:render] {len(clips['clips'])}/{len(pick)} i={i} "
@@ -1116,7 +1152,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--palette", type=Path, default=DEFAULT_PALETTE)
     r.add_argument("--k", type=int, default=RENDER_K)
     r.add_argument("--seed", type=int, default=None, help="default: the brief seed of generate.json")
-    r.add_argument("--workers", type=int, default=4)
+    r.add_argument("--workers", type=int, default=4,
+                   help="worker threads for the whole step, split between the renders at a time (the job: its CPUs)")
+    r.add_argument("--jobs", type=int, default=RENDER_JOBS,
+                   help="renders at a time, each with --workers // --jobs workers; the clips never depend on it")
     r.add_argument("--deadline-s", type=float, default=360.0, help="no render starts after this")
     r.add_argument("--cache", type=Path, default=None, help="one-shot cache (default $LOFI_CACHE)")
     r.add_argument("--no-verify", action="store_true", help="skip hashing the palette's source files")
@@ -1133,6 +1172,8 @@ def main(argv: list[str] | None = None) -> int:
             faulthandler.cancel_dump_traceback_later()
             signal.alarm(120)                           # no handler: a hang in vLLM's teardown ends the process
         return rc
+    if a.cmd == "render" and (a.jobs < 1 or a.workers < 1):
+        ap.error("--jobs and --workers must be at least 1")
     return {"score": cmd_score, "render": cmd_render}[a.cmd](a)
 
 

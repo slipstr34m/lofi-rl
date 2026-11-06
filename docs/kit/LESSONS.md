@@ -197,6 +197,16 @@ section rather than renumbered.
     it, so the upload would have crashed at publish time. Rule: `HfApi.upload_folder` (unchanged files
     dedupe server-side), a dry run by default, an upload only with `--go` plus an approval line, then
     an anonymous read-back (`token=False`) that checks every file arrived (`python -m kit.publish`).
+55. **A placeholder was copied, brackets and all.** A gate's How-to-approve line read `APPROVED by
+    Shresth Rana <yyyy-mm-dd>`. His first save was `APPROVED by Shresth Rana <2026-11-04>`, and the
+    refusal repeated the placeholder form, so it never said what was wrong. Rule: show the line written
+    out with the approver's name and a real date, bare (`kit.gates.how_to_approve`, `example_line`;
+    `python -m kit.gates --how-to-approve --name "Ada Lovelace"`), and have a refusal name each fault
+    and show the line as it would count, e.g. "write the date bare: 2026-11-04, not <2026-11-04>"
+    (`kit.gates.explain`). The accepted form stays as strict as #52 says. Only the approver's own line
+    is shown that way: an approval (or near miss) in another name is named as that person's, "Grace
+    Hopper's own line is needed", and never rewritten into the approver's line, which an agent that
+    records approvals could otherwise append for someone who never wrote it.
 
 ## Building with LLM-generated content
 

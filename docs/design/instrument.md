@@ -41,7 +41,7 @@ comment = ("#"|"//") (SPACE|EOL) {any} ;           (* "#" inside a token is a sh
 - **Names:** KEYS, KIT and SAX come from the palette lists.
 - **Never written by the model:** pitches or note names, tempo, key or mode, swing, effects, levels, the bed.
 
-**Example.** Brief: city at night, wistful (D dorian), energy mid, 82 BPM. The model sees neither key nor mode. The names are placeholders until the palette is frozen.
+**Example.** Brief: city at night, wistful (D dorian), energy mid, 82 BPM. The model sees neither key nor mode. The names are `DEFAULT_VOCAB`'s (`tests/fixtures/loops/example.ls`). The frozen palette's names are rhodes, wurli and piano, studio and jazz, and alto (DSL.md §5), and under it `drums: dusty` and `sax: tenor` are G4.
 ```
 vamp: Im9 IV13 span 2
 keys: rhodes rootless
@@ -368,7 +368,7 @@ tests/golden/{render_hashes,fingerprints}.json
 | DSL | `test_parse`; `test_leniency`; `test_canon` (parse then print returns the original); `test_gates` |
 | Theory | `test_modes_chords`; `test_voicing` (matches the brute-force optimum; rejects low-interval violations) |
 | Compiler | `test_timeline` (N % 64 == 0; swing sample positions match the formula); `test_bass_lock`; `test_sax_register`; `test_expression` (whole vibrato cycles per L; pitch bend in range); `test_prng` (test vector) |
-| Render | `test_sampler` (round-robin, layers, choke); `test_render` (length N, −14 ± 0.1 LUFS, true peak ≤ −1, bed at −Δ ± 0.5 LU); `test_seam` (3-cycle render, cycle 2 vs cycle 3 max abs diff < 1e-6) |
+| Render | `test_sampler` (round-robin, layers, choke); `test_render` (length N, −14 ± 0.1 LUFS, true peak ≤ −1, bed at −Δ ± 0.5 LU on its synthetic fixture; with the frozen palette's rain, placed at −Δ before the limiter, the bed as heard sits 22.64–23.93 LU under the music on the kept 10, job 13706355; docs/RENDER.md §3.4, D-022); `test_seam` (3-cycle render, cycle 2 vs cycle 3 max abs diff < 1e-6) |
 | Determinism | `test_determinism` (below) |
 | Verifiers and assets | `test_verifiers` (the section 5 table); `test_palette` (every source has a license, NC sources are fetch-only, SHA matches); `test_fluid_cli` (version 2.6.1, flags) |
 

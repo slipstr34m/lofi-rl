@@ -74,6 +74,8 @@ B: q1' e7 e1' q5 q3 | er e3 e4 eb5 h5 | qr e4 e3 q2 q1 | h.6 qr
 
 - **Default vocabulary:** it parses with no repairs.
 - **`dev_gu` vocabulary:** it logs one free alias, `dusty` → `jazz`.
+- **The frozen palette's vocabulary** (§5): it fails G4, since `drums: dusty` and `sax: tenor` are not its names and
+  it has no aliases. With `drums: jazz` and `sax: alto` it passes.
 - **Text is canonical:** `canon` prints this text back unchanged (`tests/test_dsl_canon.py`).
 - **The examples below** change or add a line or two of it.
 
@@ -166,11 +168,15 @@ decides what a loop may name.
 
 | vocabulary | keys | kits | sax | aliases |
 |---|---|---|---|---|
+| `palettes/lofi_rain_v1.yaml` (the frozen palette, sha256 `09f80a64…`, frozen 2026-11-04) | rhodes, wurli, piano | studio, jazz | alto (lead: alto) | none |
 | `palettes/dev_gu.yaml` (the development palette) | rhodes, organ | jazz | tenor, alto (lead: tenor) | ep, wurli, piano, guitar → rhodes; dusty, brushes → jazz |
 | `DEFAULT_VOCAB` (no palette) | rhodes, piano, guitar, organ, wurli, ep | dusty, brushes, jazz | tenor, alto | none |
 
-- **Placeholders.** These are not the project's names. `palettes/lofi_rain_v1.yaml`, frozen at the end of Phase 1
-  from the shootouts, will set those (instrument.md §6; docs/DECISIONS.md D-017).
+- **The project's names** are the frozen palette's, set from the shootouts and fixed for good (instrument.md §6;
+  docs/DECISIONS.md D-017, D-022). They are the names the model writes from the Phase-1 gate on, and its grammar's
+  (GRAMMAR.md §2). With no aliases, a name outside them fails G4, never a repair.
+- **Placeholders.** dev_gu's and `DEFAULT_VOCAB`'s names are not the project's. dev_gu stays for the tests, the
+  scorer smoke's fixtures and the records of the runs made on it (D-019, D-020, the GRPO smokes).
 - **Case.** Names are case-folded.
 - **Aliases** follow §6.
 
