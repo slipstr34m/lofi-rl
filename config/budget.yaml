@@ -12,4 +12,6 @@ project_start_date: "2026-10-30"
 account: "anakano_429"
 job_name_prefix: "lofi-"
 approvals_file: "jobs/APPROVED.yaml"
-self_approve_max_su: 500
+# Claude registers a job type up to this many SU itself (Shresth, 2026-10-31: "Yes, up to 500 SU"; 2026-11-06:
+# "increase your limit for job to 1000 SU now"; DECISIONS.md D-003). Above it, a type needs his yes in chat.
+self_approve_max_su: 1000

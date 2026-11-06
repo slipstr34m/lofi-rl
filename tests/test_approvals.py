@@ -12,7 +12,7 @@ import approve_job  # noqa: E402
 def test_registry_entries_are_current_and_attributed():
     entries = approve_job.load()
     limit = approve_job.self_approve_max()
-    assert limit == 500
+    assert limit == 1000        # Shresth, 2026-11-06: "increase your limit for job to 1000 SU now" (D-003)
     for path, e in entries.items():
         assert (ROOT / path).exists(), f"{path} is registered but missing"
         assert approve_job.job_sha(ROOT / path) == e["sha"], f"{path} changed since approval: re-approve it"
@@ -29,5 +29,5 @@ def test_sha_ignores_comments_and_blank_lines(tmp_path):
 
 
 def test_claude_cannot_self_approve_a_large_job_type(capsys):
-    rc = approve_job.main(["jobs/tools.sbatch", "--max-su", "501", "--by", "Claude"])
+    rc = approve_job.main(["jobs/tools.sbatch", "--max-su", "1001", "--by", "Claude"])
     assert rc == 2 and "needs --by Shresth" in capsys.readouterr().err

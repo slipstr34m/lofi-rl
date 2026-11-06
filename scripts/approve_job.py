@@ -5,7 +5,7 @@ unregistered, has changed since approval, or is projected above its max_su (CLAU
     scripts/approve_job.py jobs/x.sbatch --max-su 720 --by Shresth [--date 2026-10-30]
     scripts/approve_job.py --check        # entries whose script changed since approval (re-approve them)
 
-Claude may register a type itself (--by Claude) only up to budget.yaml's self_approve_max_su (500 SU).
+Claude may register a type itself (--by Claude) only up to budget.yaml's self_approve_max_su (1,000 SU since 2026-11-06).
 Anything larger is written with --by Shresth, and only after Shresth said yes in chat.
 """
 from __future__ import annotations

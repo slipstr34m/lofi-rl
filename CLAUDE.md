@@ -81,7 +81,7 @@ Rules:
 - **SU budget.** Target **1,000,000 SU**, hard stop **1,200,000**, in `config/budget.yaml`. The guard counts used + reserved + projected SU and fails closed. Past the target it needs `PAST_TARGET_OK=<date of Shresth's OK> make submit ...` (a chain's later links inherit it). After each job, log the actual SU in the CHANGELOG (`sacct -j <id> --format=JobID,Elapsed,AllocTRES`, or `python3 scripts/session_report.py`). This is the class's shared allocation: be frugal, and say so at the Nakano meeting.
 - **Job-type registry** (`jobs/APPROVED.yaml`).
   - The guard refuses (exit 4, `NEEDS_APPROVAL`) any job type that is unregistered, has changed since approval (sha of its `#SBATCH` and non-comment lines), or is projected above its `max_su`.
-  - Claude registers types whose max is ≤ 500 SU itself (`make approve JOB=... MAX=... BY=Claude`), new or changed (Shresth, 2026-10-31: "Yes, up to 500 SU"). Each re-registration goes in the CHANGELOG.
+  - Claude registers types whose max is ≤ 1,000 SU itself (`make approve JOB=... MAX=... BY=Claude`), new or changed (Shresth, 2026-10-31: "Yes, up to 500 SU"; raised 2026-11-06: "increase your limit for job to 1000 SU now"). Each re-registration goes in the CHANGELOG.
   - Larger types need Shresth's yes in chat, once (`BY=Shresth`), and again whenever they change. Reruns within the approved estimate never ask again.
 - **Polling.** `make status`, `scripts/watch_job.sh <id>` in the background, or `tail -n 50` of the log. Check, report, move on; no foreground sleep loops.
 
@@ -167,7 +167,7 @@ Final pre-registered claims:
 - **End:** CHANGELOG entry → `pytest -q` → commit (and push) → `make sync` if code changed → list anything waiting on an ear check or an approval (with a push notification if Shresth is away).
 - **Autonomy:** a scheduled local session runs this ritual every few hours and advances the next unit of work.
   - It stops and pings Shresth when blocked: an ssh failure, `NEEDS_APPROVAL`, a pending ear check, or failing tests.
-  - It never self-approves a job type over 500 SU, never deletes `runs/`, never touches a frozen palette, and never commits votes or secrets.
+  - It never self-approves a job type over 1,000 SU, never deletes `runs/`, never touches a frozen palette, and never commits votes or secrets.
 
 ## 11. Hard rules
 
@@ -176,6 +176,6 @@ Final pre-registered claims:
 3. No palette change after the freeze. Ever (Shresth, 2026-10-30).
 4. No claims about how anything sounds; queue clips.
 5. No metric without the file path it was read from.
-6. Every job type is registered in `jobs/APPROVED.yaml`. Ask Shresth first for any type over 500 SU, new or changed, and any run over its estimate. A new or changed type of 500 SU or less Claude registers itself (Shresth, 2026-10-31).
+6. Every job type is registered in `jobs/APPROVED.yaml`. Ask Shresth first for any type over 1,000 SU, new or changed, and any run over its estimate. A new or changed type of 1,000 SU or less Claude registers itself (Shresth, 2026-10-31 for 500 SU; raised to 1,000 SU on 2026-11-06).
 7. If ssh prompts for Duo or hangs: stop and ask.
 8. No non-commercial asset is ever committed (fetch-only); votes live only in `data/votes/` and its private backups.

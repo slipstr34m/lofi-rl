@@ -19,7 +19,30 @@ Newest entry first. Every number cites the file or command output it was read fr
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
 - **The palette is frozen:** `palettes/lofi_rain_v1.yaml`, `frozen: '2026-11-04'` (sha256 `09f80a64…`), on Shresth's APPROVED line of 2026-11-04.
-- **Waiting on Shresth:** 27 or 28 minutes for the Phase-1 gate job (D-022, "Open, for Shresth"). Then the gate: `lofi-junk-rate ARGS='500 2026 1 v2'` on the frozen palette, and his 50-clip ear check.
+- **Waiting on:** USC's VPN, for `make sync` and the Phase-1 gate submit (`lofi-junk-rate ARGS='500 2026 1 v2'` on the frozen palette, 28 min on Shresth's yes). Then his 50-clip ear check.
+
+---
+
+## 2026-11-06 (11:00 PST): the Phase-1 gate job at 28 minutes on Shresth's yes; Claude's self-registration limit raised to 1,000 SU
+
+**What was done**
+- **His answers** (2026-11-06):
+  - asked whether the gate job runs with a 27- or 28-minute limit: "28 minutes";
+  - then, in chat: "yeah let it run, also increase your limit for job to 1000 SU now".
+- **jobs/junk_rate.sbatch at 28 minutes:** `--time 00:28:00`, with the render step under `timeout -k 10 655 … --deadline-s 595`.
+  - The three timeouts with their kill grace come to 855 + 100 + 665 = 1,620 s, a minute under 1,680 s.
+  - The 507.6 s worst case sits 87.4 s under the deadline, so it keeps the no-change rule's 60 s (D-022).
+  - **Re-registered on his yes:** `make approve JOB=jobs/junk_rate.sbatch MAX=504 BY=Shresth`. It went from `a7c7ea3502cf395c`, 486 SU, by Claude (2026-11-04) to `5a423302eb84dd91`, 504 SU, by Shresth (2026-11-06). `scripts/approve_job.py --check` exits 0.
+  - tests/test_junk_job.py's cost test now checks that the registered max_su covers the worst case, and that a type above `self_approve_max_su` is registered by Shresth.
+- **The limit:** `config/budget.yaml` `self_approve_max_su: 1000` (it was 500).
+  - CLAUDE.md §4, §10 and §11 rule 6, and D-003's new amendment, carry his words. tests/test_approvals.py pins 1000, and Claude's refusal now starts above it.
+  - What it changes ahead: Phase 2's GRPO smoke with the scorer on (about 550–670 SU, UNVERIFIED; D-021) is now Claude's to register. `lofi-render-pool` (1,440 SU in the plan) and `lofi-grpo` stay his.
+- **D-022** records his answer in place of the open question.
+- **Not submitted yet:** the cluster is unreachable from the laptop. Only Surfshark is connected, not USC's VPN, and `nc` to the login node (10.72.0.13:22) fails. So `make sync` and the gate submit wait for USC's VPN.
+
+**SU spent:** 0.
+
+**Next:** with USC's VPN up, `make sync`, then `make submit JOB=jobs/junk_rate.sbatch ARGS='500 2026 1 v2' OVR='-p gpu'`. Then the gate's 50 clips and his ear check.
 
 ---
 

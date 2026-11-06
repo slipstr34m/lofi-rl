@@ -31,7 +31,9 @@ def _code(text: str) -> list[str]:
     return [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
 
 
-def test_junk_job_is_sized_under_500_su_and_states_its_cost():
+def test_junk_job_states_its_cost_and_its_registration_covers_it():
+    """Up to budget.yaml's self_approve_max_su Claude registers the type itself; above it the registry entry is
+    Shresth's yes (CLAUDE.md §4). The gate's 28 minutes are 504 SU, registered on his answer of 2026-11-06 (D-022)."""
     s = JOB.read_text()
     sb = _sbatch(s)
     assert sb["job-name"] == "lofi-junk-rate" and sb["partition"] in ("debug", "gpu")
@@ -39,7 +41,11 @@ def test_junk_job_is_sized_under_500_su_and_states_its_cost():
     cpus, mem = int(sb["cpus-per-task"]), int(sb["mem"].removesuffix("G"))
     rate = SU_PER_MIN["cpu"] * cpus + SU_PER_MIN["gb"] * mem + SU_PER_MIN["gpu"]
     worst = rate * _minutes(sb["time"])
-    assert worst <= 500, "Claude registers a type up to 500 SU itself (budget.yaml self_approve_max_su)"
+    reg = re.search(r"^jobs/junk_rate\.sbatch: \{sha: \w+, max_su: (\d+), by: (\w+), date: [\d-]+\}$",
+                    (ROOT / "jobs" / "APPROVED.yaml").read_text(), re.M)
+    assert reg and worst <= int(reg[1]), "the registered max_su covers the worst case"
+    limit = float(re.search(r"^self_approve_max_su: (\d+)", (ROOT / "config" / "budget.yaml").read_text(), re.M)[1])
+    assert worst <= limit or reg[2] == "Shresth", "above self_approve_max_su the type is registered on Shresth's yes"
     m = re.search(r"Cost: (\d+) CPU \+ (\d+) \((\d+) GB\) \+ 8 \(1 GPU\) = (\d+) SU/min x (\d+) min -> at most (\d+) SU", s)
     assert m, "the header states the cost in the kit's form"
     assert (int(m[1]), int(m[2]), int(m[3]), int(m[4]), int(m[5]), int(m[6])) == (
@@ -73,8 +79,8 @@ def test_junk_job_runs_generate_and_score_in_policy_then_render_in_scorer_under_
 
 
 def test_the_render_step_runs_the_two_lanes_its_deadline_was_sized_for():
-    """The render deadline and timeout (535 s, 595 s) were sized for junk's default two renders at a time with 2
-    workers each on the job's 4 CPUs (the freeze spec §5.5 (iii) with (ii); D-022). So the job passes its CPUs as
+    """The render deadline and timeout (595 s, 655 s, at 28 min) were sized for junk's default two renders at a time
+    with 2 workers each on the job's 4 CPUs (the freeze spec §5.5 (iii) with (ii); D-022). So the job passes its CPUs as
     --workers and no --jobs, and junk.RENDER_JOBS splits those CPUs into 2 x 2."""
     s = JOB.read_text()
     render = next(line for line in _code(s) if "-m lofi_rl.rl.junk render" in line)
