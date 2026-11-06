@@ -3,7 +3,7 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 2,034.7 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-04 10:25 PST).
+- **SU used:** 2,485.6 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-06 13:05 PST).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
     - Days 1, 2 and 3 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended); Day 3 gave rain excerpt `excerpt_e2` and, by his word, the rain at Δ 24;
@@ -19,7 +19,29 @@ Newest entry first. Every number cites the file or command output it was read fr
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
 - **The palette is frozen:** `palettes/lofi_rain_v1.yaml`, `frozen: '2026-11-04'` (sha256 `09f80a64…`), on Shresth's APPROVED line of 2026-11-04.
-- **Waiting on:** USC's VPN, for `make sync` and the Phase-1 gate submit (`lofi-junk-rate ARGS='500 2026 1 v2'` on the frozen palette, 28 min on Shresth's yes). Then his 50-clip ear check.
+- **The Phase-1 gate's first launch (13783877) is invalid:** it generated 384 of 500 before its deadline, because writes on its node were slow. The fix and the second launch are next; a second invalid launch goes to Shresth with the records (D-021).
+
+---
+
+## 2026-11-06 (13:40 PST): the Phase-1 gate's first launch is invalid (384 of 500 before the deadline; writes on its node were slow)
+
+**What was done**
+- **`lofi-junk-rate` 13783877** (`ARGS='500 2026 1 v2'`, `-p gpu`, snapshot `ac4acfb0388f-ec11f881579c`, the frozen palette, 28 min, registry `5a423302eb84dd91`):
+  - queued from 11:41 to 12:53 (Priority), then ran on a02-15 (A40, EPYC 7282);
+  - FAILED at 13:18:34 after 00:25:03, 450.9 SU (`session_report.py`), `JUNK_RATE_FAILED`.
+- **Generate stopped at its deadline with 384 of 500** (`runs/junk-13783877/summary/generate.json`: `stopped: deadline`, total 709.3 s).
+  - The model was not the slow part: its three chunks took 13.58, 12.8 and 12.46 s, at 2,581 tok/s.
+  - The log printed 128/500 at 333 s, 256 at 543 s and 384 at 709 s. So 210 s and 166 s passed between chunks, where junk.py only appends 128 JSON lines, fsyncs them and rewrites generate.json on scratch.
+  - The three D-020 runs on b-nodes (13640324, 13640325, 13656050; their logs on scratch) printed their chunks 12–15 s apart, the model's own time, and finished 500 in 114–122 s. The model also loaded in 33.8 s here, against 23.1 s for arm B.
+- **Score passed:** 383 of 384 pass, and 370 are passing non-copies (`junk.json`); the frozen palette and the regex sha `5c081828…` are recorded as D-022 asks. The run is still invalid, because it is not complete (D-020).
+- **The render step was killed** at its 655 s timeout after 45 of 50 clips (`clips.json`).
+  - Its renders took 5.01–126.67 s (median 8.21 s). Four took 87–127 s, against job B's 2.90–17.39 s for the same palette. The one-shot cache (`$LOFI_CACHE`) is on scratch too.
+- **Reading:** the compute ran at normal speed, and the time went to the file system around it, scratch above all. That is not the frozen palette: its regex costs nothing in generate's chunks.
+- **`jobs/io_probe.sbatch` (`lofi-io-probe`, new, ≤ 1,000 SU):** it times junk's write pattern and clip-sized writes on scratch, the node's local disk and KEEP. Registered `make approve JOB=jobs/io_probe.sbatch MAX=110 BY=Claude` (`337fdad749168eea`): at most 30 SU on main, and 110 SU on a GPU node with one A40.
+
+**SU spent:** 450.9.
+
+**Next:** the probe; then the gate job's fix (each step's files on the node's local disk, copied to scratch after it, and the render cache warm before the render clock starts), built and reviewed; then the second launch. A second invalid launch goes to Shresth with the records (D-021).
 
 ---
 
