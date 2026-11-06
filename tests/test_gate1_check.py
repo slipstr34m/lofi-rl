@@ -341,6 +341,23 @@ def test_the_text_names_every_condition_and_the_json_is_the_report(run_dir, caps
     assert doc["schema"] == C.SCHEMA and doc == json.loads(json.dumps(C.evaluate(G.load_run(run_dir))))
 
 
+def test_every_gate1_module_imports_without_the_audio_stack():
+    """jobs/env_policy.sbatch's import walk imports every lofi_rl module outside the scorer side in the policy env,
+    which has no mido, soundfile, scipy or pedalboard (tests/test_verify_policy_env.py): gate1 imports them only
+    inside the batch's measure, so it imports there, numpy unloaded."""
+    import subprocess
+    import sys
+    probe = ("import sys, importlib\n"
+             "for m in ('mido', 'soundfile', 'scipy', 'pedalboard', 'numpy'): sys.modules[m] = None\n"
+             "for m in ('lofi_rl.gate1', 'lofi_rl.gate1.check', 'lofi_rl.gate1.batch', 'lofi_rl.gate1.tally',\n"
+             "          'lofi_rl.gate1.gatefile', 'lofi_rl.gate1.cli', 'lofi_rl.gate1.__main__'):\n"
+             "    importlib.import_module(m)\n"
+             "print('IMPORTS_OK')\n")
+    p = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True,
+                       env={"PYTHONPATH": str(ROOT / "src"), "PATH": "/usr/bin:/bin"})
+    assert p.returncode == 0 and "IMPORTS_OK" in p.stdout, p.stderr
+
+
 def test_python_dash_m_runs_the_check(run_dir):
     import subprocess
     import sys

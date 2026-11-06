@@ -17,10 +17,12 @@
   id).
 
 The manifests are read for their labels only (`check_files=False`, as the shootout tally reads them), so a batch
-whose FLACs were cleared after voting still tallies. Text goes to the terminal. `--json OUT` writes the tally as JSON
-instead (`-` prints it): its per-round rows pair his tiers with sample indices, which are private (D-010), so inside
-the repo OUT must be under data/ (gitignored, as the votes are), e.g. data/votes/audit/. Exit 0 when every round has a
-standing vote and the "fine" count meets the bar, 3 otherwise. Sound claims: none.
+whose FLACs were cleared after voting still tallies. **Output:** the text goes to the terminal, and the JSON to
+`<votes folder>/audit/<batch>.gate1-tally.json` (data/votes/audit/, where the shootout tally writes its audit files),
+or to `--json OUT` (`-` prints it in place of the text). Its per-round rows pair his tiers with sample indices, which
+are private (D-010), so inside the repo it is written only under data/ (gitignored, as the votes are); the gate file
+holds counts only. Exit 0 when every round has a standing vote and the "fine" count meets the bar, 3 otherwise. Sound
+claims: none.
 """
 from __future__ import annotations
 
@@ -180,32 +182,39 @@ def private_path_problem(out: Path) -> str | None:
     path = out.resolve()
     root = ROOT.resolve()
     if path.is_relative_to(root) and not path.is_relative_to(root / "data"):
-        return (f"--json {out}: his per-round tiers are private (D-010); inside the repo they go under data/ "
+        return (f"{out}: his per-round tiers are private (D-010); inside the repo they go under data/ "
                 "(e.g. data/votes/audit/), never into a committed folder")
     return None
 
 
+def json_path(a: argparse.Namespace, batch: str) -> Path | None:
+    """Where the JSON goes: --json OUT, or the votes folder's audit/ (module doc); None for `-` (printed)."""
+    if a.json is not None:
+        return None if str(a.json) == "-" else a.json
+    return a.votes.parent / "audit" / f"{batch}.gate1-tally.json"
+
+
 def main(a: argparse.Namespace) -> int:
     """The `tally` subcommand (lofi_rl.gate1.cli)."""
-    if a.json is not None and str(a.json) != "-":
-        bad = private_path_problem(a.json)
-        if bad:
-            print(f"error: nothing written: {bad}", file=sys.stderr)
-            return 2
     try:
         doc = tally(a.batch, a.votes)
     except G.Gate1Error as err:
         print(f"error: bad input, nothing decided:\n{err}", file=sys.stderr)
         return 2
-    if a.json is None:
-        print(format_text(doc), end="")
-    elif str(a.json) == "-":
+    out = json_path(a, doc["batch"])
+    if out is None:
         print(json.dumps(doc, indent=1))
-    else:
-        a.json.parent.mkdir(parents=True, exist_ok=True)
-        a.json.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
-        print(format_text(doc), end="")
-        print(f"wrote {a.json}")
+        return doc["exit"]
+    bad = private_path_problem(out)
+    if bad:
+        print(f"error: nothing written: {bad}", file=sys.stderr)
+        return 2
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f".{out.name}.tmp")
+    tmp.write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+    tmp.replace(out)
+    print(format_text(doc), end="")
+    print(f"wrote {out} (private: his per-round tiers)")
     return doc["exit"]
 
 
@@ -214,5 +223,6 @@ def add_parser(sub) -> None:
     p.add_argument("batch", type=Path, help="the batch folder, inbox/<date>/b<MMDD>-gate1")
     p.add_argument("--votes", type=Path, required=True, help="its vote log, data/votes/<batch>.jsonl")
     p.add_argument("--json", type=Path, default=None, metavar="OUT",
-                   help="write the tally as JSON to OUT (under data/ inside the repo), or - to print it")
+                   help="where the JSON goes (default: the votes folder's audit/<batch>.gate1-tally.json; under data/ "
+                        "inside the repo), or - to print it in place of the text")
     p.set_defaults(run_command=main)

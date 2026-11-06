@@ -232,7 +232,10 @@ def test_the_command_prints_the_counts_and_the_split(folder, votes, capsys):
     assert "tiers: Great 5, Good 5, Fine 5, Toss 5" in out
     assert "\"fine\" (Fine, Good or Great): 15; the bar is at least 15 of 50: met" in out
     assert "with a verbatim A or B line: \"fine\"" in out and "with neither line: \"fine\"" in out
-    assert out.rstrip().endswith("GATE1_TALLY complete, \"fine\" 15, bar met")
+    assert "GATE1_TALLY complete, \"fine\" 15, bar met\n" in out
+    audit = votes / "audit" / f"{NAME}.gate1-tally.json"        # the JSON beside the votes, as the shootout tally's
+    assert out.rstrip().endswith(f"wrote {audit} (private: his per-round tiers)")
+    assert json.loads(audit.read_text()) == json.loads(json.dumps(T.tally(folder, log(votes))))
 
 
 def test_the_json_goes_to_stdout_or_to_a_private_file(folder, votes, tmp_path, capsys):

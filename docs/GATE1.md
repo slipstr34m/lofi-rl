@@ -13,8 +13,8 @@ Shresth's ear check, counts his votes and writes `gates/GATE_phase1.md`.
   `completions.jsonl`, `clips.json`) and, for the batch, the run's 50 one-pass FLACs copied from scratch into a
   folder of the laptop (`runs/junk-<job>/clips/`; runs/ is never committed).
 - **Writes:** the batch under `inbox/<date>/` and its records `summary/draw.json` (the draw's seed) and
-  `summary/batch.json` into the run's summary (all three never committed); the tally's JSON only on request and only
-  outside the repo or under `data/`; `gates/GATE_phase1.md`, which is committed.
+  `summary/batch.json` into the run's summary (all three never committed); the tally's JSON beside the votes, in
+  `data/votes/audit/` (never outside `data/` inside the repo); `gates/GATE_phase1.md`, which is committed.
 - **Sound claims:** none. Every number the tool prints is read from the run's files or the vote log.
 
 ## 1. The bar
@@ -126,8 +126,10 @@ One triage batch of the run's clips for his ear check.
 - **The split:** the same counts for the clips with a verbatim A or B line (the hidden `verbatim_line`) and without.
 - **Bad input** (exit 2): not a gate1 triage batch, a missing log, or a log that is not this batch's (another batch's
   event, another mode's vote, a tier outside the four, a round it does not hold, a clip that is not the round's).
-- **Output:** text. `--json OUT` writes the tally (`-` prints it); its per-round rows pair his tiers with sample
-  indices, which are private (D-010), so inside the repo OUT must be under `data/`.
+- **Output:** the text on the terminal, and the JSON in the votes folder's `audit/<batch>.gate1-tally.json`
+  (`data/votes/audit/`, where the shootout tally writes its audit files), or `--json OUT` (`-` prints it in place of
+  the text). Its per-round rows pair his tiers with sample indices, which are private (D-010), so inside the repo it
+  is written only under `data/`.
 - **Exit:** 0 every round voted and the bar met, 3 otherwise.
 
 ## 5. `gate --run RUN_DIR [--batch BATCH_DIR --votes FILE] --write gates/GATE_phase1.md`
