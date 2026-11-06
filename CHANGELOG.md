@@ -3,7 +3,7 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 2,507.0 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-06 14:30 PST).
+- **SU used:** 2,583.8 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-06 14:45 PST).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
     - Days 1, 2 and 3 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended); Day 3 gave rain excerpt `excerpt_e2` and, by his word, the rain at Δ 24;
@@ -19,7 +19,30 @@ Newest entry first. Every number cites the file or command output it was read fr
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
 - **The palette is frozen:** `palettes/lofi_rain_v1.yaml`, `frozen: '2026-11-04'` (sha256 `09f80a64…`), on Shresth's APPROVED line of 2026-11-04.
-- **The Phase-1 gate's first launch (13783877) is invalid:** it generated 384 of 500 before its deadline, because writes on its node were slow. The fix and the second launch are next; a second invalid launch goes to Shresth with the records (D-021).
+- **The Phase-1 gate's second launch (13788483) is valid and meets the bar's first half** (477 of 500 passing non-copies; `gates/GATE_phase1.md`). Waiting on Shresth: his 50-clip ear check (`b1106-gate1`), then his APPROVED line.
+
+---
+
+## 2026-11-06 (14:45 PST): the Phase-1 gate's second launch is valid: 477 of 500 pass and are not near-copies; the ear check is served
+
+**What was done**
+- **`lofi-junk-rate` 13788483** (`ARGS='500 2026 1 v2'`, `-p gpu`, snapshot `90d8a910e7ee-197bd491c162`, registry `0eb12128013576e3`):
+  - it ran on b11-13 (A40) from 14:33:30 to 14:37:46 (00:04:16), 76.8 SU (`session_report.py`), `JUNK_RATE_OK`;
+  - it wrote its run on the node's disk and copied it to `$REMOTE_KEEP/runs/junk-13788483/` (`make pull` brought the summary; the 50 clips were copied to the laptop's `runs/junk-13788483/clips/`, 123 MB).
+  - Generate: 500 of 500 in 117.7 s (load 29.4 s, generation 50.1 s, 2,600.6 tok/s). The D-020 runs took 114–122 s.
+  - Render: 50 of 50, with no G7 or other gate failure, no error and no skip.
+- **`python -m lofi_rl.gate1 check runs/junk-13788483`: VALID**, all 27 of D-020's conditions (as amended, with D-022's swaps): complete, as registered, the frozen palette `09f80a64…` and its grammar `5c081828…`, 500 of 500 stop completions in the language, the regex's guaranteed gates at 0, and one stamp (`90d8a910e7ee`, dirty=0).
+  - **The bar's first half is met:** `pass_not_copy.count` is 477 of 500 (rate 0.954, Wilson ci95 [0.9319, 0.9692]) against 300. `pass` is 500 of 500.
+  - **Readouts** (D-021): a verbatim A or B line of the shown example appears in 391 of the 477 passing non-copies (82.0 %; both lines in 357), and in 40 of the 50 clips (80.0 %; both lines in 39).
+- **The gate tool merged** (`1c3b53f`; workflow `wf_b147bf9d-7d4`, after an interrupted first build): `python -m lofi_rl.gate1` with check, batch, tally and gate (docs/GATE1.md).
+  - On D-020's arm B (runs/junk-13640325) the check fails exactly the three swapped values.
+  - Review: 5 findings, all applied. The ear check is held to the registered draw; his approval line stands only under the numbers he read; the tool never writes over another gate's file; there is one ear check per run.
+- **The ear-check batch:** `gate1 batch` built `inbox/2026-11-06/b1106-gate1`, 50 triage rounds, one clip a round (estimated 31.6 min at full length). The rating page serves it, and votes go to `data/votes`.
+- **`gates/GATE_phase1.md`:** written by `gate1 gate --run runs/junk-13788483`, with the run, the validity table, the bar's first half and the readouts. The ear check is not tallied yet, and there is no APPROVED line.
+
+**SU spent:** 76.8.
+
+**Next:** his ear check (at least 15 of 50 Fine or better); `gate1 tally` and `gate1 gate` with the batch and votes; then his APPROVED line.
 
 ---
 
