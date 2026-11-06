@@ -95,8 +95,9 @@ def _run_section(doc: dict, run: G.Run) -> list[str]:
         f"## The run: `lofi-junk-rate` {doc['job']}",
         "",
         f"- **Job:** {doc['job']} on {doc['node']} ({doc['gpu']}).",
-        (f"- **Code:** generate and score both read the stamp `{stamp['generate']}`, the job snapshot's."
-         if same else f"- **Code:** generate read `{stamp['generate']}`; score read `{stamp['score']}`."),
+        (f"- **Code:** generate and score both ran under the stamp `{stamp['generate']}` (the job's `.sync-stamp`; a "
+         "job runs from its code snapshot, CLAUDE.md §4)."
+         if same else f"- **Code:** generate ran under the stamp `{stamp['generate']}`; score under `{stamp['score']}`."),
         f"- **Palette:** `{doc['palette']['label']}` (sha256 `{G.short(doc['palette']['sha256'])}`).",
         f"- **Prompt:** {doc['prompt']['version']}, template `{G.short(doc['prompt']['template_sha256'])}`.",
         f"- **Grammar:** enabled {C.shown(c.get('enabled'))}; regex sha256 `{G.short(c.get('regex_sha256'))}` "
@@ -273,7 +274,7 @@ def main(a: argparse.Namespace) -> int:
                 raise G.Gate1Error(bad)
             tdoc = T.tally(a.batch, a.votes)
         try:
-            existing = path.read_text(encoding="utf-8")
+            existing = path.read_bytes().decode("utf-8")      # bytes, so no line ending under ## Approval is translated
         except FileNotFoundError:
             existing = None
         except (OSError, UnicodeDecodeError) as err:
@@ -287,7 +288,7 @@ def main(a: argparse.Namespace) -> int:
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".{path.name}.gate1.tmp")
-        tmp.write_text(text, encoding="utf-8")
+        tmp.write_bytes(text.encode("utf-8"))
         tmp.replace(path)
         print(f"wrote {path}")
     ok = KG.gate_approved(path, G.APPROVER)
