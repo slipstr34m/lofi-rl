@@ -79,9 +79,11 @@ def test_the_head_states_the_bar_and_where_it_comes_from(run_dir, tmp_path):
     write(run_dir, out)
     text = out.read_text()
     assert "has `pass_not_copy.count` at least 300 of 500;" in text
-    assert "2. at least 15 of its 50 clips are \"fine\" by Shresth's ear: Fine, Good or Great (TASTE.md, Tiers);" in text
+    assert ("2. at least 15 of its 50 clips are \"fine\" by Shresth's ear: Fine, Good or Great (TASTE.md, "
+            "Tiers);") in text
     assert "3. Shresth Rana has written the approval line below." in text
-    for source in ("CLAUDE.md §9", "D-019", "D-020 as amended", "D-021 \"What follows\" item 1", "D-022 \"Consequences\""):
+    for source in ("CLAUDE.md §9", "D-019", "D-020 as amended", "D-021 \"What follows\" item 1",
+                   "D-022 \"Consequences\""):
         assert source in text
     assert "The bar is D-020's, unchanged." in text
 
@@ -110,7 +112,8 @@ def test_the_validity_table_lists_every_condition_with_what_junk_json_shows(run_
     assert sum(row.endswith("| yes |") for row in rows) == 26
     assert "**Not valid:** 1 of 27 conditions fail (`prompt.example_mismatch`)." in text
     assert "- The run is not valid, so it decides nothing (D-020); the ear check waits for a valid run." in text
-    assert f"| As registered | `palette.sha256` (D-022) | `{G.FROZEN_SHA256[:8]}…` | `{G.FROZEN_SHA256[:8]}…` | yes |" in rows
+    b8 = G.FROZEN_SHA256[:8]
+    assert f"| As registered | `palette.sha256` (D-022) | `{b8}…` | `{b8}…` | yes |" in rows
 
 
 def test_the_bar_and_the_readouts_are_written_as_the_check_gives_them(run_dir, tmp_path):

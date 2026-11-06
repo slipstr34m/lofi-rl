@@ -43,12 +43,12 @@ from lofi_rl.palette import ROOT
 from lofi_rl.rl import junk as J
 
 # --------------------------------------------------------------------------------------------- the registered values
-FROZEN_SHA256 = "09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183"   # D-022: sha256 B, frozen 2026-11-04
+FROZEN_SHA256 = "09f80a644476abe4d14517d0ec4129d69e1a4bc91eb0935c9ffd152411872183"   # D-022: B, frozen 2026-11-04
 REGEX_SHA256 = "5c081828ac50718edc4db82c2a855ea52210debb375280ba01e8442de60f8558"    # D-022: the frozen palette's regex
 MODEL_REVISION = "cdbee75f17c01a7cc42f958dc650907174af0554"                          # D-019: Qwen3-4B-Instruct-2507
 PROMPT_VERSION = "v2"                                                                # D-020 arm B; D-021 Settings
 TEMPLATE_SHA256 = "127e3094fd5a2183fb952059c2221ad018bdef6d062f51a80b14367b8064466e"  # D-020: prompt v2's template
-BRIEF_SEED = 2026                                                                    # D-019: brief.sample_briefs(2026, 500)
+BRIEF_SEED = 2026                                                                    # D-019: sample_briefs(2026, 500)
 N = 500
 V0_RUN = "runs/junk-13632676"
 # D-020: `sampling` equals runs/junk-13632676's. Read from runs/junk-13632676/summary/junk.json `sampling` on the
@@ -64,7 +64,7 @@ CATEGORY = "gate1"               # the hidden manifest's category, and the batch
 GATE_FILE = ROOT / "gates" / "GATE_phase1.md"
 TIERS = ("toss", "fine", "good", "great")          # ui.votes.TIERS: TASTE.md, Tiers
 FINE_OR_BETTER = ("fine", "good", "great")         # "fine" means Fine or better (D-021)
-HEARD_MIN_BARS = 1               # D-013 as amended (Shresth, 2026-10-31): heard once 1 bar has played, over every attempt
+HEARD_MIN_BARS = 1               # D-013 as amended (2026-10-31): heard once 1 bar has played, over every attempt
 VERBATIM_LINES = ("A", "B")      # "a verbatim line": the A or B line of the example the row's prompt showed (D-021)
 
 
@@ -101,7 +101,7 @@ class Run:
     scored: dict                     # i -> summary/scored.jsonl row
     rows: dict                       # i -> summary/completions.jsonl row
     clips: dict | None               # summary/clips.json, or None when it is absent (need_clips=False)
-    sample: tuple                    # the render step's whole draw: junk.sample_indices(pool, k, seed); () without clips
+    sample: tuple                    # the render step's draw: junk.sample_indices(pool, k, seed); () without clips
 
     @property
     def name(self) -> str:

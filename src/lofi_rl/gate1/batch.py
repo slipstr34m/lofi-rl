@@ -25,9 +25,10 @@ triage batch for Shresth's ear check (D-021 "What follows" item 1: at least 15 o
   batch folder, and the hidden manifest and batch.json keep it.
 - **The render's manifest** (`<i>.manifest.json`, which junk's render step writes beside each FLAC) is read when it
   was copied with the FLAC, and must then agree with clips.json and the run: `audio_sha256`, `n`, `sr`, the loop's
-  `canon_sha256`, the palette, the brief, LUFS and true peak to clips.json's 3 decimals, and its gates passed. The real clip id (taste_pipeline.md §2, lofi_rl.drafts.render.clip_id) hashes its schema and chain;
-  without it, the render's schema and chain come from lofi_rl.render.pipeline, as junk.render_clip renders (cycles
-  2), and batch.json says which clips had no manifest.
+  `canon_sha256`, the palette, the brief, LUFS and true peak to clips.json's 3 decimals, and its gates passed. The
+  real clip id (taste_pipeline.md §2, lofi_rl.drafts.render.clip_id) hashes its schema and chain; without it, the
+  render's schema and chain come from lofi_rl.render.pipeline, as junk.render_clip renders (cycles 2), and
+  batch.json says which clips had no manifest.
 - **The brief** is the measurement stream's brief i (`brief.sample_brief(2026, i)`, D-021 item 1), in clips.json and
   in completions.jsonl alike, and clips.json's `canon_sha256` (the render's) is scored.jsonl's (score's): one text,
   parsed with one palette.
@@ -214,7 +215,8 @@ def flac_problems(flac: Path, rec: Mapping, at: str, measure: Measure) -> tuple[
         got_lufs, got_peak = measure(flac)
     except Exception as err:  # noqa: BLE001: a FLAC that does not decode is a refusal, never a crash
         return size, [f"{at}: {flac.name} does not decode ({type(err).__name__}: {err})"]
-    for what, got, want in (("lufs", got_lufs, rec.get("lufs")), ("true_peak_dbtp", got_peak, rec.get("true_peak_dbtp"))):
+    for what, got, want in (("lufs", got_lufs, rec.get("lufs")),
+                            ("true_peak_dbtp", got_peak, rec.get("true_peak_dbtp"))):
         if not (_num(want) and _num(got) and abs(got - want) <= MEASURE_TOL):
             errs.append(f"{at}: {flac.name} measures {what} {got:.4f}; clips.json records {want!r} (within "
                         f"{MEASURE_TOL}): not the clip the render step wrote")

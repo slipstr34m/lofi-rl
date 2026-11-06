@@ -176,8 +176,8 @@ def test_a_missing_field_fails_and_shows_missing(run_dir, path, names):
 def test_an_unconstrained_run_fails_the_constrained_group(run_dir):
     """A run without --constrained has constrained null (junk.constrained_summary): nothing in that group holds."""
     edit_json(run_dir / "summary" / "junk.json", lambda d: set_path(d, "constrained", None))
-    assert failed(run_dir) == ["constrained.enabled", "constrained.regex_sha256", "constrained.in_language.regex_sha256",
-                               "constrained.in_language.matches_generate",
+    assert failed(run_dir) == ["constrained.enabled", "constrained.regex_sha256",
+                               "constrained.in_language.regex_sha256", "constrained.in_language.matches_generate",
                                "constrained.in_language.stop.out_of_language", "constrained.in_language.other.n"]
 
 
@@ -277,7 +277,8 @@ BAD = [
      "`pass.count` is 499"),
     ("pnc count", lambda r: edit_json(r / "summary" / "junk.json", lambda d: d["pass_not_copy"].update(count=447)),
      "`pass_not_copy.count` is 447"),
-    ("pnc not whole", lambda r: edit_json(r / "summary" / "junk.json", lambda d: d["pass_not_copy"].update(count=446.0)),
+    ("pnc not whole",
+     lambda r: edit_json(r / "summary" / "junk.json", lambda d: d["pass_not_copy"].update(count=446.0)),
      "no whole-number `pass_not_copy.count`"),
     ("no verbatim", lambda r: edit_rows(r / "summary" / "scored.jsonl", lambda rows: rows[300].update(verbatim=None)),
      "have no `verbatim` readout"),
@@ -290,7 +291,8 @@ BAD = [
      "are not junk's sample of 50"),
     ("clips seed", lambda r: edit_json(r / "summary" / "clips.json", lambda d: d.update(seed=2027)),
      "are not junk's sample of 50 (seed 2027)"),
-    ("clips palette", lambda r: edit_json(r / "summary" / "clips.json", lambda d: d["palette"].update(sha256=DEV_GU_SHA)),
+    ("clips palette",
+     lambda r: edit_json(r / "summary" / "clips.json", lambda d: d["palette"].update(sha256=DEV_GU_SHA)),
      "rendered with palette b2e4a340…"),
     ("clips passing", lambda r: edit_json(r / "summary" / "clips.json", lambda d: d.update(passing=445)),
      "clips.json counts 445 passing non-copies"),
@@ -312,7 +314,8 @@ def test_files_that_are_not_one_runs_own_are_bad_input(run_dir, capsys, what, ch
 
 
 def test_every_problem_is_listed_at_once(run_dir):
-    edit_json(run_dir / "summary" / "junk.json", lambda d: (d["pass"].update(count=1), d["pass_not_copy"].update(count=2)))
+    edit_json(run_dir / "summary" / "junk.json",
+              lambda d: (d["pass"].update(count=1), d["pass_not_copy"].update(count=2)))
     with pytest.raises(G.Gate1Error) as err:
         G.load_run(run_dir)
     assert len(err.value.problems) == 2
@@ -362,7 +365,8 @@ def test_arm_b_on_dev_gu_fails_exactly_the_swapped_conditions(capsys):
     assert doc["bar"]["pass_not_copy"]["count"] == 446 and doc["bar"]["pass_not_copy"]["met"] is True
     assert (doc["verdict"], doc["exit"]) == ("invalid", 3)
     r = doc["readouts"]
-    assert (r["passing_non_copies"]["k"], r["passing_non_copies"]["n"], r["passing_non_copies"]["both"]) == (367, 446, 339)
+    p = r["passing_non_copies"]
+    assert (p["k"], p["n"], p["both"]) == (367, 446, 339)
     assert (r["clips"]["k"], r["clips"]["n"], r["clips"]["both"]) == (38, 50, 35)
     assert cli.main(["check", str(ARM_B)]) == 3
     assert capsys.readouterr().out.rstrip().endswith("GATE1_CHECK invalid")

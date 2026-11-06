@@ -97,7 +97,8 @@ def _run_section(doc: dict, run: G.Run) -> list[str]:
         f"- **Job:** {doc['job']} on {doc['node']} ({doc['gpu']}).",
         (f"- **Code:** generate and score both ran under the stamp `{stamp['generate']}` (the job's `.sync-stamp`; a "
          "job runs from its code snapshot, CLAUDE.md §4)."
-         if same else f"- **Code:** generate ran under the stamp `{stamp['generate']}`; score under `{stamp['score']}`."),
+         if same else
+         f"- **Code:** generate ran under the stamp `{stamp['generate']}`; score under `{stamp['score']}`."),
         f"- **Palette:** `{doc['palette']['label']}` (sha256 `{G.short(doc['palette']['sha256'])}`).",
         f"- **Prompt:** {doc['prompt']['version']}, template `{G.short(doc['prompt']['template_sha256'])}`.",
         f"- **Grammar:** enabled {C.shown(c.get('enabled'))}; regex sha256 `{G.short(c.get('regex_sha256'))}` "
@@ -137,7 +138,8 @@ def _bar_section(doc: dict) -> list[str]:
     lo, hi = (b["ci95"] or [None, None])[:2] if isinstance(b["ci95"], list) else (None, None)
     return ["## The bar, first half: pass_not_copy", "",
             f"- `pass_not_copy.count` **{b['count']}** of {b['of']} (rate {b['rate']}; {_method(b['method'])} 95 % CI "
-            f"{lo}–{hi}, as junk.json gives it). It needs at least {b['need']}: **{'met' if b['met'] else 'not met'}**."]
+            f"{lo}–{hi}, as junk.json gives it). It needs at least {b['need']}: "
+            f"**{'met' if b['met'] else 'not met'}**."]
 
 
 def _readout_section(doc: dict) -> list[str]:
@@ -195,8 +197,8 @@ def _standing(doc: dict, tdoc: dict | None) -> list[str]:
     if not valid:
         text = "The run is not valid, so it decides nothing (D-020); the ear check waits for a valid run."
     elif not bar["met"]:
-        text = (f"The first half is not met ({bar['count']} < {bar['need']}): the gate fails on the frozen palette, and "
-                "it goes to Shresth with CLAUDE.md §9's next fallback, D-021's Part B.")
+        text = (f"The first half is not met ({bar['count']} < {bar['need']}): the gate fails on the frozen palette, "
+                "and it goes to Shresth with CLAUDE.md §9's next fallback, D-021's Part B.")
     elif tdoc is None:
         text = "The first half is met. The second half waits on his ear check."
     elif not tdoc["complete"]:

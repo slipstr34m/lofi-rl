@@ -135,8 +135,9 @@ def tally(batch_dir: Path | str, votes: Path | str) -> dict:
         "bar": {"need": G.FINE_BAR, "of": G.CLIPS, "met": met},
         "split": {"verbatim_line": _split_counts([r for r in counted if r["verbatim_line"]]),
                   "no_verbatim_line": _split_counts([r for r in counted if not r["verbatim_line"]])},
-        "not_heard": [{"number": r["number"], "round": r["round"], "sample": r["sample"], "voted": r["tier"] is not None,
-                       "tier": r["tier"], "bars_heard": r["bars_heard"]} for r in rows if not r["heard"]],
+        "not_heard": [{"number": r["number"], "round": r["round"], "sample": r["sample"],
+                       "voted": r["tier"] is not None, "tier": r["tier"], "bars_heard": r["bars_heard"]}
+                      for r in rows if not r["heard"]],
         "not_voted": [{"number": r["number"], "round": r["round"], "sample": r["sample"]} for r in not_voted],
         "retracted": sum(1 for e in events if e.get("type") == "retract"),
         "abandoned": sum(1 for e in events if e.get("type") == "abandon"),
@@ -157,8 +158,8 @@ def format_text(doc: dict) -> str:
              f"  rounds {doc['rounds']}; voted {doc['voted']}; heard {doc['heard']}; counted {doc['counted']} (voted "
              f"and heard: {doc['heard_rule']})" + ("" if doc["complete"] else "; NOT complete"),
              f"  tiers: {tiers_text(doc['tiers'])}",
-             f"  \"fine\" (Fine, Good or Great): {doc['fine_or_better']}; the bar is at least {b['need']} of {b['of']}: "
-             f"{'met' if b['met'] else 'NOT met'}"]
+             f"  \"fine\" (Fine, Good or Great): {doc['fine_or_better']}; the bar is at least {b['need']} of "
+             f"{b['of']}: {'met' if b['met'] else 'NOT met'}"]
     for key, label in (("verbatim_line", "with a verbatim A or B line"), ("no_verbatim_line", "with neither line")):
         x = s[key]
         lines.append(f"  {label}: \"fine\" {x['fine_or_better']} of {x['n']} ({tiers_text(x['tiers'])})")

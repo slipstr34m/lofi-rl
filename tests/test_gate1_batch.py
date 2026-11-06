@@ -75,8 +75,10 @@ def test_a_gate_batch_passes_the_rating_pages_own_check(run_dir, tmp_path, made)
     assert all(len(r.clips) == 1 for r in m.rounds)
     pub = json.loads((folder / PUBLIC_NAME).read_text())
     assert set(pub) == {"v", "batch", "mode", "scene", "note", "bars", "sr", "est_min", "rounds"}
-    assert pub["scene"] == "city at night" and pub["note"] == "Phase-1 gate: 8 loops, one a round. Toss, Fine, Good or Great?"
-    assert all(set(r) == {"id", "bpm", "clips"} and set(r["clips"][0]) == {"id", "file", "sha256"} for r in pub["rounds"])
+    assert pub["scene"] == "city at night"
+    assert pub["note"] == "Phase-1 gate: 8 loops, one a round. Toss, Fine, Good or Great?"
+    assert all(set(r) == {"id", "bpm", "clips"} and set(r["clips"][0]) == {"id", "file", "sha256"}
+               for r in pub["rounds"])
     hid = json.loads((folder / HIDDEN_NAME).read_text())
     assert hid["category"] == G.CATEGORY == h.category
     batch = json.loads((run_dir / "summary" / "batch.json").read_text())
@@ -100,16 +102,19 @@ def test_a_gate_batch_passes_the_rating_pages_own_check(run_dir, tmp_path, made)
         assert [info[f"verbatim_{x}"] for x in ("vamp", "keys", "A", "B")] == [v["vamp"], v["keys"], v["A"], v["B"]]
         assert info["verbatim_line"] is (v["A"] or v["B"])
         assert (info["copy_jaccard"], info["copy_reference"]) == (s["copy_jaccard"], s["copy_reference"])
-        assert (info["run"], info["job"], info["palette"]) == ("junk-13783877", JOB, f"lofi_rain_v1@{G.FROZEN_SHA256[:8]}")
+        assert (info["run"], info["job"]) == ("junk-13783877", JOB)
+        assert info["palette"] == f"lofi_rain_v1@{G.FROZEN_SHA256[:8]}"
         src = run_dir / "clips" / f"{i:04d}.flac"
-        assert info["flac_sha256"] == row["clips"][0]["sha256"] == sha256_file(folder / f"{oid}.flac") == sha256_file(src)
+        assert info["flac_sha256"] == row["clips"][0]["sha256"] == sha256_file(folder / f"{oid}.flac")
+        assert info["flac_sha256"] == sha256_file(src)
         side = json.loads(src.with_suffix(".manifest.json").read_text())
         assert info["clip"] == clip_id(side) == ledger["clip"]["real"]
         assert ledger["clip"] == {"id": oid, "real": info["clip"], "pcm_sha256": info["pcm_sha256"],
                                   "flac_sha256": info["flac_sha256"], "verbatim_line": info["verbatim_line"],
                                   "manifest": True}
     assert (batch["sampled"], batch["recorded"], batch["rendered"], batch["left_out"]) == (8, 8, 8, [])
-    assert (batch["batch"], batch["dir"], batch["mode"], batch["category"]) == (NAME, f"{DATE}/{NAME}", "triage", "gate1")
+    assert (batch["batch"], batch["dir"]) == (NAME, f"{DATE}/{NAME}")
+    assert (batch["mode"], batch["category"]) == ("triage", "gate1")
     assert batch["without_manifest"] == [] and batch["same_real_clip"] == []
     assert batch["est_min"] == pub["est_min"] == round(sum(10 * 240 / r["bpm"] + 8 for r in pub["rounds"]) / 60, 1)
     assert batch["push"].startswith(f"Needs ear check: {NAME}. 8 loops from the Phase-1 gate run (job {JOB})")
@@ -280,10 +285,10 @@ def test_the_same_bytes_count_with_other_samples_refuses_by_their_loudness(run_d
     (the manifest is removed, so the measure is the only check on the samples)."""
     flac = _first(run_dir)
     flac.with_suffix(".manifest.json").unlink()
-    edit_json(run_dir / "summary" / "clips.json", lambda d: d["clips"][0].update(lufs=round(d["clips"][0]["lufs"] + 0.01, 3)))
+    clips = run_dir / "summary" / "clips.json"
+    edit_json(clips, lambda d: d["clips"][0].update(lufs=round(d["clips"][0]["lufs"] + 0.01, 3)))
     _refused(run_dir, tmp_path, "measures lufs")
-    edit_json(run_dir / "summary" / "clips.json", lambda d: d["clips"][0].update(lufs=round(d["clips"][0]["lufs"] - 0.01, 3),
-                                                                                 true_peak_dbtp=-1.0))
+    edit_json(clips, lambda d: d["clips"][0].update(lufs=round(d["clips"][0]["lufs"] - 0.01, 3), true_peak_dbtp=-1.0))
     _refused(run_dir, tmp_path, "measures true_peak_dbtp")
 
 
@@ -401,7 +406,8 @@ def test_the_command_builds_into_the_inbox_and_names_the_next_batch(made, tmp_pa
     out = capsys.readouterr().out
     assert f"batch {NAME}: 8 triage rounds of 8 sampled clips" in out and f"push: Needs ear check: {NAME}." in out
     two = copy_run(made[0], tmp_path / "two" / "junk-13783877")
-    assert cli.main(["batch", str(two), "--clips", str(two / "clips"), "--inbox", str(inbox), "--date", "2026-11-09"]) == 0
+    assert cli.main(["batch", str(two), "--clips", str(two / "clips"), "--inbox", str(inbox),
+                     "--date", "2026-11-09"]) == 0
     assert (inbox / "2026-11-09" / "b1109-gate1-2").is_dir() and (inbox / DATE / NAME).is_dir()
     assert GB.batch_name(date(2026, 11, 9), inbox) == "b1109-gate1-3"
     assert GB.batch_name(date(2026, 11, 9), inbox, "b1109-mine") == "b1109-mine"
@@ -487,7 +493,7 @@ def test_a_batch_from_junks_own_render_step_on_the_frozen_palette(tmp_path):
     assert [c["i"] for c in clips["clips"]] == J.sample_indices(picks, 2, 2026) and all(c["ok"] for c in clips["clips"])
     from lofi_rl.dsl import canon_sha, parse
     pal = load_palette(FROZEN, verify=False)
-    for i in picks:                                                   # scored.jsonl's sha is the render's, as score writes it
+    for i in picks:                                   # scored.jsonl's sha is the render's, as score writes it
         res = parse(rows[i]["text"], vocab=pal.vocab(), finish_reason="stop", mode=sample_brief(2026, i).mode)
         scored[i]["canon_sha256"] = canon_sha(res.ast)
     (summ / "scored.jsonl").write_text("".join(json.dumps(r) + "\n" for r in scored))
