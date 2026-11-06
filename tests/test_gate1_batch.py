@@ -534,10 +534,12 @@ def test_a_batch_from_junks_own_render_step_on_the_frozen_palette(tmp_path):
     (summ / "scored.jsonl").write_text("".join(json.dumps(r) + "\n" for r in scored))
     (summ / "generate.json").write_text(json.dumps({"schema": J.GENERATE_SCHEMA, "briefs": {"seed": 2026}}))
     (summ / "junk.json").write_text(json.dumps(junk_doc(500, 2, 2)))
-    assert J.main(["render", "--run", str(run), "--k", "2", "--workers", "4", "--no-verify",
+    # the step's own --k (50, the registered draw; the pool holds 2), as the job runs it
+    assert J.main(["render", "--run", str(run), "--workers", "4", "--no-verify",
                    "--cache", str(tmp_path / "cache")]) == 0
     clips = json.loads((summ / "clips.json").read_text())
-    assert [c["i"] for c in clips["clips"]] == J.sample_indices(picks, 2, 2026) and all(c["ok"] for c in clips["clips"])
+    assert clips["k"] == G.CLIPS and [c["i"] for c in clips["clips"]] == J.sample_indices(picks, G.CLIPS, 2026)
+    assert len(clips["clips"]) == 2 and all(c["ok"] for c in clips["clips"])
     from lofi_rl.dsl import canon_sha, parse
     pal = load_palette(FROZEN, verify=False)
     for i in picks:                                   # scored.jsonl's sha is the render's, as score writes it
