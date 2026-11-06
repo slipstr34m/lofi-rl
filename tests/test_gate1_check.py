@@ -307,10 +307,8 @@ def test_files_that_are_not_one_runs_own_are_bad_input(run_dir, capsys, what, ch
     with pytest.raises(G.Gate1Error) as err:
         G.load_run(run_dir)
     assert any(message in p for p in err.value.problems), err.value.problems
-    if what not in ("clips order", "clips copy", "clips seed", "clips palette", "clips passing", "clips schema",
-                    "clips k"):
-        assert cli.main(["check", str(run_dir)]) == 2
-        assert "error: bad input, nothing decided" in capsys.readouterr().err
+    assert cli.main(["check", str(run_dir)]) == 2          # a clips.json that is there is checked, though optional
+    assert "error: bad input, nothing decided" in capsys.readouterr().err
 
 
 def test_every_problem_is_listed_at_once(run_dir):

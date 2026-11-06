@@ -7,8 +7,9 @@ registered by Shresth on 2026-11-06; D-022 "Consequences"). This file is the too
 Shresth's ear check, counts his votes and writes `gates/GATE_phase1.md`.
 
 - **Code:** `src/lofi_rl/gate1/` (`__init__`: the registered values and `load_run`; `check`, `batch`, `tally`,
-  `gatefile`; `cli`), run as `python -m lofi_rl.gate1 <check|batch|tally|gate>`. Tests: `tests/test_gate1_*.py`, on
-  synthetic runs, FLACs and vote logs (`tests/helpers_gate1.py`).
+  `gatefile`; `cli`), run on the laptop from the repo root as `PYTHONPATH=src .venv/bin/python -m lofi_rl.gate1
+  <check|batch|tally|gate>` (written `python -m lofi_rl.gate1` below). Tests: `tests/test_gate1_*.py`, on synthetic
+  runs, FLACs and vote logs (`tests/helpers_gate1.py`).
 - **Reads:** a run folder `runs/junk-<job>/` with `summary/` as `make pull` brings it (`junk.json`, `scored.jsonl`,
   `completions.jsonl`, `clips.json`) and, for the batch, the run's 50 one-pass FLACs copied from scratch into a
   folder of the laptop (`runs/junk-<job>/clips/`; runs/ is never committed).
