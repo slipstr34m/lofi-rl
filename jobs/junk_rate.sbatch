@@ -24,9 +24,10 @@
 #      into junk.json. Every step reads that default: this script passes no --palette. Two renders at a time, each
 #      with half of --workers (junk.py's default --jobs 2: the freeze spec 5.5 (iii), D-022), and none starts after
 #      the deadline; the clips and their order are those of one-at-a-time rendering
-# Args: [N=500] [SEED=2026] [CONSTRAINED=0] [PROMPT=v1]. Results: $REMOTE_SCR/runs/junk-<job>/summary/ (make pull);
-# the clips stay on scratch. CONSTRAINED=1 passes --constrained to generate: grammar-constrained decoding under
-# lofi_rl.grammar's LoopScript regex (D-016, docs/GRAMMAR.md), its sha256 recorded in generate.json and junk.json.
+# Args: [N=500] [SEED=2026] [CONSTRAINED=0] [PROMPT=v1]. Results: $REMOTE_KEEP/runs/junk-<job>/ (summary/ by make
+# pull; clips/ copied for an ear check). CONSTRAINED=1 passes --constrained to generate: grammar-constrained
+# decoding under lofi_rl.grammar's LoopScript regex (D-016, docs/GRAMMAR.md), its sha256 recorded in generate.json
+# and junk.json.
 # PROMPT passes --prompt to generate: v1 (the default) or v2 (each brief shown the example of its energy and the next
 # mood), recorded in generate.json and junk.json with its template sha. A CONSTRAINED other than 0 or 1, or a PROMPT
 # other than v1 or v2, stops the job before any work.
@@ -40,8 +41,9 @@
 #   time with 2 workers each ran 1.713 times as fast on the laptop (the 42 drafts and 9 references; 1.765 on 50 of
 #   D-020 arm B's loops; docs/evidence/D-022), so at most 869.5 / 1.713 = 507.6 s, and about 50 x 7.71 / 1.713 = 225 s
 #   at job B's mean. 595 s deadline (no render starts after it), 655 s timeout, 60 s apart so that a render started
-#   just before the deadline ends before the timeout: the three timeouts and their kill grace are 1,620 s, a minute
-#   under the 28 min walltime, so the 507.6 s worst case keeps the spec's 60 s for an outlier (Shresth, 2026-11-06:
+#   just before the deadline ends before the timeout: generate 840 + 15 s, score 60 + 10 s (it took under 29 s in
+#   13640325 and 13783877), render 655 + 10 s and the two copies out 2 x (10 + 2) s come to 1,614 s, 66 s under the
+#   28 min walltime, so the 507.6 s worst case keeps the spec's 60 s for an outlier (Shresth, 2026-11-06:
 #   "28 minutes"; D-022). It was 27 min, a 535 s deadline and a 595 s timeout from 2026-11-04, and 25 min, 360 s and
 #   420 s before that.
 #   Expected: about 6.2 min, 112 SU (about 11 min, 197 SU, at the 507.6 s worst): D-020's arms took 5.2 and 5.5 min
@@ -51,7 +53,14 @@
 #   cost stay.
 #   PROMPT=v2 changes only the prompt text: 1,322-1,408 Qwen3 tokens against v1's 1,389-1,391, in 9 system messages
 #   (one per energy x mood cell) where v1 has 1, so the walltime and the cost stay.
-# Cost: 4 CPU + 6 (24 GB) + 8 (1 GPU) = 18 SU/min x 28 min -> at most 504 SU (over 500: Shresth's yes, 2026-11-06).
+# Files: the steps write on the node's own disk ($TMPDIR), and the run is copied to $REMOTE_KEEP/runs/junk-<job>/ after
+#   the render, and from an EXIT trap if a step stops the script early or the job is killed (TERM: the time limit,
+#   scancel), records first; the one-shot cache is on KEEP too. Scratch writes stalled the first gate launch:
+#   13783877 spent 166-210 s between 13-s generate chunks, where it appends and fsyncs 128 lines, and
+#   lofi-io-probe 13787408 timed that round at 2.2-132.1 s on scratch, 0.0 s on the node's disk and 0.006-0.007 s on
+#   KEEP (D-022).
+#   The Slurm log stays on scratch: 13783877's file times put its stall in the fsyncs, not in the log's prints.
+# Cost: 4 CPU + 6 (24 GB) + 8 (1 GPU) = 18 SU/min x 28 min -> at most 504 SU.
 #   make submit JOB=jobs/junk_rate.sbatch                       (debug A40)
 #   make submit JOB=jobs/junk_rate.sbatch ARGS='500 2026 1'     (debug A40, constrained)
 #   make submit JOB=jobs/junk_rate.sbatch ARGS='500 2026 1 v2'  (debug A40, constrained, prompt v2)
@@ -72,13 +81,25 @@ case "$PROMPT" in
   *) echo "junk-rate: PROMPT must be v1 or v2, not '$PROMPT'" >&2; exit 2 ;;
 esac
 MODE=policy source scripts/job_env.sh
-RUN="$REMOTE_SCR/runs/junk-${SLURM_JOB_ID:-local}"
-mkdir -p "$RUN/summary"
-echo "junk-rate: N=$N SEED=$SEED CONSTRAINED=$CONSTRAINED PROMPT=$PROMPT Qwen3-4B-Instruct-2507 refs/main=$(model_rev Qwen/Qwen3-4B-Instruct-2507) -> $RUN"
+RUN="${TMPDIR:-/tmp}/junk-${SLURM_JOB_ID:-local}"       # the steps write here, on the node's own disk
+OUT="$REMOTE_KEEP/runs/junk-${SLURM_JOB_ID:-local}"      # the run is copied here after the render (make pull)
+export LOFI_CACHE="$REMOTE_KEEP/cache/lofi-rl"           # the one-shot cache, off scratch (job_env keeps it)
+mkdir -p "$RUN/summary" "$OUT"
+COPIED=0
+copy_out() {   # the run to KEEP: its records first, then its clips (each copy a fraction of a second there)
+  [ "$COPIED" = 1 ] && return 0
+  timeout -k 2 10 cp -a "$RUN/summary" "$OUT/" || return 1
+  if [ -d "$RUN/clips" ]; then timeout -k 2 10 cp -a "$RUN/clips" "$OUT/" || return 1; fi
+  COPIED=1
+}
+trap 'copy_out || echo "junk-rate: copying $RUN to $OUT failed" >&2' EXIT
+trap 'exit 143' TERM   # Slurm's TERM (time limit, scancel) exits through the EXIT trap, which copies the run out
+echo "junk-rate: N=$N SEED=$SEED CONSTRAINED=$CONSTRAINED PROMPT=$PROMPT Qwen3-4B-Instruct-2507 refs/main=$(model_rev Qwen/Qwen3-4B-Instruct-2507) -> $OUT (written at $RUN)"
 FAIL=0
 # $CONSTRAIN_FLAG is unquoted on purpose: empty, it adds no argument
 timeout -k 15 840 "$PY" -m lofi_rl.rl.junk generate --run "$RUN" --n "$N" --seed "$SEED" --deadline-s 720 --prompt "$PROMPT" $CONSTRAIN_FLAG || FAIL=1
-timeout -k 10 90 "$PY" -m lofi_rl.rl.junk score --run "$RUN" || FAIL=1
+timeout -k 10 60 "$PY" -m lofi_rl.rl.junk score --run "$RUN" || FAIL=1
 MODE=scorer source scripts/job_env.sh
 timeout -k 10 655 "$PY" -m lofi_rl.rl.junk render --run "$RUN" --k 50 --workers "${SLURM_CPUS_PER_TASK:-4}" --deadline-s 595 || FAIL=1
-if [ "$FAIL" = 0 ]; then echo "JUNK_RATE_OK"; else echo "JUNK_RATE_FAILED (see $RUN/summary/)"; exit 1; fi
+copy_out || { echo "junk-rate: copying $RUN to $OUT failed" >&2; FAIL=1; }
+if [ "$FAIL" = 0 ]; then echo "JUNK_RATE_OK"; else echo "JUNK_RATE_FAILED (see $OUT/summary/)"; exit 1; fi

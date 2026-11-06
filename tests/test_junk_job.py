@@ -1,5 +1,5 @@
-"""jobs/junk_rate.sbatch (lofi-junk-rate): sized under 500 SU worst case, its stated cost matches its resources,
-and its three steps run in the right env, each under a timeout that fits the walltime. Its arguments, N SEED
+"""jobs/junk_rate.sbatch (lofi-junk-rate): its worst case covered by its registration, its stated cost matches its
+resources, and its three steps run in the right env, each under a timeout that fits the walltime. Its arguments, N SEED
 CONSTRAINED PROMPT, reach generate as given (bash runs the job's own argument lines here), and a bad CONSTRAINED or
 PROMPT stops it before any work. tests/test_job_scripts.py applies the hygiene rules every job script follows (name,
 log path, Cost line, make submit, job_env, no git)."""
@@ -33,7 +33,7 @@ def _code(text: str) -> list[str]:
 
 def test_junk_job_states_its_cost_and_its_registration_covers_it():
     """Up to budget.yaml's self_approve_max_su Claude registers the type itself; above it the registry entry is
-    Shresth's yes (CLAUDE.md §4). The gate's 28 minutes are 504 SU, registered on his answer of 2026-11-06 (D-022)."""
+    Shresth's yes (CLAUDE.md §4). The gate's 28 minutes are 504 SU, his answer of 2026-11-06 (D-022)."""
     s = JOB.read_text()
     sb = _sbatch(s)
     assert sb["job-name"] == "lofi-junk-rate" and sb["partition"] in ("debug", "gpu")
@@ -75,6 +75,19 @@ def test_junk_job_runs_generate_and_score_in_policy_then_render_in_scorer_under_
             assert d and int(d[1]) < int(m[2]), f"{name} stops itself before its timeout"
         if name == "generate":
             assert int(d[1]) + junk.HANG_MARGIN_S < int(m[2]), "a hang dumps its stacks before the timeout kills it"
+    copies = [line for line in code if ' cp -a "$RUN/' in line]
+    assert ['"$RUN/summary"' in copies[0], '"$RUN/clips"' in copies[1]] == [True, True] and len(copies) == 2, \
+        "the run is copied out to KEEP, its records first, then its clips"
+    for line in copies:
+        m = re.search(r"timeout -k (\d+) (\d+) cp -a ", line)
+        assert m, "each copy out runs under a timeout"
+        budget += int(m[1]) + int(m[2])
+    calls = [i for i, line in enumerate(code) if line.startswith("copy_out ||")]
+    assert len(calls) == 1 and calls[0] > steps[-1][0], "the copy out runs after the render"
+    assert any(line.startswith("trap ") and "copy_out" in line and line.rstrip().endswith("EXIT") for line in code), \
+        "an EXIT trap copies the run out when a step stops the script early"
+    assert any(re.fullmatch(r"trap 'exit 143' TERM(\s+#.*)?", line) for line in code), \
+        "Slurm's TERM (the time limit, scancel) exits through the EXIT trap"
     assert budget <= 60 * _minutes(_sbatch(s)["time"]) - 60, "the steps' timeouts fit the walltime with a minute spare"
 
 
@@ -91,9 +104,14 @@ def test_the_render_step_runs_the_two_lanes_its_deadline_was_sized_for():
 
 
 def test_junk_job_writes_one_run_dir_and_never_the_inbox():
+    """The steps write on the node's own disk and the run is copied to KEEP after the render, with the one-shot cache on
+    KEEP too: scratch writes stalled the first gate launch (13783877; lofi-io-probe 13787408; D-022)."""
     s = JOB.read_text()
     code = "\n".join(_code(s))
-    assert 'RUN="$REMOTE_SCR/runs/junk-${SLURM_JOB_ID:-local}"' in code
+    assert 'RUN="${TMPDIR:-/tmp}/junk-${SLURM_JOB_ID:-local}"' in code
+    assert 'OUT="$REMOTE_KEEP/runs/junk-${SLURM_JOB_ID:-local}"' in code
+    assert 'export LOFI_CACHE="$REMOTE_KEEP/cache/lofi-rl"' in code
+    assert "$REMOTE_SCR" not in code, "nothing of the run is written on scratch"
     assert code.count('--run "$RUN"') == 3 and "inbox" not in code
     assert re.search(r"^N=\$\{1:-500\}$", s, re.M) and re.search(rf"^SEED=\$\{{2:-{junk.DEFAULT_SEED}\}}$", s, re.M)
     assert f"--k {junk.RENDER_K}" in code and "JUNK_RATE_OK" in code

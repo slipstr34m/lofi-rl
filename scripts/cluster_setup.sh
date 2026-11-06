@@ -31,7 +31,7 @@ case "${1:-}" in
     ;;
   init)
     run "set -e
-      mkdir -p '$REMOTE_PROJ' '$REMOTE_KEEP/envs' '$REMOTE_KEEP/opt/bin' '$REMOTE_KEEP/votes' '$REMOTE_KEEP/ckpt' '$REMOTE_KEEP/assets' \
+      mkdir -p '$REMOTE_PROJ' '$REMOTE_KEEP/envs' '$REMOTE_KEEP/opt/bin' '$REMOTE_KEEP/votes' '$REMOTE_KEEP/ckpt' '$REMOTE_KEEP/assets' '$REMOTE_KEEP/runs' '$REMOTE_KEEP/cache' \
                '$REMOTE_SCR/logs' '$REMOTE_SCR/runs' '$REMOTE_SCR/renders' '$REMOTE_SCR/inbox' '$REMOTE_SCR/cache' '$KIT_CLUSTER_HF_HOME'
       chmod 700 '$KIT_CLUSTER_PROJECT_ROOT' '$REMOTE_KEEP/votes'
       ls -ld '$KIT_CLUSTER_PROJECT_ROOT' '$REMOTE_PROJ' '$REMOTE_KEEP' '$REMOTE_KEEP/votes' '$REMOTE_SCR' '$REMOTE_SCR/logs' '$KIT_CLUSTER_HF_HOME'"

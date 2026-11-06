@@ -34,6 +34,7 @@ pull: ## pull run summaries (runs/<run>/summary/, structure kept) and inbox clip
 	@mkdir -p runs inbox
 	$(RS) -m --include='/*/' --include='/*/summary/***' --exclude='*' $(HOST):$(REMOTE_SCR)/runs/ runs/
 	$(RS) $(HOST):$(REMOTE_SCR)/inbox/ inbox/
+	$(RS) -m --include='/*/' --include='/*/summary/***' --exclude='*' $(HOST):$(REMOTE_KEEP)/runs/ runs/
 
 test: ## the commit oracle (CLAUDE.md §6)
 	@set -o pipefail; $(PY) -m pytest -q

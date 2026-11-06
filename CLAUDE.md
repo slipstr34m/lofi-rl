@@ -25,7 +25,7 @@ Paths on Discovery (all in `kit.env`). Verified with `myquota` on 2026-10-30: `/
 this account; `/project2` does.
 
 - `REMOTE_PROJ=/project2/anakano_429/shresthr/lofi-rl`: the code mirror. Sync runs with `--delete`, so never put state here.
-- `REMOTE_KEEP=/project2/anakano_429/shresthr/lofi-rl-keep`: persistent state outside the mirror. It holds the envs, the tools (uv, FluidSynth), the votes backup, checkpoints, fetched assets, the guard's `submissions.log` and the jobs' code snapshots (`snap/`).
+- `REMOTE_KEEP=/project2/anakano_429/shresthr/lofi-rl-keep`: persistent state outside the mirror. It holds the envs, the tools (uv, FluidSynth), the votes backup, checkpoints, fetched assets, the guard's `submissions.log`, the jobs' code snapshots (`snap/`), and the runs a job writes there instead of scratch (`runs/`, for example the junk-rate job's since 2026-11-06, when scratch writes stalled the first Phase-1 gate launch; D-022).
 - `REMOTE_SCR=/scratch1/shresthr/lofi-rl`: logs, runs, renders, inbox, caches, `HF_HOME`. Scratch is purged periodically, so anything worth keeping is pulled or copied to `$REMOTE_KEEP`.
 - Home (`/home1/shresthr`) is small: nothing large goes there. `/project2/anakano_429` is 1 TB shared by the whole class.
 
@@ -55,7 +55,7 @@ Host discovery discovery.usc.edu
 ## 3. Sync
 
 - `make sync` writes `.sync-stamp` and `.sync-manifest` (the sha256 of every file it sends), then dry-runs `rsync --delete --exclude-from=.rsyncignore` through `scripts/check_deletes.sh`. The check refuses protected deletions or more than 200. Then it syncs the tree to `$REMOTE_PROJ`, and the stamp and manifest last. It needs GNU rsync 3.x (`/opt/homebrew/bin/rsync`); macOS `/usr/bin/rsync` is openrsync.
-- `make pull` brings back `runs/<run>/summary/**`, keeping its structure (never flattened), and `inbox/` from `$REMOTE_SCR`. It never deletes on the laptop.
+- `make pull` brings back `runs/<run>/summary/**` from `$REMOTE_SCR` and from `$REMOTE_KEEP`, keeping its structure (never flattened), and `inbox/` from `$REMOTE_SCR`. It never deletes on the laptop.
 
 `.rsyncignore`, kept in sync with `tests/test_privacy.py`: `.git/ .env* *.key *.pem .venv/ node_modules/ __pycache__/ .pytest_cache/ .DS_Store data/ inbox/ runs/ ckpt/ assets/big/ *.wav *.flac *.mp3 *.pt *.bin *.safetensors jobs/submissions.log`
 

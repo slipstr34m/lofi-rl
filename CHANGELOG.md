@@ -3,7 +3,7 @@
 Newest entry first. Every number cites the file or command output it was read from (CLAUDE.md §6).
 
 ## Status
-- **SU used:** 2,485.6 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-06 13:05 PST).
+- **SU used:** 2,507.0 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-06 14:30 PST).
 - **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
   - **shootouts:**
     - Days 1, 2 and 3 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended); Day 3 gave rain excerpt `excerpt_e2` and, by his word, the rain at Δ 24;
@@ -20,6 +20,39 @@ Newest entry first. Every number cites the file or command output it was read fr
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
 - **The palette is frozen:** `palettes/lofi_rain_v1.yaml`, `frozen: '2026-11-04'` (sha256 `09f80a64…`), on Shresth's APPROVED line of 2026-11-04.
 - **The Phase-1 gate's first launch (13783877) is invalid:** it generated 384 of 500 before its deadline, because writes on its node were slow. The fix and the second launch are next; a second invalid launch goes to Shresth with the records (D-021).
+
+---
+
+## 2026-11-06 (14:30 PST): the probe shows scratch writes stalling; the gate job now writes its run on the node's own disk
+
+**What was done**
+- **`lofi-io-probe` 13787408** (main, a01-12; `runs/io-probe-13787408/summary/io.json`): `IO_PROBE_OK`. It timed junk's write round (128 lines of about 4 KB, appended and fsynced, then a small JSON written, fsynced and renamed):
+
+  | where | three write rounds (s) | ten 2.6 MB clips (s) |
+  |---|---|---|
+  | scratch `/scratch1` | 2.209, 132.108, 71.906 | 0.911–171.923 |
+  | node's disk `/tmp/SLURM_13787408` | 0.0, 0.0, 0.0 | 0.001 each |
+  | KEEP `/project2` | 0.007, 0.006, 0.006 | 0.006–0.008 |
+
+  It also read the largest bank on KEEP (`vcsl-upright-knight.sf2`, 364,927,584 bytes) in 0.396 s. So scratch writes stall on more than the gate's node, and the node's disk and KEEP do not.
+- **jobs/junk_rate.sbatch** (D-022, amended 2026-11-06):
+  - the steps write their run on the node's own disk (`RUN=${TMPDIR:-/tmp}/junk-<job>`);
+  - the one-shot cache is `$REMOTE_KEEP/cache/lofi-rl`;
+  - the run is copied to `OUT=$REMOTE_KEEP/runs/junk-<job>`, its records first and then its clips, each under `timeout -k 2 10`. The copy runs after the render, and from an EXIT trap when a step stops the script early or Slurm's TERM ends it, so the records outlive a kill;
+  - the steps, their arguments and their deadlines are unchanged. Score's timeout drops from 90 to 60 s, so the walltime stays his 28 minutes: 1,614 s of timeouts and kill grace, 66 s under 1,680 s.
+  - Re-registered: `make approve JOB=jobs/junk_rate.sbatch MAX=504 BY=Claude`, from `5a423302eb84dd91` (504 SU, by Shresth) to `0eb12128013576e3` (504 SU, by Claude), within D-003's 1,000 SU.
+- **Independent review** (workflow `wf_b6fb5211-4e7`, one reviewer): it was not ready to launch as first written, with 5 findings, all applied.
+  - F1: the run lived only on the node until the last line, and a kill would lose the records. The copy is now in an EXIT trap, with TERM routed to it.
+  - F2: `make pull` would fail until KEEP's `runs/` existed. `make init` now makes it, and the inbox is pulled first.
+  - F3: a 30-minute walltime would have changed his "28 minutes" without asking. It is kept at 28 by the shorter score timeout.
+  - F4, F5: a wrong slack figure, and stale lines in junk.py, kit.env and the tests.
+  - A local check of the trap logic, with a stand-in for GNU timeout: the run is copied once on a normal finish (exit 0), and also on an early `set -e` exit (exit 1) and on TERM (exit 143).
+- **`make pull`** also brings back `$REMOTE_KEEP/runs/*/summary/**`. CLAUDE.md §1 and §3 say so.
+- **tests/test_junk_job.py:** nothing of the run is written on scratch (the Slurm log and job_env.sh's mkdirs still are). The two copies run under timeouts counted in the walltime budget, after the render, and the EXIT and TERM traps exist.
+
+**SU spent:** 21.4 (the probe: COMPLETED in 7.1 min, most of it in scratch's stalls; `session_report.py`).
+
+**Next:** the full suite, commit, `make init` and sync, then the gate's second launch. A second invalid launch goes to Shresth with the records (D-021).
 
 ---
 

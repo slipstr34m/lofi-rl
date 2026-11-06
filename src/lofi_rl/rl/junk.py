@@ -5,7 +5,8 @@
     python -m lofi_rl.rl.junk score    --run DIR                                             policy env
     python -m lofi_rl.rl.junk render   --run DIR [--k 50] [--workers 4] [--jobs 2]           scorer env
 
-jobs/junk_rate.sbatch runs the three in order on one GPU node, with DIR = $REMOTE_SCR/runs/junk-<job>.
+jobs/junk_rate.sbatch runs the three in order on one GPU node, with DIR on the node's own disk, then copies it to
+$REMOTE_KEEP/runs/junk-<job> (D-022, amended 2026-11-06: scratch writes stalled the first gate launch).
 
 - generate: N briefs from brief.sample_briefs(seed, N), one completion each, with prompt v1 (lofi_rl.prompt, the
   default) or, with --prompt v2, prompt v2 (lofi_rl.prompt_v2: v1 with its one example chosen per brief, the loop of
@@ -44,7 +45,7 @@ its sha256 and whether it matches generate's. D-019's and D-020's runs were made
 b2e4a340...), their junk.json records it, and a re-score of one of them passes --palette palettes/dev_gu.yaml.
 
 Files: DIR/summary/{generate.json, completions.jsonl, scored.jsonl, junk.json, clips.json} (make pull brings
-summary/ back) and DIR/clips/<i>.flac with <i>.manifest.json (they stay on scratch).
+summary/ back) and DIR/clips/<i>.flac with <i>.manifest.json (they stay on the cluster, under KEEP).
 
 junk.json (schema lofi-rl/junk/1):
 - pass: G1-G6 and compile: count, rate, Wilson 95 % CI. pass_not_copy: the same, with near-copies counted as fails;
