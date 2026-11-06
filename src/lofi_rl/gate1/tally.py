@@ -132,7 +132,7 @@ def tally(batch_dir: Path | str, votes: Path | str) -> dict:
         "schema": SCHEMA, "batch": m.batch, "dir": str(batch_dir), "votes": str(votes), "rounds": len(m.rounds),
         "voted": len(rows) - len(not_voted), "heard": sum(1 for r in rows if r["heard"]), "counted": len(counted),
         "complete": complete,
-        "heard_rule": f"at least {G.HEARD_MIN_BARS} bar over every attempt of its round (D-013 as amended)",
+        "heard_rule": f"once {G.HEARD_MIN_BARS} bar has played, over every attempt of its round (D-013 as amended)",
         "tiers": whole["tiers"], "fine_or_better": fine,
         "bar": {"need": G.FINE_BAR, "of": G.CLIPS, "met": met},
         "split": {"verbatim_line": _split_counts([r for r in counted if r["verbatim_line"]]),
@@ -157,8 +157,9 @@ def tiers_text(t: dict) -> str:
 def format_text(doc: dict) -> str:
     s, b = doc["split"], doc["bar"]
     lines = [f"gate1 tally: {doc['batch']} ({doc['votes']})",
-             f"  rounds {doc['rounds']}; voted {doc['voted']}; heard {doc['heard']}; counted {doc['counted']} (voted "
-             f"and heard: {doc['heard_rule']})" + ("" if doc["complete"] else "; NOT complete"),
+             f"  rounds {doc['rounds']}; voted {doc['voted']}; heard {doc['heard']}; counted {doc['counted']}, the "
+             "rounds voted and heard" + ("" if doc["complete"] else "; NOT complete"),
+             f"  heard: {doc['heard_rule']}",
              f"  tiers: {tiers_text(doc['tiers'])}",
              f"  \"fine\" (Fine, Good or Great): {doc['fine_or_better']}; the bar is at least {b['need']} of "
              f"{b['of']}: {'met' if b['met'] else 'NOT met'}"]

@@ -156,7 +156,8 @@ out for a bare date (`--date`, default today in Pacific time), indented so that 
    runs/junk-13783877/clips`, then the push to Shresth with the line it prints ("needs ear check").
 3. `python -m lofi_rl.gate1 gate --run runs/junk-13783877 --write gates/GATE_phase1.md`, committed, so he can read the
    run before he listens.
-4. He votes (`make rate`); then `python -m lofi_rl.gate1 tally inbox/<date>/<batch> --votes data/votes/<batch>.jsonl`.
+4. He votes (`make rate BATCH=inbox/<date>/<batch>`); then `python -m lofi_rl.gate1 tally inbox/<date>/<batch> --votes
+   data/votes/<batch>.jsonl`.
 5. `python -m lofi_rl.gate1 gate --run runs/junk-13783877 --batch inbox/<date>/<batch> --votes
    data/votes/<batch>.jsonl --write gates/GATE_phase1.md`, committed; the votes are backed up (`make backup-votes`).
 6. His line under `## Approval` is his; `python -m kit.gates gates/GATE_phase1.md --name "Shresth Rana"` reads it.
@@ -170,7 +171,7 @@ Each is a reading of the decisions above where they do not say, overridable by S
 
 - **The FLAC check** (§3): clips.json records no FLAC sha256, so the FLAC is held to its size, its one-pass header
   and its re-measured loudness and true peak, and its own sha256 is pinned from the batch on.
-- **The render manifests are optional** (§3): the task's inputs are clips.json and the FLAC folder; the manifest is
+- **The render manifests are optional** (§3): the batch's inputs are clips.json and the FLAC folder; the manifest is
   verified when it is there.
 - **The batch refuses a run that does not pass check** (exit 3): its ear check would decide nothing.
 - **The ear check's bar is 15, a count**, whatever number of the 50 rendered; the gate file says how many rendered.

@@ -228,7 +228,8 @@ def test_the_command_prints_the_counts_and_the_split(folder, votes, capsys):
     vote_all(folder, votes, TIERS20)
     assert cli.main(["tally", str(folder), "--votes", str(log(votes))]) == 0
     out = capsys.readouterr().out
-    assert "rounds 20; voted 20; heard 20; counted 20" in out
+    assert "rounds 20; voted 20; heard 20; counted 20, the rounds voted and heard\n" in out
+    assert "  heard: once 1 bar has played, over every attempt of its round (D-013 as amended)\n" in out
     assert "tiers: Great 5, Good 5, Fine 5, Toss 5" in out
     assert "\"fine\" (Fine, Good or Great): 15; the bar is at least 15 of 50: met" in out
     assert "with a verbatim A or B line: \"fine\"" in out and "with neither line: \"fine\"" in out
