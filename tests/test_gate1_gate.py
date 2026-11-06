@@ -140,20 +140,92 @@ def test_how_to_approve_is_kit_gates_wording_with_the_line_written_out_bare(run_
 
 
 def test_a_rewrite_keeps_everything_under_approval_byte_for_byte(made, run_dir, tmp_path, capsys):
+    """Before his line: the numbers are written again (here his ear check, once tallied), and his note under
+    `## Approval` is kept byte for byte, its CRLF and trailing spaces too."""
     out = tmp_path / "GATE_phase1.md"
     write(run_dir, out)
-    his = "\nAPPROVED by Shresth Rana 2026-11-08\r\nhis note, kept as written  \n\n## Later notes\n- x\n"
-    out.write_text(out.read_text() + his, newline="")
-    assert KG.gate_approved(out, "Shresth Rana")
+    note = "\nhis note, kept as written  \r\n\n## Later notes\n- x\n"
+    out.write_text(out.read_text() + note, newline="")
     _run, folder, votes = made
     assert write(run_dir, out, "--batch", str(folder), "--votes", str(votes), day="2026-11-08") == 0
     raw = out.read_bytes().decode()
-    assert raw.split("\n## Approval\n", 1)[1] == his
+    assert raw.split("\n## Approval\n", 1)[1] == note
     assert "## His ear check: batch b1107-gate1" in raw and "Approving on 2026-11-08, the line is:" in raw
-    assert "APPROVED by Shresth Rana" in capsys.readouterr().out
+    assert "no approval line by Shresth Rana yet" in capsys.readouterr().out
     assert write(run_dir, out, "--batch", str(folder), "--votes", str(votes), day="2026-11-08") == 0
     assert capsys.readouterr().out.startswith(f"{out}: unchanged")
     assert out.read_bytes().decode() == raw
+
+
+def sign(path: Path, line: str = "APPROVED by Shresth Rana 2026-11-09") -> bytes:
+    """His line under `## Approval`, as he writes it (a CRLF and all); the file's bytes after it."""
+    path.write_bytes(path.read_bytes() + f"\n{line}\r\n".encode())
+    return path.read_bytes()
+
+
+def test_his_line_stands_under_the_numbers_he_read(made, run_dir, tmp_path, capsys):
+    """Once signed, the same numbers leave the file as it is (on another day too: the How-to-approve date is not
+    written again), and other numbers are refused with the sections they would change named."""
+    _run, folder, votes = made
+    out = tmp_path / "GATE_phase1.md"
+    ear = ("--batch", str(folder), "--votes", str(votes))
+    assert write(run_dir, out, *ear) == 0
+    signed = sign(out)
+    assert KG.gate_approved(out, "Shresth Rana")
+    capsys.readouterr()
+    assert write(run_dir, out, *ear, day="2026-11-10") == 0 and out.read_bytes() == signed
+    said = capsys.readouterr().out
+    assert said.startswith(f"{out}: unchanged") and f"{out}: APPROVED by Shresth Rana" in said
+    assert write(run_dir, out) == 2 and out.read_bytes() == signed            # without his ear check
+    err = capsys.readouterr().err
+    assert "error: nothing written" in err
+    assert "under `## Approval`, starts as an approval ('APPROVED by Shresth Rana 2026-11-09')" in err
+    assert ("would change what it approves: ## His ear check: batch b1107-gate1 (gone); ## Where it stands; ## His ear "
+            "check (new). His line stands for the numbers he read") in err
+    assert "move the file aside first; the new file then waits for his line again" in err
+
+
+def test_a_signed_file_is_never_rewritten_for_another_run(made, run_dir, tmp_path, capsys):
+    """Review F2's case: his line under a passing file, then a run stopped by its deadline written into that file."""
+    _run, folder, votes = made
+    out = tmp_path / "GATE_phase1.md"
+    assert write(run_dir, out, "--batch", str(folder), "--votes", str(votes)) == 0
+    signed = sign(out)
+    bad = copy_run(made[0], tmp_path / "junk-13790001")
+    def stopped(d):                                    # another run, stopped by its deadline: not valid
+        d.update(partial=True)
+        d["generate"].update(stopped="deadline")
+        d["generate"]["host"].update(job="13790001")
+    edit_json(bad / "summary" / "junk.json", stopped)
+    assert write(bad, out) == 2 and out.read_bytes() == signed
+    err = capsys.readouterr().err
+    assert "## The run: `lofi-junk-rate` 13783877 (gone)" in err
+    assert "## The run: `lofi-junk-rate` 13790001 (new)" in err
+    assert "## Validity (D-020's list as amended, with D-022's two swaps);" in err
+    assert KG.gate_approved(out, "Shresth Rana") and "13790001" not in out.read_text()
+
+
+def test_a_retracted_vote_after_his_line_is_refused_too(made, run_dir, tmp_path, capsys):
+    """A change in the vote log after he signed (a retraction takes "fine" from 15 to 14) is new numbers too. A near
+    miss of his line (kit.gates does not count it) holds the file as well: it is his line, to be mended by him."""
+    _run, folder, votes = made
+    out = tmp_path / "GATE_phase1.md"
+    assert write(run_dir, out, "--batch", str(folder), "--votes", str(votes)) == 0
+    signed = sign(out, "APPROVED by Shresth Rana <2026-11-09>")
+    assert not KG.gate_approved(out, "Shresth Rana")
+    log = tmp_path / "votes" / votes.name
+    log.parent.mkdir()
+    log.write_bytes(votes.read_bytes())
+    fine = next(e for e in map(json.loads, log.read_text().splitlines()) if e.get("tier") == "fine")
+    m, h = load_batch(folder, check_files=False)
+    led = Ledger(log.parent, m, h, micro_gap_s=600, ui="test", clock=Clock())
+    try:
+        led.submit({"type": "retract", "target": fine["event_id"], "why": "undo"})
+    finally:
+        led.close()
+    assert write(run_dir, out, "--batch", str(folder), "--votes", str(log)) == 2 and out.read_bytes() == signed
+    err = capsys.readouterr().err
+    assert "('APPROVED by Shresth Rana <2026-11-09>')" in err and "## His ear check: batch b1107-gate1" in err
 
 
 def test_his_counts_and_the_split_once_tallied(made, run_dir, tmp_path):

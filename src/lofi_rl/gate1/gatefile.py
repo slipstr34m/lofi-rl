@@ -24,7 +24,12 @@ nothing written):
 - a file it did not make: its first line is not TITLE, it has no `## Approval` heading or more than one, or it has no
   `Written by` line (MARK) above that heading. Another gate's file (gates/GATE_palette.md, say) is never written over,
   so its sections are never dropped and its approval never stands under this gate's numbers;
-- a file with a line that starts as an approval (kit.gates.ATTEMPT) above that heading, which a rewrite would drop.
+- a file with a line that starts as an approval (kit.gates.ATTEMPT) above that heading, which a rewrite would drop;
+- **a signed file whose numbers would change.** Once a line under `## Approval` starts as an approval (his line, or
+  a near miss of it), his line stands for the file he read. A rewrite that would change anything above `## How to
+  approve` (the run, validity, the bar, the readouts, his ear check, where it stands) is refused, with the sections
+  it would change named; one that would change only the How-to-approve example (its date) leaves the file as it is.
+  To write other numbers, the file is moved aside first, and the new file waits for his line again.
 
 `--batch` and `--votes` go together, and the batch must be this run's: every clip's job and palette label are the
 run's, and its clips are exactly the run's rendered ones. Exit 0 when the file is written (or already holds that
@@ -46,6 +51,7 @@ from lofi_rl.gate1 import tally as T
 from lofi_rl.ui.manifest import ManifestError, load_batch
 
 APPROVAL_HEADING = "## Approval"
+HOW_HEADING = "## How to approve"                       # kit.gates.how_to_approve's heading
 TITLE = "# Gate: Phase 1, the base model on the frozen palette"
 MARK = "Written by `python -m lofi_rl.gate1 gate`"       # the head's line that says which writer made the file
 
@@ -234,7 +240,9 @@ def render(doc: dict, tdoc: dict | None, run: G.Run, day: _date | str) -> str:
             "it); D-022 \"Consequences\" (the frozen palette's two values in the list). The bar is D-020's, "
             "unchanged.",
             "",
-            f"{MARK} (docs/GATE1.md). Writing it again keeps everything under `{APPROVAL_HEADING}` exactly as it is.",
+            f"{MARK} (docs/GATE1.md). Writing it again keeps everything under `{APPROVAL_HEADING}` exactly as it is. "
+            "Once a line there starts as an approval, a rewrite that would change the numbers above it is refused, so "
+            "his line always stands under the numbers he read.",
             ""]
     body = [*_run_section(doc, run), "", *_validity_section(doc), "", *_bar_section(doc), "",
             *_readout_section(doc), "", *_ear_section(tdoc, run), "", *_standing(doc, tdoc), ""]
@@ -242,10 +250,27 @@ def render(doc: dict, tdoc: dict | None, run: G.Run, day: _date | str) -> str:
     return "\n".join([*head, *body, *how, "", APPROVAL_HEADING]) + "\n"
 
 
+def _above(text: str, heading: str) -> str:
+    """`text` above its one `heading` line (found as lofi_rl.freeze.gate.sections finds it), or all of it."""
+    found = sections(text, heading)
+    return "".join(text.splitlines(keepends=True)[:found[0][0]]) if len(found) == 1 else text
+
+
+def _by_section(text: str) -> dict[str, str]:
+    """Each `## ` section of `text` by its heading line, the title's head first: to name what a rewrite changes."""
+    out: dict[str, str] = {}
+    head = "the head"
+    for line in text.splitlines(keepends=True):
+        if line.startswith("## "):
+            head = line.rstrip("\r\n")
+        out[head] = out.get(head, "") + line
+    return out
+
+
 def merge(existing: str | None, generated: str) -> str:
     """The new file: `generated` (which ends with the `## Approval` heading) and, from an existing file, everything
     after its `## Approval` heading, byte for byte (module doc). Gate1Error when the existing file is not one this
-    writer made, or when a rewrite would drop something."""
+    writer made, when a rewrite would drop something, or when a signed file's numbers would change."""
     if existing is None:
         return generated
     keep = existing.splitlines(keepends=True)
@@ -267,7 +292,22 @@ def merge(existing: str | None, generated: str) -> str:
     if above:
         raise G.Gate1Error([f"line {k} starts as an approval above `{APPROVAL_HEADING}` ({text!r}); a rewrite keeps "
                             f"only what is under `{APPROVAL_HEADING}`, so move it there first" for k, text in above])
-    return generated + "".join(keep[first + 1:])
+    under = keep[first + 1:]
+    merged = generated + "".join(under)
+    signed = [(first + 2 + k, line.rstrip("\r\n")) for k, line in enumerate(under) if KG.ATTEMPT.match(line)]
+    if not signed or merged == existing:
+        return merged
+    old, new = _above("".join(keep[:first]), HOW_HEADING), _above(generated, HOW_HEADING)
+    if old == new:
+        return existing           # only the How-to-approve example (its date) differs: the signed file stays as it is
+    a, b = _by_section(old), _by_section(new)
+    changed = [h if h in a and h in b else f"{h} ({'gone' if h in a else 'new'})"
+               for h in dict.fromkeys([*a, *b]) if a.get(h) != b.get(h)]
+    number, text = signed[0]
+    raise G.Gate1Error([f"line {number}, under `{APPROVAL_HEADING}`, starts as an approval ({text!r}), and this "
+                        f"rewrite would change what it approves: {'; '.join(changed)}. His line stands for the numbers "
+                        "he read, so nothing is written. To write other numbers, move the file aside first; the new "
+                        "file then waits for his line again"])
 
 
 def main(a: argparse.Namespace) -> int:

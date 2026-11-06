@@ -153,7 +153,12 @@ out for a bare date (`--date`, default today in Pacific time), indented so that 
   - a file it did not make: another first line than the title, no `## Approval` or two, or no `Written by` line
     above it. Another gate's file (`gates/GATE_palette.md`, say) is never written over, and its approval never
     stands under this gate's numbers;
-  - a file with a line that starts as an approval above that heading, which a rewrite would drop.
+  - a file with a line that starts as an approval above that heading, which a rewrite would drop;
+  - **a signed file whose numbers would change.** Once a line under `## Approval` starts as an approval (his line,
+    or a near miss of it), a rewrite that would change anything above `## How to approve` is refused, with the
+    sections it would change named: his line stands for the file he read. The same numbers leave the file as it is,
+    on another day too (the How-to-approve example keeps its date). For other numbers (another run, a vote taken back
+    after he signed), the file is moved aside first, and the new one waits for his line again.
 - `--batch` and `--votes` go together, and the batch must be the run's (its clips' job and palette label, and exactly
   the run's rendered clips).
 - **Exit:** 0 written or unchanged, 2 bad input. It prints whether the file holds his line (`kit.gates`).
@@ -189,4 +194,7 @@ Each is a reading of the decisions above where they do not say, overridable by S
 - **The clips' readout** covers the clips that rendered, the ones he hears, with the whole sample beside it.
 - **A tally is complete** when every round has a standing vote; a vote on a clip that never played is left out.
 - **clips.json is optional for check and gate**, since validity reads junk.json alone; the batch needs it.
+- **His line binds the text above How to approve** (§5): a signed gate file is never rewritten with other numbers,
+  and a near miss of his line holds it too, since it is his to mend. The How-to-approve section is instructions, so a
+  new date there is not new numbers.
 - **The note** names the batch and the four tiers only.
