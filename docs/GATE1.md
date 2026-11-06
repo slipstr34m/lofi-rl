@@ -61,8 +61,12 @@ field) with what junk.json shows:
   reported as absent and validity is still checked.
 - **Bad input** (`lofi_rl.gate1.load_run`, exit 2): a file missing or unreadable, or files that are not one run's:
   scored.jsonl's rows and counts against junk.json's (`n`, `pass.count`, `pass_not_copy.count`) and against
-  completions.jsonl's, and clips.json against the sample junk's render step draws from that scored.jsonl
-  (`junk.sample_indices` over the passing non-copies, its seed and k), with the same palette. Every problem is listed.
+  completions.jsonl's, and clips.json against the registered draw from that scored.jsonl: `junk.sample_indices` over
+  the passing non-copies with k 50 and the run's brief seed (`briefs.seed`), the render step's defaults, with the
+  same palette. A clips.json of another k or seed (a hand re-render with `--k 100`, say) is another draw, so it is
+  refused and never batched. junk.json's `render` block, when there, must be the one clips.json gives
+  (`junk.render_block`); the render step merges it at its end, so a step cut short leaves none, and its clips.json is
+  read as far as it got. Every problem is listed.
 - **Exit:** 0 valid and the first half met, 3 otherwise, 2 bad input. The last line is `GATE1_CHECK <verdict>`.
 
 **On arm B** (runs/junk-13640325: v2 with the grammar, on dev_gu; 2026-11-06, laptop): `INVALID, 24 of 27
@@ -125,8 +129,9 @@ One triage batch of the run's clips for his ear check.
 - **The counts:** per tier over the heard, voted rounds; the "fine" count (Fine, Good or Great) against 15. The bar is
   a count, so a batch with fewer than 50 rounds (a clip that did not render) still needs 15.
 - **The split:** the same counts for the clips with a verbatim A or B line (the hidden `verbatim_line`) and without.
-- **Bad input** (exit 2): not a gate1 triage batch, a missing log, or a log that is not this batch's (another batch's
-  event, another mode's vote, a tier outside the four, a round it does not hold, a clip that is not the round's).
+- **Bad input** (exit 2): not a gate1 triage batch (or one of more rounds than the 50 clips of the registered
+  sample), a missing log, or a log that is not this batch's (another batch's event, another mode's vote, a tier
+  outside the four, a round it does not hold, a clip that is not the round's).
 - **Output:** the text on the terminal, and the JSON in the votes folder's `audit/<batch>.gate1-tally.json`
   (`data/votes/audit/`, where the shootout tally writes its audit files), or `--json OUT` (`-` prints it in place of
   the text). Its per-round rows pair his tiers with sample indices, which are private (D-010), so inside the repo it
@@ -175,6 +180,8 @@ Each is a reading of the decisions above where they do not say, overridable by S
 - **The render manifests are optional** (§3): the batch's inputs are clips.json and the FLAC folder; the manifest is
   verified when it is there.
 - **The batch refuses a run that does not pass check** (exit 3): its ear check would decide nothing.
+- **The ear check's sample is the registered draw** (§2): 50 clips, drawn with the run's brief seed, as the render
+  step draws by default; clips.json of another k or seed is bad input.
 - **The ear check's bar is 15, a count**, whatever number of the 50 rendered; the gate file says how many rendered.
 - **The clips' readout** covers the clips that rendered, the ones he hears, with the whole sample beside it.
 - **A tally is complete** when every round has a standing vote; a vote on a clip that never played is left out.

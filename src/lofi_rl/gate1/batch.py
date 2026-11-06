@@ -139,10 +139,8 @@ def push_text(name: str, k: int, job: str | None, est_min: float) -> str:
 
 
 def run_seed(run: G.Run) -> int:
-    """The brief stream's seed junk.json records (check holds it to 2026)."""
-    briefs = run.junk.get("briefs")
-    seed = briefs.get("seed") if isinstance(briefs, dict) else None
-    return seed if isinstance(seed, int) and not isinstance(seed, bool) else G.BRIEF_SEED
+    """The brief stream's seed junk.json records (check holds it to 2026): lofi_rl.gate1.brief_seed."""
+    return G.brief_seed(run.junk)
 
 
 def why_not(rec: Mapping) -> str:

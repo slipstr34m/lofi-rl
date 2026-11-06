@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from helpers_gate1 import SEED, Clock, copy_run, edit_json, make_run, triage
+from helpers_gate1 import SEED, Clock, copy_run, edit_clips, edit_json, make_run, triage
 from kit import gates as KG
 from lofi_rl import gate1 as G
 from lofi_rl.gate1 import batch as GB
@@ -33,7 +33,7 @@ def made(tmp_path_factory):
     """A valid run of 20 clips (clips.json's loudness as made; a stub measure), its gate1 batch, and his votes."""
     root = tmp_path_factory.mktemp("gate1-gate")
     run = root / "junk-13783877"
-    info = make_run(run, k=20, measure=False)
+    info = make_run(run, render_k=20, measure=False)
     folder = GB.build(G.load_run(run), run / "clips", name=NAME, date=DAY, out_root=root / "inbox", seed=SEED,
                       measure=lambda p: info["measured"][Path(p).name])
     votes = root / "votes"
@@ -199,7 +199,7 @@ def test_where_it_stands_follows_the_numbers(run_dir, tmp_path, change, standing
 
 def test_under_the_bar_the_gate_fails_and_goes_to_part_b(tmp_path):
     run = tmp_path / "junk-13783877"
-    make_run(run, copies=201, k=2, flacs=False)
+    make_run(run, copies=201, render_k=2, flacs=False)
     out = tmp_path / "GATE_phase1.md"
     assert write(run, out) == 0
     assert ("- The first half is not met (299 < 300): the gate fails on the frozen palette, and it goes to Shresth "
@@ -268,7 +268,7 @@ def test_batch_and_votes_go_together_and_must_be_the_runs(made, run_dir, tmp_pat
     assert write(other, out, "--batch", str(folder), "--votes", str(votes)) == 2
     assert "its clip is from job 13783877" in capsys.readouterr().err and not out.exists()
     fewer = copy_run(made[0], tmp_path / "x" / "junk-13783877")
-    edit_json(fewer / "summary" / "clips.json", lambda d: d["clips"].pop())
+    edit_clips(fewer, lambda d: d["clips"].pop())
     assert write(fewer, out, "--batch", str(folder), "--votes", str(votes)) == 2
     assert "the batch must hold each of them exactly once" in capsys.readouterr().err
 
@@ -277,6 +277,15 @@ def test_a_bad_date_or_run_writes_nothing(run_dir, tmp_path):
     out = tmp_path / "GATE_phase1.md"
     assert write(run_dir, out, day="2026-02-30") == 2 and not out.exists()
     assert write(tmp_path / "nowhere", out) == 2 and not out.exists()
+
+
+def test_a_sample_that_is_not_the_registered_draw_writes_nothing(tmp_path, capsys):
+    """clips.json of k 100 (a hand re-render with --k 100): never "15 of 50" over another sample."""
+    run = tmp_path / "junk-13783877"
+    make_run(run, k=100, flacs=False)
+    out = tmp_path / "GATE_phase1.md"
+    assert write(run, out) == 2 and not out.exists()
+    assert "clips.json: `k` is 100; the ear check is junk's sample of 50" in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------------------------- arm B

@@ -23,10 +23,13 @@ This module holds what they share:
   silently moved bar;
 - `load_run`, the reader of a run's summary/ (junk.json, scored.jsonl, completions.jsonl and clips.json). It refuses,
   with every problem listed, files that are not one run's own: scored.jsonl's rows and counts against junk.json's and
-  completions.jsonl's, and clips.json against the sample junk's render step draws from that scored.jsonl
-  (`junk.sample_indices` over the passing loops that are not near-copies, D-020). That refusal is bad input (exit 2),
-  never a validity verdict. clips.json may be absent where a step reads no clip (`need_clips=False`): validity reads
-  junk.json alone, and the render step decides nothing (D-020).
+  completions.jsonl's, and clips.json against the registered draw from that scored.jsonl: `junk.sample_indices` over
+  the passing loops that are not near-copies (D-020), with k 50 (CLIPS) and the run's brief seed (junk.json
+  `briefs.seed`), the render step's defaults. A clips.json of another k or seed is another draw, never the ear
+  check, and junk.json's `render` block, when there, must be the one clips.json gives (`junk.render_block`, which the
+  render step merges). That refusal is bad input (exit 2), never a validity verdict. clips.json may be absent where a
+  step reads no clip (`need_clips=False`): validity reads junk.json alone, and the render step decides nothing
+  (D-020).
 
 Stdlib only (plus lofi_rl's own stdlib modules), so the policy env's import walk (jobs/env_policy.sbatch) imports it.
 Sound claims: none.
@@ -91,6 +94,15 @@ def _whole(x) -> bool:
     return isinstance(x, int) and not isinstance(x, bool)
 
 
+def brief_seed(junk: dict) -> int:
+    """The run's brief seed as junk.json records it (`briefs.seed`, which validity holds to 2026), or the registered
+    2026 when it records no whole number: the seed of the measurement stream's briefs and, as the render step draws by
+    default, of the ear check's sample."""
+    briefs = junk.get("briefs")
+    seed = briefs.get("seed") if isinstance(briefs, dict) else None
+    return seed if _whole(seed) else BRIEF_SEED
+
+
 # --------------------------------------------------------------------------------------------- reading a run
 @dataclass(frozen=True)
 class Run:
@@ -101,7 +113,7 @@ class Run:
     scored: dict                     # i -> summary/scored.jsonl row
     rows: dict                       # i -> summary/completions.jsonl row
     clips: dict | None               # summary/clips.json, or None when it is absent (need_clips=False)
-    sample: tuple                    # the render step's draw: junk.sample_indices(pool, k, seed); () without clips
+    sample: tuple                    # the registered draw: sample_indices(pool, CLIPS, brief seed); () without clips
 
     @property
     def name(self) -> str:
@@ -241,9 +253,17 @@ def load_run(run_dir: Path | str, *, need_clips: bool = True) -> Run:
     sample: tuple = ()
     if clips is not None:
         k, seed, recs = clips.get("k"), clips.get("seed"), clips.get("clips")
+        run_seed = brief_seed(junk)
         if not (_whole(k) and _whole(seed)):
             problems.append(f"clips.json: `k` {k!r} and `seed` {seed!r} must be whole numbers")
-            k = None
+        else:
+            if k != CLIPS:
+                problems.append(f"clips.json: `k` is {k}; the ear check is junk's sample of {CLIPS} (D-020, the render "
+                                "step's default): a sample of another size is not the registered draw")
+            if seed != run_seed:
+                problems.append(f"clips.json: `seed` is {seed}; the ear check's sample is drawn with the run's brief "
+                                f"seed {run_seed} (junk.json `briefs.seed`, the render step's default): a sample of "
+                                "another seed is not the registered draw")
         if not isinstance(recs, list) or not all(isinstance(r, dict) and _whole(r.get("i")) for r in recs):
             problems.append("clips.json: `clips` must be a list of records, each with its sample index `i`")
             recs = None
@@ -251,14 +271,19 @@ def load_run(run_dir: Path | str, *, need_clips: bool = True) -> Run:
         jp = (junk.get("palette") or {}).get("sha256") if isinstance(junk.get("palette"), dict) else None
         if cp != jp:
             problems.append(f"clips.json was rendered with palette {short(cp)}, junk.json scored with {short(jp)}")
-        if k is not None and recs is not None:
+        if recs is not None:
+            block, want = junk.get("render"), J.render_block(clips)
+            if block is not None and json.dumps(block, sort_keys=True) != json.dumps(want, sort_keys=True):
+                problems.append(f"junk.json's `render` block {json.dumps(block, sort_keys=True)} is not the one "
+                                f"clips.json gives, {json.dumps(want, sort_keys=True)} (junk.render_block, which the "
+                                "render step merges): not one render step's files")
             pool = [i for i in sorted(scored) if scored[i].get("ok") is True and scored[i].get("near_copy") is False
                     and i in rows]
-            sample = tuple(J.sample_indices(pool, k, seed))
+            sample = tuple(J.sample_indices(pool, CLIPS, run_seed))
             got = [r["i"] for r in recs]
             if got != list(sample[:len(got)]):
-                problems.append(f"clips.json's {len(got)} clips are not junk's sample of {k} (seed {seed}) from the "
-                                f"{len(pool)} passing non-copies of scored.jsonl, in its order")
+                problems.append(f"clips.json's {len(got)} clips are not junk's sample of {CLIPS} (seed {run_seed}) "
+                                f"from the {len(pool)} passing non-copies of scored.jsonl, in its order")
             if clips.get("passing") not in (None, len(pool)):
                 problems.append(f"clips.json counts {clips.get('passing')} passing non-copies; scored.jsonl has "
                                 f"{len(pool)}")

@@ -95,13 +95,16 @@ def render_manifest(i: int, brief: dict, canon: str, lufs: float, peak: float) -
             "gates": {"G1-G6": "pass", "G7": "pass"}, "audio_sha256": sha(f"pcm {i}")}
 
 
-def make_run(root: Path, *, n: int = 500, copies: int = 54, k: int = 8, render_k: int | None = None,
-             flacs: bool = True, manifests: bool = True, measure: bool = True, job: str = JOB) -> dict:
+def make_run(root: Path, *, n: int = 500, copies: int = 54, render_k: int | None = None, k: int = G.CLIPS,
+             draw_seed: int = G.BRIEF_SEED, flacs: bool = True, manifests: bool = True, measure: bool = True,
+             job: str = JOB) -> dict:
     """A gate run in `root` (module doc): every row passes, the first `copies` indices are near-copies, and clips.json
-    holds junk's sample of `k` (seed 2026) from the rest, the first `render_k` of them recorded (all by default), each
-    with its FLAC under root/clips/ when `flacs` and its render manifest beside it when `manifests`. Returns {"pool",
-    "sample", "briefs", "measured"}: measured is clip file name -> (LUFS, true peak) as measure_flac read them, or, with
-    `measure` False (faster, for tests that build with a stub measure), the -14.0 and -1.5 clips.json then records."""
+    holds junk's sample of `k` (seed `draw_seed`) from the rest, the registered draw of 50 (seed 2026) unless a test
+    moves it off; the first `render_k` of them are recorded (all by default), as when the render step ends early,
+    each with its FLAC under root/clips/ when `flacs` and its render manifest beside it when `manifests`. Returns
+    {"pool", "sample", "recorded", "briefs", "measured"}: measured is clip file name -> (LUFS, true peak) as
+    measure_flac read them, or, with `measure` False (faster, for tests that build with a stub measure), the -14.0
+    and -1.5 clips.json then records."""
     summ, clips_dir = root / "summary", root / "clips"
     summ.mkdir(parents=True, exist_ok=True)
     clips_dir.mkdir(exist_ok=True)
@@ -117,9 +120,10 @@ def make_run(root: Path, *, n: int = 500, copies: int = 54, k: int = 8, render_k
                        "near_copy": i < copies, "copy_reference": REFS[i % len(REFS)], "verbatim": verbatim_of(i),
                        "quasi_copy": False})
     pool = list(range(copies, n))
-    sample = J.sample_indices(pool, k, G.BRIEF_SEED)
+    sample = J.sample_indices(pool, k, draw_seed)
+    recorded = sample[:k if render_k is None else render_k]
     recs, measured = [], {}
-    for i in sample[:k if render_k is None else render_k]:
+    for i in recorded:
         b = rows[i]["brief"]
         frames = loop_samples(b["bpm"])
         flac = clips_dir / f"{i:04d}.flac"
@@ -137,14 +141,24 @@ def make_run(root: Path, *, n: int = 500, copies: int = 54, k: int = 8, render_k
                      "audio_sha256": sha(f"pcm {i}"), "canon_sha256": scored[i]["canon_sha256"], "p_fix": 0.0,
                      "render_s": 3.1, "flac_bytes": size, "brief": b, "copy_jaccard": scored[i]["copy_jaccard"],
                      "near_copy": False, "copy_reference": scored[i]["copy_reference"], "quasi_copy": False})
-    clips = {"schema": J.CLIPS_SCHEMA, "seed": G.BRIEF_SEED, "k": k, "passing": len(pool),
+    clips = {"schema": J.CLIPS_SCHEMA, "seed": draw_seed, "k": k, "passing": len(pool),
              "palette": {"id": "lofi_rain_v1", "sha256": G.FROZEN_SHA256}, "jobs": 2, "workers": 2, "clips": recs}
     (summ / "junk.json").write_text(json.dumps(junk_doc(n, n, n - copies, job=job, clips=clips), indent=1))
     (summ / "completions.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     (summ / "scored.jsonl").write_text("".join(json.dumps(r) + "\n" for r in scored))
     (summ / "generate.json").write_text(json.dumps({"schema": J.GENERATE_SCHEMA, "requested": n, "generated": n}))
     (summ / "clips.json").write_text(json.dumps(clips, indent=1))
-    return {"pool": pool, "sample": sample, "briefs": briefs, "measured": measured}
+    return {"pool": pool, "sample": sample, "recorded": recorded, "briefs": briefs, "measured": measured}
+
+
+def edit_clips(root: Path, fn) -> None:
+    """Change clips.json's document in place (fn(doc) edits it), then merge its render block into junk.json, as the
+    render step does after its last clip: the two files stay one render step's."""
+    summ = root / "summary"
+    edit_json(summ / "clips.json", fn)
+    clips = json.loads((summ / "clips.json").read_text())
+    block = J.render_block(clips)
+    edit_json(summ / "junk.json", lambda d: (d.update(render=block), d["failures"].update(G7=block["G7"])))
 
 
 def copy_run(src: Path, dest: Path) -> Path:

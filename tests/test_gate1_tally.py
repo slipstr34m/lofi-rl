@@ -26,7 +26,7 @@ def batch(tmp_path_factory):
     """A gate1 batch of 20 rounds, built by gate1.batch from a synthetic run (a stub measure: clips.json's values)."""
     root = tmp_path_factory.mktemp("gate1-tally")
     run = root / "junk-13783877"
-    info = make_run(run, k=20, measure=False)
+    info = make_run(run, render_k=20, measure=False)
     folder = GB.build(G.load_run(run), run / "clips", name=NAME, date=DATE, out_root=root / "inbox", seed=SEED,
                       measure=lambda p: info["measured"][Path(p).name])
     return folder
@@ -194,6 +194,15 @@ def test_a_missing_log_or_a_folder_that_is_not_a_gate1_batch_is_bad_input(folder
         T.tally(folder, log(votes))
     with pytest.raises(G.Gate1Error, match="is not a batch folder"):
         T.tally(tmp_path / "nowhere", log(votes))
+
+
+def test_a_batch_of_more_rounds_than_the_registered_sample_is_bad_input(folder, votes, monkeypatch):
+    """The bar reads "of 50": a gate1 batch holds at most the 50 clips of the registered draw (here 20 rounds against
+    a sample of 19, the registered size moved for the test)."""
+    vote_all(folder, votes, TIERS20)
+    monkeypatch.setattr(G, "CLIPS", 19)
+    with pytest.raises(G.Gate1Error, match="20 rounds; a gate1 batch holds at most the 19 clips of the registered"):
+        T.tally(folder, log(votes))
 
 
 def test_a_hidden_clip_without_the_gate1_fields_is_bad_input(folder, votes):

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from helpers_gate1 import STAMP, copy_run, edit_json, edit_rows, make_run, verbatim_of
+from helpers_gate1 import STAMP, copy_run, edit_clips, edit_json, edit_rows, make_run, verbatim_of
 from lofi_rl import gate1 as G
 from lofi_rl import prompt_v2, smoke
 from lofi_rl.gate1 import check as C
@@ -31,7 +31,7 @@ SWAPPED = ["palette.sha256", "constrained.regex_sha256", "constrained.in_languag
 @pytest.fixture(scope="module")
 def base(tmp_path_factory) -> Path:
     root = tmp_path_factory.mktemp("gate1-check") / "junk-13783877"
-    make_run(root, k=50, flacs=False)
+    make_run(root, flacs=False)
     return root
 
 
@@ -133,6 +133,8 @@ OFF = [
 
 @pytest.mark.parametrize("name, path, value", OFF, ids=[f"{p}={v!r}" for _, p, v in OFF])
 def test_each_condition_fails_by_its_own_name(run_dir, name, path, value):
+    if path == "briefs.seed" and G._whole(value):     # the render step draws the clips with the run's brief seed
+        make_run(run_dir, draw_seed=value, flacs=False)
     edit_json(run_dir / "summary" / "junk.json", lambda d: set_path(d, path, value))
     if path == "palette.sha256":           # render read the palette score read, so clips.json records it too
         edit_json(run_dir / "summary" / "clips.json", lambda d: set_path(d, path, value))
@@ -182,36 +184,38 @@ def test_an_unconstrained_run_fails_the_constrained_group(run_dir):
 
 
 def test_the_backend_the_render_step_and_g7_are_shown_never_judged(run_dir):
-    def off(d):
-        d["constrained"]["backend"] = {"requested": "xgrammar", "pin_accepted": False, "backend": "unknown",
-                                       "source": None, "applied": None}
-        d["failures"]["G7"] = 3
-        d["render"] = {"attempted": 50, "rendered": 47, "G7": 3, "other_gates": 0, "errors": 0, "skipped": 0,
-                       "seed": 2026, "k": 50}
-    edit_json(run_dir / "summary" / "junk.json", off)
+    def g7(d):                          # three clips fail G7 in the render step, which merges its block into junk.json
+        for k in (3, 9, 27):
+            d["clips"][k] = {"i": d["clips"][k]["i"], "ok": False, "gate": "G7", "detail": "true peak -0.80 dBTP"}
+    edit_clips(run_dir, g7)
+    edit_json(run_dir / "summary" / "junk.json", lambda d: d["constrained"].update(backend={
+        "requested": "xgrammar", "pin_accepted": False, "backend": "unknown", "source": None, "applied": None}))
     doc = C.evaluate(G.load_run(run_dir))
     assert doc["validity"]["valid"] and doc["exit"] == 0
     text = C.format_text(doc)
     assert "backend unknown (pin false, applied null; recorded, not judged)" in text
     assert "render step (recorded, not judged): attempted 50, rendered 47, G7 3" in text
+    edit_json(run_dir / "summary" / "junk.json", lambda d: d.update(render=None))      # the step did not finish
+    assert ("render step (recorded, not judged): junk.json has no render block (the render step did not run, or did "
+            "not finish)") in C.format_text(C.evaluate(G.load_run(run_dir)))
 
 
 # --------------------------------------------------------------------------------------------- the bar's first half
 def test_under_300_is_valid_and_under_the_bar(tmp_path):
     root = tmp_path / "junk-13783878"
-    make_run(root, copies=201, k=50, flacs=False)               # 299 passing non-copies
+    make_run(root, copies=201, flacs=False)               # 299 passing non-copies
     doc = C.evaluate(G.load_run(root))
     assert doc["validity"]["valid"] and doc["bar"]["pass_not_copy"]["count"] == 299
     assert doc["bar"]["pass_not_copy"]["met"] is False and (doc["verdict"], doc["exit"]) == ("valid, under the bar", 3)
     root = tmp_path / "junk-13783879"
-    make_run(root, copies=200, k=50, flacs=False)               # exactly 300
+    make_run(root, copies=200, flacs=False)               # exactly 300
     doc = C.evaluate(G.load_run(root))
     assert doc["bar"]["pass_not_copy"]["count"] == 300 and doc["exit"] == 0
 
 
 def test_invalid_and_under_the_bar_says_both(tmp_path):
     root = tmp_path / "junk-1"
-    make_run(root, copies=250, k=50, flacs=False)
+    make_run(root, copies=250, flacs=False)
     edit_json(root / "summary" / "junk.json", lambda d: set_path(d, "partial", True))
     doc = C.evaluate(G.load_run(root))
     assert (doc["verdict"], doc["exit"]) == ("invalid, and under the bar", 3)
@@ -238,13 +242,26 @@ def test_the_clips_readout_covers_the_clips_that_rendered_with_the_sample_beside
     def two_fail(d):
         d["clips"][3] = {"i": d["clips"][3]["i"], "ok": False, "gate": "G7", "detail": "true peak -0.80 dBTP"}
         d["clips"][7] = {"i": d["clips"][7]["i"], "ok": False, "gate": None, "skipped": "render deadline"}
-    edit_json(run_dir / "summary" / "clips.json", two_fail)
+    edit_clips(run_dir, two_fail)
     run = G.load_run(run_dir)
     r = C.readouts(run)["clips"]
     assert (r["n"], r["rendered"], r["recorded"], r["sampled"], r["sample"]["n"]) == (48, 48, 50, 50, 50)
     rendered = [x["i"] for x in run.rendered]
     assert r["k"] == sum(1 for i in rendered if verbatim_of(i)["A"] or verbatim_of(i)["B"])
     assert "of the whole sample of 50, 50 recorded" in C.format_text(C.evaluate(run))
+
+
+def test_a_render_step_cut_short_is_read_as_far_as_it_got(tmp_path):
+    """The render step writes clips.json after every clip and merges its block into junk.json only at the end, so a
+    step killed at 45 of 50 leaves 45 records of the registered draw and no render block: that is one run's files."""
+    root = tmp_path / "junk-13783877"
+    info = make_run(root, render_k=45, flacs=False)
+    edit_json(root / "summary" / "junk.json", lambda d: (d.update(render=None), d["failures"].update(G7=None)))
+    run = G.load_run(root)
+    assert run.sample == tuple(info["sample"]) and len(run.sample) == 50 and len(run.rendered) == 45
+    r = C.readouts(run)["clips"]
+    assert (r["n"], r["recorded"], r["sampled"]) == (45, 45, 50)
+    assert C.evaluate(run)["exit"] == 0
 
 
 def test_without_clips_json_the_check_still_reports_validity(run_dir, capsys):
@@ -290,7 +307,26 @@ BAD = [
     ("clips copy", lambda r: edit_json(r / "summary" / "clips.json", lambda d: d["clips"][0].update(i=3)),
      "are not junk's sample of 50"),
     ("clips seed", lambda r: edit_json(r / "summary" / "clips.json", lambda d: d.update(seed=2027)),
-     "are not junk's sample of 50 (seed 2027)"),
+     "clips.json: `seed` is 2027; the ear check's sample is drawn with the run's brief seed 2026"),
+    # another draw, self-consistent (a hand re-render with --k 100 or --seed 7): never the registered sample of 50
+    ("clips k 100", lambda r: make_run(r, k=100, flacs=False),
+     "clips.json: `k` is 100; the ear check is junk's sample of 50"),
+    ("clips k 100 order", lambda r: make_run(r, k=100, flacs=False),
+     "clips.json's 100 clips are not junk's sample of 50 (seed 2026)"),
+    ("clips seed 7", lambda r: make_run(r, draw_seed=7, flacs=False),
+     "clips.json: `seed` is 7; the ear check's sample is drawn with the run's brief seed 2026"),
+    ("clips seed 7 order", lambda r: make_run(r, draw_seed=7, flacs=False),
+     "clips.json's 50 clips are not junk's sample of 50 (seed 2026)"),
+    ("clips k 40", lambda r: make_run(r, k=40, flacs=False), "clips.json: `k` is 40"),
+    # junk.json's render block is what the render step merged from clips.json, or absent (the step did not finish)
+    ("render block k", lambda r: edit_json(r / "summary" / "junk.json", lambda d: d["render"].update(k=100)),
+     "junk.json's `render` block {\"G7\": 0, \"attempted\": 50, \"errors\": 0, \"k\": 100"),
+    ("render block seed", lambda r: edit_json(r / "summary" / "junk.json", lambda d: d["render"].update(seed=7)),
+     "is not the one clips.json gives"),
+    ("render block count", lambda r: edit_json(r / "summary" / "junk.json", lambda d: d["render"].update(rendered=49)),
+     "is not the one clips.json gives"),
+    ("render block cut", lambda r: edit_json(r / "summary" / "clips.json", lambda d: d["clips"].pop()),
+     "not one render step's files"),
     ("clips palette",
      lambda r: edit_json(r / "summary" / "clips.json", lambda d: d["palette"].update(sha256=DEV_GU_SHA)),
      "rendered with palette b2e4a340…"),

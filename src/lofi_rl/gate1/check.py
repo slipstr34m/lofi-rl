@@ -28,7 +28,8 @@ A value must have the registered JSON type too: `partial` 0 is not false, and `n
   none, or it was not pulled) this readout is reported as absent: validity reads junk.json alone.
 
 Exit 0 when the run is valid and meets the first half, 3 otherwise (invalid, or under 300), 2 on bad input (a file
-missing or unreadable, or files that are not one run's: lofi_rl.gate1.load_run). Sound claims: none.
+missing or unreadable, files that are not one run's, or a clips.json that is not the registered draw of 50:
+lofi_rl.gate1.load_run). Sound claims: none.
 """
 from __future__ import annotations
 
@@ -201,7 +202,7 @@ def evaluate(run: Run) -> dict:
 def render_summary(render) -> str:
     """junk.json's `render` block in words: shown, never judged (D-020: the render step and G7 decide nothing)."""
     if not isinstance(render, dict):
-        return "junk.json has no render block (render did not run, or ran no clip)"
+        return "junk.json has no render block (the render step did not run, or did not finish)"
     keys = ("attempted", "rendered", "G7", "other_gates", "errors", "skipped")
     return (", ".join(f"{k} {shown(render.get(k, MISSING))}" for k in keys)
             + f" (k {shown(render.get('k', MISSING))}, seed {shown(render.get('seed', MISSING))})")

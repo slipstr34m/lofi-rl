@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from helpers_gate1 import JOB, SEED, copy_run, edit_json, junk_doc, make_run, sha, verbatim_of
+from helpers_gate1 import JOB, SEED, copy_run, edit_clips, edit_json, junk_doc, make_run, sha, verbatim_of
 from lofi_rl import gate1 as G
 from lofi_rl.brief import Brief, sample_brief
 from lofi_rl.compile.timeline import loop_samples
@@ -36,7 +36,7 @@ HEX64 = re.compile(r"[0-9a-f]{64}")
 @pytest.fixture(scope="module")
 def made(tmp_path_factory):
     root = tmp_path_factory.mktemp("gate1-batch") / "junk-13783877"
-    info = make_run(root, k=8)
+    info = make_run(root, render_k=8)
     return root, info
 
 
@@ -83,7 +83,7 @@ def test_a_gate_batch_passes_the_rating_pages_own_check(run_dir, tmp_path, made)
     assert hid["category"] == G.CATEGORY == h.category
     batch = json.loads((run_dir / "summary" / "batch.json").read_text())
     assert [x["sample"] for x in batch["rounds"]] != [] and sorted(x["sample"] for x in batch["rounds"]) == sorted(
-        made[1]["sample"])
+        made[1]["recorded"])
     by_i = {rec["i"]: rec for rec in run.rendered}
     for r, row, ledger in zip(m.rounds, pub["rounds"], batch["rounds"]):
         hr = h.rounds[r.id]
@@ -112,7 +112,9 @@ def test_a_gate_batch_passes_the_rating_pages_own_check(run_dir, tmp_path, made)
         assert ledger["clip"] == {"id": oid, "real": info["clip"], "pcm_sha256": info["pcm_sha256"],
                                   "flac_sha256": info["flac_sha256"], "verbatim_line": info["verbatim_line"],
                                   "manifest": True}
-    assert (batch["sampled"], batch["recorded"], batch["rendered"], batch["left_out"]) == (8, 8, 8, [])
+    assert (batch["sampled"], batch["recorded"], batch["rendered"]) == (50, 8, 8)       # the step ended after 8
+    assert batch["left_out"] == [{"i": i, "why": "not recorded: the render step ended before it"}
+                                 for i in made[1]["sample"][8:]]
     assert (batch["batch"], batch["dir"]) == (NAME, f"{DATE}/{NAME}")
     assert (batch["mode"], batch["category"]) == ("triage", "gate1")
     assert batch["without_manifest"] == [] and batch["same_real_clip"] == []
@@ -201,16 +203,15 @@ def test_clips_that_did_not_render_are_left_out_and_named(run_dir, tmp_path, fas
     def change(d):
         d["clips"][2] = {"i": d["clips"][2]["i"], "ok": False, "gate": "G7", "detail": "true peak -0.80 dBTP"}
         d["clips"][4] = {"i": d["clips"][4]["i"], "ok": False, "gate": None, "error": "FluidSynthError: killed"}
-        del d["clips"][6:]                                         # the render step ended before the last two
-    edit_json(run_dir / "summary" / "clips.json", change)
+        del d["clips"][6:]                                         # the render step ended two clips earlier
+    edit_clips(run_dir, change)
     sample = G.load_run(run_dir).sample
     build(run_dir, tmp_path, measure=fast)
     batch = json.loads((run_dir / "summary" / "batch.json").read_text())
-    assert (batch["sampled"], batch["recorded"], batch["rendered"]) == (8, 6, 4)
+    assert (batch["sampled"], batch["recorded"], batch["rendered"]) == (50, 6, 4)
+    later = [{"i": i, "why": "not recorded: the render step ended before it"} for i in sample[6:]]
     assert batch["left_out"] == [{"i": sample[2], "why": "gate G7: true peak -0.80 dBTP"},
-                                 {"i": sample[4], "why": "error: FluidSynthError: killed"},
-                                 {"i": sample[6], "why": "not recorded: the render step ended before it"},
-                                 {"i": sample[7], "why": "not recorded: the render step ended before it"}]
+                                 {"i": sample[4], "why": "error: FluidSynthError: killed"}, *later]
 
 
 def test_without_the_render_manifests_the_real_clip_ids_are_the_same(run_dir, tmp_path, made, fast):
@@ -222,7 +223,7 @@ def test_without_the_render_manifests_the_real_clip_ids_are_the_same(run_dir, tm
                     for i in hr["clips"].values()) for f in (with_, without)]
     assert reals[0] == reals[1]
     batch = json.loads((run_dir / "summary" / "batch.json").read_text())
-    assert sorted(batch["without_manifest"]) == sorted(made[1]["sample"])
+    assert sorted(batch["without_manifest"]) == sorted(made[1]["recorded"])
     assert all(x["clip"]["manifest"] is False for x in batch["rounds"])
 
 
@@ -387,8 +388,8 @@ def test_a_bad_name_or_clips_folder_refuses(run_dir, tmp_path, fast):
 
 
 def test_no_clip_rendered_refuses(run_dir, tmp_path, fast):
-    edit_json(run_dir / "summary" / "clips.json",
-              lambda d: d.update(clips=[{"i": r["i"], "ok": False, "gate": "G7", "detail": "x"} for r in d["clips"]]))
+    edit_clips(run_dir,
+               lambda d: d.update(clips=[{"i": r["i"], "ok": False, "gate": "G7", "detail": "x"} for r in d["clips"]]))
     _refused(run_dir, tmp_path, "no clip rendered", measure=fast)
 
 
@@ -404,7 +405,8 @@ def test_the_command_builds_into_the_inbox_and_names_the_next_batch(made, tmp_pa
     assert cli.main(["batch", str(one), "--clips", str(one / "clips"), "--inbox", str(inbox), "--date", DATE,
                      "--seed", f"{SEED:016x}"]) == 0
     out = capsys.readouterr().out
-    assert f"batch {NAME}: 8 triage rounds of 8 sampled clips" in out and f"push: Needs ear check: {NAME}." in out
+    assert f"batch {NAME}: 8 triage rounds of 50 sampled clips" in out and f"push: Needs ear check: {NAME}." in out
+    assert out.count("not recorded: the render step ended before it") == 42
     two = copy_run(made[0], tmp_path / "two" / "junk-13783877")
     assert cli.main(["batch", str(two), "--clips", str(two / "clips"), "--inbox", str(inbox),
                      "--date", "2026-11-09"]) == 0
@@ -422,7 +424,7 @@ def test_the_command_refuses_a_run_that_does_not_pass_check(made, tmp_path, caps
     assert "does not pass check (invalid)" in capsys.readouterr().err
     assert not (tmp_path / "inbox").exists() and not (bad / "summary" / "batch.json").exists()
     under = tmp_path / "under" / "junk-13783878"
-    make_run(under, copies=201, k=2, flacs=False)
+    make_run(under, copies=201, render_k=2, flacs=False)
     assert cli.main(["batch", str(under), "--clips", str(under / "clips"), "--inbox", str(tmp_path / "inbox")]) == 3
     assert "(valid, under the bar)" in capsys.readouterr().err
 
@@ -441,6 +443,22 @@ def test_the_command_says_bad_input_with_exit_2(made, tmp_path, capsys):
     assert cli.main(["batch", str(r2), "--clips", str(r2 / "clips"), "--inbox", str(tmp_path / "inbox")]) == 2
     assert "problem(s), nothing written" in capsys.readouterr().err
     assert not (tmp_path / "inbox").exists() or not any((tmp_path / "inbox").rglob("*.flac"))
+
+
+@pytest.mark.parametrize("off, message", [
+    ({"k": 100}, "clips.json: `k` is 100; the ear check is junk's sample of 50"),
+    ({"draw_seed": 7}, "clips.json: `seed` is 7; the ear check's sample is drawn with the run's brief seed 2026"),
+])
+def test_a_sample_that_is_not_the_registered_draw_is_never_batched(tmp_path, capsys, off, message):
+    """A hand re-render of another k or seed (its clips.json and junk.json one render step's) is another draw: the
+    batch refuses it as bad input, so the ear check never holds more than the 50 clips, or other clips."""
+    run = tmp_path / "junk-13783877"
+    make_run(run, render_k=3, measure=False, **off)
+    inbox = tmp_path / "inbox"
+    assert cli.main(["batch", str(run), "--clips", str(run / "clips"), "--inbox", str(inbox), "--date", DATE]) == 2
+    err = capsys.readouterr().err
+    assert "error: bad input, nothing written" in err and message in err
+    assert not inbox.exists() and not (run / "summary" / "batch.json").exists()
 
 
 # --------------------------------------------------------------------------------------------- junk's own render step

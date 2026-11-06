@@ -11,10 +11,10 @@
   fewer rounds (a clip that did not render) still needs 15.
 - **The split** (D-021): the same counts for the clips that carry a verbatim A or B line of the example their
   prompt showed (the hidden manifest's `verbatim_line`) and for those that do not.
-- **Bad input** (exit 2, nothing decided): a folder that is not a gate1 triage batch, a missing votes file, or a log
-  that is not this batch's: an event of another batch, a vote of another mode or with a tier that is not one of the
-  four, a round the manifest does not hold, or a vote whose clip is not that round's (its opaque id or its real clip
-  id).
+- **Bad input** (exit 2, nothing decided): a folder that is not a gate1 triage batch (or holds more rounds than the
+  50 clips of the registered sample), a missing votes file, or a log that is not this batch's: an event of another
+  batch, a vote of another mode or with a tier that is not one of the four, a round the manifest does not hold, or a
+  vote whose clip is not that round's (its opaque id or its real clip id).
 
 The manifests are read for their labels only (`check_files=False`, as the shootout tally reads them), so a batch
 whose FLACs were cleared after voting still tallies. **Output:** the text goes to the terminal, and the JSON to
@@ -53,6 +53,9 @@ def _rounds_of(m, h, batch_dir: Path) -> tuple[dict[str, dict], list[str]]:
         problems.append(f"{batch_dir}: a {m.mode} batch, not a {MODE} batch")
     if h.category != G.CATEGORY:
         problems.append(f"{batch_dir}: hidden category {h.category!r}, not {G.CATEGORY!r}: not a gate1 batch")
+    if len(m.rounds) > G.CLIPS:
+        problems.append(f"{batch_dir}: {len(m.rounds)} rounds; a gate1 batch holds at most the {G.CLIPS} clips of the "
+                        "registered sample, one a round")
     infos: dict[str, dict] = {}
     for r in m.rounds:
         hr = h.rounds[r.id]
