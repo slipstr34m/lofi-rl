@@ -31,13 +31,15 @@ nothing written):
   it would change named; one that would change only the How-to-approve example (its date) leaves the file as it is.
   To write other numbers, the file is moved aside first, and the new file waits for his line again.
 
-`--batch` and `--votes` go together, and the batch must be this run's: every clip's job and palette label are the
-run's, and its clips are exactly the run's rendered ones. Exit 0 when the file is written (or already holds that
-text), 2 on bad input. Sound claims: none.
+`--batch` and `--votes` go together, and the batch must be this run's ear check: every clip's job and palette label
+are the run's, its clips are exactly the run's rendered ones, and it is the batch the run's summary/batch.json records
+(its name, and its rounds in serving order), the one ear check the gate counts for a run (lofi_rl.gate1.batch builds
+no second). Exit 0 when the file is written (or already holds that text), 2 on bad input. Sound claims: none.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import date as _date
 from pathlib import Path
@@ -73,8 +75,24 @@ def _method(m) -> str:
     return "Wilson" if m == "wilson" else str(m)
 
 
+def _recorded(run: G.Run) -> tuple[dict | None, str | None]:
+    """The run's summary/batch.json, the record gate1.batch writes of the run's one ear check: (it, None) or (None,
+    why it is not there)."""
+    path = run.dir / "summary" / "batch.json"
+    try:
+        rec = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, (f"{path} is missing: the gate counts the ear check the run recorded when its batch was built "
+                      "(python -m lofi_rl.gate1 batch writes it)")
+    except (OSError, UnicodeDecodeError, ValueError) as err:
+        return None, f"{path} is not readable JSON ({err})"
+    if not isinstance(rec, dict) or not isinstance(rec.get("rounds"), list):
+        return None, f"{path} is not a gate1 batch record (no `rounds`)"
+    return rec, None
+
+
 def batch_problems(batch_dir: Path, run: G.Run) -> list[str]:
-    """Why a batch is not this run's (module doc); [] when it is."""
+    """Why a batch is not this run's ear check (module doc); [] when it is."""
     try:
         m, h = load_batch(batch_dir, check_files=False)
     except ManifestError as err:
@@ -92,6 +110,20 @@ def batch_problems(batch_dir: Path, run: G.Run) -> list[str]:
     elif len(samples) != len(want) or sorted(s if G._whole(s) else -1 for s in samples) != sorted(want):
         out.append(f"{batch_dir} holds {len(samples)} clips; the run rendered {len(want)}, and the batch must hold "
                    "each of them exactly once")
+    rec, why = _recorded(run)
+    if why:
+        out.append(why)
+    elif rec.get("batch") != m.batch:
+        out.append(f"{batch_dir} is batch {m.batch}; the run's ear check is batch {rec.get('batch')!r} (its "
+                   "summary/batch.json): the gate counts one ear check per run, the one the run recorded")
+    else:
+        def clip_id(x):
+            return x["clip"].get("id") if isinstance(x.get("clip"), dict) else None
+        recorded = [(x.get("id"), x.get("sample"), clip_id(x)) for x in rec["rounds"] if isinstance(x, dict)]
+        served = [(r.id, h.rounds[r.id].clips[r.ids[0]].get("sample"), r.ids[0]) for r in m.rounds]
+        if recorded != served:
+            out.append(f"{batch_dir}'s rounds are not the ones the run's summary/batch.json records for batch "
+                       f"{m.batch} (round ids, samples and clip ids, in serving order)")
     return out
 
 
@@ -176,12 +208,13 @@ def _ear_section(tdoc: dict | None, run: G.Run) -> list[str]:
         return ["## His ear check", "",
                 f"- **Not tallied yet.** The batch is built from `runs/{run.name}/summary/clips.json` "
                 "(`python -m lofi_rl.gate1 batch`), one clip a round in triage mode, and counted with "
-                "`python -m lofi_rl.gate1 tally` once he has voted."]
+                "`python -m lofi_rl.gate1 tally` once he has voted. A run has one ear check: the batch its "
+                "`summary/batch.json` records."]
     s, b = tdoc["split"], tdoc["bar"]
     lines = [f"## His ear check: batch {tdoc['batch']}", "",
-             f"Triage mode: one clip a round, played through its seam; Toss, Fine, Good or Great (TASTE.md, Tiers). A "
-             f"clip counts as heard once {G.HEARD_MIN_BARS} bar has played, over every attempt of its round (D-013 as "
-             "amended).",
+             "The run's one ear check, the batch its `summary/batch.json` records. Triage mode: one clip a round, "
+             "played through its seam; Toss, Fine, Good or Great (TASTE.md, Tiers). A clip counts as heard once "
+             f"{G.HEARD_MIN_BARS} bar has played, over every attempt of its round (D-013 as amended).",
              f"- **Counts:** {tdoc['heard']} of {tdoc['rounds']} heard; {tdoc['counted']} voted and heard. "
              f"{T.tiers_text(tdoc['tiers'])}.",
              f"- **\"Fine\" (Fine, Good or Great):** {tdoc['fine_or_better']}. It needs at least {b['need']} of "

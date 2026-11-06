@@ -294,11 +294,10 @@ def test_the_same_bytes_count_with_other_samples_refuses_by_their_loudness(run_d
 
 
 def test_a_flac_sha256_clips_json_records_must_match(run_dir, tmp_path, fast):
-    flac = _first(run_dir)
-    edit_json(run_dir / "summary" / "clips.json", lambda d: d["clips"][0].update(flac_sha256=sha256_file(flac)))
-    build(run_dir, tmp_path, measure=fast, name="b1107-gate1-ok")
-    for p in ("draw.json", "batch.json"):
-        (run_dir / "summary" / p).unlink()
+    ok = copy_run(run_dir, tmp_path / "ok" / "junk-13783877")          # a recorded sha256 that matches is taken
+    flac = _first(ok)
+    edit_json(ok / "summary" / "clips.json", lambda d: d["clips"][0].update(flac_sha256=sha256_file(flac)))
+    build(ok, tmp_path / "ok", measure=fast)
     edit_json(run_dir / "summary" / "clips.json", lambda d: d["clips"][0].update(flac_sha256="0" * 64))
     _refused(run_dir, tmp_path, "sha256 is not the", measure=fast)
 
@@ -372,10 +371,35 @@ def test_a_runs_batch_record_is_never_overwritten(run_dir, tmp_path, fast):
     before = {p: (run_dir / "summary" / p).read_bytes() for p in ("draw.json", "batch.json")}
     with pytest.raises(BuildError) as err:
         build(run_dir, tmp_path, measure=fast, name="b1107-gate1-2")
-    assert sum("a batch was already built from this run" in e for e in err.value.errors) == 2
-    assert any(f"(batch {NAME})" in e for e in err.value.errors)
+    errs = err.value.errors
+    assert sum("this run's ear check was built already" in e for e in errs) == 2
+    assert any(f"(batch {NAME})" in e for e in errs)
+    assert any(f"holds this run's ear check already ({DATE}/{NAME})" in e for e in errs)
+    assert not any("move it aside" in e for e in errs)                  # nothing here suggests a second ear check
     assert {p: (run_dir / "summary" / p).read_bytes() for p in before} == before
     assert not (tmp_path / "inbox" / DATE / "b1107-gate1-2").exists()
+
+
+def test_a_second_ear_check_of_one_run_is_never_built(run_dir, tmp_path, fast):
+    """Review F4's case: the run's draw.json and batch.json moved aside, its ear check is still in the inbox (under
+    any name or date: found by its hidden manifest), so a second batch refuses and names it. Another run's batch in
+    that inbox is not this run's."""
+    build(run_dir, tmp_path, measure=fast, name="b1107-mine")
+    for f in ("draw.json", "batch.json"):
+        (run_dir / "summary" / f).rename(run_dir / "summary" / f"{f}.aside")
+    with pytest.raises(BuildError) as err:
+        build(run_dir, tmp_path, measure=fast, name="b1108-gate1-2", date="2026-11-08")
+    assert err.value.errors == [f"{tmp_path / 'inbox'} holds this run's ear check already ({DATE}/b1107-mine): the "
+                                "gate counts one ear check per run, so a second one is Shresth's call"]
+    assert not (tmp_path / "inbox" / "2026-11-08").exists() and not (run_dir / "summary" / "batch.json").exists()
+    other = copy_run(run_dir, tmp_path / "o" / "junk-13783878")
+    edit_json(other / "summary" / "junk.json", lambda d: d["generate"]["host"].update(job="13783878"))
+    assert GB.run_batches(tmp_path / "inbox", G.load_run(other)) == []
+    build(other, tmp_path, measure=fast, name="b1108-gate1-2", date="2026-11-08")
+    assert GB.run_batches(tmp_path / "inbox", G.load_run(other)) == ["2026-11-08/b1108-gate1-2"]
+    nojob = copy_run(run_dir, tmp_path / "n" / "junk-13783877")         # a run with no job id: matched by its name
+    edit_json(nojob / "summary" / "junk.json", lambda d: d["generate"]["host"].pop("job"))
+    assert GB.run_batches(tmp_path / "inbox", G.load_run(nojob)) == [f"{DATE}/b1107-mine"]
 
 
 def test_a_bad_name_or_clips_folder_refuses(run_dir, tmp_path, fast):
@@ -407,9 +431,14 @@ def test_the_command_builds_into_the_inbox_and_names_the_next_batch(made, tmp_pa
     out = capsys.readouterr().out
     assert f"batch {NAME}: 8 triage rounds of 50 sampled clips" in out and f"push: Needs ear check: {NAME}." in out
     assert out.count("not recorded: the render step ended before it") == 42
-    two = copy_run(made[0], tmp_path / "two" / "junk-13783877")
+    two = copy_run(made[0], tmp_path / "two" / "junk-13783878")       # another run: one ear check each
+    edit_json(two / "summary" / "junk.json", lambda d: d["generate"]["host"].update(job="13783878"))
     assert cli.main(["batch", str(two), "--clips", str(two / "clips"), "--inbox", str(inbox),
                      "--date", "2026-11-09"]) == 0
+    again = copy_run(made[0], tmp_path / "again" / "junk-13783877")    # the first run again, its records elsewhere
+    assert cli.main(["batch", str(again), "--clips", str(again / "clips"), "--inbox", str(inbox),
+                     "--date", "2026-11-09"]) == 2
+    assert f"holds this run's ear check already ({DATE}/{NAME})" in capsys.readouterr().err
     assert (inbox / "2026-11-09" / "b1109-gate1-2").is_dir() and (inbox / DATE / NAME).is_dir()
     assert GB.batch_name(date(2026, 11, 9), inbox) == "b1109-gate1-3"
     assert GB.batch_name(date(2026, 11, 9), inbox, "b1109-mine") == "b1109-mine"

@@ -366,6 +366,27 @@ def test_batch_and_votes_go_together_and_must_be_the_runs(made, run_dir, tmp_pat
     assert "the batch must hold each of them exactly once" in capsys.readouterr().err
 
 
+def test_the_batch_must_be_the_ear_check_the_run_recorded(made, run_dir, tmp_path, capsys):
+    """Review F4: the gate counts one ear check per run, the batch its summary/batch.json records (gate1.batch builds
+    no second): another batch name there, other rounds, or no record at all write nothing."""
+    _run, folder, votes = made
+    out = tmp_path / "GATE_phase1.md"
+    ear = ("--batch", str(folder), "--votes", str(votes))
+    record = run_dir / "summary" / "batch.json"
+    edit_json(record, lambda d: d.update(batch="b1108-gate1-2"))
+    assert write(run_dir, out, *ear) == 2 and not out.exists()
+    assert (f"{folder} is batch b1107-gate1; the run's ear check is batch 'b1108-gate1-2' (its summary/batch.json): "
+            "the gate counts one ear check per run, the one the run recorded") in capsys.readouterr().err
+    edit_json(record, lambda d: (d.update(batch="b1107-gate1"), d["rounds"].reverse()))
+    assert write(run_dir, out, *ear) == 2 and not out.exists()
+    err = capsys.readouterr().err
+    assert "rounds are not the ones the run's summary/batch.json records for batch b1107-gate1" in err
+    record.unlink()
+    assert write(run_dir, out, *ear) == 2 and not out.exists()
+    assert "summary/batch.json is missing: the gate counts the ear check the run recorded" in capsys.readouterr().err
+    assert write(run_dir, out) == 0                       # before the ear check, no batch is read
+
+
 def test_a_bad_date_or_run_writes_nothing(run_dir, tmp_path):
     out = tmp_path / "GATE_phase1.md"
     assert write(run_dir, out, day="2026-02-30") == 2 and not out.exists()

@@ -114,7 +114,11 @@ One triage batch of the run's clips for his ear check.
   true peak, the FLAC's sha256, the run, its job id and the palette label.
 - **Files:** written into `<inbox>/.staging-*`, checked by `python -m lofi_rl.ui.manifest check` in a fresh
   interpreter, then moved into place. An existing batch is never overwritten, and neither are a run's draw.json and
-  batch.json: a second batch from one run refuses until they are moved aside.
+  batch.json.
+- **One ear check per run:** the gate counts the batch the run's `summary/batch.json` records (§5). So the batch
+  refuses a run whose summary records one already, and a run whose ear check the inbox already holds (a gate1 batch,
+  under any name or date, whose hidden manifest names the run's job). A second ear check of one run is Shresth's
+  call; the tool builds none.
 - **Name:** `b<MMDD>-gate1`, then `b<MMDD>-gate1-<k>` for the inbox's k-th gate1 batch over every date.
 - **Exit:** 0 built (it prints the push text, "Needs ear check: …"), 3 the run does not pass check, 2 bad input or a
   refused clip, with every problem listed and nothing written.
@@ -159,8 +163,9 @@ out for a bare date (`--date`, default today in Pacific time), indented so that 
     sections it would change named: his line stands for the file he read. The same numbers leave the file as it is,
     on another day too (the How-to-approve example keeps its date). For other numbers (another run, a vote taken back
     after he signed), the file is moved aside first, and the new one waits for his line again.
-- `--batch` and `--votes` go together, and the batch must be the run's (its clips' job and palette label, and exactly
-  the run's rendered clips).
+- `--batch` and `--votes` go together, and the batch must be the run's ear check: its clips' job and palette label
+  are the run's, it holds exactly the run's rendered clips, and it is the batch the run's `summary/batch.json`
+  records (its name, and its rounds in serving order).
 - **Exit:** 0 written or unchanged, 2 bad input. It prints whether the file holds his line (`kit.gates`).
 
 ## 6. On the day
@@ -188,6 +193,8 @@ Each is a reading of the decisions above where they do not say, overridable by S
 - **The render manifests are optional** (§3): the batch's inputs are clips.json and the FLAC folder; the manifest is
   verified when it is there.
 - **The batch refuses a run that does not pass check** (exit 3): its ear check would decide nothing.
+- **One ear check per run** (§3, §5): the bar is one count over the run's 50 clips, so the gate reads the batch the
+  run recorded, and a second batch of one run is never built here.
 - **The ear check's sample is the registered draw** (§2): 50 clips, drawn with the run's brief seed, as the render
   step draws by default; clips.json of another k or seed is bad input.
 - **The ear check's bar is 15, a count**, whatever number of the 50 rendered; the gate file says how many rendered.

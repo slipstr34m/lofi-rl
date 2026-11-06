@@ -49,7 +49,11 @@ triage batch for Shresth's ear check (D-021 "What follows" item 1: at least 15 o
   job id and the palette label.
 - **Files:** written into <inbox>/.staging-*, checked by `python -m lofi_rl.ui.manifest check` in a fresh
   interpreter, then moved into place. An existing batch folder is never overwritten, and neither is a run's
-  summary/draw.json or summary/batch.json (a second batch from one run refuses until they are moved aside).
+  summary/draw.json or summary/batch.json.
+- **One ear check per run:** the gate counts the batch the run's summary/batch.json records (lofi_rl.gate1.gatefile).
+  So the batch refuses a run whose summary records one already (draw.json or batch.json), and a run whose ear check
+  the inbox already holds: a gate1 batch, under any name or date, whose hidden manifest names this run's job
+  (`run_batches`). A second ear check of one run is Shresth's call, and nothing here builds one.
 - **Name:** `b<MMDD>-gate1`, then `b<MMDD>-gate1-<k>` for the inbox's k-th gate1 batch over every date.
 
 Exit 0 built, 3 refused because the run does not pass check, 2 bad input or a refusal of the clips, with nothing
@@ -109,6 +113,26 @@ def batch_name(day: _date, inbox: Path | str, name: str | None = None) -> str:
         if not (inbox / day.isoformat() / cand).exists():
             return cand
         k += 1
+
+
+def run_batches(inbox: Path | str, run: G.Run) -> list[str]:
+    """`<date>/<batch>` of every gate1 batch in the inbox that holds this run's clips, in path order: its hidden
+    manifest (category gate1) names the run's job, or the run's folder name when the run records no job. Whatever the
+    batch's name, so a batch built under --name is found too. A hidden manifest that does not read is not this
+    module's to judge, and is passed over."""
+    out = []
+    for hid in sorted(Path(inbox).glob(f"*/*/{HIDDEN_NAME}")):
+        try:
+            doc = json.loads(hid.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            continue
+        rounds = doc.get("rounds") if isinstance(doc, dict) and doc.get("category") == G.CATEGORY else None
+        infos = [info for hr in (rounds.values() if isinstance(rounds, dict) else ()) if isinstance(hr, dict)
+                 and isinstance(hr.get("clips"), dict) for info in hr["clips"].values() if isinstance(info, dict)]
+        if any((str(info.get("job")) == run.job) if run.job is not None else (info.get("run") == run.name)
+               for info in infos):
+            out.append(f"{hid.parent.parent.name}/{hid.parent.name}")
+    return out
 
 
 def draw_order(cells: Mapping[str, tuple[str, str]], seed: int) -> dict:
@@ -343,8 +367,13 @@ def build(run: G.Run, clips_dir: Path | str, *, name: str, date: str, out_root: 
                 was = json.loads(p.read_text(encoding="utf-8")).get("batch")
             except (OSError, ValueError, AttributeError):
                 was = None
-            errors.append(f"{p} exists{f' (batch {was})' if was else ''}: a batch was already built from this run, "
-                          "and its record is never overwritten; move it aside first")
+            errors.append(f"{p} exists{f' (batch {was})' if was else ''}: this run's ear check was built already, "
+                          "and its record is never overwritten. The gate counts one ear check per run, the batch "
+                          "this record names; a second one is Shresth's call")
+    earlier = run_batches(out_root, run)
+    if earlier:
+        errors.append(f"{out_root} holds this run's ear check already ({', '.join(earlier)}): the gate counts one ear "
+                      "check per run, so a second one is Shresth's call")
     if run.clips is None:
         errors.append(f"{run.dir / 'summary' / 'clips.json'} is missing: the batch is built from it")
     if not clips_dir.is_dir():
