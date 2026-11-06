@@ -19,7 +19,36 @@ Newest entry first. Every number cites the file or command output it was read fr
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
 - **The palette is frozen:** `palettes/lofi_rain_v1.yaml`, `frozen: '2026-11-04'` (sha256 `09f80a64…`), on Shresth's APPROVED line of 2026-11-04.
-- **Next:** D-022, the switches to the frozen palette and the Phase-1 gate's render step (the freeze spec §5.3–5.6), then the Phase-1 gate.
+- **Waiting on Shresth:** 27 or 28 minutes for the Phase-1 gate job (D-022, "Open, for Shresth"). Then the gate: `lofi-junk-rate ARGS='500 2026 1 v2'` on the frozen palette, and his 50-clip ear check.
+
+---
+
+## 2026-11-06 (10:30 PST): the freeze's step 6: junk-rate on the frozen palette, its render step re-sized, D-022; 27 or 28 minutes goes to Shresth
+
+**What was done**
+- **Two workflow runs.**
+  - The first (`wf_93640418-d43`) lost its build agent to a network error (ENOTFOUND) after four commits.
+  - The rerun (`wf_d0e59516-024`) checked those four, finished the build, wrote D-022 and ran three adversarial reviews (23 findings: 12 on numbers, 8 on tests and docs, 3 on the gate path).
+  - Its fix agent committed fixes for all but F3 (this entry's re-registration line). Then the fix and verify agents stopped at the weekly usage limit, so I verified it myself: the suite below, the registry, and that no protected path changed (`git diff --name-only 074b46c..` over palettes/, drafts/, docs/prereg/, the GRPO smoke configs, gates/GATE_palette.md, CHANGELOG.md, data/ and vocab.py: none).
+  - Merged as `9b79b33`.
+- **The switches** (the freeze spec §5.5):
+  - junk-rate's default palette is `palettes/lofi_rain_v1.yaml`, for generate, score and render;
+  - the scorer server keeps dev_gu as its default, and its comment now says why;
+  - the docs name the frozen palette, its regex, the bed as heard, the sign-off vote rules and the rain credit;
+  - the GRPO smoke configs and vocab.py are left as the records they are.
+- **The Phase-1 gate's render step** (D-022): job B's projection was 869.5 s (50 × its slowest one-at-a-time render, 17.39 s; `runs/drafts-13706355/summary/verify.json`) against 300 s.
+  - **Two at a time, 2 workers each** (spec (iii)): 1.713× as fast on the laptop for the 42 drafts and 9 references, and 1.765× for 50 of D-020 arm B's loops (`docs/evidence/D-022/`). Every clip is identical in every order.
+  - **With 27 minutes** (spec (ii)): render deadline 535 s and timeout 595 s, against the worst case of 869.5 / 1.713 = 507.6 s (27.4 s spare), or about 225 s at job B's mean render.
+  - **Re-registered** by `make approve JOB=jobs/junk_rate.sbatch MAX=486 BY=Claude`: jobs/junk_rate.sbatch `4a9d8685231fd573`, 450 SU (2026-10-31) → `a7c7ea3502cf395c`, 486 SU, by Claude, 2026-11-04 (D-003's amendment; the freeze spec §5.5 (ii) with (iii)). `scripts/approve_job.py --check` exits 0, and the sha is recomputed from the file.
+  - **Open (review F1):** under the spec's no-change rule, which keeps 60 s for an outlier, 27 minutes falls short (507.6 > 535 − 60), and 28 minutes (504 SU) is the first that passes. 28 minutes or more is Shresth's call (spec (iv)), so the job stays at 27 until his word.
+- **What D-022 records** (docs/DECISIONS.md): the freeze, his words, both sign-off listens, the redo round, the departures, the evidence, and the Phase-1 gate's validity swaps (palette.sha256 = B, the regex sha `5c081828…`).
+- **APPROVED wording:** kit.gates and the seal's refusals now show the line written out with a bare date, and say what to change in a near miss. The accepted form is unchanged.
+- **Arm B's loops under the frozen vocabulary:** 276 of D-020 arm B's 446 passing non-copies compile; 170 fail G4 on `organ`, which the palette does not have. The gate decodes under the frozen palette's own regex, so it cannot write that name.
+- **Suite on the merged main:** 3444 passed, 5 skipped.
+
+**SU spent:** 0.
+
+**Next:** Shresth's answer on 27 or 28 minutes. Then `make submit JOB=jobs/junk_rate.sbatch ARGS='500 2026 1 v2' OVR='-p gpu'` (D-021's next step), the gate's 50 clips, and his ear check.
 
 ---
 
