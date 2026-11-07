@@ -249,6 +249,28 @@ def test_the_lazy_rule_renders_refb_and_pool_draws_only_when_needed(order, strea
     assert one(doc, "refb", "596:1")["undetermined"] is True, "its spare is still to render"
 
 
+def test_a_later_render_of_refb_and_the_pool_needs_this_runs_held_out_records(order, streams):
+    """The pool's Q5 exclusion reads the final held-out set (finding R3-1): pool brief 596:0's k4 has the text of
+    held-out 5101:0's k1. Given this run's held-out records, the later render lists Ref_b's 4 and the pool's k5-7, k4
+    skipped; given none, select and pending refuse rather than pick k4. The held-out rounds still run without them."""
+    table = {"5101:0": "a b c d e f g h", "596:0": "p q r s b t u v"}
+    rows = scored_rows(table, order, streams)
+    held, _ = rounds(rows, streams)                     # this run's held-out renders, clips.json's records
+    by = {(r["brief_id"], r["k"]): r["i"] for r in rows}
+    assert X.pending(rows, held, streams=streams, sets=("refb", "pool")) == [by[("596:0", k)]
+                                                                             for k in (0, 1, 2, 3, 5, 6, 7)]
+    doc = X.select(rows, held, streams=streams, pending_train=True)
+    assert ks(one(doc, "pool", "596:0")) == [] and why(one(doc, "pool", "596:0"))[4] == S.HELDOUT_TEXT
+    for call in (lambda: X.pending(rows, [], streams=streams, sets=("refb", "pool")),
+                 lambda: X.pending(rows, [], streams=streams, sets=("pool",)),
+                 lambda: X.select(rows, [], streams=streams, pending_train=True),
+                 lambda: X.sets_json(rows, [], streams=streams, render_code=None, pending_train=True)):
+        with pytest.raises(Step0Error, match="pass this run's clips.json records"):
+            call()
+    assert X.pending(rows, [], streams=streams) == [by[("5101:0", k)] for k in range(4)], "round 1 runs without"
+    assert X.candidates_block(rows, streams=streams)["heldout_order"] == [by[("5101:0", k)] for k in range(4)]
+
+
 def test_a_pool_g7_failure_is_not_replaced(order, streams):
     doc, *_ = run({"596:1": "p q r s t u v w"}, order, streams, train_outcomes={("596:1", 5): "G7"})
     p = one(doc, "pool", "596:1")

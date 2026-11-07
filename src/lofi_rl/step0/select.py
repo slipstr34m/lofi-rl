@@ -28,7 +28,9 @@ render is dropped and never replaced, so the spares are fixed by the records.
 
 **Before their renders** (this unit), a train draw that has no render record stands by its records: Ref_b's and the
 pool's picks are their records' (§4.4), and their G7 comes later (§3). `pending_train=True` makes such a draw pending
-instead, for the later units that render them.
+instead, for the later units that render them; those calls (select with pending_train, pending with "refb" or "pool")
+refuse to run before the held-out set is decided by the records they are given, since the pool's Q5 exclusion reads
+the final held-out set: a later unit passes every scored row and this run's clips.json records with its own.
 
 **Short and undetermined (§1.8).** A brief whose walk ends with fewer than m is short, and every draw it walked and did
 not take is listed with why: a gate code (G7 at a render), Q3's near_copy or repaired, repeat_of:<k>, refb, pool,
@@ -451,6 +453,19 @@ def selection(scored: Iterable[Mapping], records: Iterable[Mapping] = (), *, str
     return Selection(heldout, train, pool, held_texts, recs)
 
 
+def held_out_decided(sel: Selection) -> None:
+    """Refuse (Step0Error) a train selection that would run before the held-out set is decided. The pool's held-out
+    exclusion (Q5) reads the final held-out set, which only this run's render records give: a later render of Ref_b
+    or the pool passes every scored row (rm_heldout's too) and this run's clips.json records with its own. Without
+    them every held-out draw is pending, no held-out text is excluded, and the pool and Ref_b's spares come out
+    otherwise than the run fixed them (finding R3-1)."""
+    open_ = [it.brief_id for it, w in sel.heldout if w.pending or w.undetermined]
+    if open_:
+        raise Step0Error([f"{len(open_)} held-out briefs are not decided (first {open_[0]}): the pool's held-out "
+                          "exclusion reads the final held-out set, so pass this run's clips.json records with your "
+                          "own"])
+
+
 def _taken(d: Draw, rec: Mapping | None) -> dict:
     return {"k": d.k, "i": d.i, "draw_seed": d.draw_seed, "text_sha256": d.text_sha256, "canon_sha256": d.canon,
             "clip_id": rec.get("clip_id") if rec else None, "audio_sha256": rec.get("audio_sha256") if rec else None}
@@ -471,8 +486,12 @@ def _entry(name: str, it: Item, w: Walk, recs: Mapping, *, spares: Sequence[Draw
 
 def select(scored: Iterable[Mapping], records: Iterable[Mapping] = (), *, streams: Mapping[str, Stream],
            pending_train: bool = False) -> dict:
-    """sets.json's heldout, refb, pool and heldout_text (module doc), each in stream order."""
+    """sets.json's heldout, refb, pool and heldout_text (module doc), each in stream order. With pending_train (a
+    later unit's render of Ref_b and the pool) the held-out set must be decided by the records given
+    (held_out_decided)."""
     sel = selection(scored, records, streams=streams, pending_train=pending_train)
+    if pending_train:
+        held_out_decided(sel)
     return {
         "heldout": [_entry("heldout", it, w, sel.records) for it, w in sel.heldout],
         "refb": [_entry("refb", it, t.refb, sel.records, spares=t.spares) for it, t in sel.train],
@@ -494,8 +513,12 @@ def pending(scored: Iterable[Mapping], records: Iterable[Mapping] = (), *, strea
             sets: Sequence[str] = ("heldout",)) -> list[int]:
     """The rows (i) the next render round renders, in stream order then k: each brief's draws the lazy rule needs and
     no final record decides yet (an error the round before is retried once). Round 1 of the held-out set is each
-    brief's first 4 distinct candidates; ("refb", "pool") gives a later unit's renders of Ref_b and the pool."""
+    brief's first 4 distinct candidates; ("refb", "pool") gives a later unit's renders of Ref_b and the pool, which
+    need the held-out set decided by the records given: this run's clips.json records with their own
+    (held_out_decided)."""
     sel = selection(scored, records, streams=streams, pending_train=True)
+    if set(sets) & {"refb", "pool"}:
+        held_out_decided(sel)
     out = []
     if "heldout" in sets:
         out += [d.i for _, w in sel.heldout for d in w.pending]
