@@ -763,6 +763,48 @@ def test_without_sets_and_clips_the_run_is_invalid_not_bad_input(base, run_dir):
     assert cond(doc, C.STAMP_NAME)["ok"] is False, "no render stamp"
 
 
+def _without(run_dir: Path, dest: Path, name: str) -> Path:
+    run = L.copy_run(run_dir, dest)
+    (run / "summary" / name).unlink()
+    return run
+
+
+def _part(text: str, start: str, end: str | None) -> str:
+    """The words of `text` from `start` to `end` (or its end), whitespace folded."""
+    body = re.sub(r"\s+", " ", text).split(start, 1)[1]
+    return body if end is None else body.split(end, 1)[0]
+
+
+def test_the_docs_say_what_each_absent_file_fails(base, run_dir, tmp_path):
+    """Finding N4: replay.jsonl, sets.json and clips.json may be absent from summary/; check's module doc and the
+    spec's section 10 say what each absence does, as check does it: without replay.jsonl no condition fails (the
+    replay is shown, never judged), and without sets.json or clips.json the conditions they name fail."""
+    repo = base[0]
+    doc = report(_without(run_dir, tmp_path / "no-replay" / RUN, "replay.jsonl"), repo)
+    assert doc["validity"]["failed"] == [] and doc["shown"]["replay_file"] is None
+    doc = report(_without(run_dir, tmp_path / "no-sets" / RUN, "sets.json"), repo)
+    sets_fail = doc["validity"]["failed"]
+    in_sets = [c["name"] for c in doc["validity"]["conditions"] if c["group"] == "Sets" and not c["ok"]]
+    assert in_sets and doc["shown"]["item8"] is None
+    with pytest.raises(Step0Error, match="has a `render` block but clips.json is absent"):
+        C.load_run(_without(run_dir, tmp_path / "no-clips" / RUN, "clips.json"))
+    blockless = L.copy_run(run_dir, tmp_path / "no-block" / RUN)               # render killed before step0.json's block
+    L.edit_json(blockless / "summary" / "step0.json", lambda d: d.update(render=None))
+    clips_fail = sorted(set(failed(_without(blockless, tmp_path / "no-block-clips" / RUN, "clips.json"), repo))
+                        - set(failed(blockless, repo)))
+    assert clips_fail == ["clip ids", "clips.palette.sha256", "sets.json = step0.select"]
+    spec = (L.ROOT / "docs" / "design" / "step0_samples.md").read_text(encoding="utf-8")
+    texts = {"spec section 10": next(x for x in spec.splitlines() if x.startswith("- **Bad input**")),
+             "check's module doc": C.__doc__.split("**Bad input**", 1)[1].split("\n\n", 1)[0]}
+    for where, text in texts.items():
+        assert "Without replay.jsonl no condition fails" in re.sub(r"\s+", " ", text), where
+        part = _part(text, "Without sets.json", "Without clips.json")
+        assert f"the {len(in_sets)} Sets conditions" in part, where
+        assert all(f"`{name}`" in part for name in sets_fail if name not in in_sets), (where, part)
+        part = _part(text, "Without clips.json", None)
+        assert all(f"`{name}`" in part for name in clips_fail) and "bad input" in part, (where, part)
+
+
 def test_check_imports_with_the_policy_envs_absent_modules_and_yaml_blocked():
     """The policy env's build imports every lofi_rl module outside its scorer-side list (jobs/env_policy.sbatch), so
     check imports git, the palette, junk and the features only inside the functions that use them."""

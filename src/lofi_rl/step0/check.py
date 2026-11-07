@@ -54,12 +54,16 @@ docs/DECISIONS.md:
 That form is read leniently (amendment_files): `path` in backticks, a closing period, a bold line or a note after a path
 read as the bare form, and "changed nothing" names no file; a named file the path file does not list is shown.
 
-**Bad input** (exit 2, nothing decided): a summary/ folder or a file missing or unreadable (replay.jsonl, sets.json
-and clips.json may be absent: their conditions fail instead), a schema that is not the step's, or files that are not
-one run's own, as lofi_rl.gate1.load_run refuses them: scored.jsonl against completions.jsonl (the same rows, each
-text_sha256 its row's text's), step0.json's `n` against scored.jsonl, its `render` block against clips.json
-(select.render_block), and one render-code key in step0.json, sets.json and clips.json. A scored.jsonl or step0.json
-missing beside generate's records is named as what it is, a scoring defect that §4.2 redoes from the records.
+**Bad input** (exit 2, nothing decided): a summary/ folder or a file missing or unreadable, a schema that is not the
+step's, or files that are not one run's own, as lofi_rl.gate1.load_run refuses them: scored.jsonl against
+completions.jsonl (the same rows, each text_sha256 its row's text's), step0.json's `n` against scored.jsonl, its
+`render` block against clips.json (select.render_block), and one render-code key in step0.json, sets.json and
+clips.json. A scored.jsonl or step0.json missing beside generate's records is named as what it is, a scoring defect
+that §4.2 redoes from the records. Three files may be absent (MAY_BE_ABSENT; finding N4). Without replay.jsonl no
+condition fails: the replay is shown, never judged, and only its readout is absent. Without sets.json the 5 Sets
+conditions, `held-out briefs undetermined` and `sets.json = step0.select` fail, and item 8's readout is absent.
+Without clips.json `clips.palette.sha256`, `clip ids` and `sets.json = step0.select` (select reads its records) fail;
+beside a step0.json with a render block it is bad input, since render writes clips.json before that block.
 
 **A run stopped before its first draw** (generate.json alone, `generated` 0 and no completions.jsonl) is read with no
 rows, not as bad input: `stopped` set, as a pre-check, the probe or a failed engine load leaves it, or `stopped` null
@@ -118,7 +122,7 @@ GROUPS = ("Complete", "Seeded", "As registered", "Registered first", "Constraine
           "One stamp, one path", "Held-out render", "Sets", "Reproduced on the laptop")
 GENERATE_FILES = ("generate.json", "completions.jsonl", "replay.jsonl")      # a redo pair reads these from OUT
 LATER_FILES = ("scored.jsonl", "step0.json", "sets.json", "clips.json")      # ... and these from REDO, when it has them
-MAY_BE_ABSENT = ("replay.jsonl", "sets.json", "clips.json")     # their conditions fail, or their readouts are absent
+MAY_BE_ABSENT = ("replay.jsonl", "sets.json", "clips.json")     # absent, a readout or conditions fail (module doc)
 REGEX_GATES = ("G1", "G3", "G4", "G5", "crash")      # D-020: what the regex guarantees (DECISIONS.md:221)
 # what check reproduces and judges a run with and prereg writes its files with (code_problems, findings R3-11, N3):
 # every module check and prereg import, by static analysis, and the data files they read from the checkout. Not the
