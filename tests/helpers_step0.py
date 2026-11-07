@@ -9,7 +9,8 @@ sets.json and clips.json, every value at what the unit registers, each file's fi
 - a label from LABELS ("h0".."h7", "t0".."t7", "a".."z"): the draw passes G1-G6 and compile with its cell's text of
   that label, so one label in one cell is one canonical text (and one label in two cells two texts). The text is
   prompt v2's shown example of the cell, in the frozen palette's names, with its first kick grid rewritten from the
-  label (variant_text): every one is in the grammar's language and passes, so junk.score_row scores it for real;
+  label (variant_text): every one is in the grammar's language and passes, so junk.score_row scores it for real (and
+  every one is a near-copy of the cell's shown example, J5 >= 0.8, with its A and B lines verbatim);
 - G2, a completion cut at the cap (finish_reason "length"), or G6, the example with its vamp's first chord twice:
   both fail that gate for real (G6 inside the language, as the regex cannot see it);
 - /G7, /E, /EE or /S (held-out draws only): its render fails G7; errors once and renders when retried; errors twice

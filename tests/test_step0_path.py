@@ -120,14 +120,21 @@ def test_imports_inside_functions_and_by_literal_name_are_in_the_closure(tmp_pat
         P.closure(root)
 
 
-def test_the_closure_of_junk_holds_d020s_list_and_the_imports_inside_its_functions():
-    # D-020's frozen path lists junk's closure as it ran (51 modules at d497684); the static closure of junk at HEAD
-    # holds each of them that still exists, and adds what is imported only inside functions (smoke.py's stub)
+@needs_git
+def test_the_closure_of_junk_at_d020s_commit_is_d020s_list_and_the_imports_inside_its_functions(tmp_path):
+    # D-020's frozen path lists junk's closure as it ran: 51 modules, from d497684. The static closure of junk in that
+    # commit's tree is those 51 and what smoke.py imports only inside its functions (the stub, which junk never calls)
+    if subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", "d497684^{commit}"], capture_output=True).returncode:
+        pytest.skip("commit d497684 is not in this clone")
+    old = tmp_path / "d497684"
+    old.mkdir()
+    archive = subprocess.run(["git", "-C", str(ROOT), "archive", "d497684", "src"], capture_output=True, check=True)
+    subprocess.run(["tar", "-x", "-C", str(old)], input=archive.stdout, check=True)
     listed = [line.split("  ")[1] for line in (ROOT / "docs/prereg/D-020_junk_path.txt").read_text().splitlines()
               if not line.startswith("#") and line.split("  ")[1].startswith("src/")]
-    mine = set(P.closure(ROOT, ["lofi_rl.rl.junk"]))
-    assert len(listed) == 51 and set(listed) <= mine
-    assert {"src/lofi_rl/compile/stub.py", "src/lofi_rl/compile/stub_from_loop.py"} <= mine - set(listed)
+    mine = set(P.closure(old, ["lofi_rl.rl.junk"]))
+    assert len(listed) == 51
+    assert mine == set(listed) | {"src/lofi_rl/compile/stub.py", "src/lofi_rl/compile/stub_from_loop.py"}
 
 
 # --------------------------------------------------------------------------------------------- writing it
