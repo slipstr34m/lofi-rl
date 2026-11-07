@@ -324,6 +324,32 @@ def test_short_briefs_are_reported_or_asked_about_as_q8_says(tmp_path, stubbed, 
     assert ("ask Shresth" in capsys.readouterr().err) is (rule == "ask")
 
 
+@pytest.mark.parametrize("rule", ["report", "ask"])
+def test_a_short_pool_brief_is_reported_under_either_answer(tmp_path, stubbed, monkeypatch, capsys, rule):
+    """Q8 is about the held-out and Ref_b briefs; a short pool brief is expected (about 12 a run under Q5(a), spec
+    §1.6) and 660 is a planning count, so under "ask" too it is reported and the step exits 0 (finding R1-2)."""
+    table = {"596:0": "t0 t1 t2 t3 t0 t1 t2 t3"}             # the pool's walk meets Ref_b's texts only
+    run = make(tmp_path, table)
+    stubbed(Stub(run.scored))
+    monkeypatch.setattr(S, "SHORT_RULE", rule)
+    assert render(run.dir) == 0
+    sets = doc_of(run.summary / "sets.json")
+    assert one(sets, "pool", "596:0")["short"] is True and one(sets, "refb", "596:0")["short"] is False
+    assert "ask Shresth" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("rule, rc", [("report", 0), ("ask", 1)])
+def test_a_short_refb_brief_is_asked_about_under_q8b(tmp_path, stubbed, monkeypatch, capsys, rule, rc):
+    table = {"596:0": "G2 G2 G2 G2 G6 t0 t1 t2"}             # three passing draws: Ref_b is short by its records
+    run = make(tmp_path, table)
+    stubbed(Stub(run.scored))
+    monkeypatch.setattr(S, "SHORT_RULE", rule)
+    assert render(run.dir) == rc
+    assert one(doc_of(run.summary / "sets.json"), "refb", "596:0")["short"] is True
+    err = capsys.readouterr().err
+    assert ("ask Shresth" in err and "refb 596:0" in err) is (rule == "ask")
+
+
 def test_a_short_rule_that_is_no_answer_is_refused(tmp_path, stubbed, monkeypatch, capsys):
     run = make(tmp_path, {"5101:0": "a b c d e f g h"})
     stub = stubbed(Stub(run.scored))

@@ -33,12 +33,13 @@ step0.json) from REDO when a score recovery wrote them there, else from OUT, cop
 so REDO holds score's and render's records together (check reads both from REDO). It never writes under OUT.
 
 **Short briefs (Q8).** The sets record `short` under either answer (select). Under SHORT_RULE "report" (a) a short
-brief is reported and its set holds one brief fewer; under "ask" (b) the step also exits 1 naming them, so the job
-stops for Shresth's answer before any set is used.
+brief is reported and its set holds one brief fewer; under "ask" (b) a short held-out or Ref_b brief, the ones Q8 is
+about, also makes the step exit 1, naming them, so the job stops for Shresth's answer before any set is used. A short
+pool brief is expected (about 12 a run under Q5(a), §1.6) and only reported: 660 is a planning count (§1.8).
 
 Exit 0: the held-out set is decided. 1: a held-out brief is undetermined, a render failed a gate other than G7 (a
 draw that passed score's G1-G6 and compile but not the render's: a defect between the two), or, under Q8 "ask", a
-brief of any set is short. 2: bad input, a partial run, a SHORT_RULE that is no answer of Q8, or --run and --from
+held-out or Ref_b brief is short. 2: bad input, a partial run, a SHORT_RULE that is no answer of Q8, or --run and --from
 that overlap, with nothing rendered or written. The audio code (junk.render_clip's, the
 render pool's config, source_sha8) is imported inside functions, since the policy env's build imports every lofi_rl
 module outside its scorer-side list (jobs/env_policy.sbatch). No claim about sound: clips are only measured (length,
@@ -68,6 +69,7 @@ from lofi_rl.step0.score import read_json, separate, sync_stamp, write_json
 SKIPPED = "render deadline"             # a skipped record's reason, as junk's render step writes it
 READ = ("generate.json", "completions.jsonl", "scored.jsonl", "step0.json")
 SHORT_RULES = ("report", "ask")         # Q8 (a), (b)
+ASKED = ("heldout", "refb")             # the sets Q8 is about; a short pool brief is expected, reported (§1.6, §1.8)
 
 
 def _now() -> float:
@@ -254,9 +256,9 @@ def main(a: argparse.Namespace) -> int:
     if undetermined:
         print(f"render: {len(undetermined)} held-out briefs are undetermined (first {undetermined[0]}): the held-out "
               "set is not decided (§4.2)", file=sys.stderr)
-    short = [f"{name} {e['brief_id']}" for name in S.SETS for e in sets[name] if e["short"]]
+    short = [f"{name} {e['brief_id']}" for name in ASKED for e in sets[name] if e["short"]]
     ask = S.SHORT_RULE == "ask" and bool(short)
     if ask:
-        print(f"render: {len(short)} briefs are short (first {short[0]}); SHORT_RULE is Q8's (b): ask Shresth before "
-              "these sets are used", file=sys.stderr)
+        print(f"render: {len(short)} held-out or Ref_b briefs are short (first {short[0]}); SHORT_RULE is Q8's (b): "
+              "ask Shresth before these sets are used", file=sys.stderr)
     return 1 if undetermined or blk["other_gates"] or ask else 0

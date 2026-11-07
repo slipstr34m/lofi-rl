@@ -214,6 +214,22 @@ def test_an_invalid_run_is_refused_and_nothing_written(base, repo, run_dir, tmp_
     assert tree_files(tmp_path) == before
 
 
+@pytest.mark.parametrize("rule", ["report", "ask"])
+def test_under_q8b_a_short_held_out_brief_waits_for_shresth(base, repo, tmp_path, monkeypatch, rule):
+    """Finding R1-2: under SHORT_RULE "ask" (Q8(b)) prereg refuses, naming the brief, while a held-out or Ref_b brief
+    is short, so the sets are not fixed before his answer; under "report" (Q8(a)) the short tuple is reported."""
+    run_dir = tmp_path / RUN
+    L.stamped_run(run_dir, base[0], base[1], {"5101:2": "a a a b b c G2 G6"})      # three distinct texts: short
+    monkeypatch.setattr(S, "SHORT_RULE", rule)
+    before = tree_files(tmp_path)
+    rc, lines = PR.prereg(run_dir, write=True, repo=repo)
+    if rule == "ask":
+        assert rc == 2 and lines[-1].startswith("refused: SHORT_RULE is Q8's (b), ask: 1 held-out or Ref_b")
+        assert "heldout 5101:2" in lines[-1] and tree_files(tmp_path) == before, "nothing written"
+    else:
+        assert rc == 0 and json.loads((repo / S.HELDOUT_FILE).read_text())["counts"]["short"] == 1
+
+
 def test_bad_input_is_refused_and_nothing_written(base, repo, run_dir, tmp_path):
     (run_dir / "summary" / "step0.json").unlink()
     before = tree_files(tmp_path)

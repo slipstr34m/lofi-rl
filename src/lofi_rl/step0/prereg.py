@@ -21,10 +21,11 @@ so the text depends on the run's files alone. Both are ASCII JSON, one record a 
 line; the rest in lofi_rl.brief_streams' layout), and byte-identical when written again from the same run.
 
 The run must pass `check` (lofi_rl.step0.check.evaluate, with git at its stamps' commits): an invalid run is refused
-(exit 3), and bad input is exit 2, nothing written either way. Without --write the two files' sizes and sha256 are
-printed and nothing is written; with it each is written unless it is already there byte for byte. A different existing
-file is never replaced (exit 2, neither written): there is no --force, and a new set is a new file version with its own
-DECISIONS entry (§4.2). Laptop only. Sound claims: none.
+(exit 3), and bad input is exit 2, nothing written either way. Under Q8's (b) (SHORT_RULE "ask") a short held-out or
+Ref_b brief is refused too (exit 2), until D-023 records Shresth's answer and the constants carry it. Without --write
+the two files' sizes and sha256 are printed and nothing is written; with it each is written unless it is already there
+byte for byte. A different existing file is never replaced (exit 2, neither written): there is no --force, and a new
+set is a new file version with its own DECISIONS entry (§4.2). Laptop only. Sound claims: none.
 """
 from __future__ import annotations
 
@@ -303,6 +304,20 @@ def documents(run: C.Run, report: Mapping, *, palette=None) -> dict[str, str]:
 
 
 # --------------------------------------------------------------------------------------------- the command
+def ask_first(run: C.Run) -> str | None:
+    """Under Q8's (b), SHORT_RULE "ask", a short held-out or Ref_b brief waits for Shresth's answer, which D-023
+    records and the constants carry before the sets are fixed: the refusal, naming them, or None (finding R1-2). A
+    short pool brief is reported under either answer."""
+    if S.SHORT_RULE != "ask":
+        return None
+    short = [f"{name} {e['brief_id']}" for name in ("heldout", "refb") for e in run.entries(name) if e.get("short")]
+    if not short:
+        return None
+    return (f"refused: SHORT_RULE is Q8's (b), ask: {len(short)} held-out or Ref_b briefs are short ("
+            f"{', '.join(short[:5])}{', ...' if len(short) > 5 else ''}); Shresth's answer goes into D-023 and the "
+            "constants first: nothing written")
+
+
 def status(path: Path, body: str) -> str:
     """"absent", "identical" (byte for byte) or "differs"."""
     if not path.exists():
@@ -325,6 +340,9 @@ def prereg(run_dir: Path | str, redo_dir: Path | str | None = None, *, write: bo
                    f"{report['validity']['of']} conditions hold; failing: {', '.join(report['validity']['failed'])}): "
                    "nothing written. `python -m lofi_rl.step0 check` reports each condition (spec section 4.2 says "
                    "what follows an invalid run)."]
+    asked = ask_first(run)
+    if asked:
+        return 2, [asked]
     try:
         docs = documents(run, report)
     except Step0Error as err:
