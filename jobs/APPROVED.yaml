@@ -15,4 +15,5 @@ jobs/scorer_smoke.sbatch: {sha: eaf0423e7072e564, max_su: 480, by: Claude, date:
 jobs/seam_diag.sbatch: {sha: b2034ede829361ba, max_su: 120, by: Claude, date: 2026-10-31}
 jobs/shootout.sbatch: {sha: 12f706e7f61efe72, max_su: 240, by: Claude, date: 2026-10-31}
 jobs/smoke_env.sbatch: {sha: 3edc166e77e1b180, max_su: 720, by: Shresth, date: 2026-10-30}
+jobs/step0.sbatch: {sha: deba472bcc2f4f67, max_su: 810, by: Claude, date: 2026-11-07}
 jobs/tools.sbatch: {sha: 2f181c7e6e3e4859, max_su: 270, by: Claude, date: 2026-10-30}

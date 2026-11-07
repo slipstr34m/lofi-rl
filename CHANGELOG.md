@@ -20,7 +20,100 @@ Newest entry first. Every number cites the file or command output it was read fr
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
 - **The palette is frozen:** `palettes/lofi_rain_v1.yaml`, `frozen: '2026-11-04'` (sha256 `09f80a64…`), on Shresth's APPROVED line of 2026-11-04.
 - **The Phase-1 gate is approved** (Shresth, 2026-11-06, `gates/GATE_phase1.md`). On its second launch (13788483), 477 of 500 loops passed and were not near-copies (at least 300), and he rated 28 of 50 clips Fine or better in his ear check `b1106-gate1` (at least 15).
-- **Phase 2, prepared:** the step-0 samples are built and reviewed on branch `wt/step0`, not yet merged. The seed pool is specified in `docs/design/seed_pool.md`. Both wait on Shresth's answers.
+- **Phase 2, under way:** Shresth took every recommended answer for both units ("Defaults OK", 2026-11-07). The step-0 samples are built, reviewed, registered (`lofi-step0`, at most 810 SU) and merged, with D-023; the job is submitted next. The seed pool (`docs/design/seed_pool.md`) is next: its Build A and D-024.
+
+---
+
+## 2026-11-07 (10:30 PST): the step-0 samples are built, reviewed and registered: D-023 holds Shresth's "Defaults OK", `lofi-step0` is registered at 810 SU, and its submission is next
+
+**What was done**
+- **The build workflow** `wf_b1292693-9b1`, with 3 builders on their own branches:
+  - it built `src/lofi_rl/step0/` (requests, the selection rule step0-select/1, generate, score, render, check, prereg, path, cli) and `jobs/step0.sbatch` (lofi-step0, not registered), with their tests;
+  - the (a) answers are constants, so his answers change constants, not code;
+  - the builders reported 45 departures from the spec, each listed in the spec's new §10 "As built";
+  - merged into wt/step0 as a78128a (one test-line conflict), with one integration fix (f06c2dc, `junk.head_lines`);
+  - suite after the merge: 3,824 passed, 41 skipped, 2 failed as expected (`scratchpad/step0-build/suite_merged.txt`).
+- **The review workflow** `wf_874736a3-7b2`, 9 agents:
+  - **Who:** an end-to-end test, three adversarial reviewers (spec, cluster job, privacy and later units), verifiers, a fixer and an independent recheck.
+  - **The test:** `tests/test_step0_e2e.py` runs the job's three steps from a git-archive snapshot of a temp repo, then check and prereg, plus 10 cross-step cases.
+  - **The findings:** 70 (6 major, 64 minor, no blocker); 1 was refuted, leaving 69 to fix.
+  - **The fixer's 14 commits** (81469ff..57b89f7) fixed 67, and R3-11 in part; R3-12 is this entry's Next list.
+  - **The recheck** undid each code fix in a clone (24 runs), and its pinning tests failed every time.
+  - **The 6 majors:**
+    - R1-1: twin training briefs could let the pool take another brief's Ref_b clip. Selection now goes by clip, not text, across the 26 twin pairs in [0, 400).
+    - R2-1: a kill during the replay left complete draws marked partial.
+    - R2-2: the laptop's check on D-023's mark accepted forms that generate refuses. There is one reader now.
+    - R3-1: a later render of Ref_b or the pool could re-choose the pool without the held-out records. It is refused now.
+    - R3-2: the D-023 draft lacked §5's separation rules.
+    - R3-3: the redo amendment's parser was too strict.
+  - **Also changed:**
+    - the seed probe uses two seeds with 3 requests each (PROBE_SEEDS 1 and 2), so an engine that ignores each request's seed stops at the probe;
+    - check and prereg run at the run's commit and refuse a checkout whose reproduction files differ from it;
+    - the job's copy-out gets one bounded retry of the records only, which brings the timeouts to 2,611 s, 89 s under 45 min.
+- **Fix round 2** `wf_137ebac8-2ca`, 5 agents (`tasks/wxnthadhm.output` in the session's scratch):
+  - **First fixer:** the recheck's 6 open items, N1–N6, in 5 commits (3c87719..0544745):
+    - a run killed before its first draw now reads invalid, not bad input;
+    - under Q8(b), prereg reads Shresth's answer from a line of D-023, `D-023 short answer: run step0-<job>; as (a)`, instead of a changed constant, which the run's-commit guard refused;
+    - that guard now covers the whole import closure of check and prereg (62 files where it compared 16), with a tracing test;
+    - doc fixes: the absent files, the pre-flight, the probe and the copy-out retry.
+  - **Its recheck** (mutation and adversarial): each fix's tests fail when the fix is undone. It opened 6 items. The major one: the answer line was read anywhere in a line, so a sentence quoting it, prereg's own refusal among them, lifted the refusal.
+  - **Second fixer:** N7–N10 in 4 commits (ca9443d..00274ac): the answer read only as a line of its own in D-023's entry, a refusal that never loops, the worktree route when main has moved, and the copy-out wording. It folded two of its own fix-ups locally; wt/step0 was never pushed.
+  - **The final recheck** confirmed N8–N10, left N7 in part, and found 3 more:
+    - **N11 (major):** a hard-wrapped sentence whose quote of the line lands alone on its next line still read as his answer, and prereg wrote both files;
+    - **N12:** no test pinned where the refusal says the line goes;
+    - **N13:** the redo amendment's reader still read the form anywhere in DECISIONS.md, so a quote in another entry exempted a changed file from a redo's blob check.
+- **Round 3**, by hand from the recheck's candidate rule, not a third workflow: 5c7d696 and 22bb53e, then 41508df (a cleanup, no behavior change).
+  - **One reader:** `check.d023_lines` gives the lines of D-023's entry that start a block (a bullet of their own, or after a blank line, a heading or a fence's edge), outside HTML comments.
+  - **His answer** is read as `kit.gates` reads an approval, but for one list bullet: at column 0 and outside fences, so an indented, nested or fenced example is no answer.
+  - **An amendment**, Claude's record of its own fix, is read fenced or indented too, as D-023 sets its verbatim lines.
+  - **The refusal** says where the line goes and names the lines that mention it unread.
+  - **Checked:**
+    - 25 new tests;
+    - 7 mutations, one per part, each failing its tests (`scratchpad/step0-build/round3/mutate.py`);
+    - 5c7d696 alone passes its tests;
+    - the full suite at 22bb53e, with the runs and audio present: 4,006 passed, 9 skipped and 3 failed, the same 3 as at 57b89f7 (`scratchpad/step0-build/full/suite_r3.txt`);
+    - the step-0 tests: 392 passed and the 2 expected failures;
+    - the D-023 draft, updated, passes the docs check in its committed form.
+  - **Not done:** no independent agent rechecked round 3. Its parts are pinned by the tests and the mutations above.
+  - **Known limits** (in the spec's section 10 and the draft): a top-level bullet or a paragraph holding only the exact line is read as the record, and so is a fenced or indented amendment, so an example names `step0-<job>`. Every path here is dormant under the default answers: Q8(a) reads no answer line, and the amendment matters only for a redo.
+- **His answers** (2026-11-07): asked to take the recommended answer to all 15 open questions, the step-0 spec's Q1–Q8 and the seed-pool spec's Q1–Q7, or to name the ones to change, Shresth answered "Defaults OK". The (a) answers were already the constants, so no code changed for them.
+- **D-023, the registration and the path file:**
+  - main's 8fc5908 (the seed-pool spec: CHANGELOG.md and docs/design/seed_pool.md, no file in common) was merged into wt/step0 first, as e83a19b;
+  - D-023 is appended to docs/DECISIONS.md from the draft: his words quoted, its 12 placeholders filled, and the draft's comment and Outcome bullet removed;
+  - **registered** `jobs/step0.sbatch` (`lofi-step0`), a new type of at most 810 SU, by Claude under D-003's amendment of 2026-11-06: sha `deba472bcc2f4f67`, 2026-11-07 (`jobs/APPROVED.yaml`); `scripts/approve_job.py --check` lists nothing stale;
+  - `docs/prereg/D-023_step0_path.txt` is written last: 86 files, and `path --check` printed `STEP0_PATH ok: 86 of 86 listed files have their blob`.
+- **A test fix after D-023:** with the real entry in place, 13 step-0 tests failed, test_step0_docs's 9 refusal cases and 4 of test_step0_e2e's. Each appended a stand-in D-023 to the committed DECISIONS.md, and the readers take the first D-023, now the real one: the refusal cases checked the real entry, and the e2e "no mark" and "another mark" commits still held the real mark. `tests/helpers_step0.without_d023` now drops the real entry before a stand-in goes in, so each stand-in is again the only D-023 its test reads. No file on the job's path changed.
+- **Suite at this commit:** in this worktree, 3,976 passed, 42 skipped and 0 failed (`scratchpad/step0-build/final/suite_worktree.txt`); the skips need the pulled runs or the fetch-only audio, which a worktree lacks. The main checkout, which has them, runs the suite again before the push.
+- **Suite at 41508df** (round 3's tip): 4,006 passed, 9 skipped and 3 failed (`scratchpad/step0-build/full/suite_r3_final.txt`), the same 3 as at 57b89f7. It ran with the pulled runs and the fetch-only audio present (a clone of the repo at wt/step0's 41508df).
+  - At 57b89f7, before fix round 2, the same setup gave 3,935 passed, 9 skipped and 3 failed (`scratchpad/step0-build/full/suite.txt`):
+    - the 2 expected failures;
+    - test_privacy's `git check-ignore` of `assets/big/jrhodes3d.sf2`. Git cannot answer that through the clone's symlinked `assets/big`; the main checkout answers it (`.gitignore:12`).
+  - The step-0 tests that skip in a worktree ran there and passed: the requests against the gate runs 13788483 and 13632676, and the real renders.
+
+**SU spent:** 0.
+
+**Failed approaches:**
+- The first launch of fix round 2 was stopped after a minute: its script referred to a round-1 file that did not exist. It had written nothing.
+- The D-023 stand-in tests were written while DECISIONS.md had no D-023, and 13 failed once it had one (fixed above).
+- N7 read fenced and indented answer lines, as my brief for round 2 asked ("read as the mark is read"). The final recheck showed why that fails: DECISIONS.md wraps its bullets with indented next lines, and it shows a line to add in a fence. Both now refuse; the refusal is the safe failure.
+
+**Next:**
+- On USC's VPN: `make sync`, then `make submit JOB=jobs/step0.sbatch` with `scripts/watch_job.sh` in the background; `make pull`; `python -m lofi_rl.step0 check runs/step0-<job>`; if valid, `prereg --write`, both files committed, and D-023's Outcome. Then `make backup-votes` again (the cluster copy of a95a17b waits on the VPN).
+- The seed pool's Build A (docs/design/seed_pool.md §8.2 step 2), with D-024 holding his "Defaults OK" for its Q1–Q7; then he opens the blind writers' session (its Q6(a)), and the pilot runs.
+- **Asks of later units** (D-023 and spec §8; finding R3-12):
+  - **the RM loader:**
+    - held-out labels go only to the gate;
+    - under Q5(a) or (b), drop every label on a clip whose canon_sha256 equals a held-out clip's (heldout_v1.json's `tuples` or `short`, in any cell), whatever its source, and report the count;
+  - **the queue job:**
+    - held-out clips appear only in their own rounds and those rounds' repeats;
+    - a re-render is compared on audio_sha256 under the same source_sha8, palette, render_cfg_sha8 and audio stack;
+    - outside the held-out rounds, base-model clips reach a round or the triage only as step0_v1.json's pool picks;
+  - **the pool's and Ref_b's later renders:**
+    - they pass every scored row and this run's clips.json records (select refuses otherwise);
+    - they stop on a recomputed pick that differs from step0_v1.json's;
+    - G7 applies by Q2's rules;
+  - **run 1's copy-pool builder:** it refuses an entry whose canon_sha256 is a step-0 row's, except prompt v2's 9 reference texts;
+  - **`lofi_rl.rl.config`:** it refuses a `briefs.seed` equal to an evaluation stream's seed (5101–5104), with a test, built with Phase 2's GRPO smoke config.
 
 ---
 

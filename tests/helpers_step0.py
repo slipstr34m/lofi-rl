@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -77,6 +78,16 @@ ENGINE_INFO = {"engine": "vllm", "vllm": "0.32.0", "torch": "2.9.0", "transforme
 
 def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def without_d023(decisions: str) -> str:
+    """A DECISIONS.md text less its D-023 entry (to the next entry's heading), so that a test's stand-in D-023 is the
+    only one in it now that the real entry is written (2026-11-07): a reader takes the first."""
+    m = re.search(r"^## D-023 \(", decisions, re.M)
+    if m is None:
+        return decisions
+    nxt = re.search(r"^## D-\d+ \(", decisions[m.end():], re.M)
+    return decisions[:m.start()] + ("" if nxt is None else decisions[m.end() + nxt.start():])
 
 
 @lru_cache(maxsize=1)

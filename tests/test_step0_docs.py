@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+import helpers_step0 as H
 import lofi_rl.step0 as S
 from lofi_rl.step0 import check as C
 from lofi_rl.step0 import cli
@@ -227,7 +228,6 @@ def test_every_field_the_validity_table_names_is_a_condition_of_check(tmp_path):
     left = named - set(FIELDS) - {f"{sha[:8]}…" for sha in (S.MODEL_REVISION, S.STREAMS_SHA256, S.TEMPLATE_SHA256,
                                                            S.PALETTE_SHA256, S.REGEX_SHA256)}
     assert left == {"brief_streams.draw_seed(seed, index, k)", "draw_seed", "sp_seed", "DECISIONS.md:221"}, left
-    import helpers_step0 as H
     run = C.load_run(H.make_run(tmp_path / "step0-1", briefs=["5101:0"]).dir)
     have = {c.name for c in C.conditions(run)[0]}
     for field, names in FIELDS.items():
@@ -294,7 +294,6 @@ def n_conditions() -> tuple[int, int]:
     """How many conditions check holds a run to, and a redo pair (one more: `the path at the redo commit`)."""
     import dataclasses
     import tempfile
-    import helpers_step0 as H
     with tempfile.TemporaryDirectory(prefix="step0-docs-") as tmp:
         run = C.load_run(H.make_run(Path(tmp) / "step0-1", briefs=["5101:0"]).dir)
         one = C.conditions(run)[0]
@@ -396,14 +395,14 @@ REFUSED = [
 
 
 def test_the_d023_check_takes_the_drafts_form():
-    assert_d023_states_the_registered_values(DECISIONS.read_text(encoding="utf-8") + standin_d023())
+    assert_d023_states_the_registered_values(H.without_d023(DECISIONS.read_text(encoding="utf-8")) + standin_d023())
 
 
 @pytest.mark.parametrize("why, edit", REFUSED, ids=[r[0] for r in REFUSED])
 def test_the_d023_check_refuses_what_generate_or_the_record_would_not_take(why, edit):
     """Findings R2-2 and R3-8: the forms of the mark generate's pre-check cannot read, an m given to the wrong set,
     an answer the constants do not hold, and a draft's leftovers all fail before the commit, not in the job."""
-    text = DECISIONS.read_text(encoding="utf-8") + edit(standin_d023())
+    text = H.without_d023(DECISIONS.read_text(encoding="utf-8")) + edit(standin_d023())
     with pytest.raises(AssertionError):
         assert_d023_states_the_registered_values(text)
 

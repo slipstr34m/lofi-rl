@@ -241,12 +241,12 @@ def tree_hashes(root: Path) -> dict[str, str]:
 
 
 def decisions(mark: str | None = S.MARK, extra: str = "") -> str:
-    """docs/DECISIONS.md as committed (this checkout's) with the D-023 stand-in: `mark` in its fenced block (None:
-    the block left out), then `extra` (an amendment)."""
+    """docs/DECISIONS.md as committed (this checkout's), its own D-023 left out, with the D-023 stand-in: `mark` in
+    its fenced block (None: the block left out), then `extra` (an amendment)."""
     d023 = D023.format(mark=mark)
     if mark is None:
         d023 = d023.replace("\n  ```\n  None\n  ```\n", "\n")
-    return (ROOT / S.DECISIONS).read_text(encoding="utf-8").rstrip("\n") + "\n" + d023 + extra
+    return H.without_d023((ROOT / S.DECISIONS).read_text(encoding="utf-8")).rstrip("\n") + "\n" + d023 + extra
 
 
 def amendment(run: str, files: list[str]) -> str:
