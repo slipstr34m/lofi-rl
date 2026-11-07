@@ -151,6 +151,37 @@ def test_the_specs_commands_are_the_command_lines():
     assert "`check --rescore`" in SPEC and "STEP0_CHECK <verdict>" in SPEC
 
 
+# the path file's blob check on the laptop, run as the Makefile runs a module (its $(PY), with PYTHONPATH=src)
+PRE_FLIGHT = "PYTHONPATH=src .venv/bin/python -m lofi_rl.step0 path --check"
+
+
+def test_the_order_of_work_runs_the_laptop_pre_flight_before_make_sync():
+    """Finding N5: §6.2 step 7 names the laptop pre-flight, the path file's blob check as the command line offers it
+    and tests/test_step0_path.py's pre-flight test, before make sync and make submit, as §10's pre-flight bullet
+    says."""
+    import test_step0_path as TP
+    step7 = next(x for x in section("6.2 The order of work").splitlines() if x.startswith("7. "))
+    pre_flight = TP.test_the_committed_path_file_and_d023_pass_generates_pre_checks_in_this_checkout.__name__
+    test = f"tests/test_step0_path.py::{pre_flight}"
+    assert PRE_FLIGHT in step7 and test in step7, step7
+    assert step7.index(PRE_FLIGHT) < step7.index("`make sync`") < step7.index("`make submit")
+    sub = next(a for a in cli.parser()._actions if a.__class__.__name__ == "_SubParsersAction")
+    assert "--check" in sub.choices["path"]._option_string_actions
+    pre = next(x for x in section("10. As built").splitlines() if x.startswith("- **The pre-flight**"))
+    assert "before `make sync`, as §6.2 step 7 says" in pre and "before `make submit`" not in pre
+
+
+def test_the_generate_row_describes_the_probe_at_two_seeds():
+    """Finding N5: §6.1's test_step0_generate row describes the probe as built (finding R2-3: PROBE_N requests at each
+    of PROBE_SEEDS) and the engines its tests stop, not the one-seed probe."""
+    import test_step0_generate as TG
+    row = next(x for x in section("6.1 Tests").splitlines() if x.startswith("| `test_step0_generate.py`"))
+    assert "PROBE_SEED " not in row and "PROBE_SEED among" not in row and "with seeds ignored" not in row, row
+    assert f"{S.PROBE_N} requests at each of PROBE_SEEDS ({', '.join(map(str, S.PROBE_SEEDS))})" in row, row
+    for engine in (TG.OneNoise, TG.FirstParams):
+        assert f"`{engine.__name__}`" in row, engine
+
+
 # the fields §4.1's validity table names (as it writes them) -> the conditions of lofi_rl.step0.check that read them
 FIELDS = {
     "generate.stopped": ["generate.stopped"], "generate.partial": ["generate.partial"], "n": ["n"],
