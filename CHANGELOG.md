@@ -23,6 +23,28 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ---
 
+## 2026-11-06 (22:10 PST): the step-0 samples' build spec is written and reviewed; 8 questions wait on Shresth
+
+**What was done**
+- **The design workflow** `wf_72e78bac-bc8` (read-only, 9 agents: 4 scouts, a designer, 3 adversarial reviewers and a reviser) wrote `docs/design/step0_samples.md` for D-021 "What follows" item 2. Its reviewers raised 30 findings (0 blockers, 10 major, 20 minor), and all 30 were applied.
+- **The unit, as specified** (nothing built or run yet):
+  - one new job type, `lofi-step0`: one A40, 45 min, at most 810 SU (18 SU/min × 45), which Claude registers under D-003 as amended. It makes 8 seeded draws for each of the 40 RM held-out briefs (seed 5101) and run 1's 400 training briefs (seed 596): 3,520 requests, about 301 SU expected (estimate, at the gate run's rates);
+  - it renders only the 160 held-out clips; Ref_b's 1,600 and the pool's 660 are rendered by later jobs;
+  - a new package, `src/lofi_rl/step0/`; `junk.py`, `jobs/junk_rate.sbatch` and their tests stay byte-identical;
+  - its rules go in a new entry, D-023, with his answers, committed with the code before the job.
+- **Re-checked by hand** (laptop):
+  - same-text pairs among passing loops, per cell, over `runs/junk-13788483/summary/scored.jsonl`: 75 of 13,836, every cell as the spec gives it;
+  - the two Q1 walks: (a) 220 briefs within 596:[0, 380), tempo 35 slow, 169 in 75–90, 16 fast; (b) `stratified_indices(596, 220)` reads [0, 260), 30/176/14; 206 shared; both hold 7 twin counterparts and all of 596:[0, 40);
+  - the 40 held-out indices and per-cell counts (`docs/prereg/brief_streams_v1.json`), and its 6,800 distinct draw seeds, without the probe's seed 1;
+  - the gate run's `gen_s` 50.1, `load_s` 29.4, engine seed 2026 and A40 (`generate.json`), and `render_s` 199.01 over 50 clips, max 5.79 (`clips.json`).
+- **Open for Shresth** (spec §7), each with a recommended answer: Q1 the pool's 220 briefs (tempo bands); Q2 whether a pool loop may also be one of its brief's 4 Ref_b loops; Q3 what counts as passing (the PQ floor); Q4 repeated loops within a brief; Q5 a held-out loop's exact text turning up elsewhere; Q6 drawing all 400 training briefs now; Q7 what "committed before the first vote" means now; Q8 short briefs.
+
+**SU spent:** 0.
+
+**Next:** his answers, or his OK on the defaults. Then build `src/lofi_rl/step0/` and `jobs/step0.sbatch` with their tests, an independent review, D-023 and the path file, the registration, and the job on the USC VPN.
+
+---
+
 ## 2026-11-06 (17:55 PST): Phase 1 is done: Shresth approved the Phase-1 gate
 
 **What was done**
