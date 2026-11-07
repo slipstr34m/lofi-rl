@@ -352,11 +352,22 @@ def answered(repo: Path, *lines: str) -> str:
     return L.commit(repo, "his answer to Q8(b)", {S.DECISIONS: L.decisions_text(extra="\n" + "\n".join(lines) + "\n")})
 
 
+WHERE = "alone on its line in D-023's entry, at column 0"     # where the refusal says the line goes (finding N12)
+
+
+def mentions(repo: Path, out: str) -> None:
+    """Finding N12: a refusal that asks for the line names every line of DECISIONS.md that mentions the run's answer
+    where none is read (here, each line holding RUN), and only those."""
+    lines = [n for n, x in enumerate((repo / S.DECISIONS).read_text().splitlines(), 1) if RUN in x]
+    named = f"mentions it on line{'s' if len(lines) > 1 else ''} {', '.join(map(str, lines))}, where no answer is read"
+    assert (named in out) if lines else ("mentions it on line" not in out), (lines, out)
+
+
 CASES = [
     ("no line", (), False),
     ("this run, as (a)", (f"- {ANSWER}",), True),
-    ("in a fenced block", ("  ```", f"  {ANSWER}", "  ```"), True),
-    ("indented", (f"      {ANSWER}",), True),
+    ("in a fenced block", ("  ```", f"  {ANSWER}", "  ```"), False),       # finding N11: the form an example takes
+    ("indented", (f"      {ANSWER}",), False),
     ("in backticks, with a period", (f"- `{ANSWER}`.",), True),
     ("in bold", (f"- **{ANSWER}**",), True),
     ("another run", ("- D-023 short answer: run step0-13800009; as (a)",), False),
@@ -372,8 +383,9 @@ def test_under_q8b_his_answer_line_lifts_the_refusal(short_run, repo, tmp_path, 
     """Finding N2: under SHORT_RULE "ask", prereg reads Shresth's answer for this run from one line of D-023's entry in
     the checkout's docs/DECISIONS.md (prereg.short_answers), at a later commit that changes nothing check compares
     with the run's commit, so no redo. Only that run's line saying "as (a)", with no other answer for it, writes the
-    files; anything else refuses, with nothing written: naming the line to add, or, when D-023 answers the run
-    otherwise, that answer and the line to replace it with (finding N8)."""
+    files; anything else refuses, with nothing written: naming the line to add, where it goes and the lines that
+    mention it unread (finding N12), or, when D-023 answers the run otherwise, that answer and the line to replace it
+    with (finding N8). A fenced or indented line is no answer (finding N11): it is the form an example takes."""
     monkeypatch.setattr(S, "SHORT_RULE", "ask")
     if lines:
         answered(repo, *lines)
@@ -394,7 +406,8 @@ def test_under_q8b_his_answer_line_lifts_the_refusal(short_run, repo, tmp_path, 
             assert f"`{ANSWER}`" in out[-1] and "replace the run's short-answer lines" in out[-1], "N8: the fix"
             assert "add the line" not in out[-1], "N8: adding the line beside another answer refuses again"
         else:
-            assert f"add the line `{ANSWER}` to {S.DECISIONS}" in out[-1]
+            assert f"add the line `{ANSWER}` to {S.DECISIONS}, {WHERE}" in out[-1], out[-1]
+            mentions(repo, out[-1])
 
 
 QUOTED = [      # finding N7: text that quotes the line, or holds it where no answer stands
@@ -408,13 +421,28 @@ QUOTED = [      # finding N7: text that quotes the line, or holds it where no an
     ("struck through", (f"- ~~{ANSWER}~~",)),
     ("a table cell", ("| question | answer |", "|---|---|", f"| Q8 | {ANSWER} |")),
     ("under the next entry's heading", ("## D-024 (synthetic): the next entry", "", f"- {ANSWER}")),
+    # finding N11: a hard-wrapped sentence whose quote lands alone on its next line, as D-019's Outcome wraps
+    ("a pending note, wrapped", ("- **Outcome (pending his answer to Q8(b)):** the run is valid; prereg refused its 2 "
+                                 "short briefs and waits for", f"  `{ANSWER}`.")),
+    ("a not-yet note, wrapped", ("- Not yet: Shresth has not answered Q8(b) for this run. Once he does, and only if he "
+                                 "answers (a), add the line", f"  {ANSWER}")),
+    ("a declining sentence, wrapped", ("- Shresth declined (a)'s handling for this run's short briefs, so it is not "
+                                       "added to this entry:", f"  `{ANSWER}`")),
+    ("a nested sentence, wrapped", ("- Pending:", "  - until then the line", f"    `{ANSWER}`",
+                                    "    stays out of this entry.")),
+    ("a paragraph's next line", ("Not yet: once he answers (a), D-023 gains", ANSWER)),
+    ("a fenced example", ("- Once he answers (a), D-023 gains:", "", "  ```", f"  {ANSWER}", "  ```")),
+    ("an indented example", ("Once he answers (a), D-023 gains:", "", f"    {ANSWER}")),
+    ("a nested bullet", ("- Once he answers (a), D-023 gains:", f"  - {ANSWER}")),
+    ("a comment opened after one closes", ("<!-- a --> <!--", f"- {ANSWER}", "-->")),
 ]
 READ = [        # ... and the line of its own, as house style writes it, still reads
     ("in italics", (f"_{ANSWER}_",)),
     ("a numbered item", (f"1. {ANSWER}",)),
     ("after a comment that closes", ("<!-- a note", "on two lines -->", f"- {ANSWER}")),
     ("before the next entry", (f"- {ANSWER}", "", "## D-024 (synthetic): the next entry", "- something else")),
-    ("in a fence that holds a comment's start", ("  ```", "  <!--", f"  {ANSWER}", "  ```")),
+    ("after a fence that holds a comment's start", ("  ```", "  <!--", "  ```", "", f"- {ANSWER}")),
+    ("a bullet after a paragraph", ("He answered Q8(b) on 2026-11-20:", f"- {ANSWER}")),
 ]
 
 
@@ -422,11 +450,13 @@ READ = [        # ... and the line of its own, as house style writes it, still r
                          ids=[c[0] for c in QUOTED + READ])
 def test_under_q8b_his_answer_is_only_a_line_of_its_own_in_d023(short_run, repo, tmp_path, monkeypatch, why, lines,
                                                                  writes):
-    """Finding N7: the answer is read only as a line of its own in D-023's entry, outside HTML comments, as kit.gates
-    reads an approval: a sentence, a note or prereg's own refusal that quotes the line, a comment, a blockquote, a
-    table or another entry is no answer at all (nothing is named as one, and the refusal still asks for the line),
-    so no text that only mentions the line writes the files before Shresth answered. A fenced line reads (D-023 fences
-    its verbatim lines), and so does the line in italics or as a numbered item."""
+    """Findings N7, N11: the answer is read only as a line of its own in D-023's entry, as kit.gates reads an approval
+    but for one list bullet: at column 0, starting a block, outside code fences and HTML comments. A sentence, a note
+    or prereg's own refusal that quotes the line, a hard-wrapped sentence's next line, an indented, nested or fenced
+    example, a comment, a blockquote, a table or another entry is no answer at all (nothing is named as one, and the
+    refusal still asks for the line, says where it goes and names the lines that mention it, finding N12), so no text
+    that only mentions the line writes the files before Shresth answered. The line in italics, as a numbered item, or
+    as a bullet right after a paragraph (a list interrupts one) reads."""
     monkeypatch.setattr(S, "SHORT_RULE", "ask")
     if lines is None:
         rc, out = PR.prereg(short_run, repo=repo)
@@ -441,8 +471,27 @@ def test_under_q8b_his_answer_is_only_a_line_of_its_own_in_d023(short_run, repo,
             assert json.loads((repo / rel).read_text())["rule"]["answers"]["Q8"]["short_answer"] == ANSWER
     else:
         assert rc == 2 and out[-1].startswith(f"refused: SHORT_RULE is Q8's (b), ask: {ASKED}"), out
-        assert f"add the line `{ANSWER}` to {S.DECISIONS}" in out[-1] and f" answers {RUN} " not in out[-1], out
+        assert f"add the line `{ANSWER}` to {S.DECISIONS}, {WHERE}" in out[-1], out
+        assert f" answers {RUN} " not in out[-1], "nothing is named as an answer"
+        mentions(repo, out[-1])
         assert tree_files(tmp_path) == before, "nothing written"
+
+
+def test_under_q8b_the_line_added_after_a_later_entry_is_named_and_moving_it_into_d023_writes(short_run, repo,
+                                                                                              tmp_path, monkeypatch):
+    """Finding N12: once another entry follows D-023 (D-024, from Phase 2), the line appended at the end of the file
+    stands in that entry and is no answer. The refusal says the line goes in D-023's entry and names the line where it
+    stands unread, so following it ends the refusal: moved into D-023's entry, it writes."""
+    monkeypatch.setattr(S, "SHORT_RULE", "ask")
+    later = ("## D-024 (synthetic): the seed pool", "", "- something else", "")
+    answered(repo, *later, f"- {ANSWER}")
+    rc, out = PR.prereg(short_run, write=True, repo=repo)
+    assert rc == 2 and f"add the line `{ANSWER}` to {S.DECISIONS}, {WHERE}" in out[-1], out
+    n = (repo / S.DECISIONS).read_text().splitlines().index(f"- {ANSWER}") + 1
+    assert f"mentions it on line {n}, where no answer is read: nothing written" in out[-1], out[-1]
+    answered(repo, f"- {ANSWER}", "", *later)
+    rc, out = PR.prereg(short_run, write=True, repo=repo)
+    assert rc == 0 and out[-2] == f"wrote {S.HELDOUT_FILE}, {S.RUN_FILE}", out
 
 
 NOTED = f"- {ANSWER} (Shresth, 2026-11-20)"         # his answer in house style, attributed after the line
