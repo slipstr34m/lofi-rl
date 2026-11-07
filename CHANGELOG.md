@@ -4,7 +4,7 @@ Newest entry first. Every number cites the file or command output it was read fr
 
 ## Status
 - **SU used:** 2,583.8 of the 1,000,000 target (`python3 scripts/session_report.py`, 2026-11-06 14:45 PST).
-- **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is under way:
+- **Phase:** 0 is done (smoke 13628361, `SMOKE_OK`). Phase 1 (instrument) is done: its gate was approved on 2026-11-06.
   - **shootouts:**
     - Days 1, 2 and 3 are voted and confirmed by Shresth (`gates/GATE_palette.md`), with the 1-bar heard rule (D-013 amended); Day 3 gave rain excerpt `excerpt_e2` and, by his word, the rain at Δ 24;
   - **keep3:** Shresth kept 10 of the 30 drafts (`gates/GATE_palette.md`). The sign-off listen tossed 4 of them ("The loops themselves"); he kept one redraft of each in `b1103-keep3-redo` (`drafts/v1/redo1/`), so the kept 10 are keep3's 6 and his 4 redo picks. The second sign-off listen passed (Toss 0, 2026-11-04);
@@ -19,7 +19,22 @@ Newest entry first. Every number cites the file or command output it was read fr
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
 - **The palette is frozen:** `palettes/lofi_rain_v1.yaml`, `frozen: '2026-11-04'` (sha256 `09f80a64…`), on Shresth's APPROVED line of 2026-11-04.
-- **Both halves of the Phase-1 gate's bar are met** on its second launch (13788483): 477 of 500 passing non-copies (at least 300), and 28 of 50 clips Fine or better in his ear check `b1106-gate1` (at least 15; `gates/GATE_phase1.md`). Waiting on Shresth: his APPROVED line in `gates/GATE_phase1.md`.
+- **The Phase-1 gate is approved** (Shresth, 2026-11-06, `gates/GATE_phase1.md`). On its second launch (13788483), 477 of 500 loops passed and were not near-copies (at least 300), and he rated 28 of 50 clips Fine or better in his ear check `b1106-gate1` (at least 15).
+
+---
+
+## 2026-11-06 (17:55 PST): Phase 1 is done: Shresth approved the Phase-1 gate
+
+**What was done**
+- **His APPROVED line,** given in chat ("APPROVED by Shresth Rana 2026-11-06"), entered verbatim under `## Approval` in `gates/GATE_phase1.md`, after a blank line, as in `gates/GATE_palette.md`.
+  - `python -m kit.gates gates/GATE_phase1.md --name "Shresth Rana"`: `APPROVED (approval lines: Shresth Rana 2026-11-06)`.
+  - `gate1 gate` with the same run, batch and votes reports `unchanged`, and the signed file stays byte-identical.
+- **Phase 1 is done.** Its gate (CLAUDE.md §9) is met and approved: 477 of 500 against 300, and 28 of 50 "fine" against 15. The rest of its done-when list is in the Status above: the shootouts, the kept 10, and the palette frozen on 2026-11-04.
+- **Step-0 values:** D-021's items 3, 4 and 6 read theirs from this run, `runs/junk-13788483` (D-021 "What follows" item 1; item 5).
+
+**SU spent:** 0.
+
+**Next:** D-021 "What follows" item 2, the step-0 samples. All are drawn under the grammar, with item 1's streams and draw seeds: the RM held-out tuples, PAR's Ref_b, and the seed pool's 660. Its cluster jobs wait for the USC VPN: `discovery.usc.edu` did not resolve at 17:44, and the cluster copy of the votes waits too.
 
 ---
 
