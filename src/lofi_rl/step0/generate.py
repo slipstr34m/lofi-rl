@@ -33,16 +33,18 @@ lofi_rl.step0.requests lists for STREAMS, request i as row i of DIR/summary/comp
    puts past --deadline-s (`stopped: "deadline"`).
 6. **The replay**, a readout: once every request is drawn, the rm_heldout requests again, in reverse order, in chunks
    of REPLAY_CHUNK, with their own seeds, to replay.jsonl only, each row saying whether its text is the draw's. It
-   obeys the deadline, and a cut or failed replay (`replay.stopped`) leaves the draws complete. Its rows are never
-   scored, rendered or selected, and they are held-out data (§5).
+   obeys the deadline, and a cut, failed or killed replay (`replay.stopped` "deadline", "error: ..." or, after a
+   kill, "running") leaves the draws complete: generate.json says they are (`partial` false) before the replay
+   starts. Its rows are never scored, rendered or selected, and they are held-out data (§5).
 7. **The watchdog** (main): faulthandler dumps every thread's stack and exits at deadline + junk.HANG_MARGIN_S, then
    alarm(120) ends a hang in vLLM's teardown, as junk's generate does.
 
 generate.json (lofi-rl/step0-generate/1) holds lofi_rl.step0.FIELDS' fields, rewritten after every chunk, with `trace`
 on an error. `engine` is VllmEngine.info as the engine loaded, and `sampling_params` the first draw's SamplingParams
-repr, since VllmEngine.sampling overwrites info["sampling_params"] on every call. `partial` is true until generate
-ends, so a killed run reads partial; a run the deadline cut ends with `stopped` "deadline" and fewer rows than
-`requested`.
+repr, since VllmEngine.sampling overwrites info["sampling_params"] on every call. `partial` is true until the draws
+are complete (every request drawn: it turns false before the replay) or generate ends, so a run killed while drawing
+reads partial and one killed in the replay does not; a run the deadline cut ends with `stopped` "deadline" and fewer
+rows than `requested`.
 
 Exit 0: every request drawn (the replay may be cut); 1: an error, or the deadline cut the draws (a partial run);
 2: a pre-check or the probe stopped it, with nothing drawn. Sound claims: none.
@@ -338,9 +340,10 @@ def draw(engine, so, plan: Plan, chunk: int, deadline: float, meta: dict, summ: 
 
 def replay(engine, so, plan: Plan, held: Mapping[int, str], deadline: float, meta: dict, summ: Path,
            t0: float) -> None:
-    """Step 6 (module doc). Never raises: an error is the replay's `stopped` (with `trace`), and the draws stand."""
+    """Step 6 (module doc). Never raises: an error is the replay's `stopped` (with `trace`), and the draws stand.
+    `stopped` reads "running" (generate sets it before the call) until the last chunk is written, so a kill during
+    the replay leaves "running" beside draws that are complete."""
     rp, timing = meta["replay"], meta["timing"]
-    rp["stopped"] = None
     reqs = [r for r in plan.reqs if r.stream == "rm_heldout"][::-1]
     timed = list(timing["chunks"][1:] or timing["chunks"])
     try:
@@ -367,6 +370,8 @@ def replay(engine, so, plan: Plan, held: Mapping[int, str], deadline: float, met
                 rp["differ"] = rp["n"] - rp["same"]
                 timing["replay_s"] = round((timing["replay_s"] or 0.0) + dt, 2)
                 _write_json(summ / "generate.json", meta)
+            else:
+                rp["stopped"] = None                    # every chunk replayed
     except Exception as err:  # noqa: BLE001: a readout that fails never costs the draws
         rp["stopped"] = f"error: {type(err).__name__}: {err}"[:STOPPED_CHARS]
         meta["trace"] = traceback.format_exc()[-TRACE_CHARS:]
@@ -431,6 +436,11 @@ def generate(a: argparse.Namespace, root: Path) -> int:
         meta["trace"] = traceback.format_exc()[-TRACE_CHARS:]
         rc = 1
     if rc == 0 and meta["stopped"] is None and meta["generated"] == len(plan.reqs):
+        # the draws are complete: say so before the replay, so a kill there (the watchdog's exit, TERM, scancel)
+        # leaves a run that reads complete, and only the readout cut ("running")
+        meta["partial"] = False
+        meta["replay"]["stopped"] = "running"
+        _write_json(summ / "generate.json", meta)
         replay(engine, so, plan, held, a.deadline_s, meta, summ, t0)
     else:
         meta["replay"]["stopped"] = "not run: the draws are not complete"

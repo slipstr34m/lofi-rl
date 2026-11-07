@@ -30,6 +30,7 @@ from lofi_rl.prompt import PromptError, messages_sha256
 from lofi_rl.rl import junk as J
 from lofi_rl.step0 import cli
 from lofi_rl.step0 import generate as G
+from lofi_rl.step0 import render as Rd
 from lofi_rl.step0 import requests as R
 
 ROOT = G.ROOT
@@ -168,7 +169,8 @@ def test_each_chunk_is_fsynced_and_generate_json_rewritten(monkeypatch, tree, tm
     rc, meta, *_ = run_generate(monkeypatch, tree, tmp_path / "run", args=("--chunk", "8"))
     assert rc == 0 and [c["count"] for c in meta["timing"]["chunks"]] == [8, 8, 8, 8]
     assert len(synced) == 4 + 1, "each of the 4 draw chunks and the replay's one chunk of 16"
-    assert [w for w in written if w] == [8, 16, 24, 32, 32, 32], "after each chunk, the replay and the end"
+    assert [w for w in written if w] == [8, 16, 24, 32, 32, 32, 32], (
+        "after each chunk, before the replay (the draws complete), after its chunk and at the end")
 
 
 def test_a_chunk_the_forecast_puts_past_the_deadline_is_not_started(monkeypatch, tree, tmp_path, subset):
@@ -403,6 +405,51 @@ def test_a_replay_cut_by_the_deadline_or_an_error_leaves_the_draws_complete(monk
     rc, meta, *_ = run_generate(monkeypatch, tree, tmp_path / "run2", FakeEngine(fail_at=3))
     assert rc == 0 and meta["generated"] == 32 and meta["stopped"] is None
     assert meta["replay"]["stopped"] == "error: RuntimeError: the fake engine died" and "trace" in meta
+
+
+class Killed(BaseException):
+    """What the step cannot catch: faulthandler's exit at the hang limit, timeout's TERM, scancel."""
+
+
+def test_a_kill_during_the_replay_leaves_a_run_that_reads_complete(monkeypatch, tree, tmp_path, subset):
+    """Every draw is on disk when the replay starts, so generate.json says so first (finding R2-1): a kill in the
+    replay leaves `partial` false, every request drawn and the replay "running"; score's step0.json is complete and
+    render takes the run (render.partial finds nothing), so the draws are never thrown away for a readout."""
+    class KilledInReplay(FakeEngine):
+        def chat(self, convs, sps):
+            if len(self.calls) == 2:                    # the probe and the one chunk of 32 draws went before
+                self.calls.append((convs, sps))
+                raise Killed()
+            return super().chat(convs, sps)
+    run = tmp_path / "run"
+    monkeypatch.setattr(G, "ROOT", tree)
+    monkeypatch.setattr(J, "load_engine", lambda model, **kw: KilledInReplay())
+    monkeypatch.setattr(J, "structured_outputs_params", lambda regex: {"regex_sha256": sha(regex)})
+    with pytest.raises(Killed):
+        cli.main(["generate", "--run", str(run), "--hang-s", "0"])
+    summ = run / "summary"
+    meta = json.loads((summ / "generate.json").read_text())
+    assert (meta["partial"], meta["stopped"], meta["generated"], meta["requested"]) == (False, None, 32, 32)
+    assert meta["replay"]["stopped"] == "running" and meta["replay"]["n"] == 0
+    assert len(rows_of(summ / "completions.jsonl")) == 32
+    assert cli.main(["score", "--run", str(run)]) == 0
+    step0 = json.loads((summ / "step0.json").read_text())
+    assert step0["partial"] is False and step0["n"] == step0["requested"] == 32
+    rows, bad_rows = J.read_jsonl(summ / "completions.jsonl")
+    scored, bad_scored = J.read_jsonl(summ / "scored.jsonl")
+    assert Rd.partial(meta, step0, rows, bad_rows, scored, bad_scored) == [], "render takes the run"
+
+
+def test_a_replay_that_ends_records_its_stop_as_none(monkeypatch, tree, tmp_path, subset):
+    written = []
+    real = G._write_json
+    monkeypatch.setattr(G, "_write_json", lambda path, obj: written.append(
+        (obj["partial"], obj["replay"]["stopped"])) or real(path, obj))
+    rc, meta, *_ = run_generate(monkeypatch, tree, tmp_path / "run")
+    assert rc == 0 and meta["replay"]["stopped"] is None and meta["partial"] is False
+    assert (False, "running") in written and written.index((False, "running")) < len(written) - 1, (
+        "partial false and the replay running are written before the replay's first chunk")
+    assert all(p is True for p, _ in written[:written.index((False, "running"))]), "partial until the draws are in"
 
 
 # --------------------------------------------------------------------------------------------- the watchdog
