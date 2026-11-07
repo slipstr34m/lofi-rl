@@ -78,8 +78,7 @@ from lofi_rl.step0 import Step0Error
 from lofi_rl.step0 import path as P
 from lofi_rl.step0 import requests as R
 
-MARK_HEAD = "D-023 mark:"           # the mark's first words (MARK, requests.mark_line)
-MARK_END = " \t.*_\"'"              # what may close a mark on its DECISIONS.md line: markdown, punctuation, quotes
+MARK_HEAD, MARK_END, find_marks = R.MARK_HEAD, R.MARK_END, R.find_marks     # one reader of D-023's lines
 PROBE = "/".join(S.PROBE_CELL)
 STOPPED_CHARS, TRACE_CHARS = 2000, 6000     # as junk keeps them
 
@@ -118,19 +117,6 @@ def sp_seed(sp) -> int | None:
 
 
 # --------------------------------------------------------------------------------------------- the pre-checks
-def find_marks(text: str) -> list[str]:
-    """Every D-023 mark a DECISIONS.md text holds, in order: from "D-023 mark:" to the next backtick or double quote,
-    or the end of its line, less what may close it there (MARK_END)."""
-    out = []
-    for line in text.splitlines():
-        at = line.find(MARK_HEAD)
-        while at >= 0:
-            body = line[at:].split("`", 1)[0].split('"', 1)[0]
-            out.append(body.rstrip(MARK_END))
-            at = line.find(MARK_HEAD, at + len(MARK_HEAD))
-    return out
-
-
 def registration(root: Path) -> tuple[dict, list[str]]:
     """generate.json's `registration` and what stops the run: docs/DECISIONS.md must hold a D-023 mark equal to MARK
     (`found`), and MARK must be the line requests.mark_line gives STREAMS and RULE (requests.check_mark)."""

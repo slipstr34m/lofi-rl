@@ -28,6 +28,9 @@ from lofi_rl.step0 import Step0Error
 
 STREAM_ORDER = ("rm_heldout", "train")          # the streams this unit may draw, in the order they are drawn
 WHICH = ("all", "pool")                         # all of a stream's briefs, or (train only) the seed pool's (Q1)
+MARK_HEAD = "D-023 mark:"                       # the mark's first words (MARK, mark_line)
+ANSWERS_HEAD = "D-023 answers:"                 # the answers line's (answers_line)
+MARK_END = " \t.*_\"'"                          # what may close such a line in DECISIONS.md: markdown, punctuation
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,34 @@ def mark_line(drawn=None, rule: str | None = None) -> str:
         n += count * S.DRAWS
     return (f"D-023 mark: rule {S.RULE if rule is None else rule}; streams {' and '.join(parts)}; "
             f"{S.DRAWS} draws a brief, {n} requests")
+
+
+def answers_line() -> str:
+    """The selection answers (the spec's §7: Q1-Q5 and Q8; Q6 is MARK's streams, Q7 a sentence) as one line, built
+    from the constants that hold them. D-023 holds it verbatim beside his answers in words (tests/test_step0_docs.py),
+    so an answer D-023 records and a constant left at another value cannot both stand (finding R1-3)."""
+    def pairs(m) -> str:
+        return ", ".join(f"{k} {v}" for k, v in dict(m).items())
+    bands = "/".join(f"{lo}-{hi}" for lo, hi in S.POOL_BANDS)
+    fill = "-".join(str(x) for x in S.POOL_FILL_BAND)
+    return (f"{ANSWERS_HEAD} Q1 POOL_BRIEFS {S.POOL_BRIEFS}, POOL_BANDS {bands}, POOL_FILL_BAND {fill}; "
+            f"Q2 POOL_SHARES_REFB {S.POOL_SHARES_REFB}; Q3 PASSING {S.PASSING}; Q4 DISTINCT {pairs(S.DISTINCT)}; "
+            f"Q5 POOL_EXCLUDES {S.POOL_EXCLUDES}; Q8 SHORT_RULE {S.SHORT_RULE}")
+
+
+def find_marks(text: str, head: str = MARK_HEAD) -> list[str]:
+    """Every D-023 line of `head` (the mark, or the answers line) a DECISIONS.md text holds, in order: from the head to
+    the next backtick or double quote, or the end of its line, less what may close it there (MARK_END). Generate's
+    pre-check, check's git condition and tests/test_step0_docs.py all read D-023 this one way, so a mark wrapped
+    across lines, or with text after it on its line, is no mark to any of them."""
+    out = []
+    for line in text.splitlines():
+        at = line.find(head)
+        while at >= 0:
+            body = line[at:].split("`", 1)[0].split('"', 1)[0]
+            out.append(body.rstrip(MARK_END))
+            at = line.find(head, at + len(head))
+    return out
 
 
 def check_mark(drawn=None, mark: str | None = None) -> None:

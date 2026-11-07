@@ -19,7 +19,8 @@ files show:
   generate's, `rows_matching` the stream's requests, `example_mismatch` 0) and `palette` (the frozen file,
   `matches_generate` true); clips.json `palette.sha256` (render's);
 - **Registered first:** generate.json `registration.found` true and `registration.mark` MARK; and, read with git, the
-  generate stamp's commit holds MARK in its docs/DECISIONS.md, whose sha256 is `registration.decisions_sha256`;
+  generate stamp's commit holds MARK in its docs/DECISIONS.md as generate reads it (requests.find_marks), the file's
+  sha256 being `registration.decisions_sha256`;
 - **Constrained,** per stream: `constrained.enabled` true, `regex_sha256` and `in_language.regex_sha256` the frozen
   grammar's, `in_language.matches_generate` true, `stop.out_of_language` 0 and `other.n` 0;
 - **What the regex guarantees,** per stream: `failures.G1`, `G3`, `G4`, `G5` and `crash` 0;
@@ -594,7 +595,7 @@ def _git_conditions(run: Run, c: _List, repo: Path, parsed: Mapping[str, tuple[s
 
     def decisions() -> tuple[bool, str]:
         dec = blob_at(repo, full, S.DECISIONS)
-        holds, sha = S.MARK in dec.decode("utf-8", errors="replace"), sha256_bytes(dec)
+        holds, sha = S.MARK in R.find_marks(dec.decode("utf-8", errors="replace")), sha256_bytes(dec)
         want = field(gen, "registration.decisions_sha256")
         return holds and sha == want, (f"at {gcommit}: {'holds' if holds else 'does not hold'} MARK; sha256 "
                                        f"{short(sha)} " + ("is generate's" if sha == want else

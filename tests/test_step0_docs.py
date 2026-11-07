@@ -7,9 +7,12 @@ requests, never typed in twice.
   §2.8's timeout sum, the steps' deadlines, the schemas and files of §2.6 and §4.4, and every field §4.1's validity
   table names, each read by a condition of lofi_rl.step0.check. Once jobs/step0.sbatch exists, its walltime and Cost
   line are the spec's (skipped before).
-- **D-023** (docs/DECISIONS.md): the same values and the mark line itself, verbatim. D-023 is written with Shresth's
-  answers to the spec's §7 (§6.2 step 4), so until then test_d023_states_the_registered_values is one of the
-  branch's two expected failures (the other is test_step0_job's registry check).
+- **D-023** (docs/DECISIONS.md): the same values, the mark line and the answers line verbatim and each read as
+  generate reads the mark (requests.find_marks), m in each set's own bullet, check's condition counts, the amendment's
+  form as check reads it, the separation rules and the RM loader's ask, and no draft placeholder or comment; a
+  stand-in entry in the draft's form passes, and each form generate or the record would not take fails. D-023 is
+  written with Shresth's answers to the spec's §7 (§6.2 step 4), so until then test_d023_states_the_registered_values
+  is one of the branch's two expected failures (the other is test_step0_job's registry check).
 """
 from __future__ import annotations
 
@@ -208,40 +211,174 @@ def test_the_job_script_has_the_walltime_and_cost_the_spec_states():
     if not JOB.is_file():
         pytest.skip(f"{S.JOB} is the cluster builder's: it is not in this tree yet")
     job = JOB.read_text(encoding="utf-8")
-    spec = COST.search(flat(section("2.1 Shape and cost")))
+    shape = flat(section("2.1 Shape and cost"))
+    spec = COST.search(shape)
     m = COST.search(job)
     assert m and m.groups() == spec.groups(), "the job's Cost line is the spec's"
     assert re.search(r"^#SBATCH --time=00:45:00$", job, re.M) and f"--job-name={S.JOB_NAME}" in job
+    for key, value in re.findall(r"^#SBATCH --([a-z-]+)(?:=(\S+))?$", job, re.M):     # finding R3-8: read, not typed
+        if key in ("nodes", "ntasks"):
+            assert f"{value} {key[:-1].replace('ntask', 'task')}" in shape, key
+        else:
+            assert (f"`--{key}={value}`" if value else f"`--{key}`") in shape, key
+    code = "\n".join(x for x in job.splitlines() if x.strip() and not x.lstrip().startswith("#"))
+    table = section("2.8 Deadlines, timeouts and the walltime")
+    pairs = sorted(re.findall(r"timeout -k (\d+) (\d+)", code))
+    assert pairs == sorted(re.findall(r"timeout -k (\d+) (\d+)", table)), "the job's timeouts are §2.8's"
 
 
 # --------------------------------------------------------------------------------------------- D-023
-def d023_entry(text: str) -> str | None:
-    """D-023's entry in a DECISIONS.md text, up to the next entry's heading (whitespace folded), or None."""
+def d023_raw(text: str) -> str | None:
+    """D-023's entry in a DECISIONS.md text, up to the next entry's heading, as written (lines kept), or None."""
     m = re.search(r"^## D-023 \(", text, re.M)
     if m is None:
         return None
     entry = text[m.start():]
     nxt = re.search(r"^## D-\d+ \(", entry[3:], re.M)
-    return flat(entry if nxt is None else entry[:nxt.start() + 3])
+    return entry if nxt is None else entry[:nxt.start() + 3]
+
+
+def d023_entry(text: str) -> str | None:
+    """D-023's entry with its whitespace folded, or None."""
+    raw = d023_raw(text)
+    return None if raw is None else flat(raw)
+
+
+def bullet(raw: str, title: str) -> str:
+    """The text of D-023's bullet whose bold head starts with `title`, its wrapped lines folded in ("" if none)."""
+    lines = raw.splitlines()
+    for j, line in enumerate(lines):
+        body = line.lstrip()
+        if body.startswith(f"- **{title}"):
+            indent, out = len(line) - len(body), [body]
+            for nxt in lines[j + 1:]:
+                if not nxt.strip() or nxt.lstrip().startswith("- ") or len(nxt) - len(nxt.lstrip()) <= indent:
+                    break
+                out.append(nxt.strip())
+            return " ".join(out)
+    return ""
+
+
+def n_conditions() -> tuple[int, int]:
+    """How many conditions check holds a run to, and a redo pair (one more: `the path at the redo commit`)."""
+    import dataclasses
+    import tempfile
+    import helpers_step0 as H
+    with tempfile.TemporaryDirectory(prefix="step0-docs-") as tmp:
+        run = C.load_run(H.make_run(Path(tmp) / "step0-1", briefs=["5101:0"]).dir)
+        one = C.conditions(run)[0]
+        pair = C.conditions(dataclasses.replace(run, redo=Path(tmp) / "step0-redo-2"))[0]
+    names = {c.name for c in pair}
+    assert C.REDO_STAMP_NAME in names and "the path at the redo commit" in names and C.STAMP_NAME not in names
+    return len(one), len(pair)
+
+
+TEMPLATE = "D-023 redo amendment: run step0-<job>; changed <path>, <path>"
 
 
 def assert_d023_states_the_registered_values(text: str) -> None:
-    entry = d023_entry(text)
-    assert entry is not None, ("docs/DECISIONS.md has no D-023 yet: it is written with Shresth's answers to the "
-                               "spec's section 7, beside the code (spec section 6.2 step 4)")
-    n = counts()
-    assert S.MARK in entry, "the mark, verbatim"
+    raw = d023_raw(text)
+    assert raw is not None, ("docs/DECISIONS.md has no D-023 yet: it is written with Shresth's answers to the "
+                             "spec's section 7, beside the code (spec section 6.2 step 4)")
+    entry, n = flat(raw), counts()
+    assert "[[PLACEHOLDER" not in raw and "<!--" not in raw, "the draft's placeholders and comment are gone"
+    assert S.MARK in R.find_marks(raw), "the mark, on one line, as generate's pre-check reads it (finding R2-2)"
+    assert R.answers_line() in R.find_marks(raw, R.ANSWERS_HEAD), "the answers line, from the constants (R1-3)"
     assert f"`{S.RULE}`" in entry
     for key in ("all", "held", "train", "heldout_clips", "refb_clips", "pool_clips"):
         assert f"{n[key]:,}" in entry, key
-    for name, m_ in S.M.items():
-        assert f"m = {m_}" in entry or f"m {m_}" in entry, name
+    for title, name in (("The RM held-out tuples", "heldout"), ("PAR's Ref_b", "refb"),
+                        ("The seed pool's 660", "pool")):
+        assert f"m = {S.M[name]}" in bullet(raw, title), (title, "m in its own set's bullet (finding R3-8)")
+    one, pair = n_conditions()
+    assert f"{one} conditions" in entry and f"a redo pair has {pair}" in entry, "check's count (finding R3-8)"
+    assert TEMPLATE in raw, "the amendment's form, verbatim"
+    filled = TEMPLATE.replace("<job>", "13800001").replace("<path>, <path>", f"{S.JOB}, src/lofi_rl/step0/select.py")
+    assert C.amendment_files(filled, "step0-13800001") == sorted([S.JOB, "src/lofi_rl/step0/select.py"])
+    assert "held-out data" in entry and "taken or not" in entry, "the separation rules (finding R3-2)"
+    assert "`short`" in bullet(raw, "The RM loader"), "a short brief's clips are held-out clips too (finding R3-4)"
     assert f"`{S.JOB_NAME}`" in entry and "45 min" in entry and "at most 810 SU" in entry
     for rel in (S.PATH_FILE, S.HELDOUT_FILE, S.RUN_FILE):
         assert rel in entry, rel
 
 
+def standin_d023() -> str:
+    """A D-023 entry holding what assert_d023_states_the_registered_values asks, in the draft's words and form (the
+    mark and the answers line alone in fenced blocks), so that the check is seen to be satisfiable."""
+    n, (one, pair) = counts(), n_conditions()
+    return f"""
+## D-023 (a stand-in for tests/test_step0_docs.py): the step-0 samples, drawn by `{S.JOB_NAME}` under rule `{S.RULE}`
+
+- **His answers** (the constants that carry them):
+
+  ```
+  {R.answers_line()}
+  ```
+
+- **Rule `{S.RULE}`:**
+  - **The draws.** rm_heldout 40 × 8 = {n['held']:,} and train 400 × 8 = {n['train']:,}, so {n['all']:,} requests.
+  - **The RM held-out tuples** (rm_heldout, seed 5101): m = {S.M['heldout']}. The set is {n['heldout_clips']} clips,
+    40 tuples of 4, if no brief is short.
+  - **PAR's Ref_b** (train, seed 596): m = {S.M['refb']}, so {n['refb_clips']:,} in all.
+  - **The seed pool's 660** (train, {S.POOL_N} × m = {S.M['pool']}): {n['pool_clips']} is a planning count.
+- **The mark:**
+
+  ```
+  {S.MARK}
+  ```
+
+- **The job:** `{S.JOB_NAME}`, one A40, 45 min, so at most 810 SU.
+- **The path:** `{S.PATH_FILE}`.
+- **Validity:** That is {one} conditions under either Q6 answer; a redo pair has {pair}.
+- **The fix comes first:** one line per redo, verbatim:
+
+  ```
+  {TEMPLATE}
+  ```
+
+- **Separation:** every rm_heldout row, taken or not, is held-out data.
+- **Fixing the outputs:** `{S.HELDOUT_FILE}` and `{S.RUN_FILE}`.
+- **Asked of later units:**
+  - **The RM loader:** every label on a clip heldout_v1.json lists, in `tuples` or in `short`, is dropped.
+"""
+
+
+def wrapped(text: str, at: int = 118) -> str:
+    """The mark wrapped across two lines at about `at` columns, as DECISIONS.md's entries are wrapped."""
+    cut = S.MARK.rfind(" ", 0, at)
+    return text.replace(S.MARK, S.MARK[:cut] + "\n  " + S.MARK[cut + 1:])
+
+
+REFUSED = [
+    ("the mark wrapped across two lines", wrapped),
+    ("text after the mark on its line", lambda t: t.replace(S.MARK, S.MARK + " (Q6(a))")),
+    ("the mark in a sentence, unquoted", lambda t: t.replace(f"  ```\n  {S.MARK}\n  ```",
+                                                             f"  The mark is {S.MARK}; generate checks it.")),
+    ("Ref_b's m given as 3", lambda t: t.replace(f"m = {S.M['refb']}, so", "m = 3, so")),
+    ("an answer the constants do not carry", lambda t: t.replace("Q3 PASSING hard;", "Q3 PASSING hard_not_copy;")),
+    ("a placeholder left in", lambda t: t + "\n- **Outcome:** [[PLACEHOLDER: after the run]]\n"),
+    ("the draft's comment left in", lambda t: t.replace("- **His answers**", "<!-- DRAFT -->\n- **His answers**")),
+    ("another count of conditions", lambda t: t.replace("a redo pair has", "a redo pair has 7")),
+    ("no separation rules", lambda t: t.replace("held-out data", "held-out")),
+]
+
+
+def test_the_d023_check_takes_the_drafts_form():
+    assert_d023_states_the_registered_values(DECISIONS.read_text(encoding="utf-8") + standin_d023())
+
+
+@pytest.mark.parametrize("why, edit", REFUSED, ids=[r[0] for r in REFUSED])
+def test_the_d023_check_refuses_what_generate_or_the_record_would_not_take(why, edit):
+    """Findings R2-2 and R3-8: the forms of the mark generate's pre-check cannot read, an m given to the wrong set,
+    an answer the constants do not hold, and a draft's leftovers all fail before the commit, not in the job."""
+    text = DECISIONS.read_text(encoding="utf-8") + edit(standin_d023())
+    with pytest.raises(AssertionError):
+        assert_d023_states_the_registered_values(text)
+
+
 def test_d023_states_the_registered_values():
-    """D-023 holds the mark verbatim, the rule, the counts, m per set, the job, its walltime and its cost. It is
-    written with Shresth's answers (spec §6.2 step 4): until then this test fails, as the branch expects."""
+    """D-023 holds the mark and the answers line verbatim (each alone on its line), the rule, the counts, m in each
+    set's bullet, check's condition counts, the amendment's form, the separation rules, the RM loader's ask, the job,
+    its walltime and its cost, and none of the draft's placeholders. It is written with Shresth's answers (spec
+    §6.2 step 4): until then this test fails, as the branch expects."""
     assert_d023_states_the_registered_values(DECISIONS.read_text(encoding="utf-8"))

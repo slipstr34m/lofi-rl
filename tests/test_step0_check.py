@@ -289,6 +289,17 @@ def test_a_commit_without_d023s_mark_is_caught(base, run_dir, repo_copy):
     assert "does not hold MARK" in cond(doc, "docs/DECISIONS.md at the generate commit")["shows"]
 
 
+def test_a_commit_whose_mark_generate_would_not_read_is_caught(base, run_dir, repo_copy):
+    """The git condition reads the mark as generate's pre-check does (requests.find_marks, finding R2-2): MARK with
+    text after it on its line is no mark, though the text holds MARK as a substring."""
+    text = L.decisions_text(mark=False) + f"- **The mark:** {S.MARK} (checked by generate)\n"
+    c5 = L.commit(repo_copy, "D-023's mark with text after it", {S.DECISIONS: text})
+    L.restamp(run_dir, repo_copy, c5)
+    doc = report(run_dir, repo_copy)
+    assert S.MARK in text and doc["validity"]["failed"] == ["docs/DECISIONS.md at the generate commit"]
+    assert "does not hold MARK" in cond(doc, "docs/DECISIONS.md at the generate commit")["shows"]
+
+
 def test_a_stamp_the_repo_does_not_hold_fails_every_git_condition(base, run_dir):
     L.restamp(run_dir, base[0], "0123456789ab" + "0" * 28, steps=("score", "render"))
     for name in ("score_stamp", "render_stamp"):

@@ -419,11 +419,28 @@ def test_q4b_and_q4c_change_which_sets_skip_a_repeat(order, streams, monkeypatch
 
 
 def test_the_answer_constants_are_the_recommended_ones():
+    """The recommended (a) of each, as the answers line D-023 holds verbatim (requests.answers_line, finding R1-3):
+    an answer D-023 records that the constants do not carry fails test_step0_docs' D-023 half."""
+    assert R.answers_line() == (
+        "D-023 answers: Q1 POOL_BRIEFS band, POOL_BANDS 60-74/75-90/91-95, POOL_FILL_BAND 75-90; Q2 POOL_SHARES_REFB "
+        "False; Q3 PASSING hard; Q4 DISTINCT heldout True, refb False; Q5 POOL_EXCLUDES text; Q8 SHORT_RULE report")
     assert S.POOL_BRIEFS == "band" and S.POOL_BANDS == ((60, 74), (75, 90), (91, 95)) and S.POOL_FILL_BAND == (75, 90)
     assert S.POOL_SHARES_REFB is False and S.PASSING == "hard" and dict(S.DISTINCT) == {"heldout": True, "refb": False}
     assert S.POOL_EXCLUDES == "text" and S.STREAMS == (("rm_heldout", "all"), ("train", "all"))
     assert S.SHORT_RULE == "report" and S.COMMITTED_BEFORE.startswith("before the first Phase-2 vote")
     assert S.PASSING in X.PASSING_RULES and S.POOL_BRIEFS in X.POOL_RULES and S.POOL_EXCLUDES in X.EXCLUDES
+
+
+@pytest.mark.parametrize("name, value, part", [
+    ("POOL_BRIEFS", "cell", "Q1 POOL_BRIEFS cell,"), ("POOL_SHARES_REFB", True, "Q2 POOL_SHARES_REFB True;"),
+    ("PASSING", "hard_not_copy", "Q3 PASSING hard_not_copy;"),
+    ("DISTINCT", {"heldout": True, "refb": True}, "Q4 DISTINCT heldout True, refb True;"),
+    ("POOL_EXCLUDES", "clip", "Q5 POOL_EXCLUDES clip;"), ("SHORT_RULE", "ask", "Q8 SHORT_RULE ask")])
+def test_the_answers_line_names_every_selection_answer(monkeypatch, name, value, part):
+    want = R.answers_line()
+    monkeypatch.setattr(S, name, value)
+    got = R.answers_line()
+    assert got != want and part in got and R.find_marks(f"```\n{got}\n```", R.ANSWERS_HEAD) == [got]
 
 
 # --------------------------------------------------------------------------------------------- refusals

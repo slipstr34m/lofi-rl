@@ -209,6 +209,51 @@ def test_a_changed_file_is_caught_by_git_at_a_commit(tmp_path):
     assert cli.main(["path", "--root", str(root), "--commit", "no-such-rev"]) == 2
 
 
+def pre_flight(root) -> list[str]:
+    """What would stop generate at its pre-checks in the tree at `root`, read on the laptop (findings R2-4, R3-9,
+    R2-2): a listed file whose blob is not the path file's, unless a D-023 redo amendment names it (§4.2), and a
+    D-023 mark generate's pre-check does not read as MARK."""
+    from lofi_rl.step0 import check as C
+    from lofi_rl.step0 import generate as G
+    entries, malformed = P.parse((root / S.PATH_FILE).read_text(encoding="ascii"))
+    decisions = (root / S.DECISIONS).read_text(encoding="utf-8") if (root / S.DECISIONS).is_file() else ""
+    amended = set(C.amendment_files(decisions, None))
+    out = [f"malformed line {n} of {S.PATH_FILE}" for n, _ in malformed]
+    out += [f"{p} is not its listed blob ({S.PATH_FILE}): write the path file again, or amend D-023 for a redo"
+            for blob, p in entries if p not in amended
+            and (not (root / p).is_file() or P.git_blob_sha((root / p).read_bytes()) != blob)]
+    return out + G.registration(root)[1]
+
+
+def test_the_pre_flight_finds_a_stale_path_file_and_a_mark_generate_cannot_read(tmp_path):
+    root = tree(tmp_path)
+    (root / S.DECISIONS).write_text(f"## D-023 (stand-in)\n\n  ```\n  {S.MARK}\n  ```\n")
+    P.write(root)
+    assert pre_flight(root) == []
+    fix = root / "src/lofi_rl/step0/check.py"                  # never run by the job, but on its path
+    fix.write_text(fix.read_text() + "# a fix after path --write\n")
+    assert pre_flight(root) == [f"src/lofi_rl/step0/check.py is not its listed blob ({S.PATH_FILE}): write the path "
+                                "file again, or amend D-023 for a redo"]
+    (root / S.DECISIONS).write_text((root / S.DECISIONS).read_text()
+                                    + "\nD-023 redo amendment: run step0-1; changed `src/lofi_rl/step0/check.py`.\n")
+    assert pre_flight(root) == [], "a redo's amended file"
+    cut = S.MARK.rfind(" ", 0, 118)
+    (root / S.DECISIONS).write_text(f"## D-023\n\n{S.MARK[:cut]}\n{S.MARK[cut + 1:]}\n")
+    assert any("not MARK" in x or "holds no" in x for x in pre_flight(root)), "a wrapped mark is no mark"
+
+
+def test_the_committed_path_file_and_d023_pass_generates_pre_checks_in_this_checkout():
+    """Once docs/prereg/D-023_step0_path.txt is written (last, at the code commit), every file it lists has its blob
+    here, but a redo's amended files, and D-023's mark reads as generate reads it: a stale path file or an unreadable
+    mark fails pytest before make submit, not at the job's pre-check after the queue. Skipped before the path file
+    exists, and once docs/prereg/step0_v1.json fixes the run: the render path is not frozen (spec §3)."""
+    if not (ROOT / S.PATH_FILE).is_file():
+        pytest.skip(f"{S.PATH_FILE} is written last, at the code commit (spec §6.2 step 4)")
+    if (ROOT / S.RUN_FILE).is_file():
+        pytest.skip(f"{S.RUN_FILE} fixes the run; later edits to listed files are Phase 2's (spec §3)")
+    assert pre_flight(ROOT) == []
+
+
 def test_git_blob_sha_is_git_hash_objects_id():
     # the ids `git hash-object --stdin` prints for these bytes (tests/test_rl_smoke_check.py's vectors)
     assert P.git_blob_sha(b"") == "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
