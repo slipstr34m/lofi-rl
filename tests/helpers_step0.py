@@ -61,7 +61,7 @@ DECISIONS_SHA256 = hashlib.sha256(b"synthetic docs/DECISIONS.md").hexdigest()
 PATH_FILE_SHA256 = hashlib.sha256(b"synthetic docs/prereg/D-023_step0_path.txt").hexdigest()
 LABELS = (tuple(f"h{k}" for k in range(8)) + tuple(f"t{k}" for k in range(8)) + tuple("abcdefghijklmnopqrstuvwxyz")
           + tuple(f"u{k}" for k in range(8)) + tuple(f"v{k}" for k in range(8)))     # 58 labels: 6 kick bits hold 64
-TRAIN_LABELS = ("t", "u", "v")              # a train brief's default labels by its rank among its twins (default_labels)
+TRAIN_LABELS = ("t", "u", "v")              # a train brief's default labels, by its rank among its twins
 GATES = ("G2", "G6")                        # the gate failures the writer makes for real
 RENDERS = ("", "G7", "E", "EE", "S")        # a held-out draw's render: ok, G7, error once, error twice, deadline skip
 KICK_CELLS = (2, 5, 8, 11, 13, 14)          # the kick hits a label's number sets, beside the downbeat

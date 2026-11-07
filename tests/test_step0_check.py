@@ -357,11 +357,16 @@ def _fix(repo: Path, amendment: str | None) -> str:
     return L.commit(repo, "the redo's fix", {AMENDED: text, S.DECISIONS: L.decisions_text(extra=extra)})
 
 
-def test_a_redo_pair_passes_when_its_changed_files_are_the_amendments(base, run_dir, repo_copy, tmp_path):
-    c2 = _fix(repo_copy, f"D-023 redo amendment: run {RUN}; changed {AMENDED}")
+@pytest.mark.parametrize("amendment", [f"D-023 redo amendment: run {RUN}; changed {AMENDED}",
+                                       f"D-023 redo amendment: run {RUN}; changed `{AMENDED}`.",
+                                       f"**D-023 redo amendment: run {RUN}; changed {AMENDED} (the fix to select).**"],
+                         ids=["the bare form", "a backticked path and a closing period", "bold, with a note"])
+def test_a_redo_pair_passes_when_its_changed_files_are_the_amendments(base, run_dir, repo_copy, tmp_path, amendment):
+    c2 = _fix(repo_copy, amendment)
     redo = _redo(run_dir, tmp_path / "step0-redo-13800002", repo_copy, c2)
     doc = report(run_dir, repo_copy, redo)
     assert doc["validity"]["failed"] == [] and doc["exit"] == 0
+    assert doc["validity"]["held"] == doc["validity"]["of"] == 75, "a redo pair: one condition more than a run"
     names = [c["name"] for c in doc["validity"]["conditions"]]
     assert C.REDO_STAMP_NAME in names and C.STAMP_NAME not in names and "the path at the redo commit" in names
     shows = cond(doc, "the path at the redo commit")["shows"]
@@ -417,6 +422,36 @@ def test_amendment_lines_are_read_per_run():
             "D-023 redo amendment: run step0-1; changed nothing\n")
     assert C.amendment_files(text, "step0-1") == ["a.py", "b/c.py", "d.py"]
     assert C.amendment_files(text, "step0-2") == ["e.py"] and C.amendment_files(text, "step0-3") == []
+    assert C.amendment_files(text, None) == ["a.py", "b/c.py", "d.py", "e.py"], "every run's"
+
+
+@pytest.mark.parametrize("line, files", [
+    ("D-023 redo amendment: run step0-7; changed src/a.py", ["src/a.py"]),
+    ("- D-023 redo amendment: run step0-7; changed src/a.py.", ["src/a.py"]),
+    ("D-023 redo amendment: run step0-7; changed `src/a.py`.", ["src/a.py"]),
+    ("D-023 redo amendment: run step0-7; changed `src/a.py`, `src/b.py`.", ["src/a.py", "src/b.py"]),
+    ("D-023 redo amendment: run step0-7; changed src/a.py and src/b.py", ["src/a.py", "src/b.py"]),
+    ("**D-023 redo amendment: run step0-7; changed src/a.py**", ["src/a.py"]),
+    ("D-023 redo amendment: run step0-7; changed src/a.py, src/b.py (the deadline fix).", ["src/a.py", "src/b.py"]),
+    ("`D-023 redo amendment: run step0-7; changed src/a.py`", ["src/a.py"]),
+    ("D-023 redo amendment: run step0-7; changed nothing.", []),
+    ("D-023 redo amendment: run step0-7; changed `nothing`", []),
+    ("- **D-023 redo amendment:** run step0-7; changed src/a.py", []),
+], ids=["bare", "a closing period", "backticks", "two in backticks", "and", "bold", "a note", "inline code",
+        "nothing.", "`nothing`", "a bold head is not the form"])
+def test_an_amendment_line_is_read_as_house_style_writes_it(line, files):
+    """Findings R3-3, E2 and R2-6: DECISIONS.md backticks its paths and ends its bullets with a period, so the line
+    is read leniently; only a bold head, which breaks the line's form, is not read (D-023 gives the form verbatim)."""
+    assert C.amendment_files(f"# D-023\n{line}\nmore text\n", "step0-7") == files
+    assert C.amendment_files(f"# D-023\n{line}\n", "step0-8") == []
+
+
+def test_an_amended_file_off_the_path_is_shown_and_excepts_nothing(base, run_dir, repo_copy, tmp_path):
+    c2 = _fix(repo_copy, f"D-023 redo amendment: run {RUN}; changed {AMENDED}, CHANGELOG.md")
+    redo = _redo(run_dir, tmp_path / "step0-redo-13800002", repo_copy, c2)
+    doc = report(run_dir, repo_copy, redo)
+    assert doc["validity"]["failed"] == []
+    assert "named but not on the path: CHANGELOG.md" in cond(doc, "the path at the redo commit")["shows"]
 
 
 # --------------------------------------------------------------------------------------------- bad input

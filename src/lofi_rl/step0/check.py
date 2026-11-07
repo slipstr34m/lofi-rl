@@ -48,6 +48,9 @@ docs/DECISIONS.md:
 
     D-023 redo amendment: run step0-<job>; changed <path>, <path>
 
+That form is read leniently (amendment_files): `path` in backticks, a closing period, a bold line or a note after a path
+read as the bare form, and "changed nothing" names no file; a named file the path file does not list is shown.
+
 **Bad input** (exit 2, nothing decided): a summary/ folder or a file missing or unreadable (replay.jsonl, sets.json
 and clips.json may be absent: their conditions fail instead), a schema that is not the step's, or files that are not
 one run's own, as lofi_rl.gate1.load_run refuses them: scored.jsonl against completions.jsonl (the same rows, each
@@ -100,7 +103,9 @@ MAY_BE_ABSENT = ("replay.jsonl", "sets.json", "clips.json")     # their conditio
 REGEX_GATES = ("G1", "G3", "G4", "G5", "crash")      # D-020: what the regex guarantees (DECISIONS.md:221)
 STAMP_NAME = "generate.host.stamp = score_stamp = render_stamp"
 REDO_STAMP_NAME = "stamps of the redo pair"
-AMENDMENT = re.compile(r"D-023 redo amendment: run (step0-[\w-]+); changed ([^\n`]*)")
+AMENDMENT = re.compile(r"D-023 redo amendment: run (step0-[\w-]+); changed ([^\n]*)")
+AMENDED_ITEMS = re.compile(r",|\s+and\s+")         # an amendment's files: comma-separated, or "a.py and b.py"
+NOTHING = "nothing"                                  # `changed nothing`: a redo that changed no listed file
 MAX_LISTED = 10                         # examples kept per kind of problem
 TIMINGS = ("load_s", "probe_s", "gen_s", "tok_per_s", "replay_s", "total_s")
 _STAMP = re.compile(r"^commit=(\S+) dirty=(\S+)")
@@ -473,13 +478,24 @@ def source_sha8_at(repo: Path, commit: str) -> str:
     return _source_sha8_at(str(Path(repo).resolve()), commit)
 
 
-def amendment_files(text: str, run: str) -> list[str]:
-    """The files D-023's redo amendments for `run` name (module doc: `D-023 redo amendment: run <run>; changed
-    <path>, <path>`), every such line together, sorted."""
+def _amended(item: str) -> str | None:
+    """One file an amendment line names: the item's first word, less backticks and asterisks and a closing period,
+    comma, semicolon or colon; None for "nothing" or an empty item."""
+    words = item.replace("`", " ").replace("*", " ").split()
+    path = words[0].rstrip(".,;:") if words else ""
+    return None if not path or path == NOTHING else path
+
+
+def amendment_files(text: str, run: str | None) -> list[str]:
+    """The files D-023's redo amendments for `run` name (every run's, for None), every such line together, sorted.
+    The form is one line, `D-023 redo amendment: run <run>; changed <path>, <path>` (module doc), read as house style
+    writes it: each item (commas, or "and") is its first word, less backticks, asterisks and a closing period,
+    comma, semicolon or colon, so `path`, a closing period, a bold line or a note after a path read as the bare form
+    does, and "nothing" names no file. A bold head (**D-023 redo amendment:**) is not the form and is not read."""
     out: set[str] = set()
     for m in AMENDMENT.finditer(text):
-        if m.group(1) == run:
-            out |= {p.strip() for p in m.group(2).split(",") if p.strip() and p.strip() != "nothing"}
+        if run is None or m.group(1) == run:
+            out |= {p for p in map(_amended, AMENDED_ITEMS.split(m.group(2))) if p}
     return sorted(out)
 
 
@@ -585,8 +601,11 @@ def _git_conditions(run: Run, c: _List, repo: Path, parsed: Mapping[str, tuple[s
                 rec = P.check_commit(repo, lfull, body[0], excepted=named)
                 read.setdefault("redo_commits", {})[commit] = {"commit": lfull, "amendment": named, "path": rec}
                 changed = [x["path"] for x in rec["changed"]] + rec["missing"]
+                listed = {p for _, p in P.parse(body[0])[0]}
+                unlisted = [p for p in named if p not in listed]       # shown, so a typo is seen: it excepts nothing
                 return rec["ok"], (f"at {commit}: {_path_summary(rec)}; D-023's amendment for {run.run_name} names "
                                    + (", ".join(named) if named else "no file")
+                                   + (f"; named but not on the path: {', '.join(unlisted)}" if unlisted else "")
                                    + ("" if rec["ok"] else
                                       f"; not named: {', '.join(p for p in changed if p not in named)}"))
             ok, shows = _attempt(at_redo, None)

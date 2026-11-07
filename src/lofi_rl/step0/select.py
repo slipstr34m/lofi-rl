@@ -42,8 +42,8 @@ the final held-out set: a later unit passes every scored row and this run's clip
 
 **Short and undetermined (§1.8).** A brief whose walk ends with fewer than m is short, and every draw it walked and did
 not take is listed with why: a gate code (G7 at a render), Q3's near_copy or repaired, repeat_of:<k>, refb, pool,
-heldout_text, heldout_clip, refb_clip or pool_clip. A brief whose walk meets a draw that was rendered with an error twice or skipped by the
-deadline, or that still has a draw to render, is undetermined (the render step then exits 1).
+heldout_text, heldout_clip, refb_clip or pool_clip. A brief whose walk meets a draw that was rendered with an error
+twice or skipped by the deadline, or that still has a draw to render, is undetermined (the render step then exits 1).
 
 Standard library only (plus lofi_rl's own stdlib modules), and no I/O. Sound claims: none.
 """
