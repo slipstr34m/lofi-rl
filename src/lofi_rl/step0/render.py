@@ -139,8 +139,8 @@ def sources(run: Path, out: Path | None) -> tuple[Path, Path]:
 
 
 # --------------------------------------------------------------------------------------------- the renders
-def attempt(row: dict, palette: Palette, clips_dir: Path, *, cache: Path | None, workers: int) -> tuple[dict, str | None,
-                                                                                                     str | None]:
+def attempt(row: dict, palette: Palette, clips_dir: Path, *, cache: Path | None,
+            workers: int) -> tuple[dict, str | None, str | None]:
     """One render through junk.render_clip, with its clip id and render_cfg_sha8 from the manifest it wrote (None for a
     record with no render). An exception render_clip lets out is an infrastructure error, as one inside it is."""
     try:
@@ -237,13 +237,14 @@ def main(a: argparse.Namespace) -> int:
     write_json(summ / "step0.json", step0)
     held = sets["heldout"]
     undetermined = [e["brief_id"] for e in held if e["undetermined"]]
-    print(f"RENDER rendered {blk['rendered']} of {blk['attempted']} attempted in {blk['rounds']} rounds: G7 {blk['G7']}, "
-          f"other gates {blk['other_gates']}, errors retried {blk['errors_retried']} and final {blk['errors_final']}, "
-          f"skipped {blk['skipped']} | held-out {sum(len(e['taken']) for e in held)} clips in {len(held)} briefs, "
-          f"{sum(e['short'] for e in held)} short, {len(undetermined)} undetermined | Ref_b "
-          f"{sum(len(e['taken']) for e in sets['refb'])} by its records | pool {sum(len(e['taken']) for e in sets['pool'])}"
-          f" picks in {len(sets['pool'])} briefs, {sum(e['short'] for e in sets['pool'])} short", flush=True)
+    taken = {name: sum(len(e["taken"]) for e in sets[name]) for name in S.SETS}
+    print(f"RENDER rendered {blk['rendered']} of {blk['attempted']} attempted in {blk['rounds']} rounds: "
+          f"G7 {blk['G7']}, other gates {blk['other_gates']}, errors retried {blk['errors_retried']} and final "
+          f"{blk['errors_final']}, skipped {blk['skipped']} | held-out {taken['heldout']} clips in {len(held)} briefs, "
+          f"{sum(e['short'] for e in held)} short, {len(undetermined)} undetermined | Ref_b {taken['refb']} by its "
+          f"records | pool {taken['pool']} picks in {len(sets['pool'])} briefs, "
+          f"{sum(e['short'] for e in sets['pool'])} short", flush=True)
     if undetermined:
-        print(f"render: {len(undetermined)} held-out briefs are undetermined (first {undetermined[0]}): the held-out set "
-              "is not decided (§4.2)", file=sys.stderr)
+        print(f"render: {len(undetermined)} held-out briefs are undetermined (first {undetermined[0]}): the held-out "
+              "set is not decided (§4.2)", file=sys.stderr)
     return 1 if undetermined or blk["other_gates"] else 0

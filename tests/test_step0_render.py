@@ -444,7 +444,9 @@ def test_generate_score_and_render_on_fakes_give_the_synthetic_run(tmp_path, mon
             return t, "stop", H.n_tokens(t, "stop"), S.PROMPT_TOKENS[cell]
         return r["text"], r["finish_reason"], r["n_tokens"], r["prompt_tokens"]
     E.draw_only(monkeypatch, table)
-    monkeypatch.setattr(G, "ROOT", E.code_tree(tmp_path / "tree"))
+    tree = E.code_tree(tmp_path / "tree")
+    untouched = hashes(tree)
+    monkeypatch.setattr(G, "ROOT", tree)
     monkeypatch.setattr(J, "load_engine", lambda model, **kw: E.FakeEngine(text_of, info=H.ENGINE_INFO))
     monkeypatch.setattr(J, "structured_outputs_params", lambda regex: {"regex_sha256": sha(regex)})
     monkeypatch.setattr(G, "_host", lambda root: dict(helper.doc("generate.json")["host"]))
@@ -476,6 +478,9 @@ def test_generate_score_and_render_on_fakes_give_the_synthetic_run(tmp_path, mon
         return {**doc, "by_stream": blocks}
     assert steady(got["step0.json"]) == steady(want["step0.json"])
     assert (got["step0.json"]["render"]["errors_retried"], got["step0.json"]["render"]["G7"]) == (1, 1)
+    assert hashes(tree) == untouched, "the pre-checks only read the code tree"
+    assert not list(mine.rglob("*.ls")), "no step writes a LoopScript file: none can reach a copy pool (spec §5)"
+    assert {p.parent.name for p in mine.rglob("*") if p.is_file()} == {"summary", "clips"}
     assert [t["k"] for t in one(got["sets.json"], "heldout", "5101:1")["taken"]] == [0, 3, 4, 5]
 
 
@@ -527,4 +532,5 @@ def test_two_real_renders_carry_the_clip_ids_shootout_and_the_protocol_give(tmp_
         assert sr == 44100 and x.shape == (r["n"], 2), "one pass of the loop"
     sets = doc_of(run.summary / "sets.json")
     h = one(sets, "heldout", "5101:0")
-    assert ks(h) == [0, 1] and h["short"] is True and [t["clip_id"] for t in h["taken"]] == [r["clip_id"] for r in clips]
+    assert ks(h) == [0, 1] and h["short"] is True
+    assert [t["clip_id"] for t in h["taken"]] == [r["clip_id"] for r in clips]

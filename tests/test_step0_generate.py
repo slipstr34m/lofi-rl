@@ -67,7 +67,8 @@ def run_generate(monkeypatch, tree, run, engine=None, *, args=(), made=None):
     monkeypatch.setattr(G, "ROOT", tree)
     monkeypatch.setattr(J, "load_engine", lambda model, **kw: loads.append((model, kw)) or engine)
     built = [] if made is None else made
-    monkeypatch.setattr(J, "structured_outputs_params", lambda regex: built.append(regex) or {"regex_sha256": sha(regex)})
+    monkeypatch.setattr(J, "structured_outputs_params",
+                        lambda regex: built.append(regex) or {"regex_sha256": sha(regex)})
     rc = cli.main(["generate", "--run", str(run), "--hang-s", "0", *args])
     summ = run / "summary"
     meta = json.loads((summ / "generate.json").read_text())
@@ -303,8 +304,8 @@ def test_probe_seed_among_the_draw_seeds_is_refused(monkeypatch, tree, tmp_path)
 def test_an_edited_streams_file_is_refused(monkeypatch, own_tree, tmp_path):
     f = own_tree / S.STREAMS_FILE
     f.write_bytes(f.read_bytes().replace(b'"draw_seed": 379233320', b'"draw_seed": 379233321', 1))
-    meta = refused(monkeypatch, own_tree, tmp_path / "run", "the streams file is refused", "not the registered bb2daee5",
-                   "differ (first docs/prereg/brief_streams_v1.json)")
+    meta = refused(monkeypatch, own_tree, tmp_path / "run", "the streams file is refused",
+                   "not the registered bb2daee5", "differ (first docs/prereg/brief_streams_v1.json)")
     assert meta["streams_file"]["fresh"] is False and meta["streams_file"]["sha256"] == hashlib.sha256(
         f.read_bytes()).hexdigest()
     assert meta["requested"] is None and meta["streams"] is None, "no request is known from a refused file"
@@ -338,7 +339,8 @@ def test_every_failing_pre_check_is_named_at_once(monkeypatch, own_tree, tmp_pat
 
 
 # --------------------------------------------------------------------------------------------- the replay
-def test_the_replay_redraws_the_held_out_requests_in_reverse_into_replay_jsonl_only(monkeypatch, tree, tmp_path, subset):
+def test_the_replay_redraws_the_held_out_requests_in_reverse_into_replay_jsonl_only(monkeypatch, tree, tmp_path,
+                                                                                    subset):
     rc, meta, _, engine = run_generate(monkeypatch, tree, tmp_path / "run")
     assert rc == 0
     held = [r for r in subset if r.stream == "rm_heldout"]

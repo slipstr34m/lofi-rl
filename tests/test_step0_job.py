@@ -63,7 +63,8 @@ def test_the_job_states_its_cost_and_its_shape():
     assert re.search(r"^#SBATCH --no-requeue$", s, re.M), "a node failure never reruns the job into its own OUT"
     assert [line for line in s.splitlines() if line.startswith("#SBATCH")][-1] == "#SBATCH --no-requeue"
     assert COST in s and _worst() == 810
-    m = re.search(r"Cost: (\d+) CPU \+ (\d+) \((\d+) GB\) \+ 8 \(1 GPU\) = (\d+) SU/min x (\d+) min -> at most (\d+) SU", s)
+    m = re.search(r"Cost: (\d+) CPU \+ (\d+) \((\d+) GB\) \+ 8 \(1 GPU\) = (\d+) SU/min x (\d+) min "
+                  r"-> at most (\d+) SU", s)
     cpus, mem = int(sb["cpus-per-task"]), int(sb["mem"].removesuffix("G"))
     assert (int(m[1]), int(m[2]), int(m[3]), int(m[4]), int(m[5]), int(m[6])) == (
         cpus, mem // 4, mem, 18, _minutes(sb["time"]), _worst())
@@ -77,7 +78,8 @@ def test_the_worst_case_is_one_claude_may_register():
 
 
 def test_the_registration_covers_the_worst_case():
-    """Fails until `make approve JOB=jobs/step0.sbatch MAX=810 BY=Claude` (spec §6.2 step 5), after Shresth's answers."""
+    """Fails until `make approve JOB=jobs/step0.sbatch MAX=810 BY=Claude` (spec §6.2 step 5), after Shresth's
+    answers to the spec's §7."""
     sys.path.insert(0, str(ROOT / "scripts"))
     try:
         import approve_job
@@ -101,7 +103,8 @@ def test_generate_score_and_render_run_in_policy_policy_and_scorer_under_timeout
     code = _code(s)
     steps = _steps(code)
     assert [name for _, name in steps] == list(STEPS)
-    modes = [(i, re.search(r"MODE=(\w+)", line).group(1)) for i, line in enumerate(code) if "scripts/job_env.sh" in line]
+    modes = [(i, re.search(r"MODE=(\w+)", line).group(1)) for i, line in enumerate(code)
+             if "scripts/job_env.sh" in line]
     assert [[m for i, m in modes if i < at][-1] for at, _ in steps] == ["policy", "policy", "scorer"]
     budget, seen = 0, {}
     for i, name in steps:
