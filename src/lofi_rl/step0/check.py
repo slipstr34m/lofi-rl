@@ -41,7 +41,9 @@ A value must have the registered JSON type too, as lofi_rl.gate1.check reads it:
 
 **A redo pair** (§4.2: `check OUT --redo REDO`): generate's records (generate.json, completions.jsonl, replay.jsonl)
 come from OUT, and score's and render's (scored.jsonl, step0.json, sets.json, clips.json) from REDO, each from OUT
-when REDO does not hold it (a render-only redo reads OUT's scored.jsonl). The stamp condition then reads both runs'
+when REDO does not hold it (a render-only redo reads OUT's scored.jsonl). A score redo is always followed by its render
+redo: new scores need new sets, which only render writes, so a pair whose REDO holds score's records alone reads
+invalid, the stamp condition saying why (finding E3). The stamp condition then reads both runs'
 stamps: each shows dirty=0, generate's commit holds every listed blob as above, and each later commit holds every
 listed blob of that same path file except the files D-023's amendment for the run names, on a line of that commit's
 docs/DECISIONS.md:
@@ -861,9 +863,13 @@ def conditions(run: Run, *, streams=None, repo: Path | None = None) -> tuple[lis
               one and next(iter(parsed.values()))[1] == "0",
               f"{shown(stamps['generate.host.stamp'])} (all three)" if same and one else every)
     else:
+        score_only = run.files["step0.json"].parent.parent == run.redo and s0.get("render") is None
         c.add("One stamp, one path", REDO_STAMP_NAME,
               "dirty=0 in each: generate's from the run, score's and render's from the redo (§4.2)",
-              all(p is not None and p[1] == "0" for p in parsed.values()), every)
+              all(p is not None and p[1] == "0" for p in parsed.values()),
+              every + ("; the redo's step0.json has no render block: a score redo without its render redo, which "
+                       "follows it in the same redo (render --from OUT --run REDO, spec section 4.2)"
+                       if score_only else ""))
     c.value("One stamp, one path", gen, "generate.", "path_file.blobs_ok", "true", lambda v: v is True)
 
     blk = s0.get("render")

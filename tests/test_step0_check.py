@@ -399,6 +399,25 @@ def test_a_render_only_redo_reads_scores_from_the_run(base, run_dir, repo_copy, 
     assert doc["stamp"]["score"] == L.stamp(base[1]) and doc["stamp"]["render"] == L.stamp(c2)
 
 
+def test_a_score_redo_without_its_render_redo_reads_invalid_and_says_so(base, run_dir, repo_copy, tmp_path):
+    """Finding E3: score alone writes step0.json with no render block and no sets.json or clips.json, so the pair
+    reads REDO's scores beside OUT's sets: invalid, with the render redo named as what is missing."""
+    c2 = _fix(repo_copy, f"D-023 redo amendment: run {RUN}; changed {AMENDED}")
+    redo = tmp_path / "step0-redo-13800005"
+    (redo / "summary").mkdir(parents=True)
+    for name in ("scored.jsonl", "step0.json"):
+        (redo / "summary" / name).write_bytes((run_dir / "summary" / name).read_bytes())
+    L.restamp(redo, repo_copy, c2, steps=("score",))
+    L.edit_json(redo / "summary" / "step0.json", lambda d: d.update(render=None, render_code=None, sets=None,
+                                                                     render_stamp=None))
+    doc = report(run_dir, repo_copy, redo)
+    assert doc["exit"] == 3 and doc["validity"]["failed"] == [C.REDO_STAMP_NAME, "render.errors_final",
+                                                              "render.skipped", "render.other_gates"]
+    assert "a score redo without its render redo" in cond(doc, C.REDO_STAMP_NAME)["shows"]
+    assert "without its render redo" not in cond(report(run_dir, repo_copy, _redo(
+        run_dir, tmp_path / "step0-redo-13800006", repo_copy, c2)), C.REDO_STAMP_NAME)["shows"]
+
+
 def test_a_redo_at_the_runs_own_commit_and_a_dirty_redo(base, run_dir, tmp_path):
     repo, c1, _ = base
     redo = _redo(run_dir, tmp_path / "step0-redo-13800004", repo, c1)

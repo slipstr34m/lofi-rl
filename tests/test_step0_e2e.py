@@ -799,6 +799,7 @@ def test_a_score_only_redo_never_reads_valid_without_its_render(world):
     rc, doc = check(repo, world.main.pulled, redo.pulled)
     assert rc == 3 and doc["validity"]["failed"] == [C.REDO_STAMP_NAME, "render.errors_final", "render.skipped",
                                                      "render.other_gates"]
+    assert "a score redo without its render redo" in cond(doc, C.REDO_STAMP_NAME)["shows"], "check says why"
 
 
 
