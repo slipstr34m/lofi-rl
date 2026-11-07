@@ -227,6 +227,19 @@ def test_the_probe_stops_generate_when_seeds_are_ignored(monkeypatch, tree, tmp_
     assert not (tmp_path / "run" / "summary" / "replay.jsonl").exists()
 
 
+def test_an_engine_that_refuses_a_list_of_sampling_params_stops_at_the_probe(monkeypatch, tree, tmp_path, subset):
+    """The probe is the first call with a list of SamplingParams (spec §2.3, item 4): a vLLM that refuses it stops
+    generate there, with nothing drawn."""
+    class NoLists(FakeEngine):
+        def chat(self, convs, sps):
+            self.calls.append((convs, sps))
+            raise TypeError("sampling_params must be a SamplingParams")
+    rc, meta, loads, engine = run_generate(monkeypatch, tree, tmp_path / "run", NoLists())
+    assert rc == 1 and meta["stopped"] == "error: TypeError: sampling_params must be a SamplingParams"
+    assert len(engine.calls) == 1 and meta["generated"] == 0 and meta["probe"]["passed"] is None
+    assert "TypeError" in meta["trace"] and not (tmp_path / "run" / "summary" / "completions.jsonl").exists()
+
+
 def test_the_probe_passes_with_two_texts_of_four_identical(monkeypatch, tree, tmp_path, subset):
     texts = iter(["x\n", "y\n", "x\n", "z\n"])
 
