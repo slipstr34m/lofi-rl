@@ -154,10 +154,9 @@ def attempt(row: dict, palette: Palette, clips_dir: Path, *, cache: Path | None,
 
 
 def rounds(rows: Mapping[int, dict], scored: list[dict], streams, palette: Palette, clips_dir: Path, *, jobs: int,
-           each: int, cache: Path | None, deadline_s: float, t0: float, on_record) -> list[dict]:
+           each: int, cache: Path | None, deadline_s: float, t0: float, cfg8: str, on_record) -> list[dict]:
     """Every round of held-out renders (module doc), until select.pending names none; `on_record` sees each record as
-    it is kept, in the round's order."""
-    cfg8 = pool_cfg_sha8()
+    it is kept, in the round's order. `cfg8` is the render pool's render_cfg_sha8, for a record with no render."""
     records: list[dict] = []
     rnd = 0
     while True:
@@ -209,10 +208,10 @@ def main(a: argparse.Namespace) -> int:
         streams = R.load()
         X.pending(scored, [], streams=streams)              # the rows are one run's draws: select refuses others
         palette = load_palette(ROOT / S.PALETTE, verify=True)
-    except (Step0Error, PaletteError, OSError) as err:
-        print(f"render: nothing rendered or written:\n{err}", file=sys.stderr)
+        render_code, cfg8 = {"stamp": sync_stamp(), "source_sha8": source_sha8()}, pool_cfg_sha8()
+    except (Step0Error, PaletteError, OSError, ImportError) as err:
+        print(f"render: nothing rendered or written:\n{type(err).__name__}: {err}", file=sys.stderr)
         return 2
-    render_code = {"stamp": sync_stamp(), "source_sha8": source_sha8()}
     summ, clips_dir = run / "summary", run / "clips"
     summ.mkdir(parents=True, exist_ok=True)
     clips_dir.mkdir(parents=True, exist_ok=True)
@@ -228,7 +227,7 @@ def main(a: argparse.Namespace) -> int:
         print(f"[step0:render] round {rec['round']} {len(clips['clips'])} i={rec['i']} {rec['brief_id']} k{rec['k']} "
               f"{_say(rec)}", flush=True)
     records = rounds({r["i"]: r for r in rows}, scored, streams, palette, clips_dir, jobs=jobs, each=each,
-                     cache=a.cache, deadline_s=a.deadline_s, t0=t0, on_record=keep)
+                     cache=a.cache, deadline_s=a.deadline_s, t0=t0, cfg8=cfg8, on_record=keep)
     write_json(summ / "clips.json", clips)
     sets = X.sets_json(scored, records, streams=streams, render_code=render_code)
     write_json(summ / "sets.json", sets)

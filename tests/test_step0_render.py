@@ -385,6 +385,18 @@ def test_missing_records_are_refused(tmp_path, stubbed, capsys):
     assert not (run.dir / "clips").exists() and not (run.summary / "clips.json").exists()
 
 
+def test_a_render_code_key_that_cannot_be_read_is_refused_before_any_write(tmp_path, stubbed, monkeypatch, capsys):
+    run = make(tmp_path, {"5101:0": "a b c d e f g h"})
+
+    def no_numpy():
+        raise ImportError("No module named 'numpy'")
+    monkeypatch.setattr(Rd, "source_sha8", no_numpy)
+    stub = stubbed(Stub(run.scored))
+    before = hashes(run.dir)
+    assert render(run.dir) == 2 and "ImportError: No module named 'numpy'" in capsys.readouterr().err
+    assert stub.calls == [] and hashes(run.dir) == before and not (run.dir / "clips").exists()
+
+
 def test_from_renders_outs_records_into_redo_and_never_writes_under_out(tmp_path, stubbed):
     table = {"5101:0": "a b c/G7 d e f g h", "596:177": "t0 t1 t2 t3 a b c t4"}
     out = make(tmp_path, table)
