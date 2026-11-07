@@ -36,7 +36,7 @@ from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
 
 import lofi_rl.step0 as S
-from lofi_rl.palette import ROOT
+from lofi_rl.brief_streams import ROOT
 from lofi_rl.step0 import Step0Error
 
 PACKAGE = "lofi_rl.step0"

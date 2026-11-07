@@ -11,7 +11,7 @@ the records. Every brief the rows hold must hold its 8 draws; whether every requ
 
 **Passing (Q3).** A draw passes its records when it passes G1-G6 and compile (junk.score_row's `ok`; PASSING), and
 passes when it then passes G7 at its set's render. G7 is applied lazily, in k order: a draw is rendered only while the
-draws before it in its set have not filled m. A draw's G7 is the final render record of it (`outcomes`).
+draws before it in its set have not filled m. A draw's G7 is its final render record's (`outcome`).
 
 **Held-out** (rm_heldout, m 4, Q4(a)): walk k = 0..7; take a passing draw whose canonical text differs from every draw
 already taken (DISTINCT["heldout"]); stop at 4. Its G7 is this run's render step. A draw not rendered yet is pending
@@ -68,7 +68,7 @@ class Draw:
     why: str | None             # None: it passes its records (Q3); else why not
     canon: str | None           # canon_sha256: the canonical text's sha256 (a loop that parsed)
     text_sha256: str | None
-    row: Mapping                # its scored.jsonl row, for the readouts
+    row: Mapping = field(compare=False)     # its scored.jsonl row, for the readouts
 
 
 @dataclass(frozen=True)
@@ -125,7 +125,6 @@ def items(scored: Iterable[Mapping], streams: Mapping[str, Stream]) -> dict[str,
     picks = {name: {p.index: p for p in streams[name].picks} for name in ("rm_heldout", brief_streams.TRAIN)}
     seeds = {name: streams[name].spec.seed for name in picks}
     by: dict[str, dict[int, Draw]] = {}
-    stream_of: dict[str, str] = {}
     seen_i: set[int] = set()
     for r in scored:
         i, name, bid, k = r.get("i"), r.get("stream"), r.get("brief_id"), r.get("k")
@@ -149,7 +148,6 @@ def items(scored: Iterable[Mapping], streams: Mapping[str, Stream]) -> dict[str,
             problems.append(f"row {i}: {bid} draw {k} or row index {i} is repeated")
             continue
         seen_i.add(i)
-        stream_of[bid] = name
         by.setdefault(bid, {})[k] = Draw(i, k, picks[name][index].draw_seeds[k], why_not(r), r.get("canon_sha256"),
                                          r.get("text_sha256"), r)
     for bid, draws in by.items():
@@ -377,7 +375,9 @@ def band_rooms(train: Stream) -> dict[tuple[str, int], int]:
     run 1's [0, 400) cannot fill giving its room to the cell's POOL_FILL_BAND."""
     lo, hi = S.RUN1
     weights = band_weights()
-    fill = list(S.POOL_BANDS).index(tuple(S.POOL_FILL_BAND))
+    if tuple(S.POOL_FILL_BAND) not in [tuple(b) for b in S.POOL_BANDS]:
+        raise Step0Error([f"POOL_FILL_BAND {S.POOL_FILL_BAND!r} is not one of the bands {S.POOL_BANDS!r} (Q1)"])
+    fill = [tuple(b) for b in S.POOL_BANDS].index(tuple(S.POOL_FILL_BAND))
     supply = Counter((cell_name(p.cell), band_of(p.brief.bpm)) for p in train.picks if lo <= p.index < hi)
     rooms: dict[tuple[str, int], int] = {}
     for c, n in per_cell_counts(S.POOL_N).items():

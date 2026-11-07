@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 import lofi_rl.step0 as S
-from lofi_rl.palette import ROOT
+from lofi_rl.brief_streams import ROOT
 
 PACKAGE = "lofi_rl.step0"
 # subcommand -> its module in lofi_rl.step0, each with a main(args) -> exit code

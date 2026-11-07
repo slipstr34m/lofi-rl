@@ -61,6 +61,7 @@ RENDERS = ("", "G7", "E", "EE", "S")        # a held-out draw's render: ok, G7, 
 KICK_CELLS = (2, 5, 8, 11, 13, 14)          # the kick hits a label's number sets, beside the downbeat
 BACKEND_RECORD = {"requested": "xgrammar", "pin_accepted": True, "backend": "xgrammar",
                   "source": "llm_engine.vllm_config.structured_outputs_config.backend", "applied": True}
+# stand-ins for what the engine reports (VllmEngine.info): none is a measurement
 ENGINE_INFO = {"engine": "vllm", "vllm": "0.32.0", "torch": "2.9.0", "transformers": "5.19.0",
                "path": "/scratch1/hf/models--Qwen--Qwen3-4B-Instruct-2507/snapshots/cdbee75f", "dtype": "bfloat16",
                "enforce_eager": True, "gpu_memory_utilization": S.GPU_MEM, "max_model_len": S.MAX_MODEL_LEN,
@@ -288,6 +289,7 @@ def make_run(root: Path, table: Mapping[str, str | Sequence[str]] | None = None,
     held = [r for r in rows if r["stream"] == "rm_heldout"]
     replay = [{"i": r["i"], "text": r["text"], "finish_reason": r["finish_reason"], "n_tokens": r["n_tokens"],
                "same": True} for r in reversed(held)]
+    # stand-in timings at the gate run's rate per request (spec §2.9), not measurements
     chunks = [{"start": s, "count": len(rows[s:s + S.CHUNK]), "s": round(0.1002 * len(rows[s:s + S.CHUNK]), 2),
                "tokens": sum(r["n_tokens"] for r in rows[s:s + S.CHUNK])} for s in range(0, len(rows), S.CHUNK)]
     gen_s, tokens = round(sum(c["s"] for c in chunks), 2), sum(c["tokens"] for c in chunks)

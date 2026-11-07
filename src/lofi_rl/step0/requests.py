@@ -23,8 +23,7 @@ from pathlib import Path
 import lofi_rl.step0 as S
 from lofi_rl import brief_streams
 from lofi_rl.brief import Brief
-from lofi_rl.brief_streams import BriefStreamsError, Pick, Stream
-from lofi_rl.palette import ROOT
+from lofi_rl.brief_streams import ROOT, BriefStreamsError, Pick, Stream
 from lofi_rl.step0 import Step0Error
 
 STREAM_ORDER = ("rm_heldout", "train")          # the streams this unit may draw, in the order they are drawn
