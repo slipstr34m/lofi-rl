@@ -138,6 +138,8 @@ def test_step0_v1_holds_what_section_4_4_lists(docs):
     assert ht["draws"] == 0 and ht["shared"] == [] and len(ht["per_cell"]) == 9
     assert st["short"] == {"heldout": [], "refb": [], "pool": []}
     assert st["readouts"]["pool"]["taken"] == 660 and st["texts"] == docs["held"]["texts"]
+    assert {name: r["same_clip"] for name, r in st["readouts"].items()} == {
+        name: {"heldout_clip": 0, "refb_clip": 0, "pool_clip": 0} for name in S.SETS}, "step0.json's, carried over"
 
 
 def test_both_are_ascii_json_one_record_a_line(docs):

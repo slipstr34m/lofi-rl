@@ -1023,7 +1023,8 @@ def format_text(doc: dict) -> str:
     sets = sh.get("sets") if isinstance(sh.get("sets"), dict) else {}
     for name in S.SETS:
         lines.append(f"  {name}: {_counts(sets.get(name), ('briefs', 'taken', 'short', 'near_copy', 'repaired'))}, "
-                     f"verbatim {shown((sets.get(name) or {}).get('verbatim', MISSING))}")
+                     f"verbatim {shown((sets.get(name) or {}).get('verbatim', MISSING))}, same clip as another "
+                     f"brief's {shown((sets.get(name) or {}).get('same_clip', MISSING))}")
     ht = sets.get("heldout_text") if isinstance(sets.get("heldout_text"), dict) else {}
     lines.append("  heldout_text: " + (", ".join(f"{cell} {_counts(x, ('draws', 'refb', 'pool'))}"
                                                  for cell, x in ht.items() if (x or {}).get("draws"))

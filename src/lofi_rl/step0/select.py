@@ -638,9 +638,19 @@ def render_block(records: Iterable[Mapping]) -> dict:
 def readouts(doc: Mapping, scored: Iterable[Mapping]) -> dict:
     """step0.json's `sets` (spec §2.6, per-set readouts, never gates): per set its briefs, taken draws, short and
     undetermined briefs, and how many taken draws are near-copies, repaired, or carry the shown example's A, B or both
-    lines verbatim; and per cell the train draws whose canonical text is a held-out clip's, with those Ref_b and the
-    pool took."""
+    lines verbatim, and how many are the same clip as a taken draw of another brief in the held-out set, Ref_b or the
+    pool (`same_clip`: one canonical text at one cell, bpm and tonic, as the clip id reads it; spec §5's twin counts,
+    a held-out twin's clip among Ref_b's included, reported only); and per cell the train draws whose canonical text
+    is a held-out clip's, with those Ref_b and the pool took."""
     by_i = {r["i"]: r for r in scored}
+    holders: dict[str, dict[tuple, set[str]]] = {name: {} for name in S.SETS}
+
+    def key(e: Mapping, t: Mapping) -> tuple:
+        return (e["cell"], e["bpm"], e["tonic"], t["canon_sha256"])
+    for name in S.SETS:
+        for e in doc[name]:
+            for t in e["taken"]:
+                holders[name].setdefault(key(e, t), set()).add(e["brief_id"])
     out: dict = {}
     for name in S.SETS:
         entries = doc[name]
@@ -652,7 +662,10 @@ def readouts(doc: Mapping, scored: Iterable[Mapping]) -> dict:
                      "repaired": sum(1 for r in rows if r.get("repairs")),
                      "verbatim": {"A": sum(1 for v in verb if v.get("A") is True),
                                   "B": sum(1 for v in verb if v.get("B") is True),
-                                  "AB": sum(1 for v in verb if v.get("A") is True and v.get("B") is True)}}
+                                  "AB": sum(1 for v in verb if v.get("A") is True and v.get("B") is True)},
+                     "same_clip": {f"{other}_clip": sum(1 for e in entries for t in e["taken"]
+                                                        if holders[other].get(key(e, t), set()) - {e["brief_id"]})
+                                   for other in S.SETS}}
     flagged = {d["i"] for d in doc["heldout_text"] if d["heldout_text"]}
     taken = {name: {t["i"] for e in doc[name] for t in e["taken"]} for name in ("refb", "pool")}
     cells: dict[str, Counter] = {cell_name(c): Counter() for c in CELLS}

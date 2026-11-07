@@ -476,10 +476,29 @@ def test_candidates_render_and_readout_blocks(order, streams):
     out = X.readouts(doc, rows)
     assert list(out) == list(S.BLOCKS["step0.json:sets"])
     assert out["heldout"] == {"briefs": 1, "taken": 4, "short": 0, "undetermined": 0, "near_copy": 0, "repaired": 0,
-                              "verbatim": {"A": 3, "B": 2, "AB": 2}}
+                              "verbatim": {"A": 3, "B": 2, "AB": 2},
+                              "same_clip": {"heldout_clip": 0, "refb_clip": 0, "pool_clip": 0}}
     assert out["pool"]["taken"] == 3 and out["heldout_text"]["high/melancholy"] == {"draws": 1, "refb": 0, "pool": 0}
     assert sum(c["draws"] for c in out["heldout_text"].values()) == 1 and len(out["heldout_text"]) == 9
     assert list(X.render_block(recs)) == list(S.BLOCKS["step0.json:render"])
+
+
+def test_the_readouts_count_clips_another_brief_holds_apart_from_shared_texts(order, streams):
+    """A held-out text in a train brief is a held-out clip only at that clip's bpm and tonic (finding R1-7): 596:177,
+    5101:0's twin, keeps 5101:0's clip in its Ref_b (k1, reported only: Ref_b trains nothing), while 596:41, of the
+    cell but another bpm and tonic, holds the same text as another clip. The per-cell heldout_text count is 2 for
+    both; same_clip tells them apart. Twin train briefs that share a Ref_b clip are counted the same way."""
+    table = {"5101:0": "a b c d e f g h", TWIN[1]: "p b q r s t u v", "596:41": "p b q r s t u v"}
+    rows = scored_rows(table, order, streams)
+    out = X.readouts(X.sets_json(rows, rounds(rows, streams)[0], streams=streams, render_code=None), rows)
+    assert out["heldout_text"]["high/melancholy"] == {"draws": 2, "refb": 2, "pool": 0}
+    assert out["refb"]["same_clip"] == {"heldout_clip": 1, "refb_clip": 0, "pool_clip": 0}
+    assert out["heldout"]["same_clip"] == {"heldout_clip": 0, "refb_clip": 1, "pool_clip": 0}
+    assert out["pool"]["same_clip"] == {"heldout_clip": 0, "refb_clip": 0, "pool_clip": 0}
+    rows = scored_rows({"596:3": "a b c d e f g h", "596:35": "a j k l m n o p"}, order, streams)
+    out = X.readouts(X.sets_json(rows, streams=streams, render_code=None), rows)
+    assert out["refb"]["same_clip"] == {"heldout_clip": 0, "refb_clip": 2, "pool_clip": 0}, "both twins' k0"
+    assert out["pool"]["same_clip"] == {"heldout_clip": 0, "refb_clip": 0, "pool_clip": 0}, "Q2(a): never in the pool"
 
 
 # --------------------------------------------------------------------------------------------- the synthetic run
