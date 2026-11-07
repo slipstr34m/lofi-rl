@@ -20,6 +20,57 @@ Newest entry first. Every number cites the file or command output it was read fr
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
 - **The palette is frozen:** `palettes/lofi_rain_v1.yaml`, `frozen: '2026-11-04'` (sha256 `09f80a64…`), on Shresth's APPROVED line of 2026-11-04.
 - **The Phase-1 gate is approved** (Shresth, 2026-11-06, `gates/GATE_phase1.md`). On its second launch (13788483), 477 of 500 loops passed and were not near-copies (at least 300), and he rated 28 of 50 clips Fine or better in his ear check `b1106-gate1` (at least 15).
+- **Phase 2, prepared:** the step-0 samples are built and reviewed on branch `wt/step0`, not yet merged. The seed pool is specified in `docs/design/seed_pool.md`. Both wait on Shresth's answers.
+
+---
+
+## 2026-11-07 (03:25 PST): the seed pool's build spec is written and reviewed; 7 questions wait on Shresth
+
+**What was done**
+- **The design workflow** `wf_3e0c04c3-e2a` wrote `docs/design/seed_pool.md` for taste_pipeline.md §8, the first unit of Phase 2.
+  - It was read-only, with 9 agents: 4 scouts, a designer, 3 adversarial reviewers and a reviser.
+  - The reviewers raised 61 findings: 2 blockers, 28 major and 31 minor. All 61 were applied, 3 of them in part (V2-1, V2-26, V3-8; the spec's header says why).
+  - Both blockers were the blind writers' checker printing the taste profile's verifiers.
+- **The unit, as specified** (nothing built or run yet):
+  - **The pool:** 2,052 clips:
+    - 1,100 written by Claude (220 briefs × 5): 550 by writers who see TASTE.md, and 550 by writers who don't, in a separate session Shresth starts;
+    - step 0's 660;
+    - 150 mutations of the kept 10;
+    - 100 broken copies;
+    - the 42 drafts.
+  - **The writing:**
+    - style cards and a checker per half;
+    - a deterministic diversity critic and barrier;
+    - 4 waves, the first 180 slots, which hold the triage's 160;
+    - at most 10 agents a batch;
+    - writers pinned to claude-opus-5-5, with an allow-list audit of what they read.
+  - **Two new job types,** which Claude registers: `lofi-render-pool` (main, at most 800 SU a run) and `lofi-embed` (one L40S, at most 1,000 SU a run). The 4 runs come to about 1,562 SU expected and at most 3,600 (estimates).
+  - **The triage of 300:** Claude's 160 from the first 32 training briefs, the base model's 100, 25 cousins of the kept 10 and 15 broken copies, plus about 30 repeats.
+  - Its rules go in a new entry, D-024, committed with the first code.
+- **Re-checked by hand** (laptop, this session):
+  - the drum kits: keep3's kept 10 were 8 jazz and 2 studio, and both studio loops were tossed at the sign-off. All 4 redo picks were jazz, though 4 of the 12 redrafts used studio, and 19 of the 42 drafts use studio (`drafts/v1/**`, `gates/GATE_palette.md`);
+  - the stop at the weekly usage limit that Q5 cites (`CHANGELOG.md:188`);
+  - the pool's and the triage's sums;
+  - the jobs' caps: 32 CPU + 32 GB = 40 SU/min × 20 min = 800; 24 CPU + 32 GB + 1 GPU = 40 SU/min × 25 min = 1,000.
+  - his pace, read before Q4 goes to him as the spec asks (§9):
+    - the Phase-1 ear check `b1106-gate1` took 50 rounds in 12.7 minutes by the audit's rule (`data/votes/b1106-gate1.jsonl`, times only);
+    - at that pace the full triage takes about 1.4 h, leaving about 252 best/worst rounds by Nov 15 at the spec's 80.2 s a round, against the 200 that would swap Q4's (a) and (b);
+    - so (a) stays recommended. The half triage would leave about 283.
+- **Open for Shresth** (spec §9), each with a recommended answer:
+  - Q1: what the blind writers get;
+  - Q2: how much of the studio kit he hears;
+  - Q3: what "fake or cheap" means for the broken copies;
+  - Q4: the triage's length, about 3.4 h played to the end against the plan's 1.2 h;
+  - Q5: the writing's cost, about 37–113 million tokens against the 79 million all workflows used from Oct 30 to Nov 4 (estimates);
+  - Q6: starting the blind writers' session;
+  - Q7: settings rules that keep the writers out of the votes, the inbox and the runs.
+
+**SU spent:** 0.
+
+**Next:**
+- His answers: step 0's Q1–Q8, and this spec's Q1, Q2 and Q5–Q7, block the pilot; Q3 and Q4 are needed by Nov 8.
+- Then step 0's D-023, registration and merge, and Build A (the `src/lofi_rl/seeds/` core and D-024) from `wt/step0`'s tip.
+- Then the pilot and wave 1, and `lofi-step0` on the USC VPN.
 
 ---
 
