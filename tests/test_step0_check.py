@@ -28,6 +28,7 @@ from lofi_rl.brief import Brief
 from lofi_rl.rl import junk as J
 from lofi_rl.step0 import Step0Error, cli
 from lofi_rl.step0 import check as C
+from lofi_rl.step0 import prereg as PR
 from lofi_rl.step0 import requests as R
 
 pytestmark = pytest.mark.laptop   # git reads the commits: never on a compute node (CLAUDE.md §1)
@@ -564,6 +565,31 @@ def test_a_score_that_left_no_records_is_named_a_scoring_defect(run_dir):
     with pytest.raises(Step0Error) as err:
         C.load_run(run_dir)
     assert "scored.jsonl is missing" in str(err.value) and "a scoring defect, D-020's 'a crash'" in str(err.value)
+
+
+def test_check_and_prereg_run_at_the_runs_commit(base, run_dir, repo_copy, monkeypatch, capsys):
+    """Finding R3-11: the laptop reproduces a run with its own select, constants, DSL and junk, so check and prereg
+    refuse (exit 2, nothing decided or written) a checkout where one of those differs from its blob at the run's
+    commit. A fix to check.py itself is not among them, so it runs at any commit."""
+    sel = "src/lofi_rl/step0/select.py"
+    original = (repo_copy / sel).read_text()
+    L.commit(repo_copy, "a later edit to the rule", {sel: original + "# a later edit\n"})
+    monkeypatch.setattr(C, "ROOT", repo_copy)
+    assert cli.main(["check", str(run_dir)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out.rstrip().splitlines()[-1] == "STEP0_CHECK bad input"
+    assert f"check out {base[1][:12]}" in captured.err and sel in captured.err
+    assert report(run_dir, repo_copy)["validity"]["failed"] == [], "the run itself is valid"
+    rc, lines = PR.prereg(run_dir, write=True, repo=repo_copy)
+    assert rc == 2 and "check and prereg run at the run's commit" in lines[0]
+    assert not (repo_copy / S.HELDOUT_FILE).exists() and not (repo_copy / S.RUN_FILE).exists()
+    fix = "src/lofi_rl/step0/check.py"
+    L.commit(repo_copy, "the rule as it was, and a fix to the checker", {
+        sel: original, fix: (repo_copy / fix).read_text() + "# a fix to the checker\n"})
+    assert cli.main(["check", str(run_dir)]) == 0, "check.py is not a file the reproduction runs"
+    assert sel in C.reproduction_files(repo_copy) and fix not in C.reproduction_files(repo_copy)
+    assert {S.STREAMS_FILE, S.PALETTE, "src/lofi_rl/rl/junk.py", "src/lofi_rl/step0/__init__.py",
+            "src/lofi_rl/dsl/canon.py"} <= set(C.reproduction_files(repo_copy))
 
 
 def test_a_redo_folder_must_be_another_folder(run_dir):

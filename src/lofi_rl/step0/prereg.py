@@ -22,12 +22,13 @@ committed), pinned by completions.jsonl's sha256. Paths are written as make pull
 so the text depends on the run's files alone. Both are ASCII JSON, one record a line (each tuple, brief or file on one
 line; the rest in lofi_rl.brief_streams' layout), and byte-identical when written again from the same run.
 
-The run must pass `check` (lofi_rl.step0.check.evaluate, with git at its stamps' commits): an invalid run is refused
-(exit 3), and bad input is exit 2, nothing written either way. Under Q8's (b) (SHORT_RULE "ask") a short held-out or
-Ref_b brief is refused too (exit 2), until D-023 records Shresth's answer and the constants carry it. Without --write
-the two files' sizes and sha256 are printed and nothing is written; with it each is written unless it is already there
-byte for byte. A different existing file is never replaced (exit 2, neither written): there is no --force, and a new
-set is a new file version with its own DECISIONS entry (§4.2). Laptop only. Sound claims: none.
+The run must pass `check` (lofi_rl.step0.check.evaluate, with git at its stamps' commits), at the run's commit
+(check.code_problems): an invalid run is refused (exit 3), and bad input is exit 2, nothing written either way. Under
+Q8's (b) (SHORT_RULE "ask") a short held-out or Ref_b brief is refused too (exit 2), until D-023 records Shresth's
+answer and the constants carry it. Without --write the two files' sizes and sha256 are printed and nothing is
+written; with it each is written unless it is already there byte for byte. A different existing file is never
+replaced (exit 2, neither written): there is no --force, and a new set is a new file version with its own DECISIONS
+entry (§4.2). Laptop only. Sound claims: none.
 """
 from __future__ import annotations
 
@@ -361,6 +362,9 @@ def prereg(run_dir: Path | str, redo_dir: Path | str | None = None, *, write: bo
     repo = Path(C.ROOT if repo is None else repo)
     try:
         run = C.load_run(run_dir, redo_dir)
+        refused = C.code_problems(run, repo)              # prereg runs at the run's commit, as check does
+        if refused:
+            raise Step0Error(refused)
         report = C.evaluate(run, repo=repo)
     except Step0Error as err:
         return 2, [f"error: bad input, nothing written:\n{err}"]

@@ -72,6 +72,10 @@ verbatim-line sharing, and per pair whether the two clips differ in A or B; `ite
 `--rescore` the differences between scored.jsonl and junk.score_row over completions.jsonl with this checkout's code
 (meaningful at the run's commit).
 
+**At the run's commit.** The laptop reproduces the run with its own code, so the command refuses (exit 2) a checkout
+whose files the reproduction runs (code_problems: select, requests, the answer constants, the DSL, junk, the streams
+file and the palette) differ from their blobs at the run's latest stamp; check out that commit to check it.
+
 Exit 0 valid, 3 invalid, 2 bad input; the last line printed is `STEP0_CHECK <verdict>` (`--json` prints the report
 alone, with its verdict). Laptop only: git reads the commits (CLAUDE.md §1). Sound claims: none.
 """
@@ -109,6 +113,10 @@ GENERATE_FILES = ("generate.json", "completions.jsonl", "replay.jsonl")      # a
 LATER_FILES = ("scored.jsonl", "step0.json", "sets.json", "clips.json")      # ... and these from REDO, when it has them
 MAY_BE_ABSENT = ("replay.jsonl", "sets.json", "clips.json")     # their conditions fail, or their readouts are absent
 REGEX_GATES = ("G1", "G3", "G4", "G5", "crash")      # D-020: what the regex guarantees (DECISIONS.md:221)
+# what check reproduces a run with, and prereg writes item 8 with (code_problems): the closure of these modules, and
+# these files; check.py and prereg.py are not among them, so a laptop-side fix to the checker runs at any commit
+REPRODUCTION = ("lofi_rl.step0.select", "lofi_rl.step0.requests", "lofi_rl.dsl")
+REPRODUCTION_FILES = ("src/lofi_rl/rl/junk.py", S.STREAMS_FILE, S.PALETTE)
 STAMP_NAME = "generate.host.stamp = score_stamp = render_stamp"
 REDO_STAMP_NAME = "stamps of the redo pair"
 AMENDMENT = re.compile(r"D-023 redo amendment: run (step0-[\w-]+); changed ([^\n]*)")
@@ -420,6 +428,47 @@ def load_run(run_dir: Path | str, redo_dir: Path | str | None = None) -> Run:
         raise Step0Error(problems)
     return Run(dir=out, redo=redo, files=files, generate=gen, rows=rows, unreadable=unreadable,
                replay=None if rep is None else rep[0], scored=scored, step0=step0, sets=sets, clips=clips)
+
+
+# --------------------------------------------------------------------------------------------- the run's code
+def reproduction_files(repo: Path) -> list[str]:
+    """The files the laptop reproduces a run with (module doc, Reproduced on the laptop; item 8): the import closure of
+    lofi_rl.step0.select and .requests (the rule, the answer constants, the requests) and of lofi_rl.dsl (item 8's
+    copy forms), junk.py (its grams and A and B lines), the streams file and the palette."""
+    return sorted(set(P.closure(repo, REPRODUCTION)) | set(REPRODUCTION_FILES))
+
+
+def code_problems(run: Run, repo: Path) -> list[str]:
+    """Why check or prereg refuses to judge this run here (exit 2; finding R3-11): every file reproduction_files lists
+    must hold, in the checkout `repo`, its blob at the commit of the run's latest stamp (render's, else score's, else
+    generate's: the redo's for a redo pair), so the sets, the counts and item 8 are reproduced with the run's own code
+    and constants. Check and prereg run at the run's commit. A run with no scored rows has nothing to reproduce, and a
+    stamp git cannot resolve is the validity list's to report."""
+    if not run.scored:
+        return []
+    stamp = next((p for p in map(stamp_fields, (run.step0.get("render_stamp"), run.step0.get("score_stamp"),
+                                                run.host.get("stamp"))) if p is not None), None)
+    if stamp is None:
+        return []
+    try:
+        full = resolve(repo, stamp[0])
+        files = reproduction_files(repo)
+        at = P.commit_blobs(repo, full, files)
+    except Step0Error:
+        return []
+    differ = []
+    for rel in files:
+        try:
+            now = P.git_blob_sha((Path(repo) / rel).read_bytes())
+        except OSError:
+            now = None
+        if now != at.get(rel):
+            differ.append(rel)
+    if not differ:
+        return []
+    return [f"{len(differ)} of the {len(files)} files check reproduces the run with differ in {repo} from their blobs "
+            f"at the run's commit {stamp[0]} ({', '.join(differ[:5])}{', ...' if len(differ) > 5 else ''}): check out "
+            f"{stamp[0]} (a git worktree) to check this run; check and prereg run at the run's commit"]
 
 
 # --------------------------------------------------------------------------------------------- the requests
@@ -1106,7 +1155,11 @@ def format_text(doc: dict) -> str:
 def main(a: argparse.Namespace) -> int:
     """The `check` subcommand (lofi_rl.step0.cli)."""
     try:
-        doc = evaluate(load_run(a.run, a.redo), rescore_rows=a.rescore)
+        run = load_run(a.run, a.redo)
+        refused = code_problems(run, Path(ROOT))
+        if refused:
+            raise Step0Error(refused)
+        doc = evaluate(run, rescore_rows=a.rescore)
     except Step0Error as err:
         print(f"error: bad input, nothing decided:\n{err}", file=sys.stderr)
         print("STEP0_CHECK bad input")
