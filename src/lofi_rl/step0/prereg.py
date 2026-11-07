@@ -36,10 +36,12 @@ but that wrap's close and a period; a fenced or indented line reads too. So a se
 that quotes the line, a blockquote, a table, a comment or another entry never answers for him. DECISIONS.md is never
 compared with the run's commit, so the line, written after the run, needs no redo and no constant changed; the short
 briefs are then handled as Q8(a) handles them, and both files' rule.answers.Q8 records the line. Any other answer for
-the run keeps the refusal; under SHORT_RULE "report" nothing is read, and Q8 records the rule alone. Without --write
-the two files' sizes and sha256 are printed and nothing is written; with it each is written unless it is already there
-byte for byte. A different existing file is never replaced (exit 2, neither written): there is no --force, and a new
-set is a new file version with its own DECISIONS entry (§4.2). Laptop only. Sound claims: none.
+the run keeps the refusal, which then names those answers and says to replace the run's lines with the one line, since
+the line added beside another answer refuses again (finding N8); under SHORT_RULE "report" nothing is read, and Q8
+records the rule alone. Without --write the two files' sizes and sha256 are printed and nothing is written; with it
+each is written unless it is already there byte for byte. A different existing file is never replaced (exit 2, neither
+written): there is no --force, and a new set is a new file version with its own DECISIONS entry (§4.2). Laptop only.
+Sound claims: none.
 """
 from __future__ import annotations
 
@@ -410,10 +412,11 @@ def ask_first(run: C.Run, repo: Path) -> tuple[str | None, str | None]:
     """Q8's (b), SHORT_RULE "ask" (findings R1-2, N2, N7): a short held-out or Ref_b brief waits for Shresth's answer,
     which D-023 records as one line (short_line) of its entry in the checkout's docs/DECISIONS.md, read by
     short_answers. That file is never compared with the run's commit (check.code_problems), so the line, written after
-    the run, needs no redo and no constant changed. (The refusal, naming the briefs and the line to add, or None; the
-    line applied, or None.) Only that line, with no other answer for the run, lifts the refusal: the short briefs are
-    then handled as Q8(a) handles them. A short pool brief is reported under either answer, and under "report"
-    nothing is read."""
+    the run, needs no redo and no constant changed. (The refusal, or None; the line applied, or None.) Only that line,
+    with no other answer for the run, lifts the refusal: the short briefs are then handled as Q8(a) handles them. The
+    refusal names the briefs and the line to add, or, when D-023 already answers the run otherwise, those answers
+    (never the line's own) and the line to replace them with (finding N8): adding the line beside another answer
+    would only refuse again. A short pool brief is reported under either answer, and under "report" nothing is read."""
     if S.SHORT_RULE != "ask":
         return None, None
     short = [f"{name} {e['brief_id']}" for name in ("heldout", "refb") for e in run.entries(name) if e.get("short")]
@@ -426,13 +429,20 @@ def ask_first(run: C.Run, repo: Path) -> tuple[str | None, str | None]:
     line, said = short_line(run.run_name), short_answers(decisions, run.run_name)
     if said and all(a == SHORT_AS_A for a in said):
         return None, line
-    heard = (f"; {S.DECISIONS} answers {run.run_name} {', '.join(repr(a) for a in said)}, which prereg does not apply"
-             if said else "")
-    return (f"refused: SHORT_RULE is Q8's (b), ask: {len(short)} held-out or Ref_b briefs are short ("
-            f"{', '.join(short[:5])}{', ...' if len(short) > 5 else ''}){heard}; Shresth's answer goes into D-023 "
-            f"first: if he answers (a) for them (the held-out set holds fewer tuples, a short Ref_b brief leaves run "
-            f"1's [0, 400)), add the line `{line}` to {S.DECISIONS}, alone on its line in D-023's entry, and run "
-            "prereg again: nothing written"), None
+    briefs = (f"refused: SHORT_RULE is Q8's (b), ask: {len(short)} held-out or Ref_b briefs are short ("
+              f"{', '.join(short[:5])}{', ...' if len(short) > 5 else ''})")
+    why_a = "the held-out set holds fewer tuples, a short Ref_b brief leaves run 1's [0, 400)"
+    if not said:
+        return (f"{briefs}; Shresth's answer goes into D-023 first: if he answers (a) for them ({why_a}), add the line "
+                f"`{line}` to {S.DECISIONS}, alone on its line in D-023's entry, and run prereg again: nothing "
+                "written"), None
+    others = [a for a in said if a != SHORT_AS_A]
+    only = (f"beside the line `{line}`, and only that line" if len(others) < len(said) else
+            f"and only the line `{line}`")
+    return (f"{briefs}; {S.DECISIONS} answers {run.run_name} {', '.join(repr(a) for a in others)}, which prereg does "
+            f"not apply, {only}, alone, lifts the refusal: if his answer for them is (a) ({why_a}), replace the run's "
+            "short-answer lines in D-023's entry with that one line, leaving only it, and run prereg again: nothing "
+            "written"), None
 
 
 # --------------------------------------------------------------------------------------------- the command

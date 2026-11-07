@@ -372,7 +372,8 @@ def test_under_q8b_his_answer_line_lifts_the_refusal(short_run, repo, tmp_path, 
     """Finding N2: under SHORT_RULE "ask", prereg reads Shresth's answer for this run from one line of D-023's entry in
     the checkout's docs/DECISIONS.md (prereg.short_answers), at a later commit that changes nothing check compares
     with the run's commit, so no redo. Only that run's line saying "as (a)", with no other answer for it, writes the
-    files; anything else refuses, naming the line to add, with nothing written."""
+    files; anything else refuses, with nothing written: naming the line to add, or, when D-023 answers the run
+    otherwise, that answer and the line to replace it with (finding N8)."""
     monkeypatch.setattr(S, "SHORT_RULE", "ask")
     if lines:
         answered(repo, *lines)
@@ -387,10 +388,13 @@ def test_under_q8b_his_answer_line_lifts_the_refusal(short_run, repo, tmp_path, 
             assert doc["rule"]["answers"]["Q8"] == {"short_rule": "ask", "short_answer": ANSWER}, "the line applied"
     else:
         assert rc == 2 and out[-1].startswith(f"refused: SHORT_RULE is Q8's (b), ask: {ASKED}"), out
-        assert f"add the line `{ANSWER}` to {S.DECISIONS}" in out[-1] and out[-1].endswith("nothing written")
-        assert tree_files(tmp_path) == before, "nothing written"
-        if why in ("another answer", "two answers for the run"):
+        assert out[-1].endswith("nothing written") and tree_files(tmp_path) == before, "nothing written"
+        if why in ("another answer", "a note after the answer", "two answers for the run"):
             assert f"{S.DECISIONS} answers {RUN} " in out[-1], "what D-023 says is named"
+            assert f"`{ANSWER}`" in out[-1] and "replace the run's short-answer lines" in out[-1], "N8: the fix"
+            assert "add the line" not in out[-1], "N8: adding the line beside another answer refuses again"
+        else:
+            assert f"add the line `{ANSWER}` to {S.DECISIONS}" in out[-1]
 
 
 QUOTED = [      # finding N7: text that quotes the line, or holds it where no answer stands
@@ -439,6 +443,36 @@ def test_under_q8b_his_answer_is_only_a_line_of_its_own_in_d023(short_run, repo,
         assert rc == 2 and out[-1].startswith(f"refused: SHORT_RULE is Q8's (b), ask: {ASKED}"), out
         assert f"add the line `{ANSWER}` to {S.DECISIONS}" in out[-1] and f" answers {RUN} " not in out[-1], out
         assert tree_files(tmp_path) == before, "nothing written"
+
+
+NOTED = f"- {ANSWER} (Shresth, 2026-11-20)"         # his answer in house style, attributed after the line
+OTHERWISE = [   # finding N8: D-023 answers the run otherwise, beside the line or not
+    ("the line with a note", (NOTED,), ["as (a) (Shresth, 2026-11-20)"]),
+    ("the line with a note, and the line", (NOTED, f"- {ANSWER}"), ["as (a) (Shresth, 2026-11-20)"]),
+    ("the line, and another answer", (f"- {ANSWER}", f"- D-023 short answer: run {RUN}; ask again"), ["ask again"]),
+]
+
+
+@pytest.mark.parametrize("why, lines, others", OTHERWISE, ids=[c[0] for c in OTHERWISE])
+def test_under_q8b_the_refusal_says_to_replace_another_answer_not_to_add_the_line(short_run, repo, tmp_path,
+                                                                                   monkeypatch, why, lines, others):
+    """Finding N8: when D-023 answers the run otherwise, the refusal names only the answers prereg does not apply
+    (never the line's own "as (a)") and says to replace the run's lines with the one line, not to add it: added beside
+    another answer, the line refused again, naming itself among the answers not applied. Done as it says, prereg
+    writes."""
+    monkeypatch.setattr(S, "SHORT_RULE", "ask")
+    answered(repo, *lines)
+    before = tree_files(tmp_path)
+    rc, out = PR.prereg(short_run, write=True, repo=repo)
+    assert rc == 2 and out[-1].startswith(f"refused: SHORT_RULE is Q8's (b), ask: {ASKED}; "), out
+    named = f"; {S.DECISIONS} answers {RUN} {', '.join(repr(a) for a in others)}, which prereg does not apply, "
+    assert named in out[-1] and f"`{ANSWER}`" in out[-1] and "add the line" not in out[-1], out[-1]
+    assert ("replace the run's short-answer lines in D-023's entry with that one line, leaving only it, and run "
+            "prereg again: nothing written") in out[-1] and tree_files(tmp_path) == before
+    assert ("beside the line" in out[-1]) == (f"- {ANSWER}" in lines), "the line's own answer is not named"
+    answered(repo, f"- {ANSWER}")                       # the run's lines replaced with that one line
+    rc, out = PR.prereg(short_run, write=True, repo=repo)
+    assert rc == 0 and out[-2] == f"wrote {S.HELDOUT_FILE}, {S.RUN_FILE}", out
 
 
 def test_under_q8b_his_answer_handles_the_short_briefs_as_q8a_does(short_run, base, repo, tmp_path, monkeypatch):
