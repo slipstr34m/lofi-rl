@@ -61,9 +61,12 @@ text_sha256 its row's text's), step0.json's `n` against scored.jsonl, its `rende
 (select.render_block), and one render-code key in step0.json, sets.json and clips.json. A scored.jsonl or step0.json
 missing beside generate's records is named as what it is, a scoring defect that §4.2 redoes from the records.
 
-**A run stopped before its first draw** (generate.json alone: `stopped` set, `generated` 0, no completions.jsonl, as a
-pre-check, the probe or the engine's load leaves it) is read with no rows, not as bad input: it reads invalid, naming
-generate.stopped (and generate.probe.passed when the probe missed), and §4.2 draws it again whole.
+**A run stopped before its first draw** (generate.json alone, `generated` 0 and no completions.jsonl) is read with no
+rows, not as bad input: `stopped` set, as a pre-check, the probe or a failed engine load leaves it, or `stopped` null
+and `partial` true, as a kill during the engine's load or the probe's call leaves it (the watchdog's exit or timeout's
+TERM). It reads invalid, naming generate.stopped, or for a kill generate.partial, shown as killed before its first
+draw, and generate.probe.passed when the probe missed or never ran; §4.2 draws it again whole. generate.json alone in
+any other state is bad input.
 
 **Shown, never judged** (§4.1): the backend (as D-020 treats it), the probe, the replay, the timings and the GPU,
 `render.errors_retried`, the per-set near-copy, repair and verbatim counts and the held-out-text counts, item 8's
@@ -124,6 +127,8 @@ AMENDED_ITEMS = re.compile(r",|\s+and\s+")         # an amendment's files: comma
 NOTHING = "nothing"                                  # `changed nothing`: a redo that changed no listed file
 MAX_LISTED = 10                         # examples kept per kind of problem
 TIMINGS = ("load_s", "probe_s", "gen_s", "tok_per_s", "replay_s", "total_s")
+KILLED = ("killed before its first draw (generate.json as last written before the engine's load or the probe's call: "
+          "the watchdog's exit or a TERM, with no stop recorded)")         # generate.partial's shows (finding N1)
 _STAMP = re.compile(r"^commit=(\S+) dirty=(\S+)")
 _ID = re.compile(r"(\d+):(\d+)")
 MISSING = object()
@@ -324,11 +329,20 @@ def _sets_problems(sets: dict) -> list[str]:
 
 
 def stopped_before_drawing(gen: dict | None, files: Mapping[str, Path]) -> bool:
-    """generate stopped before its first draw (a pre-check, the probe, the engine's load or its first call), as
-    generate leaves such a run: generate.json alone, `stopped` set and `generated` 0, and no completions.jsonl (opened
-    only when the draws start); score and render then refuse and write nothing."""
-    return (isinstance(gen, dict) and gen.get("schema") == S.GENERATE_SCHEMA and gen.get("stopped") is not None
-            and _int(gen.get("generated"), 0) and not files["completions.jsonl"].exists())
+    """generate stopped before its first draw, as generate leaves such a run: generate.json alone, `generated` 0 and
+    no completions.jsonl (opened only when the draws start), with `stopped` set (a pre-check, the probe, the engine's
+    load or its first call failing) or, killed there, `stopped` null and `partial` true (killed_before_drawing);
+    score and render then refuse and write nothing."""
+    return (isinstance(gen, dict) and gen.get("schema") == S.GENERATE_SCHEMA and _int(gen.get("generated"), 0)
+            and (gen.get("stopped") is not None or gen.get("partial") is True)
+            and not files["completions.jsonl"].exists())
+
+
+def killed_before_drawing(gen: dict | None, files: Mapping[str, Path]) -> bool:
+    """The kill of stopped_before_drawing (finding N1): the watchdog's exit at deadline + HANG_MARGIN_S, or timeout's
+    TERM, during the engine's load or the probe's call ends generate before it records a stop, so generate.json reads
+    as it was last written there, `stopped` null and `partial` true."""
+    return stopped_before_drawing(gen, files) and gen.get("stopped") is None
 
 
 SCORE_LEFT_NOTHING = ("score left no complete records (it writes scored.jsonl, then step0.json, at its end, so its "
@@ -339,8 +353,9 @@ SCORE_LEFT_NOTHING = ("score left no complete records (it writes scored.jsonl, t
 
 def load_run(run_dir: Path | str, redo_dir: Path | str | None = None) -> Run:
     """The run's summary files, or a redo pair's, cross-checked (module doc: bad input). Step0Error lists every
-    problem; none is a validity verdict. A run whose generate stopped before its first draw (stopped_before_drawing)
-    is read with no rows, so that its conditions say why it decides nothing (finding E1)."""
+    problem; none is a validity verdict. A run whose generate stopped, or was killed, before its first draw
+    (stopped_before_drawing) is read with no rows, so that its conditions say why it decides nothing (findings E1,
+    N1)."""
     out = Path(run_dir)
     redo = None if redo_dir is None else Path(redo_dir)
     problems = [f"{d / 'summary'} is not a folder: a run folder holds summary/ (make pull brings it)"
@@ -836,7 +851,9 @@ def conditions(run: Run, *, streams=None, repo: Path | None = None) -> tuple[lis
     gen, s0, c = run.generate, run.step0, _List()
 
     c.value("Complete", gen, "generate.", "stopped", "null", lambda v: v is None)
-    c.value("Complete", gen, "generate.", "partial", "false", lambda v: v is False)
+    partial = field(gen, "partial")                 # a kill before the first draw records no stop: this says why
+    c.add("Complete", "generate.partial", "false", partial is False,
+          shown(partial) + (f": {KILLED}" if killed_before_drawing(gen, run.files) else ""))
     c.value("Complete", s0, "", "n", str(want_n), lambda v: _int(v, want_n))
     c.value("Complete", s0, "", "requested", str(want_n), lambda v: _int(v, want_n))
     c.value("Complete", gen, "generate.", "requested", str(want_n), lambda v: _int(v, want_n))

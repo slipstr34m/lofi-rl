@@ -557,6 +557,67 @@ def test_a_run_stopped_before_its_first_draw_reads_invalid_not_bad_input(base, r
         C.load_run(run_dir)
 
 
+def _killed(run_dir: Path, where: str) -> None:
+    """generate.json as generate last wrote it before a kill (the watchdog's exit at deadline + HANG_MARGIN_S, or
+    timeout's TERM) in the engine's load or in the probe's call: `stopped` null, `partial` true, `generated` 0, no
+    probe verdict and no draw timed; and nothing else in summary/, since completions.jsonl is opened only when the
+    draws start."""
+    summ = run_dir / "summary"
+    gen = json.loads((summ / "generate.json").read_text())
+    loaded = where == "the probe's call"
+    gen.update(stopped=None, partial=True, generated=0, sampling_params=None,
+               probe={**gen["probe"], "texts_sha256": None, "distinct": None, "passed": None},
+               replay={"n": 0, "same": 0, "differ": 0, "by_chunk": [], "stopped": "not run"},
+               timing={**dict.fromkeys(gen["timing"]), "chunks": [], "load_s": gen["timing"]["load_s"] if loaded
+                       else None})
+    if not loaded:
+        gen.update(engine={}, constrained={k: v for k, v in gen["constrained"].items() if k != "backend"})
+    for p in summ.iterdir():
+        p.unlink()
+    (summ / "generate.json").write_text(json.dumps(gen, indent=1))
+
+
+@pytest.mark.parametrize("where", ["the engine's load", "the probe's call"])
+def test_a_run_killed_before_its_first_draw_reads_invalid_not_bad_input(base, run_dir, repo_copy, monkeypatch, capsys,
+                                                                       where):
+    """Finding N1: a kill before the first draw leaves generate.json with `stopped` null and `partial` true, nothing
+    drawn and no completions.jsonl. It is a run stopped before its first draw too: invalid, generate.partial failing
+    and shown as killed before its first draw, never bad input; prereg writes nothing."""
+    _killed(run_dir, where)
+    run = C.load_run(run_dir)
+    assert (run.rows, run.scored, run.step0, run.sets, run.clips) == ([], [], {}, None, None)
+    doc = C.evaluate(run, repo=base[0])
+    v = doc["validity"]
+    assert doc["exit"] == 3 and v["of"] == 74 and {"generate.partial", "generate.probe.passed", "n",
+                                                   "requests.missing"} <= set(v["failed"])
+    assert "generate.stopped" not in v["failed"], "stopped is null: the kill wrote nothing"
+    assert cond(doc, "generate.partial")["shows"].startswith("true: killed before its first draw")
+    text = C.format_text(doc)
+    assert "killed before its first draw" in text and text.rstrip().endswith("STEP0_CHECK invalid")
+    monkeypatch.setattr(C, "ROOT", base[0])
+    assert cli.main(["check", str(run_dir)]) == 3
+    assert capsys.readouterr().out.rstrip().splitlines()[-1] == "STEP0_CHECK invalid"
+    rc, lines = PR.prereg(run_dir, write=True, repo=repo_copy)
+    assert rc == 3 and "generate.partial" in lines[0] and not (repo_copy / S.HELDOUT_FILE).exists()
+    (run_dir / "summary" / "scored.jsonl").write_text("")
+    with pytest.raises(Step0Error, match="beside a generate.json that drew nothing"):
+        C.load_run(run_dir)
+
+
+@pytest.mark.parametrize("why, fields", [
+    ("partial false, nothing stopped", {"stopped": None, "partial": False, "generated": 0}),
+    ("partial true with draws written", {"stopped": None, "partial": True, "generated": 128}),
+    ("partial 1, not true", {"stopped": None, "partial": 1, "generated": 0})])
+def test_any_other_generate_json_alone_is_bad_input(run_dir, why, fields):
+    """Finding N1: only a stop or a kill before the first draw is read with no rows; generate.json alone in any other
+    state is files missing, bad input naming them (completions.jsonl first)."""
+    _killed(run_dir, "the probe's call")
+    L.edit_json(run_dir / "summary" / "generate.json", lambda d: d.update(fields))
+    with pytest.raises(Step0Error) as err:
+        C.load_run(run_dir)
+    assert "completions.jsonl is missing" in err.value.problems[0]
+
+
 def test_a_score_that_left_no_records_is_named_a_scoring_defect(run_dir):
     """Finding R2-7: generate's records complete, score killed or crashed before its end (no scored.jsonl, no
     step0.json): bad input, named as §4.2 routes it."""
