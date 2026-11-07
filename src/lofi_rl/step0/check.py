@@ -46,13 +46,16 @@ when REDO does not hold it (a render-only redo reads OUT's scored.jsonl). A scor
 redo: new scores need new sets, which only render writes, so a pair whose REDO holds score's records alone reads
 invalid, the stamp condition saying why (finding E3). The stamp condition then reads both runs'
 stamps: each shows dirty=0, generate's commit holds every listed blob as above, and each later commit holds every
-listed blob of that same path file except the files D-023's amendment for the run names, on a line of that commit's
-docs/DECISIONS.md:
+listed blob of that same path file except the files D-023's amendment for the run names, on a line of its own in D-023's
+entry in that commit's docs/DECISIONS.md:
 
     D-023 redo amendment: run step0-<job>; changed <path>, <path>
 
 That form is read leniently (amendment_files): `path` in backticks, a closing period, a bold line or a note after a path
-read as the bare form, and "changed nothing" names no file; a named file the path file does not list is shown.
+read as the bare form, and "changed nothing" names no file; a named file the path file does not list is shown. Where it
+stands is read strictly (d023_lines; finding N13): a line that starts a block in D-023's entry, bulleted, fenced or
+indented as D-023 sets its verbatim lines, outside HTML comments; a sentence or note that quotes the form, a wrapped
+sentence's next line and another entry name no file.
 
 **Bad input** (exit 2, nothing decided): a summary/ folder or a file missing or unreadable, a schema that is not the
 step's, or files that are not one run's own, as lofi_rl.gate1.load_run refuses them: scored.jsonl against
@@ -135,8 +138,14 @@ MACHINERY = tuple(f"src/lofi_rl/step0/{name}.py" for name in ("check", "prereg",
 REPRODUCTION_DATA = (S.STREAMS_FILE, S.PALETTE)     # requests.load(), and the palette item 8 and rescore load
 STAMP_NAME = "generate.host.stamp = score_stamp = render_stamp"
 REDO_STAMP_NAME = "stamps of the redo pair"
-AMENDMENT = re.compile(r"D-023 redo amendment: run (step0-[\w-]+); changed ([^\n]*)")
+# a redo's amendment, as d023_lines gives a line of D-023's entry: what wraps it (backticks, bold), its head, the run
+AMENDMENT = re.compile(r"[`*_]*D-023 redo amendment: run (step0-[\w-]+); changed (.*)")
 AMENDED_ITEMS = re.compile(r",|\s+and\s+")         # an amendment's files: comma-separated, or "a.py and b.py"
+D023 = "## D-023 ("                     # D-023's heading: its entry runs to the next heading of level 1 or 2 (ENTRY)
+ENTRY = re.compile(r"#{1,2} ")
+ATX = re.compile(r"#{1,6} ")            # any heading, which ends a paragraph
+FENCE = re.compile(r"\s*(`{3,}|~{3,})")
+BULLET = re.compile(r"(?:[-*+]|\d+[.)])\s+")     # one list bullet, which starts a block of its own
 NOTHING = "nothing"                                  # `changed nothing`: a redo that changed no listed file
 MAX_LISTED = 10                         # examples kept per kind of problem
 TIMINGS = ("load_s", "probe_s", "gen_s", "tok_per_s", "replay_s", "total_s")
@@ -598,15 +607,75 @@ def _amended(item: str) -> str | None:
     return None if not path or path == NOTHING else path
 
 
+def _own(text: str) -> str:
+    """A line less its indent and one list bullet."""
+    text = text.lstrip()
+    bullet = BULLET.match(text)
+    return text[bullet.end():] if bullet else text
+
+
+def d023_lines(decisions: str, *, shown: bool = False) -> list[tuple[int, str]]:
+    """(line number, text less its indent and one list bullet) of each line of D-023's entry in a DECISIONS.md text
+    that a line D-023 gains after the run may stand on (findings N7, N11, N13). The entry runs from its heading (D023)
+    to the next heading of level 1 or 2. A line stands on its own when it starts a block: it has a list bullet of its
+    own, or follows a blank line, a heading or a fence's edge; a paragraph's continuation, such as a hard-wrapped
+    sentence's next line, never does. A line in an HTML comment, or one that opens, holds or closes one, is never read:
+    a comment stays open while a line's last `<!--` follows its last `-->`, so `<!-- a --> <!--` opens one (N11).
+
+    Shresth's answer to Q8(b) (prereg.short_answers; shown False) is read as kit.gates reads an approval, but for a
+    list bullet: at column 0, outside code fences, so an indented, nested or fenced line, the form an example takes in
+    a note, never answers for him. A redo's amendment (amendment_files; shown True), Claude's record of its own fix,
+    is read as D-023 sets its verbatim lines too: in a fence or indented, each fenced line on its own. An example names
+    `step0-<job>`, which names no run."""
+    out, inside, fence, comment, start = [], False, None, False, True
+    for number, line in enumerate(decisions.splitlines(), 1):
+        if comment:
+            if "-->" in line:
+                comment = line.rfind("<!--") > line.rfind("-->")
+            start = False
+            continue
+        m = FENCE.match(line)
+        if m:
+            mark = m.group(1)
+            if fence is None:
+                fence = mark
+            elif mark[0] == fence[0] and len(mark) >= len(fence) and line.strip() == mark:
+                fence = None
+            start = True
+            continue
+        if fence is not None:                   # a fence's lines are its text: no heading, comment or block in it
+            if inside and shown and line.strip():
+                out.append((number, _own(line)))
+            continue
+        if "<!--" in line:
+            comment = line.rfind("<!--") > line.rfind("-->")
+            start = False
+            continue
+        if ATX.match(line):
+            if ENTRY.match(line):
+                inside = line.startswith(D023)
+            start = True
+            continue
+        text = line.lstrip()
+        if inside and text and (start or BULLET.match(text)) and (shown or text == line):
+            out.append((number, _own(text)))
+        start = not text
+    return out
+
+
 def amendment_files(text: str, run: str | None) -> list[str]:
     """The files D-023's redo amendments for `run` name (every run's, for None), every such line together, sorted.
-    The form is one line, `D-023 redo amendment: run <run>; changed <path>, <path>` (module doc), read as house style
-    writes it: each item (commas, or "and") is its first word, less backticks, asterisks and a closing period,
-    comma, semicolon or colon, so `path`, a closing period, a bold line or a note after a path read as the bare form
-    does, and "nothing" names no file. A bold head (**D-023 redo amendment:**) is not the form and is not read."""
+    The form is one line, `D-023 redo amendment: run <run>; changed <path>, <path>` (module doc), a line of its own in
+    D-023's entry (d023_lines, shown: fenced or indented too), read as house style writes it: what wraps it (backticks,
+    bold) and each item (commas, or "and") is its first word, less backticks, asterisks and a closing period, comma,
+    semicolon or colon, so `path`, a closing period, a bold line or a note after a path read as the bare form does,
+    and "nothing" names no file. A bold head (**D-023 redo amendment:**) is not the form and is not read; nor is a
+    line that quotes the form after other text (a sentence or a note), a wrapped sentence's next line, a comment or
+    another entry (finding N13): there it exempted a changed file from a redo's blob check without D-023's record."""
     out: set[str] = set()
-    for m in AMENDMENT.finditer(text):
-        if run is None or m.group(1) == run:
+    for _, line in d023_lines(text, shown=True):
+        m = AMENDMENT.match(line)
+        if m is not None and (run is None or m.group(1) == run):
             out |= {p for p in map(_amended, AMENDED_ITEMS.split(m.group(2))) if p}
     return sorted(out)
 

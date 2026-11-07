@@ -325,7 +325,8 @@ def assert_d023_states_the_registered_values(text: str) -> None:
     assert f"{one} conditions" in entry and f"a redo pair has {pair}" in entry, "check's count (finding R3-8)"
     assert TEMPLATE in raw, "the amendment's form, verbatim"
     filled = TEMPLATE.replace("<job>", "13800001").replace("<path>, <path>", f"{S.JOB}, src/lofi_rl/step0/select.py")
-    assert C.amendment_files(filled, "step0-13800001") == sorted([S.JOB, "src/lofi_rl/step0/select.py"])
+    amended = f"{C.D023}synthetic): an amended copy\n\n- {filled}\n"    # filled in, on a line of D-023's entry (N13)
+    assert C.amendment_files(amended, "step0-13800001") == sorted([S.JOB, "src/lofi_rl/step0/select.py"])
     assert "held-out data" in entry and "taken or not" in entry, "the separation rules (finding R3-2)"
     assert "`short`" in bullet(raw, "The RM loader"), "a short brief's clips are held-out clips too (finding R3-4)"
     assert f"`{S.JOB_NAME}`" in entry and "45 min" in entry and "at most 810 SU" in entry

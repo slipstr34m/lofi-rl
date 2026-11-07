@@ -446,11 +446,14 @@ def test_a_redo_pair_reads_generates_files_from_the_run_and_the_rest_from_the_re
     assert set(C.MAY_BE_ABSENT) < set(S.SUMMARY_FILES) and "scored.jsonl" not in C.MAY_BE_ABSENT
 
 
+ENTRY = "# Decisions\n\n## D-023 (synthetic): the step-0 samples\n\n"     # D-023's entry, where amendments stand
+
+
 def test_amendment_lines_are_read_per_run():
-    text = ("- D-023 redo amendment: run step0-1; changed a.py, b/c.py\n"
-            "`D-023 redo amendment: run step0-1; changed d.py`\n"
-            "D-023 redo amendment: run step0-2; changed e.py\n"
-            "D-023 redo amendment: run step0-1; changed nothing\n")
+    text = (ENTRY + "- D-023 redo amendment: run step0-1; changed a.py, b/c.py\n"
+            "- `D-023 redo amendment: run step0-1; changed d.py`\n\n"
+            "D-023 redo amendment: run step0-2; changed e.py\n\n"
+            "- D-023 redo amendment: run step0-1; changed nothing\n")
     assert C.amendment_files(text, "step0-1") == ["a.py", "b/c.py", "d.py"]
     assert C.amendment_files(text, "step0-2") == ["e.py"] and C.amendment_files(text, "step0-3") == []
     assert C.amendment_files(text, None) == ["a.py", "b/c.py", "d.py", "e.py"], "every run's"
@@ -473,8 +476,53 @@ def test_amendment_lines_are_read_per_run():
 def test_an_amendment_line_is_read_as_house_style_writes_it(line, files):
     """Findings R3-3, E2 and R2-6: DECISIONS.md backticks its paths and ends its bullets with a period, so the line
     is read leniently; only a bold head, which breaks the line's form, is not read (D-023 gives the form verbatim)."""
-    assert C.amendment_files(f"# D-023\n{line}\nmore text\n", "step0-7") == files
-    assert C.amendment_files(f"# D-023\n{line}\n", "step0-8") == []
+    assert C.amendment_files(f"{ENTRY}{line}\nmore text\n", "step0-7") == files
+    assert C.amendment_files(f"{ENTRY}{line}\n", "step0-8") == []
+
+
+AMEND = "D-023 redo amendment: run step0-7; changed src/a.py"
+WHERE_READ = [      # finding N13: where an amendment stands as D-023 sets its verbatim lines, it is read
+    ("a bullet", (f"- {AMEND}",)),
+    ("a fenced block in a bullet", ("- **Amended (a redo):** the fix.", "", "  ```", f"  {AMEND}", "  ```")),
+    ("a nested bullet", ("- **Amendments:**", f"  - {AMEND}")),
+    ("a paragraph of its own", ("Some text.", "", AMEND)),
+    ("an indented block", ("Some text.", "", f"    {AMEND}")),
+]
+WHERE_NOT = [       # ... and where it is only quoted, it names no file
+    ("a sentence", (f"- Not yet: if Shresth agrees, D-023 gains `{AMEND}`; he has not.",)),
+    ("a wrapped sentence's next line", ("- Not yet: if Shresth agrees to the fix, D-023 gains the line",
+                                        f"  `{AMEND}`; he has not.")),
+    ("a paragraph's next line", ("Not yet: D-023 gains", AMEND)),
+    ("an HTML comment", ("<!--", AMEND, "-->")),
+    ("a comment opened after one closes", ("<!-- a --> <!--", f"- {AMEND}", "-->")),
+    ("a blockquote", (f"> {AMEND}",)),
+    ("another entry", ("## D-024 (synthetic): the seed pool", "", f"- {AMEND}")),
+    ("a placeholder run", ("- D-023 redo amendment: run step0-<job>; changed src/a.py",)),
+]
+
+
+@pytest.mark.parametrize("why, lines, files", [(*c, ["src/a.py"]) for c in WHERE_READ] + [(*c, []) for c in WHERE_NOT],
+                         ids=[c[0] for c in WHERE_READ + WHERE_NOT])
+def test_an_amendment_is_read_only_where_it_stands_on_its_own_in_d023(why, lines, files):
+    """Finding N13: an amendment exempts a changed file from a redo's blob check, so it is read only on a line of its
+    own in D-023's entry (check.d023_lines, shown): a line that starts a block, bulleted, fenced or indented as D-023
+    sets its verbatim lines, outside HTML comments. A sentence or note that quotes it, a wrapped sentence's next
+    line, a comment, a blockquote, another entry or the template's placeholder names no file."""
+    assert C.amendment_files(ENTRY + "\n".join(lines) + "\n", "step0-7") == files
+
+
+def test_a_quoted_amendment_in_a_later_entry_exempts_nothing(base, run_dir, repo_copy, tmp_path):
+    """Finding N13, end to end: the redo's commit changes a listed file with no amendment, and a later entry only
+    quotes one (a not-yet note): the pair reads invalid, as with no amendment at all, where it read valid."""
+    text = (repo_copy / AMENDED).read_text() + "# the redo's fix\n"
+    quoted = ("\n## D-024 (synthetic): the seed pool\n\n- Not yet: if Shresth agrees to the fix, D-023 gains the line "
+              f"`D-023 redo amendment: run {RUN}; changed {AMENDED}`; he has not.\n")
+    c2 = L.commit(repo_copy, "the redo's fix", {AMENDED: text, S.DECISIONS: L.decisions_text(extra=quoted)})
+    redo = _redo(run_dir, tmp_path / "step0-redo-13800002", repo_copy, c2)
+    doc = report(run_dir, repo_copy, redo)
+    assert doc["validity"]["failed"] == ["the path at the redo commit"] and doc["exit"] == 3
+    shows = cond(doc, "the path at the redo commit")["shows"]
+    assert f"for {RUN} names no file" in shows and f"not named: {AMENDED}" in shows, shows
 
 
 def test_an_amended_file_off_the_path_is_shown_and_excepts_nothing(base, run_dir, repo_copy, tmp_path):
