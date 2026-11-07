@@ -5,7 +5,9 @@ What these tests pin: what each file holds, as §4.4 lists it; ASCII JSON, one r
 written again, and from a copy of the run elsewhere; an invalid run refused and bad input refused, nothing written; a
 different existing file never replaced, neither file written; item 8's readouts, with the A/B-differ flags of every
 pair, on a run whose held-out tuple is hand-built; a redo pair recorded with its files; no LoopScript text in either
-file; and nothing written but the two files: no .ls file, nothing under data/ or inbox/.
+file; and nothing written but the two files: no .ls file, nothing under data/ or inbox/. Under Q8(b), a short
+held-out or Ref_b brief refused until DECISIONS.md holds the run's short-answer line, read as the mark is read, and
+with it the files Q8(a) writes, the line recorded; under "report", the bytes the code wrote before that line existed.
 
 Synthetic runs come from tests/helpers_step0.py, stamped by tests/helpers_step0_laptop.py; nothing here reads a
 pulled run, renders or listens.
@@ -326,6 +328,123 @@ def test_under_q8b_a_short_held_out_brief_waits_for_shresth(base, repo, tmp_path
         assert "heldout 5101:2" in lines[-1] and tree_files(tmp_path) == before, "nothing written"
     else:
         assert rc == 0 and json.loads((repo / S.HELDOUT_FILE).read_text())["counts"]["short"] == 1
+
+
+# --------------------------------------------------------------------------------------------- Q8(b): his answer
+SHORT = {"5101:2": "a a a b b c G2 G6", "596:5": "w x y G2 G6 G2 G6 G2"}   # three distinct texts; three passing
+ASKED = "2 held-out or Ref_b briefs are short (heldout 5101:2, refb 596:5)"
+ANSWER = f"D-023 short answer: run {RUN}; as (a)"
+BEFORE = "57b89f7"          # wt/step0 before the answer line (finding N2): what prereg wrote under SHORT_RULE "report"
+
+
+@pytest.fixture(scope="module")
+def short_run(base, tmp_path_factory) -> Path:
+    """A valid run with a short held-out brief and a short Ref_b brief (SHORT), stamped with the base repo's commit."""
+    run_dir = tmp_path_factory.mktemp("step0-prereg-short") / RUN
+    L.stamped_run(run_dir, base[0], base[1], SHORT)
+    return run_dir
+
+
+def answered(repo: Path, *lines: str) -> str:
+    """A later commit whose docs/DECISIONS.md also holds `lines`, as D-023 gains his answer after the run: only
+    DECISIONS.md changes, which check never compares with the run's commit. Its full sha."""
+    return L.commit(repo, "his answer to Q8(b)", {S.DECISIONS: L.decisions_text(extra="\n" + "\n".join(lines) + "\n")})
+
+
+CASES = [
+    ("no line", (), False),
+    ("this run, as (a)", (f"- {ANSWER}",), True),
+    ("in a fenced block", ("  ```", f"  {ANSWER}", "  ```"), True),
+    ("indented", (f"      {ANSWER}",), True),
+    ("in backticks, with a period", (f"- `{ANSWER}`.",), True),
+    ("in bold", (f"- **{ANSWER}**",), True),
+    ("another run", ("- D-023 short answer: run step0-13800009; as (a)",), False),
+    ("another answer", (f"- D-023 short answer: run {RUN}; as (b)",), False),
+    ("a note after the answer", (f"- {ANSWER}, in his words",), False),
+    ("a bold head", (f"- **D-023 short answer:** run {RUN}; as (a)",), False),
+    ("two answers for the run", (f"- {ANSWER}", f"- D-023 short answer: run {RUN}; ask again"), False),
+]
+
+
+@pytest.mark.parametrize("why, lines, writes", CASES, ids=[c[0] for c in CASES])
+def test_under_q8b_his_answer_line_lifts_the_refusal(short_run, repo, tmp_path, monkeypatch, why, lines, writes):
+    """Finding N2: under SHORT_RULE "ask", prereg reads Shresth's answer for this run from one line of the checkout's
+    docs/DECISIONS.md, read as generate reads the mark (requests.find_marks), at a later commit that changes nothing
+    check compares with the run's commit, so no redo. Only that run's line saying "as (a)", with no other answer for
+    it, writes the files; anything else refuses, naming the line to add, with nothing written."""
+    monkeypatch.setattr(S, "SHORT_RULE", "ask")
+    if lines:
+        answered(repo, *lines)
+    before = tree_files(tmp_path)
+    rc, out = PR.prereg(short_run, write=True, repo=repo)
+    if writes:
+        assert rc == 0 and out[-2] == f"wrote {S.HELDOUT_FILE}, {S.RUN_FILE}", out
+        held, st = (json.loads((repo / rel).read_text()) for rel in FILES)
+        assert held["counts"]["tuples"] == 39 and [e["brief_id"] for e in held["short"]] == ["5101:2"]
+        assert [e["brief_id"] for e in st["short"]["refb"]] == ["596:5"]
+        for doc in (held, st):
+            assert doc["rule"]["answers"]["Q8"] == {"short_rule": "ask", "short_answer": ANSWER}, "the line applied"
+    else:
+        assert rc == 2 and out[-1].startswith(f"refused: SHORT_RULE is Q8's (b), ask: {ASKED}"), out
+        assert f"add the line `{ANSWER}` to {S.DECISIONS}" in out[-1] and out[-1].endswith("nothing written")
+        assert tree_files(tmp_path) == before, "nothing written"
+        if why in ("another answer", "two answers for the run"):
+            assert f"{S.DECISIONS} answers {RUN} " in out[-1], "what D-023 says is named"
+
+
+def test_under_q8b_his_answer_handles_the_short_briefs_as_q8a_does(short_run, base, repo, tmp_path, monkeypatch):
+    """Finding N2: with the answer applied, both files are the ones Q8(a) writes for the run but for rule.answers.Q8,
+    which records the line (and step0_v1.json's pin of heldout_v1.json, which that changes): the held-out set holds a
+    tuple fewer, and the short Ref_b brief is recorded short, to leave run 1's [0, 400)."""
+    report_repo = L.copy_run(base[0], tmp_path / "repo-report")
+    assert PR.prereg(short_run, write=True, repo=report_repo)[0] == 0
+    want = {rel: json.loads((report_repo / rel).read_text()) for rel in FILES}
+    monkeypatch.setattr(S, "SHORT_RULE", "ask")
+    answered(repo, f"- {ANSWER}")
+    assert PR.prereg(short_run, write=True, repo=repo)[0] == 0
+    got = {rel: json.loads((repo / rel).read_text()) for rel in FILES}
+    for rel in FILES:
+        assert got[rel]["rule"]["answers"]["Q8"] == {"short_rule": "ask", "short_answer": ANSWER}
+        got[rel]["rule"]["answers"]["Q8"] = {"short_rule": "report"}
+    got[S.RUN_FILE]["heldout"]["sha256"] = want[S.RUN_FILE]["heldout"]["sha256"]
+    assert got == want
+    refb = {e["brief_id"]: e for e in got[S.RUN_FILE]["refb"]}
+    assert refb["596:5"]["short"] is True and len(refb["596:5"]["taken"]) == 3
+
+
+def _written_at(commit: str, run_dir: Path, repo: Path, tmp_path: Path) -> dict[str, bytes]:
+    """Both files as the code of `commit` writes them (prereg --write) for `run_dir` into `repo`, in a subprocess
+    whose lofi_rl, streams file and palette are that commit's, from this checkout's history (git archive)."""
+    code_dir = tmp_path / f"code-{commit}"
+    code_dir.mkdir()
+    archive = subprocess.run(["git", "-C", str(L.ROOT), "archive", commit, "src", S.STREAMS_FILE, S.PALETTE],
+                             capture_output=True, check=True, timeout=120)
+    subprocess.run(["tar", "-x", "-C", str(code_dir)], input=archive.stdout, check=True, timeout=120)
+    code = ("import sys\nfrom pathlib import Path\nfrom lofi_rl.step0 import prereg as PR\n"
+            "rc, lines = PR.prereg(Path(sys.argv[1]), write=True, repo=Path(sys.argv[2]))\n"
+            "print('\\n'.join(lines))\nsys.exit(rc)\n")
+    p = subprocess.run([sys.executable, "-B", "-c", code, str(run_dir), str(repo)], capture_output=True, text=True,
+                       timeout=600, env={**os.environ, "PYTHONPATH": str(code_dir / "src")}, cwd=code_dir)
+    assert p.returncode == 0, (p.stdout + p.stderr)[-3000:]
+    return {rel: (repo / rel).read_bytes() for rel in FILES}
+
+
+def test_under_report_prereg_writes_the_bytes_it_wrote_before_the_answer_line(short_run, base, tmp_path):
+    """Finding N2: under SHORT_RULE "report" (Q8(a)) the answer line changes nothing. For a run with a short held-out
+    and a short Ref_b brief, and a short-answer line in DECISIONS.md, prereg writes byte for byte what the code at
+    BEFORE writes for it."""
+    if subprocess.run(["git", "-C", str(L.ROOT), "cat-file", "-e", f"{BEFORE}^{{commit}}"],
+                      capture_output=True).returncode:
+        pytest.skip(f"commit {BEFORE} is not in this clone")
+    assert S.SHORT_RULE == "report"
+    repo_now = L.copy_run(base[0], tmp_path / "repo-now")
+    answered(repo_now, f"- {ANSWER}")
+    repo_then = L.copy_run(repo_now, tmp_path / "repo-then")
+    then = _written_at(BEFORE, short_run, repo_then, tmp_path)
+    rc, out = PR.prereg(short_run, write=True, repo=repo_now)
+    assert rc == 0, out
+    assert {rel: (repo_now / rel).read_bytes() for rel in FILES} == then
+    assert json.loads(then[S.HELDOUT_FILE])["counts"]["short"] == 1 and b"short_answer" not in then[S.RUN_FILE]
 
 
 def test_bad_input_is_refused_and_nothing_written(base, repo, run_dir, tmp_path):

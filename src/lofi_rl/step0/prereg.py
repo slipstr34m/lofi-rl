@@ -24,17 +24,26 @@ line; the rest in lofi_rl.brief_streams' layout), and byte-identical when writte
 
 The run must pass `check` (lofi_rl.step0.check.evaluate, with git at its stamps' commits), at the run's commit
 (check.code_problems): an invalid run is refused (exit 3), and bad input is exit 2, nothing written either way. Under
-Q8's (b) (SHORT_RULE "ask") a short held-out or Ref_b brief is refused too (exit 2), until D-023 records Shresth's
-answer and the constants carry it. Without --write the two files' sizes and sha256 are printed and nothing is
-written; with it each is written unless it is already there byte for byte. A different existing file is never
-replaced (exit 2, neither written): there is no --force, and a new set is a new file version with its own DECISIONS
-entry (§4.2). Laptop only. Sound claims: none.
+Q8's (b) (SHORT_RULE "ask") a short held-out or Ref_b brief is refused too (exit 2), naming the line to add, until the
+checkout's docs/DECISIONS.md holds Shresth's answer for the run as this one line, read as generate reads the mark
+(ask_first, finding N2):
+
+    D-023 short answer: run step0-<job>; as (a)
+
+DECISIONS.md is never compared with the run's commit, so the line, written after the run, needs no redo and no
+constant changed; the short briefs are then handled as Q8(a) handles them, and both files' rule.answers.Q8 records the
+line. Any other answer for the run keeps the refusal; under SHORT_RULE "report" nothing is read, and Q8 records the
+rule alone. Without --write the two files' sizes and sha256 are printed and nothing is written; with it each is
+written unless it is already there byte for byte. A different existing file is never replaced (exit 2, neither
+written): there is no --force, and a new set is a new file version with its own DECISIONS entry (§4.2). Laptop only.
+Sound claims: none.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -43,11 +52,15 @@ import lofi_rl.step0 as S
 from lofi_rl import brief_streams
 from lofi_rl.step0 import Step0Error, short
 from lofi_rl.step0 import check as C
+from lofi_rl.step0 import requests as R
 
 WIDTH = brief_streams.WIDTH             # a flat value that fits in WIDTH columns is written on one line
 CLIP_FIELDS = ("k", "i", "draw_seed", "text_sha256", "canon_sha256", "clip_id", "audio_sha256", "lufs",
                "true_peak_dbtp", "p_fix", "near_copy", "copy_jaccard", "A", "B")
 DRAW_FIELDS = ("k", "i", "draw_seed", "text_sha256", "canon_sha256")     # a Ref_b or pool draw (not rendered here)
+SHORT_HEAD = "D-023 short answer:"      # Q8(b): the line D-023 gains for a run whose short briefs Shresth answered
+SHORT_AS_A = "as (a)"                   # the one answer prereg applies: the short briefs handled as Q8(a) handles them
+SHORT = re.compile(r"D-023 short answer: run (step0-[\w-]+); (.*)")
 
 
 # --------------------------------------------------------------------------------------------- the layout
@@ -94,14 +107,15 @@ def _rel(run_dir: Path, name: str) -> str:
     return f"runs/{Path(run_dir).resolve().name}/summary/{name}"
 
 
-def answers() -> dict:
-    """The answers to the spec's §7 that the run was selected under (lofi_rl.step0's Q1-Q8 constants)."""
+def answers(short_answer: str | None = None) -> dict:
+    """The answers to the spec's §7 that the run was selected under (lofi_rl.step0's Q1-Q8 constants), and under Q8's
+    (b) the line of D-023 that answered this run's short briefs, when prereg applied it (ask_first)."""
     return {"Q1": {"pool_briefs": S.POOL_BRIEFS, "bands": [list(b) for b in S.POOL_BANDS],
                    "fill_band": list(S.POOL_FILL_BAND)},
             "Q2": {"pool_shares_refb": S.POOL_SHARES_REFB}, "Q3": {"passing": S.PASSING},
             "Q4": {"distinct": dict(S.DISTINCT)}, "Q5": {"pool_excludes": S.POOL_EXCLUDES},
             "Q6": {"streams": [list(p) for p in S.STREAMS]}, "Q7": {"committed_before": S.COMMITTED_BEFORE},
-            "Q8": {"short_rule": S.SHORT_RULE}}
+            "Q8": {"short_rule": S.SHORT_RULE, **({"short_answer": short_answer} if short_answer else {})}}
 
 
 def run_block(run: C.Run, report: Mapping) -> dict:
@@ -139,8 +153,8 @@ def settings(run: C.Run) -> dict:
             "streams": g.get("streams")}
 
 
-def rule_block() -> dict:
-    return {"name": S.RULE, "mark": S.MARK, "m": dict(S.M), "answers": answers()}
+def rule_block(short_answer: str | None = None) -> dict:
+    return {"name": S.RULE, "mark": S.MARK, "m": dict(S.M), "answers": answers(short_answer)}
 
 
 PASSING_WORDS = {"hard": "pass the hard gates", "hard_not_copy": "pass the hard gates and are not near-copies of the "
@@ -173,7 +187,7 @@ def _clip(t: Mapping, rec: Mapping | None, s: Mapping) -> dict:
     return {k: got[k] for k in CLIP_FIELDS}
 
 
-def heldout_doc(run: C.Run, report: Mapping, *, palette=None) -> dict:
+def heldout_doc(run: C.Run, report: Mapping, *, palette=None, short_answer: str | None = None) -> dict:
     """heldout_v1.json's document (module doc)."""
     rows, scored = run.text_rows(), run.scored_rows()
     final = {r["i"]: r for r in run.records if r.get("final") is True}
@@ -204,7 +218,7 @@ def heldout_doc(run: C.Run, report: Mapping, *, palette=None) -> dict:
         "run": run_block(run, report),
         "render_code": run.render_code,
         "settings": settings(run),
-        "rule": rule_block(),
+        "rule": rule_block(short_answer),
         "texts": texts_block(run),
         "counts": {"briefs": len(run.entries("heldout")), "tuples": len(tuples),
                    "clips": sum(len(t["clips"]) for t in tuples), "short": len(shorts), "twins": twins},
@@ -288,7 +302,7 @@ def _short(entries: Sequence[Mapping]) -> list[dict]:
             for e in entries if e.get("short")]
 
 
-def run_doc(run: C.Run, report: Mapping, heldout_sha256: str) -> dict:
+def run_doc(run: C.Run, report: Mapping, heldout_sha256: str, *, short_answer: str | None = None) -> dict:
     """step0_v1.json's document (module doc)."""
     g = run.generate
     refb = [{"brief_id": e["brief_id"], "cell": e.get("cell"), "taken": [_draw(t) for t in e["taken"]],
@@ -307,7 +321,7 @@ def run_doc(run: C.Run, report: Mapping, heldout_sha256: str) -> dict:
             "No LoopScript text: every draw's text is in `texts`.file, found by its text_sha256 (spec section 5)."],
         "run": run_block(run, report),
         "files": files_block(run),
-        "rule": rule_block(),
+        "rule": rule_block(short_answer),
         "validity": {"verdict": report["verdict"], "held": report["validity"]["held"],
                      "of": report["validity"]["of"], "failed": report["validity"]["failed"]},
         "counts": counts_block(run),
@@ -326,28 +340,60 @@ def run_doc(run: C.Run, report: Mapping, heldout_sha256: str) -> dict:
     }
 
 
-def documents(run: C.Run, report: Mapping, *, palette=None) -> dict[str, str]:
-    """{repo path: exact text} of both files; step0_v1.json pins heldout_v1.json by its sha256."""
-    held = text(heldout_doc(run, report, palette=palette))
+def documents(run: C.Run, report: Mapping, *, palette=None, short_answer: str | None = None) -> dict[str, str]:
+    """{repo path: exact text} of both files; step0_v1.json pins heldout_v1.json by its sha256. `short_answer` is the
+    D-023 line ask_first applied, recorded in both files' rule.answers.Q8 (None: nothing is added)."""
+    held = text(heldout_doc(run, report, palette=palette, short_answer=short_answer))
     sha = hashlib.sha256(held.encode("ascii")).hexdigest()
-    return {S.HELDOUT_FILE: held, S.RUN_FILE: text(run_doc(run, report, sha))}
+    return {S.HELDOUT_FILE: held, S.RUN_FILE: text(run_doc(run, report, sha, short_answer=short_answer))}
+
+
+# --------------------------------------------------------------------------------------------- Q8(b): his answer
+def short_line(run_name: str) -> str:
+    """The line D-023 gains when Shresth answers Q8(b) for a run's short held-out or Ref_b briefs with (a)'s handling:
+    the one answer prereg applies (ask_first)."""
+    return f"{SHORT_HEAD} run {run_name}; {SHORT_AS_A}"
+
+
+def short_answers(decisions: str, run_name: str) -> list[str]:
+    """The answers D-023's short-answer lines give the run `run_name` in a DECISIONS.md text, in order. Each is read as
+    generate reads the mark (requests.find_marks): from its head to the next backtick or double quote, or its line's
+    end, less trailing spaces, periods, asterisks, underscores and quotes, so a line in backticks, in a fenced or
+    indented block or in bold, or with a closing period, reads as the bare form; then `run <run>; <answer>` must be the
+    rest, as the redo amendment's form is (check.AMENDMENT), so a bold head is no such line. A note after the answer
+    is part of it."""
+    found = (SHORT.fullmatch(body) for body in R.find_marks(decisions, SHORT_HEAD))
+    return [m.group(2) for m in found if m is not None and m.group(1) == run_name]
+
+
+def ask_first(run: C.Run, repo: Path) -> tuple[str | None, str | None]:
+    """Q8's (b), SHORT_RULE "ask" (findings R1-2, N2): a short held-out or Ref_b brief waits for Shresth's answer,
+    which D-023 records as one line (short_line) in the checkout's docs/DECISIONS.md, read by short_answers. That file
+    is never compared with the run's commit (check.code_problems), so the line, written after the run, needs no redo
+    and no constant changed. (The refusal, naming the briefs and the line to add, or None; the line applied, or None.)
+    Only that line, with no other answer for the run, lifts the refusal: the short briefs are then handled as Q8(a)
+    handles them. A short pool brief is reported under either answer, and under "report" nothing is read."""
+    if S.SHORT_RULE != "ask":
+        return None, None
+    short = [f"{name} {e['brief_id']}" for name in ("heldout", "refb") for e in run.entries(name) if e.get("short")]
+    if not short:
+        return None, None
+    try:
+        decisions = (Path(repo) / S.DECISIONS).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        decisions = ""
+    line, said = short_line(run.run_name), short_answers(decisions, run.run_name)
+    if said and all(a == SHORT_AS_A for a in said):
+        return None, line
+    heard = (f"; {S.DECISIONS} answers {run.run_name} {', '.join(repr(a) for a in said)}, which prereg does not apply"
+             if said else "")
+    return (f"refused: SHORT_RULE is Q8's (b), ask: {len(short)} held-out or Ref_b briefs are short ("
+            f"{', '.join(short[:5])}{', ...' if len(short) > 5 else ''}){heard}; Shresth's answer goes into D-023 "
+            f"first: if he answers (a) for them (the held-out set holds fewer tuples, a short Ref_b brief leaves run "
+            f"1's [0, 400)), add the line `{line}` to {S.DECISIONS} and run prereg again: nothing written"), None
 
 
 # --------------------------------------------------------------------------------------------- the command
-def ask_first(run: C.Run) -> str | None:
-    """Under Q8's (b), SHORT_RULE "ask", a short held-out or Ref_b brief waits for Shresth's answer, which D-023
-    records and the constants carry before the sets are fixed: the refusal, naming them, or None (finding R1-2). A
-    short pool brief is reported under either answer."""
-    if S.SHORT_RULE != "ask":
-        return None
-    short = [f"{name} {e['brief_id']}" for name in ("heldout", "refb") for e in run.entries(name) if e.get("short")]
-    if not short:
-        return None
-    return (f"refused: SHORT_RULE is Q8's (b), ask: {len(short)} held-out or Ref_b briefs are short ("
-            f"{', '.join(short[:5])}{', ...' if len(short) > 5 else ''}); Shresth's answer goes into D-023 and the "
-            "constants first: nothing written")
-
-
 def status(path: Path, body: str) -> str:
     """"absent", "identical" (byte for byte) or "differs"."""
     if not path.exists():
@@ -373,11 +419,11 @@ def prereg(run_dir: Path | str, redo_dir: Path | str | None = None, *, write: bo
                    f"{report['validity']['of']} conditions hold; failing: {', '.join(report['validity']['failed'])}): "
                    "nothing written. `python -m lofi_rl.step0 check` reports each condition (spec section 4.2 says "
                    "what follows an invalid run)."]
-    asked = ask_first(run)
+    asked, answer = ask_first(run, repo)
     if asked:
         return 2, [asked]
     try:
-        docs = documents(run, report)
+        docs = documents(run, report, short_answer=answer)
     except Step0Error as err:
         return 2, [f"error: nothing written:\n{err}"]
     states = {rel: status(repo / rel, body) for rel, body in docs.items()}
