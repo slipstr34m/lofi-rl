@@ -110,8 +110,9 @@ def test_imports_inside_functions_and_by_literal_name_are_in_the_closure(tmp_pat
         "    return importlib.import_module('lofi_rl.ui.manifest'), curriculum\n")
     after = set(P.closure(root))
     assert after - before >= {"src/lofi_rl/step0/extra.py", "src/lofi_rl/grammar_mask.py",
-                              "src/lofi_rl/rl/curriculum.py", "src/lofi_rl/rl/__init__.py",
+                              "src/lofi_rl/rl/curriculum.py",
                               "src/lofi_rl/ui/manifest.py", "src/lofi_rl/ui/__init__.py"}
+    assert "src/lofi_rl/rl/__init__.py" in after, "generate, score and render reach it already (lofi_rl.rl.junk)"
     assert "src/lofi_rl/ui/serve.py" not in after, "only what is reached"
     (root / "src/lofi_rl/step0/extra.py").write_text("def f():\n    from lofi_rl import no_such_module\n")
     assert "src/lofi_rl/step0/extra.py" in P.closure(root), "a name that is no module is an attribute"
