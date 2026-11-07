@@ -10,8 +10,11 @@ tests/helpers_step0_laptop.py; nothing here reads a pulled run, renders or liste
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -22,12 +25,10 @@ import helpers_step0_laptop as L
 import lofi_rl.step0 as S
 from lofi_rl import prompt_v2
 from lofi_rl.brief import Brief
-from lofi_rl.palette import load_palette
 from lofi_rl.rl import junk as J
 from lofi_rl.step0 import Step0Error, cli
 from lofi_rl.step0 import check as C
 from lofi_rl.step0 import requests as R
-from lofi_rl.step0 import select as X
 
 pytestmark = pytest.mark.laptop   # git reads the commits: never on a compute node (CLAUDE.md §1)
 
@@ -479,9 +480,6 @@ def test_without_sets_and_clips_the_run_is_invalid_not_bad_input(base, run_dir):
 def test_check_imports_with_the_policy_envs_absent_modules_and_yaml_blocked():
     """The policy env's build imports every lofi_rl module outside its scorer-side list (jobs/env_policy.sbatch), so
     check imports git, the palette, junk and the features only inside the functions that use them."""
-    import os
-    import subprocess
-    import sys
     blocked = ("yaml", "numpy", "mido", "soundfile", "scipy", "pedalboard", "torch", "trl", "vllm", "transformers")
     code = ("import sys\n" + "".join(f"sys.modules[{m!r}] = None\n" for m in blocked)
             + "import lofi_rl.step0.check\nprint('IMPORTS_OK')\n")
