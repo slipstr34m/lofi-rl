@@ -1,6 +1,6 @@
 # The step-0 samples (D-021 "What follows" item 2): build spec
 
-**Status:** a build spec, waiting on Shresth's answers to §7 (or his OK on its defaults). It was written and revised on 2026-11-06 at repo HEAD `cfc24df`, after an independent review whose findings are applied below. Nothing in it has run, and no code for it exists yet.
+**Status:** a build spec, written and revised on 2026-11-06 at repo HEAD `cfc24df` after an independent review whose findings are applied below, and built on 2026-11-07 on branch `wt/step0`, with the recommended (a) of each §7 question as a named constant in `src/lofi_rl/step0/__init__.py`. §10 lists every accepted deviation of the code from sections 1–9; a sentence the build's fixes made wrong is corrected in place and named there. It waits on Shresth's answers to §7 (or his OK on its defaults). Nothing in it has run on the cluster.
 - Its rules go into a new entry, **D-023**, in `docs/DECISIONS.md` (§8). That covers the rules D-021 leaves open and also the registered text they depart from, listed under "What this entry supersedes", as D-021 listed its own (`docs/DECISIONS.md:309-312`). Entries are never edited; a later one supersedes (`:3`).
 - D-023 carries Shresth's answers to §7 and is committed with the code, before the job, as D-021 was (`:306`). From then on D-023 is the record, and amendments go there, never here.
 - This file is committed first on its own, for his answers. It is updated with them and committed again beside the code.
@@ -117,7 +117,7 @@ The requests are rm_heldout 40 × 8 = 320 and train 400 × 8 = 3,200: 3,520 in a
 - **The rule.** Take the brief's first 4 draws that pass G1–G6 and compile, in k order, **with repeats kept** (Q4(a)). Each one is an honest sample of step 0, and PAR averages their utilities (`SCORER.md:231-232`).
   - About 13 of the 400 briefs hold a repeat in their first 4 (estimate, computed as in §1.4 with train's cell counts).
 - **G7 comes at Ref_b's render** (§3), under that render's recorded code. A reference that fails G7 is replaced by the brief's first **spare** that passes it, in k order (Q2(a)).
-  - The spares are the brief's other passing draws, less the pool's draws and any draw with a pool draw's text.
+  - The spares are the brief's other passing draws, less the pool's draws, any draw with a pool draw's text, and any draw that is another pool brief's pick (a twin's clip, §1.6).
   - This departs from the registered words, which take the next passing draw even when it is a pool draw. Example: Ref_b k0–3, pool k4–6, k2 fails G7. The rule here gives Ref_b {k0, k1, k3, k7}; the words would give {k0, k1, k3, k4}, a pool loop. It is in D-023's list (§8).
 - **This unit fixes the selection by its records (§4.4).** Rendering and features come later (§3).
 
@@ -138,8 +138,9 @@ The requests are rm_heldout 40 × 8 = 320 and train 400 × 8 = 3,200: 3,520 in a
   - Under Q6(a), every train brief is drawn, so this choice changes no draw.
 - **The draws (Q2(a), Q5).** Walk the brief's draws after its 4 Ref_b draws, k ascending. Take a draw that:
   - passes G1–G6 and compile;
-  - has a canonical text unlike the brief's Ref_b texts and the pool's earlier picks;
-  - under Q5(a), has a canonical text that no held-out clip has. Under Q5(b) or (c), it must only not be a held-out clip (the same clip id, which only a twin can give).
+  - has a canonical text unlike the brief's Ref_b texts and its earlier picks;
+  - under Q5(a), has a canonical text that no held-out clip has. Under Q5(b) or (c), it must only not be a held-out clip (the same clip id, which only a twin can give);
+  - is not another train brief's Ref_b clip (Q2(a)) and not an earlier pool brief's pick: two train briefs of one cell, bpm and tonic give one clip for one text (below).
 
   Stop at 3. G7 comes at the pool's render, under that render's recorded code. A pool draw that fails G7 is dropped and never replaced, so every leftover passing draw stays a Ref_b spare: Ref_b must hold exactly 4 (`rm_api.py:166-170`), and 660 is a planning count.
 - **Why after Ref_b (Q2).**
@@ -148,6 +149,7 @@ The requests are rm_heldout 40 × 8 = 320 and train 400 × 8 = 3,200: 3,520 in a
   - PAR's bound, the std over members (`SCORER.md:231-232`), would then differ between the two groups.
   - It costs 660 later renders and nothing here: the train draws serve either reading.
   - **It separates clips, not texts.** Exact texts recur across a cell's briefs. In the simulation (§1.4), about 176 of the 1,600 Ref_b draws share their exact text with another brief's pool draw (about 496 such pairs). Under (a), a 220 brief and an 180 brief are about equally likely to have one, so the two groups are treated alike.
+  - **Twin train briefs are where a text is one clip.** The clip id has no brief id, and run 1's [0, 400) holds 26 pairs of train briefs of one cell, bpm and tonic, 7 of them both pool briefs (2026-11-07). So every Ref_b by its records comes first; each pool brief, in stream order, then skips another brief's Ref_b clip and an earlier pool brief's pick; and the spares leave out every pool pick. Walking each brief alone would put a yardstick clip in the pool in about half of runs (an estimate: 201 of 400 simulated runs under Q5(a), the build's review).
 - **Held-out texts (Q5).** The clip id hashes the canonical text with bpm, tonic, mode and energy (`SCORER.md:123`; `src/lofi_rl/scoring/protocol.py:68-71`). So one text in two briefs of a cell is two clips. But the RM's symbolic backbone reads the canonical LoopScript (`SCORER.md:226`; `CLAUDE.md:142`).
   - In the simulation, with the pool skipping only held-out clips: about 30 of the 660 pool draws share the text of one of about 11 of the 160 held-out clips.
   - In the gate run, 8 of the 50 ear-check clips Shresth voted carry a text that repeats in their cell (`clips.json` over `scored.jsonl`, this session). So labels from other sources can match a held-out text too, and Q5(a)'s RM rule covers every source (§8).
@@ -227,7 +229,7 @@ Stopping at m would need at least 160 + 1,600 + 660 = 2,420 requests. The other 
 
 | module | env | does |
 |---|---|---|
-| `step0/__init__.py` | any | the registered values: model revision; template, palette, regex and streams-file shas; `STREAMS`; m per set; rule `step0-select/1`; PROBE_SEED 1; ENGINE_SEED 0; schemas; `MARK`, the D-023 mark |
+| `step0/__init__.py` | any | the registered values: model revision; template, palette, regex and streams-file shas; `STREAMS`; m per set; rule `step0-select/1`; PROBE_SEEDS 1 and 2; ENGINE_SEED 0; schemas; `MARK`, the D-023 mark |
 | `step0/requests.py` | any | the requests from `brief_streams.load()` for `STREAMS`: (i, stream, seed, index, brief_id, k, draw_seed, brief), in stream order (rm_heldout, then train), then brief, then k |
 | `step0/generate.py` | policy | the pre-checks, the engine, the probe, the draws, the replay |
 | `step0/score.py` | policy | `junk.score_row` per row, readouts per stream, candidates, Ref_b's selection |
@@ -247,7 +249,7 @@ Stopping at m would need at least 160 + 1,600 + 660 = 2,420 requests. The other 
    - every message builds (a PromptError stops it, as at `junk.py:514-524`), once per cell, since a cell's briefs share their messages (`DECISIONS.md:362-363`);
    - the code tree's `docs/DECISIONS.md` holds D-023's mark, and the mark equals `step0.MARK`: rule `step0-select/1` and the streams of `STREAMS`. So no job draws under rules, or streams, not registered first. The precedent is M5, checked in the job's own snapshot (`DECISIONS.md:713-714`);
    - every file that `docs/prereg/D-023_step0_path.txt` lists hashes to its blob in this tree, as M5 checked D-021's list (`DECISIONS.md:713-714`);
-   - PROBE_SEED is not among the file's 6,800 draw seeds (1 is not, and the 6,800 are distinct, this session).
+   - PROBE_SEEDS, 1 and 2, are not among the file's 6,800 draw seeds (neither is, and the 6,800 are distinct; 2026-11-07).
 2. **The engine:** `junk.load_engine(model, seed=0, gpu_mem=0.85, max_model_len=4096, backend="xgrammar")`.
    - These are the gate run's engine settings, bf16, eager, xgrammar pinned and read back (`junk.py:402-436, 492-499`; `generate.json` `engine`), with seed 0 in place of its 2026 (`generate.json` `engine.seed`).
    - Seed 0 is the smoke's (`src/lofi_rl/smoke.py:296`). With every request seeded, it should not reach sampling. That is UNVERIFIED for vLLM 0.32.0: no vLLM source is on the laptop. It is recorded.
@@ -256,13 +258,15 @@ Stopping at m would need at least 160 + 1,600 + 660 = 2,420 requests. The other 
    - S is one `StructuredOutputsParams(regex=…)` (`junk.py:460-468`), built once and shared, as junk shared one SamplingParams across 500 requests (`junk.py:544, 557`). Recompiling the grammar per request would show in chunk times.
    - Each row records `draw_seed`, and `sp_seed`, read back from the object it was sent with.
 4. **The probe,** before any draw (Claude's default):
-   - One call of 4 identical requests: the low/hopeful cell's messages, seed 1, the registered sampling.
-   - It passes when at least 2 of the 4 texts are identical.
-   - With seeds applied, all 4 should match. A numeric difference between batch rows could split one off (UNVERIFIED).
-   - **With seeds ignored, a pass by chance is at most about 1.4 % (estimate).** Low/hopeful's 1,326 same-cell pairs held no identical canonical text in the gate run (laptop count, this session). By the rule of three, the per-pair rate is then under about 3/1,326 at 95 %. Four texts make 6 pairs, and 6 × 3/1,326 ≈ 1.4 %.
+   - One call of 6 requests: 3 identical requests at each of seeds 1 and 2, the low/hopeful cell's messages, the registered sampling.
+   - It passes when, at each seed, at least 2 of its 3 texts are identical, and the two seeds' texts differ.
+   - With seeds applied, each seed's 3 should match. A numeric difference between batch rows could split one off (UNVERIFIED); 2 of 3 still pass.
+   - **An engine that does not use each request's own seed misses.** One randomness for the whole call, or every request sampled with the call's first SamplingParams, gives one text at both seeds; randomness per request that ignores the seed gives 3 different texts at a seed.
+   - **A pass by chance is at most about 0.005 % (estimate).** Low/hopeful's 1,326 same-cell pairs held no identical canonical text in the gate run (laptop count, 2026-11-06). By the rule of three, the per-pair rate is then under about 3/1,326 at 95 %. Three texts make 3 pairs, about 0.68 % at a seed, and both seeds about 0.0046 %.
+   - **A miss by chance with seeds applied:** the two seeds give one text, at most about 3/1,326 ≈ 0.23 % by the same rule. The seeds are fixed, so it would repeat at every launch, and PROBE_SEEDS would change, recorded in D-023 (estimate).
    - A miss stops generate (`stopped: "seed probe"`, exit 2) before any draw.
    - It is also the first call of `LLM.chat` with a list of SamplingParams, which is UNVERIFIED for vLLM 0.32.0 on the laptop. A vLLM that refuses the list stops here.
-   - **Its decoding (estimate):** 233 tokens (low/hopeful's longest gate-run completion, this session) to 512 (the cap) at the single-stream 42.9 tok/s (`junk_rate.sbatch:34`): about 5.4 to 11.9 s.
+   - **Its decoding (estimate):** 233 tokens (low/hopeful's longest gate-run completion, this session) to 512 (the cap) at the single-stream 42.9 tok/s (`junk_rate.sbatch:34`): about 5.4 to 11.9 s, the 6 requests decoding together.
    - Only the texts' sha256 are kept.
 5. **The draws.**
    - The requests are sent in order, in chunks of 128 (junk's measured `DEFAULT_CHUNK`), one `engine.chat(convs, [sp, …])` call each.
@@ -313,7 +317,7 @@ Stopping at m would need at least 160 + 1,600 + 660 = 2,420 requests. The other 
 
 | file | schema | content |
 |---|---|---|
-| `generate.json` | `lofi-rl/step0-generate/1` | partial, requested, generated, stopped; streams {name: seed, briefs, draws}; streams_file {path, sha256, fresh}; registration {found, mark, decisions_sha256}; path_file {sha256, blobs_ok}; model; prompt (`junk.prompt_record`); palette; sampling (`junk.SAMPLING`), per_request_seed true; constrained (`junk.constrained_block`, with the backend); engine (`VllmEngine.info`) and the first draw's SamplingParams repr; probe {seed, cell, n, texts_sha256, distinct, passed}; replay {n, same, differ, by_chunk, stopped}; timing; host {node, job, stamp, gpu}; trace on an error |
+| `generate.json` | `lofi-rl/step0-generate/1` | partial, requested, generated, stopped; streams {name: seed, briefs, draws}; streams_file {path, sha256, fresh}; registration {found, mark, decisions_sha256}; path_file {sha256, blobs_ok}; model; prompt (`junk.prompt_record`); palette; sampling (`junk.SAMPLING`), per_request_seed true; constrained (`junk.constrained_block`, with the backend); engine (`VllmEngine.info`) and the first draw's SamplingParams repr; probe {seeds, cell, n, texts_sha256, distinct, passed}; replay {n, same, differ, by_chunk, stopped}; timing; host {node, job, stamp, gpu}; trace on an error |
 | `completions.jsonl` | one row a draw | i, stream, seed, index, brief_id, k, draw_seed, sp_seed, brief, prompt_sha256, prompt_version, example, text, finish_reason, n_tokens, prompt_tokens |
 | `replay.jsonl` | one row a replay | i (the draw's), text, finish_reason, n_tokens, same |
 | `scored.jsonl` | one row a draw | `junk.score_row`'s fields (`junk.py:722-750`), plus stream, brief_id, k, text_sha256 |
@@ -359,7 +363,7 @@ Stopping at m would need at least 160 + 1,600 + 660 = 2,420 requests. The other 
 | part | seconds | arithmetic |
 |---|---|---|
 | start to the first chunk | 72.9 | 123 s from job start 14:33:30 (`CHANGELOG.md:63`) to generate.json at 14:35:33, less 50.1 s of chunks (`generate.json` `timing`) |
-| probe | ≤ 12 | 4 requests in one call, up to 512 tokens at 42.9 tok/s (§2.3) |
+| probe | ≤ 12 | 6 requests in one call (3 at each of 2 seeds), up to 512 tokens at 42.9 tok/s (§2.3) |
 | draws | 352.7 | 3,520 × 0.1002 s (50.1 s / 500) |
 | replay | 32.1 | 320 × 0.1002 s |
 | score | 197.1 | 3,520 × 0.056 s |
@@ -387,8 +391,8 @@ Stopping at m would need at least 160 + 1,600 + 660 = 2,420 requests. The other 
 
   No later outcome re-selects anything else.
 - **The audio hash.** `audio_sha256` is the float32 render identity: `pcm_sha256` of the mix (`pipeline.py:266`; `src/lofi_rl/render/wavio.py:27-29`). The registry's `pcm_sha` is "the sha256 of the canonical int16 PCM" (`taste_pipeline.md:77`), which is the queue job's to record. A later re-render of a held-out clip is compared on `audio_sha256`, like with like:
-  - under the same render-code key, a mismatch is a determinism violation (`taste_pipeline.md:78`);
-  - under other code, it is logged as render drift and never changes the set;
+  - under the same `source_sha8`, palette and `render_cfg_sha8`, and the same audio stack (the manifest's `platform`, less `cpu`), a mismatch is a determinism violation (`taste_pipeline.md:78`). The render-code key holds each step's stamp, so a later job never shares it;
+  - otherwise it is logged as render drift and never changes the set;
   - a held-out clip that fails G7 at its round's render is not served. Its tuple is dropped from the gate and reported (Q8(a)).
 - **No freeze (Claude's default, §9).** The render path is not frozen with `.sync-freeze` (`DECISIONS.md:261-276`).
   - The project's own answer to render drift is detection: feat_ver hashes the render code, and a change re-renders (`SCORER.md:299-303`).
@@ -410,7 +414,7 @@ Stopping at m would need at least 160 + 1,600 + 660 = 2,420 requests. The other 
 |---|---|
 | Complete | `generate.stopped` null; `generate.partial` false; `n` = `requested` = the marked streams' requests (3,520 under Q6(a), 2,080 under (b)); `unreadable_lines` 0; `requests.missing`, `requests.duplicate` and `requests.foreign` all 0 |
 | Seeded | `requests.seed_mismatch` 0: each row's `draw_seed` and `sp_seed` equal `brief_streams.draw_seed(seed, index, k)`; `probe.passed` true; each cell's rows share one `prompt_tokens`, equal to runs/junk-13788483's for that cell (1,325–1,411) |
-| As registered | `generate.model.revision` `cdbee75f…`; `streams_file.sha256` `bb2daee5…` and `fresh` true; the streams drawn equal the mark's; every row's brief equals `sample_brief(seed, index)`; `prompt.version` v2, `template_sha256` `127e3094…`, `template_matches_generate` true, `rows_matching` = n, `example_mismatch` 0; `palette.sha256` `09f80a64…` in generate, score and render, with `matches_generate` true; `sampling` equal to runs/junk-13632676's |
+| As registered | `generate.model.revision` `cdbee75f…`; `streams_file.sha256` `bb2daee5…` and `fresh` true; the streams drawn equal the mark's; every row's brief equals `sample_brief(seed, index)` (requests.brief_mismatch 0); per stream, `prompt.version` v2, `template_sha256` `127e3094…`, `template_matches_generate` true, `rows_matching` the stream's requests (320 and 3,200 under Q6(a)), `example_mismatch` 0; `palette.sha256` `09f80a64…` in generate, in score per stream with `matches_generate` true, and in render (clips.json); `sampling` equal to runs/junk-13632676's |
 | Registered first | `registration.found` true: the job's code tree held D-023's mark, equal to `step0.MARK` |
 | Constrained, per stream | `constrained.enabled` true; `regex_sha256` and `in_language.regex_sha256` `5c081828…`; `in_language.matches_generate` true; `stop.out_of_language` 0; `other.n` 0 |
 | What the regex guarantees | `failures.G1`, `G3`, `G4`, `G5` and `crash` all 0 (`DECISIONS.md:221`) |
@@ -437,7 +441,7 @@ D-020's rule applies (`DECISIONS.md:224-228`).
 - **It decides nothing.** It is reported, and its rows never enter any set, pool or file.
 - **A scoring or selection defect, or a held-out render cut short or failed by infrastructure:** the run is redone from its own records, with no new generation.
   - **The fix comes first:** any code fix, and every file it changes, is recorded in an amendment of D-023 before the redo.
-  - **The redo:** `python -m lofi_rl.step0 score --from OUT --run REDO` and/or `render --from OUT --run REDO`, in `lofi-step0-redo`. That is a CPU job on `main`, a new type of at most 1,000 SU, which Claude builds and registers only when it is needed.
+  - **The redo:** `python -m lofi_rl.step0 render --from OUT --run REDO`, after `score --from OUT --run REDO` when the scores are redone (a score redo is always followed by its render redo: new scores need new sets, which only render writes), in `lofi-step0-redo`. That is a CPU job on `main`, a new type of at most 1,000 SU, which Claude builds and registers only when it is needed.
   - **Its folder:** the redo writes `$REMOTE_KEEP/runs/step0-redo-<job>/`, reads OUT's summary read-only, and never writes under OUT. Nothing under runs/ on the cluster is deleted (`CLAUDE.md:175`).
   - **Its stamp:** the redo runs at a later commit, since `make submit` needs the mirror at the committed laptop code (`scripts/submit.sh:21-29`) and each step stamps from its own tree (`junk.py:315-318`; `scripts/job_env.sh:35`). It is valid only if, at that commit, every file the path file lists has its listed blob, except the files the amendment names. That is D-020's second amendment's rule (`DECISIONS.md:261-276`) with this list.
   - **Its check:** `step0 check OUT --redo REDO` reads generate's records from OUT and score's and render's from REDO, and checks both stamps.
@@ -636,7 +640,7 @@ D-023 is written at §6.2 step 4, with Shresth's answers in his words, and commi
   - the yardstick is never played (§5);
   - no committed file holds a step-0 text (§4.4, §5).
 - **The engine and the job:**
-  - the seed probe on low/hopeful at seed 1, and the replay readout (§2.3);
+  - the seed probe on low/hopeful at seeds 1 and 2, and the replay readout (§2.3);
   - engine seed 0, chunks of 128, an A40, 45 min and at most 810 SU (§2.1, §2.8);
   - no argument, `--no-requeue`, and a used OUT refused (§2.1, §2.7);
   - the redo job is built only if needed (§4.2).
@@ -645,3 +649,73 @@ D-023 is written at §6.2 step 4, with Shresth's answers in his words, and commi
   - the render code is recorded with every G7 outcome, and the render path is not frozen (§3);
   - both prereg files hold hashes only, and pin the summary files (§4.4);
   - a new entry, D-023, carries the rules, rather than an amendment inside D-021.
+
+## 10. As built (2026-11-07)
+The code on branch `wt/step0` (`src/lofi_rl/step0/`, `jobs/step0.sbatch`, `tests/test_step0_*.py` and their helpers) departs from sections 1–9 where these bullets say. Each is accepted: the three builders' 45 stated deviations ("deviation n" below), then the fixes from an end-to-end test (E1–E3) and three reviewers (R1–R3), each finding checked by an adversarial verifier. A sentence above that a fix made wrong is corrected in place, and its bullet says so. §7's questions are unchanged; the code holds the recommended (a) of each until D-023 records Shresth's answers.
+
+**§1, what is drawn**
+- **The held-out walk under lazy G7** (deviation 9): a draw whose text equals a draw still to render counts as its repeat. If that draw then fails G7, the next round may take the repeat, which renders then; the taken set is the one full information gives.
+- **Ref_b and the pool before their renders** (deviation 8): a train draw with no render record stands by its records, so sets.json's Ref_b 4, spares and pool picks are their records'. A pool pick later dropped at G7 stays out of the spares, a Ref_b replacement never moves the pool, and a Ref_b brief short by its records leaves its pool brief no draw.
+- **The later renders of Ref_b and the pool** (finding R3-1): `select.select` with `pending_train` and `select.pending` with refb or pool refuse to run before the held-out set is decided by the records they are given, since Q5's exclusion reads the final held-out set. A later unit passes every scored row and this run's clips.json records with its own.
+- **Clips across twin train briefs** (finding R1-1; §1.5 and §1.6 corrected in place): every Ref_b by its records first; then each pool brief, in stream order, skips another brief's Ref_b clip (`refb_clip`, under Q2(a) only) and an earlier pool brief's pick (`pool_clip`, under any answer); then the spares and a G7 replacement leave out every pool pick. The same result comes whatever the rows' order. The skips are rare, about 0.8 draws a run (the review's simulation), so §1.6's shortness estimates stand, a little low.
+- **Q5(a) across cells** (deviation 10): a held-out clip's text is compared in every cell, a short held-out brief's clips included.
+- **The record of a short brief** (deviations 1, 5): each sets.json entry also carries `undetermined` (a draw its walk needs has no decided render). A draw not taken gives a gate code (score's, or a render's G7 or other gate), `near_copy` or `repaired` (Q3(b), (c) only), `repeat_of:<k>` (any text equality inside the brief), `refb`, `pool` (Ref_b's walk reaching a pool draw after a G7 replacement), `heldout_text`, `heldout_clip`, `refb_clip` or `pool_clip`.
+- **Q8(b), ask** (finding R1-2): only a short held-out or Ref_b brief, the ones Q8 is about, stops anything. Render exits 1, and prereg refuses until D-023 records his answer. A short pool brief is reported under either answer: about 12 a run under Q5(a) (§1.6).
+
+**§2, the job**
+- **The pre-checks** (deviation 14): every pre-check whose input loads runs, and every failure is named in one `stopped` ("pre-check: " and the problems joined by "; "). `requested` and `streams` are null when the streams file is refused.
+- **How D-023 is read** (deviation 15; finding R2-2): `requests.find_marks` reads each mark from its head to the next backtick or double quote, or its line's end, less trailing spaces, tabs, periods, asterisks, underscores and quotes; one must equal MARK. Generate's pre-check, check's git condition and the docs test all read it so, and a mark wrapped across lines or with text after it fails pytest rather than the job.
+- **The answers line** (finding R1-3): `requests.answers_line()` writes Q1–Q5 and Q8 from their constants as one line, which D-023 holds verbatim beside his answers in words. A recorded answer the constants do not carry fails `tests/test_step0_docs.py`. MARK still names the rule and the streams only.
+- **The probe** (finding R2-3; §2.3, §2.6, §2.9 and §9 corrected in place): 3 requests at each of seeds 1 and 2 in one call, passing when each seed's texts agree at least twice and the two seeds' differ. An engine that gives a call one randomness, or the call's first SamplingParams, stops there.
+- **generate's exits and files** (deviations 17, 18): exit 1 when the deadline cuts the draws. completions.jsonl is opened when the draws start, so a pre-check stop, a missed probe or an engine that fails to load leaves generate.json alone.
+- **The replay** (deviation 16; finding R2-1): it runs only once every draw is made; otherwise `replay.stopped` is "not run: the draws are not complete". Its forecast scales the longest timed chunk up to 160 requests, and an error is `replay.stopped` with a `trace`, the exit staying 0.
+- **`partial`** (finding R2-1): generate.json turns `partial` false, with `replay.stopped` "running", before the replay starts. A kill in the replay (the watchdog's exit, TERM, scancel) then leaves a complete run that score and render take, not a full re-draw.
+- **score** (deviations 4, 19): each stream gets its own CopyCheck, and its `requested` from generate.json; step0.json's `partial` is also true when generate.json is partial or stopped. `candidates` is {passing, refb, heldout_order}; rows that are not one run's draws are still scored and written, with `candidates` null and exit 1.
+- **render's clock, errors and exits** (deviations 20–22): the deadline counts from the step's start. An exception out of `junk.render_clip` is an infrastructure error, retried once; `errors_retried` counts a retry that then rendered or failed a gate. Render also exits 1 on `other_gates` above 0, and exits 2, writing nothing, on an unreadable palette or render-code key or a `--run` and `--from` that overlap.
+- **The clip id** (deviation 24): from the manifest's own fields through `lofi_rl.scoring.protocol.clip_id` (stdlib), tested equal to `lofi_rl.shootout.render.clip_id`; a record with no render carries the render pool's `render_cfg_sha8`.
+- **`render --from`** (deviation 23): it reads score's records from REDO when a score recovery wrote them there, else from OUT, copying OUT's scored.jsonl into REDO byte for byte and keeping OUT's `run` and `score_stamp` in REDO's step0.json.
+- **The modules** (deviations 7, 12, 25): `__init__.py` also holds the §7 answers, one named constant per choice (POOL_BRIEFS, POOL_BANDS, POOL_FILL_BAND, POOL_SHARES_REFB, PASSING, DISTINCT, POOL_EXCLUDES, STREAMS, COMMITTED_BEFORE, SHORT_RULE), the values read once from past runs (PROMPT_TOKENS, V0_SAMPLING) and each file's fields (FIELDS, BLOCKS, ENTRY_FIELDS). ROOT comes from `brief_streams`, so the stdlib modules import with yaml blocked. step0 also reads junk's public `cell_brief`, `RENDER_JOBS` and `head_lines`. `path` prints the list; `--write` writes it, replacing one that differs; `--check` checks a tree's blobs without git; `--commit REV` checks a commit's with git; `--root DIR` names the tree.
+- **The files' fields** (deviations 1–4, 11; findings R1-7, R2-3): generate.json's SamplingParams repr is its own `sampling_params`, since `VllmEngine.sampling` rewrites engine.info's on every call; its timing is {load_s, probe_s, chunks, gen_s, tokens, tok_per_s, replay_s, total_s}, and its probe records `seeds`. step0.json's per-set readouts are `sets`: per set {briefs, taken, short, undetermined, near_copy, repaired, verbatim, same_clip}, with `heldout_text` per cell. sets.json's `twin_of` lists the rm_heldout–train twins, and its `heldout_text` is one record a train draw. clips.json also holds palette {id, sha256}, jobs and workers.
+- **`same_clip`** (finding R1-7): per set, the taken draws that are the same clip (one canonical text at one cell, bpm and tonic) as another brief's taken draw in the held-out set, Ref_b or the pool. It tells a held-out twin's clip among Ref_b's from the same text elsewhere in its cell; reported only.
+- **A used OUT** (deviation 26): the job also refuses an OUT that is a file, and copies clips/ only when `$RUN/clips` exists.
+- **The copy-out** (finding R2-5; §2.7 and §2.8 corrected in place): a copy that fails is followed by one copy of the records only, from the EXIT trap, under `timeout -k 2 20`. The timeouts come to 2,611 s, 89 s under the walltime.
+
+**§3, rendering**
+- **A later re-render** (finding R3-5; corrected in place): the render-code key holds each step's stamp, so no later job shares it. A mismatch on `audio_sha256` is a determinism violation under the same `source_sha8`, palette, `render_cfg_sha8` and audio stack; the stack is in each manifest on KEEP, and clips.json does not copy it.
+
+**§4, records and validity**
+- **The command and its last line** (deviations 33, 34): `check RUN_DIR [--redo REDO_DIR] [--json] [--rescore]`. `--json` prints the report alone, its verdict inside; on bad input the last line is `STEP0_CHECK bad input`, the problems on stderr.
+- **Bad input** (deviation 33; finding R2-7): a summary/ folder or file missing or unreadable, a schema that is not the step's, or files that are not one run's own, as `lofi_rl.gate1.load_run` refuses them. replay.jsonl, sets.json and clips.json may be absent, their conditions failing instead. A scored.jsonl or step0.json missing beside generate's records is named as the scoring defect §4.2 redoes.
+- **A run stopped before its first draw** (finding E1): generate.json alone (`stopped` set, `generated` 0, no completions.jsonl) is read with no rows. It reads invalid, naming generate.stopped and generate.probe.passed, and §4.2's whole re-draw follows.
+- **The conditions** (deviations 28–32): 74 under either Q6 answer, the prompt, palette, constrained and regex conditions counted per stream. A redo pair has 75: its stamp condition is `stamps of the redo pair`, and `the path at the redo commit` is added.
+- **What each group adds** (deviations 28–32): Complete holds step0.json's n and requested, and generate.json's requested, to the marked requests. Seeded adds requests.prompt_tokens_mismatch (`lofi_rl.step0.PROMPT_TOKENS`); As registered adds requests.brief_mismatch and palette.sha256 per stream and in clips.json (§4.1's row corrected in place, finding R3-36). Registered first adds registration.mark and, with git, D-023's mark at the generate commit, read as generate reads it, in a DECISIONS.md whose sha256 is registration.decisions_sha256. One stamp reads the path file at the stamp's commit and requires it to be the one generate checked. Reproduced requires each record's canon_sha256 to be score's for its row, and one render_cfg_sha8 a run.
+- **At the run's commit** (finding R3-11): check and prereg refuse (exit 2) a checkout where a file the reproduction runs (the closure of select, requests and the DSL, junk.py, the streams file, the palette) differs from its blob at the run's latest stamp. check.py and prereg.py are not among them, so a fix to the checker runs anywhere.
+- **The path file** (deviations 6, 44): it lists the palette's one mode-commit source (the SoundFont, not the LICENSE, README and UPSTREAM beside it that D-020's list held), prompt v2's 9 example sources and the streams file: 86 files, 70 of them the closure, at this branch on 2026-11-07. The closure is the whole package, check.py and prereg.py included, so a laptop fix to either is a listed file that a redo's amendment names.
+- **Shown, never judged** (finding R3-43): also the probe's seeds, cell, requests and distinct texts (its `passed` is judged, under Seeded), the engine and `per_request_seed`, and the verbatim and same-clip counts.
+- **The amendment line** (deviation 35; findings R3-3, E2, R2-6): one line per redo, `D-023 redo amendment: run step0-<job>; changed <path>, <path>` (or `changed nothing`), read at each later commit. It is read as house style writes it: a path in backticks, a closing period, a bold line or a note after a path read as the bare form, and a bold head is not read. A named file that did not change is fine; one off the path is shown.
+- **The redo pair's folders** (deviation 36): generate.json, completions.jsonl and replay.jsonl from OUT; scored.jsonl, step0.json, sets.json and clips.json from REDO, each from OUT when REDO lacks it. Every stamp shows dirty=0, and each later commit holds every blob of the generate commit's path file but the amended files.
+- **A score redo** (finding E3; §4.2 corrected in place): score writes step0.json with no render block and no sets.json or clips.json, so a score redo is always followed by its render redo. A pair holding score's records alone reads invalid, its stamp condition saying why.
+- **A score that left nothing** (finding R2-7): when generate's records are complete but score or render left no scored.jsonl or step0.json, the run is a scoring defect, D-020's "a crash", redone from its records with score and render `--from OUT`.
+- **prereg** (deviation 38; findings R1-2, R3-11): exit 3 for an invalid run, and 2 for bad input, a refusal (a short held-out or Ref_b brief under Q8(b); a checkout off the run's commit) or a differing existing file, neither then written. Without `--write` it prints both files' size and sha256.
+- **heldout_v1.json** (deviations 37, 39, 40; findings R1-6, R3-4, R3-6): `tuples` holds the briefs with all 4 clips, and `short` a short brief's partial clips with its reasons: held-out data, in no tuple, as a registered line says. It adds `rule` (name, mark, m, the answers), `counts` and `settings.render_cfg_sha8`; its rule sentence is built from Q3 and Q4 as answered; paths read runs/<run>/summary/<file>.
+- **Item 8** (deviation 37): on tuples only. "Differ in A or B" is read as the two clips' A lines, or B lines, differing as text in junk's copy form. J5 is a set measure: two clips one kick cell apart can read 1.0.
+- **step0_v1.json** (deviation 41; findings R1-4, R3-10): each file record carries `read`; `readouts` is step0.json's per-set block; each Ref_b record carries its brief_id and cell; pool entries carry no reasons; the flags are one record a brief. `shared` lists every train row with a held-out clip's text, passing or not, as the flags count them, and the replay's `stopped` is cut to its code.
+- **The layout** (deviation 42): `brief_streams.text`'s, plus one rule: a list of objects puts each object on one line. Written again from the same run at the same code it is byte-identical; check and prereg run at the run's commit.
+
+**§5, separation and privacy**
+- **The RM loader's ask** (findings R3-4, R3-50, R3-51): under Q5(a) or (b), every label on a clip whose canon_sha256 equals that of any clip heldout_v1.json lists, in `tuples` or in `short`, in any cell, is dropped from training, from any source.
+- **No text in a committed file** (finding R3-10): `tests/test_step0_prereg.py` reads each committed prereg file, once there is one, for ASCII in prereg's own layout, no newline or LoopScript statement head in any string, and a texts pin under the ignored runs/. `tests/test_privacy.py` predates this unit and is unchanged.
+
+**§6, tests and the order of work**
+- **The helpers** (deviations 13, 27, 45): `tests/helpers_step0.py` writes synthetic runs: real G2 and G6 failures only; every passing loop a near-copy of its cell's example, with A and B verbatim; stand-in timings and engine info; the second and third twin train briefs given their own default draws, so no clip is in two briefs. `tests/helpers_step0_engine.py` holds the fake engine and the pre-check tree, `tests/helpers_step0_laptop.py` a temporary git repo and runs stamped with its commits.
+- **The end-to-end test**: `tests/test_step0_e2e.py` runs generate, score and render as the job does, from a git-archive snapshot of a temporary repo, then check and prereg on the files they wrote.
+- **test_step0_docs** (deviation 43; findings R3-8, R2-2, R1-3): the spec half also maps §4.1's vocabulary to check's conditions, and reads the job's #SBATCH lines, timeouts, walltime and Cost line. The D-023 half is one test, the expected failure until D-023 is written: the unfolded entry's mark and answers line as generate reads them, m in each set's bullet, 74 and 75 conditions, the amendment form, the separation rules, the RM loader's `short`, and no placeholder or comment. A stand-in entry passes and nine faulty forms fail.
+- **The pre-flight** (findings R2-4, R3-9): from `path --write` until step0_v1.json exists, `pytest -q` checks in this checkout that every listed file has its blob (a redo's amended files aside) and that D-023's mark reads as MARK. `python -m lofi_rl.step0 path --check` is the same blob check, run by hand before `make submit` at §6.2 step 7.
+
+**§8, D-023**
+- **What the D-023 draft carries beyond §8's list** (findings R1-3, R3-2, R3-11, E3, R2-7): the answers line beside his answers; §5's separation rules as a bullet of their own; the amendment line's form; check and prereg run at the run's commit; a score redo is followed by its render redo; and a score that left no records is a scoring defect.
+- **Asks added** (findings R3-1, R3-52, R3-5): the pool's and Ref_b's later renders pass every scored row and this run's clips.json records with their own (select refuses otherwise), and stop on a recomputed pick that differs from step0_v1.json's. Outside the held-out set's own rounds and their repeats, base-model clips reach a round or the triage of 300 only as step0_v1.json's pool picks. The queue job compares a re-render as §3 says.
+- **The CHANGELOG** (finding R3-12; not on this branch, which leaves the CHANGELOG to the unit's commit): that entry is to carry a Next list naming the asks of later units (the RM loader, the queue, the later renders, the copy-pool builder, the seed guard) and D-023, since a session reads the CHANGELOG first.
+
+**§9, Claude's defaults added**
+- The pool's and the spares' rule by clip across twin train briefs (§1.6); the probe at two seeds (§2.3); one bounded retry of the records' copy (§2.7).
