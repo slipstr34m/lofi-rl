@@ -1,11 +1,10 @@
 """The step-0 draws (lofi_rl.step0.generate; docs/design/step0_samples.md §2.3, §6.1) on a fake engine, as
 tests/test_junk.py runs junk's generate: the laptop has no vLLM.
 
-The pre-checks read a code tree: a temporary copy of what the path file lists (src/, the data files with a stand-in for
-the SoundFont, the env scripts, kit.env and a stand-in job script) with a docs/DECISIONS.md that holds D-023's mark and
-a path file written by lofi_rl.step0.path into that tree. The repo's own docs/prereg/D-023_step0_path.txt and D-023 are
-written at the code commit, with Shresth's answers, so no test reads or writes them. The tree is only read: the code
-that runs is this checkout's.
+The pre-checks read a code tree (tests/helpers_step0_engine.py's code_tree): a temporary copy of what the path file
+lists, with a docs/DECISIONS.md that holds D-023's mark and a path file written into that tree. The repo's own
+docs/prereg/D-023_step0_path.txt and D-023 are written at the code commit, with Shresth's answers, so no test reads or
+writes them. The tree is only read: the code that runs is this checkout's.
 
 What these tests pin (§6.1): one SamplingParams per request, n 1, its seed, one list per call, with one shared
 StructuredOutputsParams; the chunks, their fsync and the deadline (`stopped: deadline`, a partial run); the probe
@@ -20,56 +19,31 @@ import json
 import os
 import shutil
 from collections import Counter
-from types import SimpleNamespace
 
 import pytest
 
 import helpers_step0 as H
+import helpers_step0_engine as E
 import lofi_rl.step0 as S
 from lofi_rl import grammar, prompt_v2
-from lofi_rl.brief import ENERGIES, MOOD_NAMES
 from lofi_rl.prompt import PromptError, messages_sha256
 from lofi_rl.rl import junk as J
 from lofi_rl.step0 import cli
 from lofi_rl.step0 import generate as G
-from lofi_rl.step0 import path as P
 from lofi_rl.step0 import requests as R
 
 ROOT = G.ROOT
-SF2 = "assets/soundfonts/generaluser-gs/GeneralUser-GS.sf2"
-JOB_TEXT = "#!/bin/bash\n#SBATCH --job-name=lofi-step0\n# a stand-in for the job script, for these tests\n"
-DECISIONS_TEXT = ("# Decisions (a stand-in for these tests)\n\n## D-023 The step-0 samples\n"
-                  f"- **The mark** generate checks: `{S.MARK}`.\n")
-# what VllmEngine.info["structured_outputs"] holds when vLLM takes the xgrammar pin (tests/test_junk.py's PINNED)
-PINNED = {"requested": "xgrammar", "pin_accepted": True, "backend": "xgrammar",
-          "source": "llm_engine.vllm_config.structured_outputs_config.backend", "applied": True}
-INFO = {"engine": "fake", "seed": S.ENGINE_SEED, "structured_outputs": PINNED}
 SMALL = ("5101:0", "5101:1", "596:0", "596:177")      # two held-out briefs, a train brief and a held-out twin's
+DECISIONS_TEXT, FakeEngine, INFO, PINNED = E.DECISIONS_TEXT, E.FakeEngine, E.INFO, E.PINNED
 
 
 def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def code_tree(dst, decisions: str = DECISIONS_TEXT):
-    """A code tree the pre-checks pass in (module doc)."""
-    shutil.copytree(ROOT / "src", dst / "src", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    for rel in [*P.data_files(ROOT), "scripts/job_env.sh", "scripts/_kit_env.sh", "kit.env"]:
-        (dst / rel).parent.mkdir(parents=True, exist_ok=True)
-        if rel == SF2:
-            (dst / rel).write_bytes(b"a stand-in for the SoundFont\n")
-        else:
-            shutil.copy(ROOT / rel, dst / rel)
-    (dst / "jobs").mkdir()
-    (dst / S.JOB).write_text(JOB_TEXT)
-    (dst / S.DECISIONS).write_text(decisions)
-    P.write(dst)
-    return dst
-
-
 @pytest.fixture(scope="module")
 def tree(tmp_path_factory):
-    return code_tree(tmp_path_factory.mktemp("code") / "tree")
+    return E.code_tree(tmp_path_factory.mktemp("code") / "tree")
 
 
 @pytest.fixture
@@ -80,60 +54,10 @@ def own_tree(tmp_path, tree):
     return dst
 
 
-CELL_OF = {messages_sha256(prompt_v2.build_messages(J.cell_brief(e, m), H.palette())): f"{e}/{m}"
-           for e in ENERGIES for m in MOOD_NAMES}
-
-
-class FakeSP(SimpleNamespace):
-    """A stand-in SamplingParams: the keywords it was made with, n 1 as VllmEngine.sampling makes it."""
-
-    def __repr__(self) -> str:
-        return f"FakeSP(n={self.n}, seed={self.seed})"
-
-
-class FakeEngine:
-    """The engine interface step0.generate uses (junk.VllmEngine's): info, load_s, sampling(**kw), chat(convs, sps).
-    A completion is text_of(cell, key): key is the request's seed, or, with seeds ignored, a running count. `clock`
-    moves on `per_request_s` for each request of a call."""
-
-    def __init__(self, text_of=None, *, honour_seeds=True, clock=None, per_request_s=0.0, info=None, fail_at=None):
-        self.text_of = text_of or (lambda cell, key: (f"loop {cell} {key}\n", "stop", 100, S.PROMPT_TOKENS[cell]))
-        self.honour, self.clock, self.per_request_s, self.fail_at = honour_seeds, clock, per_request_s, fail_at
-        self.info, self.load_s = dict(INFO if info is None else info), 1.5
-        self.made, self.calls, self.count = [], [], 0
-
-    def sampling(self, **kw):
-        sp = FakeSP(n=1, **kw)
-        self.made.append(sp)
-        self.info["sampling_params"] = repr(sp)         # as VllmEngine.sampling does, on every call
-        return sp
-
-    def chat(self, convs, sps):
-        assert isinstance(sps, list) and len(sps) == len(convs), "one SamplingParams per request, as a list"
-        self.calls.append((convs, sps))
-        if self.fail_at is not None and len(self.calls) == self.fail_at:
-            raise RuntimeError("the fake engine died")
-        if self.clock is not None:
-            self.clock[0] += self.per_request_s * len(convs)
-        out = []
-        for conv, sp in zip(convs, sps):
-            self.count += 1
-            text, finish, n_tok, p_tok = self.text_of(CELL_OF[messages_sha256(conv)],
-                                                      sp.seed if self.honour else self.count)
-            out.append(J.Completion(text=text, finish_reason=finish, n_tokens=n_tok, prompt_tokens=p_tok))
-        return out
-
-
 @pytest.fixture
 def subset(monkeypatch):
     """Draw only SMALL's 32 requests (each keeping its place i in the full order), not all 3,520."""
-    H.all_requests()                                    # the helper's cache holds the full list first
-    real = R.requests
-
-    def some(*a, **kw):
-        return tuple(r for r in real(*a, **kw) if r.brief_id in SMALL)
-    monkeypatch.setattr(R, "requests", some)
-    return tuple(r for r in real(streams=H.streams()) if r.brief_id in SMALL)
+    return E.draw_only(monkeypatch, SMALL)
 
 
 def run_generate(monkeypatch, tree, run, engine=None, *, args=(), made=None):
