@@ -614,12 +614,12 @@ def _own(text: str) -> str:
     return text[bullet.end():] if bullet else text
 
 
-def d023_lines(decisions: str, *, shown: bool = False) -> list[tuple[int, str]]:
-    """(line number, text less its indent and one list bullet) of each line of D-023's entry in a DECISIONS.md text
-    that a line D-023 gains after the run may stand on (findings N7, N11, N13). The entry runs from its heading (D023)
-    to the next heading of level 1 or 2. A line stands on its own when it starts a block: it has a list bullet of its
-    own, or follows a blank line, a heading or a fence's edge; a paragraph's continuation, such as a hard-wrapped
-    sentence's next line, never does. A line in an HTML comment, or one that opens, holds or closes one, is never read:
+def d023_lines(decisions: str, *, shown: bool = False) -> list[str]:
+    """Each line of D-023's entry in a DECISIONS.md text that a line D-023 gains after the run may stand on, less its
+    indent and one list bullet (findings N7, N11, N13). The entry runs from its heading (D023) to the next heading of
+    level 1 or 2. A line stands on its own when it starts a block: it has a list bullet of its own, or follows a blank
+    line, a heading or a fence's edge; a paragraph's continuation, such as a hard-wrapped sentence's next line, never
+    does. A line in an HTML comment, or one that opens, holds or closes one, is never read:
     a comment stays open while a line's last `<!--` follows its last `-->`, so `<!-- a --> <!--` opens one (N11).
 
     Shresth's answer to Q8(b) (prereg.short_answers; shown False) is read as kit.gates reads an approval, but for a
@@ -628,7 +628,7 @@ def d023_lines(decisions: str, *, shown: bool = False) -> list[tuple[int, str]]:
     is read as D-023 sets its verbatim lines too: in a fence or indented, each fenced line on its own. An example names
     `step0-<job>`, which names no run."""
     out, inside, fence, comment, start = [], False, None, False, True
-    for number, line in enumerate(decisions.splitlines(), 1):
+    for line in decisions.splitlines():
         if comment:
             if "-->" in line:
                 comment = line.rfind("<!--") > line.rfind("-->")
@@ -645,7 +645,7 @@ def d023_lines(decisions: str, *, shown: bool = False) -> list[tuple[int, str]]:
             continue
         if fence is not None:                   # a fence's lines are its text: no heading, comment or block in it
             if inside and shown and line.strip():
-                out.append((number, _own(line)))
+                out.append(_own(line))
             continue
         if "<!--" in line:
             comment = line.rfind("<!--") > line.rfind("-->")
@@ -658,7 +658,7 @@ def d023_lines(decisions: str, *, shown: bool = False) -> list[tuple[int, str]]:
             continue
         text = line.lstrip()
         if inside and text and (start or BULLET.match(text)) and (shown or text == line):
-            out.append((number, _own(text)))
+            out.append(_own(text))
         start = not text
     return out
 
@@ -673,7 +673,7 @@ def amendment_files(text: str, run: str | None) -> list[str]:
     line that quotes the form after other text (a sentence or a note), a wrapped sentence's next line, a comment or
     another entry (finding N13): there it exempted a changed file from a redo's blob check without D-023's record."""
     out: set[str] = set()
-    for _, line in d023_lines(text, shown=True):
+    for line in d023_lines(text, shown=True):
         m = AMENDMENT.match(line)
         if m is not None and (run is None or m.group(1) == run):
             out |= {p for p in map(_amended, AMENDED_ITEMS.split(m.group(2))) if p}

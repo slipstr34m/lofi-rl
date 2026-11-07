@@ -373,21 +373,20 @@ def short_line(run_name: str) -> str:
     return f"{SHORT_HEAD} run {run_name}; {SHORT_AS_A}"
 
 
-def short_answers(decisions: str, run_name: str) -> list[tuple[int, str]]:
-    """(line number, answer) of each line of D-023's entry in a DECISIONS.md text that answers the run `run_name`, in
-    order (findings N2, N7, N11). Each is a line of its own (check.d023_lines, not shown: at column 0, starting a
-    block, outside fences and comments) that, after one list bullet at most and what wraps it (backticks, bold or
-    italics), starts with the head and `run <run>; `; its answer is the rest less that wrap's close and a closing
-    period. So the line wrapped or with a closing period reads as the bare form, and a note after the answer is part
-    of it; a line that quotes it after other text (a sentence, prereg's own refusal, a blockquote, a table), a wrapped
-    sentence's next line, an indented, nested or fenced line, one in a comment or in another entry, and a bold head
-    (**D-023 short answer:**) are no answer, as kit.gates reads an approval only on a line of its own."""
+def short_answers(decisions: str, run_name: str) -> list[str]:
+    """The answers D-023's short-answer lines give the run `run_name` in a DECISIONS.md text, in order (findings N2,
+    N7, N11). Each is a line of its own (check.d023_lines, not shown: at column 0, starting a block, outside fences
+    and comments) that, after one list bullet at most and what wraps it (backticks, bold or italics), starts with the
+    head and `run <run>; `; its answer is the rest less that wrap's close and a closing period. So the line wrapped or
+    with a closing period reads as the bare form, and a note after the answer is part of it; a line that quotes it
+    after other text (a sentence, prereg's own refusal, a blockquote, a table), a wrapped sentence's next line, an
+    indented, nested or fenced line, one in a comment or in another entry, and a bold head (**D-023 short answer:**)
+    are no answer, as kit.gates reads an approval only on a line of its own."""
     out = []
-    for number, line in C.d023_lines(decisions):
+    for line in C.d023_lines(decisions):
         m = SHORT.fullmatch(line.rstrip())
         if m is not None and m.group("run") == run_name:
-            out.append((number, m.group("answer").removesuffix(".").removesuffix(m.group("wrap")[::-1])
-                        .removesuffix(".")))
+            out.append(m.group("answer").removesuffix(".").removesuffix(m.group("wrap")[::-1]).removesuffix("."))
     return out
 
 
@@ -411,8 +410,7 @@ def ask_first(run: C.Run, repo: Path) -> tuple[str | None, str | None]:
         decisions = (Path(repo) / S.DECISIONS).read_text(encoding="utf-8", errors="replace")
     except OSError:
         decisions = ""
-    line, read = short_line(run.run_name), short_answers(decisions, run.run_name)
-    said = [a for _, a in read]
+    line, said = short_line(run.run_name), short_answers(decisions, run.run_name)
     if said and all(a == SHORT_AS_A for a in said):
         return None, line
     briefs = (f"refused: SHORT_RULE is Q8's (b), ask: {len(short)} held-out or Ref_b briefs are short ("
