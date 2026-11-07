@@ -6,7 +6,8 @@ sets.json and clips.json, every value at what the unit registers, each file's fi
     run = make_run(tmp_path, {"5101:0": "a b a/G7 c d e f g"}, briefs=["5101:0", "596:0"])     # a small one
 
 **The table**: brief id -> its 8 draws, k = 0..7, as a string of 8 specs (or a list), each `<label>[/<render>]`:
-- a label from LABELS ("h0".."h7", "t0".."t7", "a".."z"): the draw passes G1-G6 and compile with its cell's text of
+- a label from LABELS ("h0".."h7", "t0".."t7", "a".."z", "u0".."u7", "v0".."v7"): the draw passes G1-G6 and
+  compile with its cell's text of
   that label, so one label in one cell is one canonical text (and one label in two cells two texts). The text is
   prompt v2's shown example of the cell, in the frozen palette's names, with its first kick grid rewritten from the
   label (variant_text): every one is in the grammar's language and passes, so junk.score_row scores it for real (and
@@ -15,8 +16,10 @@ sets.json and clips.json, every value at what the unit registers, each file's fi
   both fail that gate for real (G6 inside the language, as the regex cannot see it);
 - /G7, /E, /EE or /S (held-out draws only): its render fails G7; errors once and renders when retried; errors twice
   (undetermined); is skipped by the deadline (undetermined). Without one it renders.
-A brief the table does not name gets the default draws: held-out "h0".."h7", train "t0".."t7", so the default run holds
-no gate failure, no repeat, no short brief and no train draw with a held-out text.
+A brief the table does not name gets the default draws (default_labels): held-out "h0".."h7", train "t0".."t7", or
+"u0".."u7" and "v0".."v7" for the second and third of run 1's train briefs that share one cell, bpm and tonic (twins,
+whose draws of one text would be one clip), so the default run holds no gate failure, no repeat, no short brief, no
+train draw with a held-out text and no clip in two briefs' sets.
 
 **What is written.** `briefs=None` writes every request (lofi_rl.step0.requests); `briefs` writes those briefs' draws
 only, keeping each row's place `i` in the full order, with `requested` the rows written. completions.jsonl holds the
@@ -40,7 +43,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import lofi_rl.step0 as S
-from lofi_rl import prompt_v2
+from lofi_rl import brief_streams, prompt_v2
 from lofi_rl.brief import Brief
 from lofi_rl.compile.timeline import loop_samples
 from lofi_rl.grammar import loopscript_regex
@@ -56,7 +59,9 @@ SOURCE_SHA8 = "5eed5eed"                    # render_code.source_sha8 (features.
 NODE, GPU = "b11-13.hpc.usc.edu", "NVIDIA A40, 46068 MiB"
 DECISIONS_SHA256 = hashlib.sha256(b"synthetic docs/DECISIONS.md").hexdigest()
 PATH_FILE_SHA256 = hashlib.sha256(b"synthetic docs/prereg/D-023_step0_path.txt").hexdigest()
-LABELS = tuple(f"h{k}" for k in range(8)) + tuple(f"t{k}" for k in range(8)) + tuple("abcdefghijklmnopqrstuvwxyz")
+LABELS = (tuple(f"h{k}" for k in range(8)) + tuple(f"t{k}" for k in range(8)) + tuple("abcdefghijklmnopqrstuvwxyz")
+          + tuple(f"u{k}" for k in range(8)) + tuple(f"v{k}" for k in range(8)))     # 58 labels: 6 kick bits hold 64
+TRAIN_LABELS = ("t", "u", "v")              # a train brief's default labels by its rank among its twins (default_labels)
 GATES = ("G2", "G6")                        # the gate failures the writer makes for real
 RENDERS = ("", "G7", "E", "EE", "S")        # a held-out draw's render: ok, G7, error once, error twice, deadline skip
 KICK_CELLS = (2, 5, 8, 11, 13, 14)          # the kick hits a label's number sets, beside the downbeat
@@ -92,6 +97,29 @@ def all_requests() -> tuple:
 def render_cfg() -> dict:
     from lofi_rl.scoring.render_pool import render_config
     return render_config()
+
+
+@lru_cache(maxsize=1)
+def _twin_rank() -> dict[str, int]:
+    """Each of run 1's train briefs -> its rank, in stream order, among the train briefs of [0, 400) that share its
+    twin key (energy, mood, bpm, tonic): 0 for the first. Ranks go up to 2 (three triples)."""
+    st = streams()["train"]
+    seen: dict[tuple, int] = {}
+    out = {}
+    for p in st.picks:
+        if S.RUN1[0] <= p.index < S.RUN1[1]:
+            key = brief_streams.twin_key(p.brief)
+            out[brief_streams.brief_id(st.spec.seed, p.index)] = seen.get(key, 0)
+            seen[key] = seen.get(key, 0) + 1
+    return out
+
+
+def default_labels(stream: str, brief_id: str) -> list[str]:
+    """A brief's default draws (module doc): held-out h0-h7; train t0-t7, u0-u7 or v0-v7 by its rank among its twins,
+    so that no two briefs' default draws are one clip."""
+    if stream == "rm_heldout":
+        return [f"h{k}" for k in range(S.DRAWS)]
+    return [f"{TRAIN_LABELS[_twin_rank().get(brief_id, 0)]}{k}" for k in range(S.DRAWS)]
 
 
 # --------------------------------------------------------------------------------------------- texts
@@ -257,8 +285,8 @@ def make_run(root: Path, table: Mapping[str, str | Sequence[str]] | None = None,
     for r in reqs:
         if r.brief_id not in specs:
             held = r.stream == "rm_heldout"
-            default = [f"{'h' if held else 't'}{k}" for k in range(S.DRAWS)]
-            specs[r.brief_id] = parse_specs(r.brief_id, table.get(r.brief_id, default), held)
+            specs[r.brief_id] = parse_specs(r.brief_id, table.get(r.brief_id, default_labels(r.stream, r.brief_id)),
+                                            held)
     pal = palette()
     cells_msgs = {}
     rows, scored, renders = [], [], {}

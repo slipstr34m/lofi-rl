@@ -237,6 +237,47 @@ def test_refb_spares_skip_the_pools_draws_and_texts_and_section_1_5s_example(ord
     assert ks(b0) == [0, 1, 3] and b0["short"] is True and why(b0)[7] == f"{S.REPEAT}4", "no spare: short"
 
 
+def test_twin_train_briefs_keep_the_pool_and_the_yardstick_apart_by_clip(order, streams, pool, monkeypatch):
+    """The clip id has no brief id, so two train briefs of one cell, bpm and tonic give one clip for one text (finding
+    R1-1): 596:23 (a pool brief) and 596:200 (not one), and 596:3 and 596:35 (both pool briefs). The pool skips
+    another brief's Ref_b clip (refb_clip) and an earlier pool brief's pick (pool_clip); Ref_b's spares and its G7
+    replacement leave out every pool pick's clip; a brief of another bpm or tonic holds another clip of the text."""
+    pool_ids = {f"596:{j}" for j in pool}
+    assert {"596:23", "596:3", "596:35", "596:36"} <= pool_ids and "596:200" not in pool_ids
+    key = {b: brief_streams.twin_key(brief_streams.sample_brief(596, int(b[4:]))) for b in
+           ("596:23", "596:200", "596:3", "596:35", "596:36")}
+    assert key["596:23"] == key["596:200"] == ("mid", "melancholy", 89, 5) and key["596:3"] == key["596:35"]
+    assert key["596:36"][:2] == key["596:200"][:2] and key["596:36"] != key["596:200"], "one cell, another clip"
+    doc, *_ = run({"596:200": "a b c d e f g h", "596:23": "i j k l m b n o"}, order, streams)
+    p = one(doc, "pool", "596:23")
+    assert ks(p) == [4, 6, 7] and why(p)[5] == S.REFB_CLIP, "596:200's Ref_b k1 is this k5's clip"
+    assert ks(one(doc, "refb", "596:200")) == [0, 1, 2, 3]
+    doc, *_ = run({"596:200": "a b c d e f g h", "596:36": "i j k l m b n o"}, order, streams)
+    assert ks(one(doc, "pool", "596:36")) == [4, 5, 6], "the same text at another bpm and tonic is another clip"
+    doc, *_ = run({"596:3": "a b c d e f g h", "596:35": "i j k l a m n o"}, order, streams)
+    assert ks(one(doc, "pool", "596:35")) == [5, 6, 7] and why(one(doc, "pool", "596:35"))[4] == S.REFB_CLIP
+    table = {"596:3": "a b c d e f g h", "596:35": "i j k l e m n o"}
+    doc, rows, *_ = run(table, order, streams)
+    assert ks(one(doc, "pool", "596:3")) == [4, 5, 6]
+    p = one(doc, "pool", "596:35")
+    assert ks(p) == [5, 6, 7] and why(p)[4] == S.POOL_CLIP, "no clip is in the pool twice"
+    want = json.dumps(X.select(rows, streams=streams))
+    for seed in range(3):
+        shuffled = rows[:]
+        random.Random(seed).shuffle(shuffled)
+        assert json.dumps(X.select(shuffled, streams=streams)) == want, "the stream's order decides, not the rows'"
+    table = {"596:200": "a b c d m e f g", "596:23": "i j k l m n o p"}
+    doc, *_ = run(table, order, streams)
+    assert ks(one(doc, "pool", "596:23")) == [4, 5, 6] and one(doc, "refb", "596:200")["spares"] == [5, 6, 7]
+    renders = {("596:200", k): "ok" for k in (0, 1, 3, 5)} | {("596:200", 2): "G7"}
+    b = one(run(table, order, streams, train_outcomes=renders)[0], "refb", "596:200")
+    assert ks(b) == [0, 1, 3, 5] and why(b) == {2: "G7", 4: S.POOL_CLIP}, "never 596:23's pool clip"
+    monkeypatch.setattr(S, "POOL_SHARES_REFB", True)            # Q2(b): the pool shares Ref_b's draws, so only
+    doc, *_ = run({"596:3": "a b c d e f g h", "596:35": "a d k l m n o p"}, order, streams)     # pool_clip holds
+    p = one(doc, "pool", "596:35")
+    assert ks(p) == [1, 2, 3] and why(p) == {0: S.POOL_CLIP}, "596:3's Ref_b k3 (d) may be 596:35's pick under Q2(b)"
+
+
 def test_the_lazy_rule_renders_refb_and_pool_draws_only_when_needed(order, streams):
     rows = scored_rows({"596:1": "p q r s t u v w"}, order, streams)
     by = {(r["brief_id"], r["k"]): r for r in rows}

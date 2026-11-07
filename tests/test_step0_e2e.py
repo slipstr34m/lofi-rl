@@ -128,8 +128,9 @@ def gate_text(cell: str, gate: str) -> tuple[str, str]:
 
 
 def draw_text(r) -> tuple[str, str]:
-    """A request's (text, finish_reason): TABLE's label for its draw, or the default h<k> (held-out) or t<k>."""
-    label = SPECS[r.brief_id][r.k][0] if r.brief_id in SPECS else f"{'h' if r.stream == 'rm_heldout' else 't'}{r.k}"
+    """A request's (text, finish_reason): TABLE's label for its draw, or the helper's default (h<k> held-out, t<k>
+    train, u<k> or v<k> for a train brief's twins: tests/helpers_step0.default_labels)."""
+    label = SPECS[r.brief_id][r.k][0] if r.brief_id in SPECS else H.default_labels(r.stream, r.brief_id)[r.k]
     return gate_text(r.cell, label) if label in H.GATES else (text(r.cell, label), "stop")
 
 

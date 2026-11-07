@@ -19,12 +19,20 @@ and counts as passing until it is: `pending()` lists the next round's renders.
 
 **Ref_b** (train, m 4): the brief's first 4 draws that pass their records, repeats kept (DISTINCT["refb"]). At Ref_b's
 own render (§3, a later unit) a reference that fails G7 is replaced by the brief's first spare that passes it, in k
-order (Q2(a)). The spares are its other passing draws, less the pool's draws and any draw with a pool draw's text.
+order (Q2(a)). The spares are its other passing draws, less the pool's draws, any draw with a pool draw's text, and
+any draw that is another pool brief's pick (`pool_clip`).
 
 **The pool** (train, m 3): the 220 briefs of Q1 (`pool_briefs`), each walking its draws after its 4 Ref_b draws
 (Q2(a)) and taking a passing draw whose canonical text differs from Ref_b's and the earlier picks', and (Q5(a)) from
 every held-out clip's, or (Q5(b), (c)) that is not a held-out clip. Stop at 3. A pick that fails G7 at the pool's own
 render is dropped and never replaced, so the spares are fixed by the records.
+
+**Clips, not only texts.** The clip id hashes the canonical text with bpm, tonic, mode and energy and no brief id, so
+two train briefs of one cell, bpm and tonic (twins: 26 pairs in run 1's [0, 400)) give one clip for one text. Every
+train brief's Ref_b by its records comes first; then the pool briefs walk in stream order, each also skipping a draw
+that is another brief's Ref_b clip (`refb_clip`, Q2(a)) or an earlier pool brief's pick (`pool_clip`); then the
+spares leave out every pool pick's clip. So under Q2(a) no pool clip is a yardstick clip and no clip is in the pool
+twice, whatever the order of the rows.
 
 **Before their renders** (this unit), a train draw that has no render record stands by its records: Ref_b's and the
 pool's picks are their records' (§4.4), and their G7 comes later (§3). `pending_train=True` makes such a draw pending
@@ -34,7 +42,7 @@ the final held-out set: a later unit passes every scored row and this run's clip
 
 **Short and undetermined (§1.8).** A brief whose walk ends with fewer than m is short, and every draw it walked and did
 not take is listed with why: a gate code (G7 at a render), Q3's near_copy or repaired, repeat_of:<k>, refb, pool,
-heldout_text or heldout_clip. A brief whose walk meets a draw that was rendered with an error twice or skipped by the
+heldout_text, heldout_clip, refb_clip or pool_clip. A brief whose walk meets a draw that was rendered with an error twice or skipped by the
 deadline, or that still has a draw to render, is undetermined (the render step then exits 1).
 
 Standard library only (plus lofi_rl's own stdlib modules), and no I/O. Sound claims: none.
@@ -50,7 +58,7 @@ import lofi_rl.step0 as S
 from lofi_rl import brief_streams
 from lofi_rl.brief import BPM_RANGE, TEMPO_WEIGHTS, Brief
 from lofi_rl.brief_streams import CELLS, Stream, cell_name, per_cell_counts, stratified_indices
-from lofi_rl.step0 import HELDOUT_CLIP, HELDOUT_TEXT, POOL, REFB, REPEAT, Step0Error
+from lofi_rl.step0 import HELDOUT_CLIP, HELDOUT_TEXT, POOL, POOL_CLIP, REFB, REFB_CLIP, REPEAT, Step0Error
 
 PASS = "pass"                       # an outcome: passed G7 at its render
 UNDETERMINED = "undetermined"       # an outcome: rendered with an error twice, or skipped by the deadline
@@ -280,58 +288,98 @@ class Train:
     pool: Walk | None
 
 
-def _train(item: Item, pool_brief: bool, held_texts: set[str], held_clips: set[tuple],
-           g7: Callable[[Draw], str | None]) -> Train:
+ClipHolders = dict[tuple, set[str]]     # a clip (clip_key) -> the briefs whose set holds it
+
+
+def clip_key(item: Item, d: Draw) -> tuple:
+    """A draw's clip: the clip id hashes the canonical text with bpm, tonic, mode and energy and no brief id
+    (scoring/protocol.py), so two briefs of one cell, bpm and tonic (twins) give one clip for one text."""
+    return (item.twin_key, d.canon)
+
+
+def _held_by_another(holders: ClipHolders, item: Item, d: Draw) -> bool:
+    return bool(holders.get(clip_key(item, d), set()) - {item.brief_id})
+
+
+def _train_answers() -> bool:
+    """Q2's and Q5's constants, refused when they are no answer; gives POOL_SHARES_REFB."""
     shares = S.POOL_SHARES_REFB
     if not isinstance(shares, bool) or S.POOL_EXCLUDES not in EXCLUDES:
         raise Step0Error([f"POOL_SHARES_REFB {shares!r} must be true or false (Q2) and POOL_EXCLUDES "
                           f"{S.POOL_EXCLUDES!r} one of {EXCLUDES} (Q5)"])
-    m_refb = S.M["refb"]
-    refs = walk(item.draws, m_refb, _skip("refb"), lambda d: PASS).taken
-    after = refs[-1].k if len(refs) == m_refb else S.DRAWS        # the pool walks the draws after Ref_b's 4 (Q2(a))
+    return shares
+
+
+def _refs(item: Item) -> tuple[Draw, ...]:
+    """Ref_b by its records: the brief's first 4 draws that pass their records, in k order (Q4: DISTINCT["refb"])."""
+    return tuple(walk(item.draws, S.M["refb"], _skip("refb"), lambda d: PASS).taken)
+
+
+def _after(refs: Sequence[Draw]) -> int:
+    """The pool walks the draws after Ref_b's 4th by records (Q2(a)); a brief short of 4 leaves it none."""
+    return refs[-1].k if len(refs) == S.M["refb"] else S.DRAWS
+
+
+def _pool(item: Item, refs: Sequence[Draw], held_texts: set[str], held_clips: set[tuple], refb_clips: ClipHolders,
+          pool_clips: ClipHolders, g7: Callable[[Draw], str | None]) -> tuple[tuple[Draw, ...], Walk]:
+    """A pool brief's picks by their records and its walk with their G7 (module doc). `refb_clips` holds every train
+    brief's Ref_b by records and `pool_clips` the picks of the pool briefs before this one in stream order: under
+    Q2(a) the pool never takes another brief's Ref_b clip, and under any answer never a clip an earlier pool brief
+    took (a twin's draw of its text)."""
+    shares, after = S.POOL_SHARES_REFB, _after(refs)
     ref_ks = {d.k for d in refs}
 
-    pool, picks = None, ()
-    if pool_brief:
-        def skip_pool(d: Draw, w: Walk) -> str | None:
-            if not shares and d.k <= after:
-                if d.k in ref_ks:
-                    return REFB
-                if d.why is None:                                 # a repeat Ref_b skipped (DISTINCT["refb"])
-                    return f"{REPEAT}{min(r.k for r in refs if r.canon == d.canon)}"
-            if d.why is not None:
-                return d.why
-            if not shares and d.canon in {r.canon for r in refs}:
+    def skip_pool(d: Draw, w: Walk) -> str | None:
+        if not shares and d.k <= after:
+            if d.k in ref_ks:
+                return REFB
+            if d.why is None:                                 # a repeat Ref_b skipped (DISTINCT["refb"])
                 return f"{REPEAT}{min(r.k for r in refs if r.canon == d.canon)}"
-            k = w.first_with(d.canon)
-            if k is not None:
-                return f"{REPEAT}{k}"
-            if S.POOL_EXCLUDES == "text" and d.canon in held_texts:
-                return HELDOUT_TEXT
-            if (item.twin_key, d.canon) in held_clips:            # a held-out clip is always skipped (§9)
-                return HELDOUT_CLIP
-            return None
-        by_records = walk(item.draws, S.M["pool"], skip_pool, lambda d: PASS)
-        picks = tuple(by_records.taken)
-        pool = Walk(not_taken=list(by_records.not_taken))
-        for d in picks:                                       # G7 at the pool's render: a failure is not replaced
-            o = g7(d)
-            if o == PASS:
-                pool.taken.append(d)
-            elif o is None:
-                pool.pending.append(d)
-            elif o == UNDETERMINED:
-                pool.undetermined = True
-            else:
-                pool.not_taken.append((d.k, o))
-        pool.not_taken.sort()
+        if d.why is not None:
+            return d.why
+        if not shares and d.canon in {r.canon for r in refs}:
+            return f"{REPEAT}{min(r.k for r in refs if r.canon == d.canon)}"
+        k = w.first_with(d.canon)
+        if k is not None:
+            return f"{REPEAT}{k}"
+        if S.POOL_EXCLUDES == "text" and d.canon in held_texts:
+            return HELDOUT_TEXT
+        if clip_key(item, d) in held_clips:                   # a held-out clip is always skipped (§9)
+            return HELDOUT_CLIP
+        if not shares and _held_by_another(refb_clips, item, d):
+            return REFB_CLIP
+        if _held_by_another(pool_clips, item, d):
+            return POOL_CLIP
+        return None
+    by_records = walk(item.draws, S.M["pool"], skip_pool, lambda d: PASS)
+    picks = tuple(by_records.taken)
+    pool = Walk(not_taken=list(by_records.not_taken))
+    for d in picks:                                           # G7 at the pool's render: a failure is not replaced
+        o = g7(d)
+        if o == PASS:
+            pool.taken.append(d)
+        elif o is None:
+            pool.pending.append(d)
+        elif o == UNDETERMINED:
+            pool.undetermined = True
+        else:
+            pool.not_taken.append((d.k, o))
+    pool.not_taken.sort()
+    return picks, pool
 
+
+def _refb(item: Item, refs: Sequence[Draw], picks: Sequence[Draw], pool_clips: ClipHolders,
+          g7: Callable[[Draw], str | None]) -> tuple[tuple[Draw, ...], Walk]:
+    """Ref_b's spares and its walk with G7 (module doc). Under Q2(a) the spares leave out the brief's pool draws and
+    texts and every other pool brief's pick (`pool_clips`, the whole pool by records), so a replacement at Ref_b's
+    render never makes a pool clip a yardstick clip."""
+    shares, after = S.POOL_SHARES_REFB, _after(refs)
     pick_ks, pick_texts = {d.k for d in picks}, {d.canon for d in picks}
     if shares:
         spares = tuple(d for d in item.draws if d.k > after and d.why is None)
     else:
         spares = tuple(d for d in item.draws if d.k > after and d.why is None and d.k not in pick_ks
-                       and d.canon not in pick_texts)
+                       and d.canon not in pick_texts and not _held_by_another(pool_clips, item, d))
     own = _skip("refb")
 
     def skip_refb(d: Draw, w: Walk) -> str | None:
@@ -340,8 +388,10 @@ def _train(item: Item, pool_brief: bool, held_texts: set[str], held_clips: set[t
                 return POOL
             if d.why is None and d.canon in pick_texts:
                 return f"{REPEAT}{min(p.k for p in picks if p.canon == d.canon)}"
+            if d.why is None and _held_by_another(pool_clips, item, d):
+                return POOL_CLIP
         return own(d, w)
-    return Train(tuple(refs), picks, spares, walk(item.draws, m_refb, skip_refb, g7), pool)
+    return spares, walk(item.draws, S.M["refb"], skip_refb, g7)
 
 
 # --------------------------------------------------------------------------------------------- the pool's briefs (Q1)
@@ -444,13 +494,33 @@ def selection(scored: Iterable[Mapping], records: Iterable[Mapping] = (), *, str
     heldout = tuple((it, walk(it.draws, S.M["heldout"], _skip("heldout"), g7_of(it, None)))
                     for it in by["rm_heldout"])
     held_texts = frozenset(d.canon for _, w in heldout for d in w.taken)
-    held_clips = {(it.twin_key, d.canon) for it, w in heldout for d in w.taken}
+    held_clips = {clip_key(it, d) for it, w in heldout for d in w.taken}
     train_stream = streams[brief_streams.TRAIN]
     pool = frozenset(brief_streams.brief_id(train_stream.spec.seed, j) for j in pool_briefs(train_stream))
-    train = tuple((it, _train(it, it.brief_id in pool, set(held_texts), held_clips,
-                              g7_of(it, None if pending_train else PASS)))
-                  for it in by[brief_streams.TRAIN])
-    return Selection(heldout, train, pool, held_texts, recs)
+    trains = by[brief_streams.TRAIN]
+    if trains:
+        _train_answers()
+    # Ref_b by its records first, every train brief's; then the pool briefs in stream order, each knowing every Ref_b
+    # and the earlier picks; then each brief's spares and Ref_b walk, knowing the whole pool (clips, not only texts)
+    refs = {it.brief_id: _refs(it) for it in trains}
+    refb_clips: ClipHolders = {}
+    for it in trains:
+        for d in refs[it.brief_id]:
+            refb_clips.setdefault(clip_key(it, d), set()).add(it.brief_id)
+    pool_clips: ClipHolders = {}
+    pools: dict[str, tuple[tuple[Draw, ...], Walk]] = {}
+    for it in trains:
+        if it.brief_id in pool:
+            pools[it.brief_id] = _pool(it, refs[it.brief_id], set(held_texts), held_clips, refb_clips, pool_clips,
+                                       g7_of(it, None if pending_train else PASS))
+            for d in pools[it.brief_id][0]:
+                pool_clips.setdefault(clip_key(it, d), set()).add(it.brief_id)
+    train = []
+    for it in trains:
+        picks, pw = pools.get(it.brief_id, ((), None))
+        spares, rw = _refb(it, refs[it.brief_id], picks, pool_clips, g7_of(it, None if pending_train else PASS))
+        train.append((it, Train(refs[it.brief_id], picks, spares, rw, pw)))
+    return Selection(heldout, tuple(train), pool, held_texts, recs)
 
 
 def held_out_decided(sel: Selection) -> None:

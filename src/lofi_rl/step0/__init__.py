@@ -209,6 +209,10 @@ REFB = "refb"                       # (the pool) one of the brief's 4 Ref_b draw
 POOL = "pool"                       # (Ref_b's spares) one of the pool's draws
 HELDOUT_TEXT = "heldout_text"       # (the pool, Q5 "text") its canonical text is a held-out clip's
 HELDOUT_CLIP = "heldout_clip"       # (the pool) it is a held-out clip: a twin brief's draw of that clip's text
+# The clip id hashes the canonical text with bpm, tonic, mode and energy and no brief id, so two train briefs of one
+# cell, bpm and tonic (26 pairs in run 1's [0, 400)) give one clip for one text. Q2(a) keeps the yardstick unplayed:
+REFB_CLIP = "refb_clip"             # (the pool, Q2(a)) it is another train brief's Ref_b clip, by that brief's records
+POOL_CLIP = "pool_clip"             # (the pool) it is an earlier pool brief's pick; (Ref_b's spares) any pool pick
 
 
 class Step0Error(ValueError):
