@@ -475,6 +475,42 @@ def test_under_q8b_the_refusal_says_to_replace_another_answer_not_to_add_the_lin
     assert rc == 0 and out[-2] == f"wrote {S.HELDOUT_FILE}, {S.RUN_FILE}", out
 
 
+def test_under_q8b_off_the_runs_commit_the_line_also_goes_into_a_worktree_of_it(base, short_run, repo, tmp_path,
+                                                                                monkeypatch):
+    """Finding N9: once main changes a file check reproduces the run with (here one only junk's imports reach, which
+    check never runs), prereg refuses there and runs in a git worktree of the run's commit, whose docs/DECISIONS.md
+    predates his answer line on main: it refuses there until the line is added to that checkout's DECISIONS.md too,
+    then writes the bytes the line writes at the run's commit, to be committed on main. prereg's module doc and spec
+    section 10 give that route."""
+    monkeypatch.setattr(S, "SHORT_RULE", "ask")
+    direct = L.copy_run(base[0], tmp_path / "direct")
+    answered(direct, f"- {ANSWER}")
+    assert PR.prereg(short_run, write=True, repo=direct)[0] == 0
+    want = {rel: (direct / rel).read_bytes() for rel in FILES}
+    edit = "src/lofi_rl/render/pipeline.py"
+    assert edit in C.reproduction_files(repo)
+    answered(repo, f"- {ANSWER}")
+    L.commit(repo, "main moves on: an edit of the render pipeline", {edit: (repo / edit).read_text() + "# later\n"})
+    rc, out = PR.prereg(short_run, write=True, repo=repo)
+    assert rc == 2 and f"check out {base[1][:12]} (a git worktree)" in out[0] and edit in out[0], out
+    worktree = tmp_path / "at-the-runs-commit"
+    L.git(repo, "worktree", "add", "-q", "--detach", str(worktree), base[1])
+    rc, out = PR.prereg(short_run, write=True, repo=worktree)
+    assert rc == 2 and f"add the line `{ANSWER}` to {S.DECISIONS}" in out[-1], "its DECISIONS.md predates the line"
+    decisions = worktree / S.DECISIONS
+    decisions.write_text(decisions.read_text() + f"\n- {ANSWER}\n")      # by hand, uncommitted
+    rc, out = PR.prereg(short_run, write=True, repo=worktree)
+    assert rc == 0 and {rel: (worktree / rel).read_bytes() for rel in FILES} == want, out
+    assert not any((repo / rel).exists() for rel in FILES), "main gets them by a copy and a commit"
+    spec = (L.ROOT / "docs" / "design" / "step0_samples.md").read_text(encoding="utf-8")
+    texts = {"spec section 10": next(x for x in spec.splitlines() if x.startswith("- **Q8(b), ask**")),
+             "prereg's module doc": PR.__doc__.split("**Off the run's commit**", 1)[1].split("\n\n", 1)[0]}
+    for where, text in texts.items():
+        text = re.sub(r"\s+", " ", text)
+        assert "git worktree of the run's commit" in text and "goes into D-023 on main" in text, where
+        assert "the worktree's docs/DECISIONS.md" in text and "committed on main" in text, where
+
+
 def test_under_q8b_his_answer_handles_the_short_briefs_as_q8a_does(short_run, base, repo, tmp_path, monkeypatch):
     """Finding N2: with the answer applied, both files are the ones Q8(a) writes for the run but for rule.answers.Q8,
     which records the line (and step0_v1.json's pin of heldout_v1.json, which that changes): the held-out set holds a

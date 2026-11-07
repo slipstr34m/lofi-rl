@@ -38,10 +38,17 @@ compared with the run's commit, so the line, written after the run, needs no red
 briefs are then handled as Q8(a) handles them, and both files' rule.answers.Q8 records the line. Any other answer for
 the run keeps the refusal, which then names those answers and says to replace the run's lines with the one line, since
 the line added beside another answer refuses again (finding N8); under SHORT_RULE "report" nothing is read, and Q8
-records the rule alone. Without --write the two files' sizes and sha256 are printed and nothing is written; with it
-each is written unless it is already there byte for byte. A different existing file is never replaced (exit 2, neither
-written): there is no --force, and a new set is a new file version with its own DECISIONS entry (§4.2). Laptop only.
-Sound claims: none.
+records the rule alone.
+
+**Off the run's commit** (finding N9): once main changes a file check reproduces the run with
+(check.reproduction_files: junk's whole closure among them, render's code too), check and prereg refuse there and run
+in a git worktree of the run's commit, whose docs/DECISIONS.md predates what D-023 gains after the run. Under Q8(b)
+the answer line then goes into D-023 on main and, by hand and uncommitted, into the worktree's docs/DECISIONS.md, the
+one prereg reads; prereg writes both files into the worktree, and they are committed on main from there.
+
+Without --write the two files' sizes and sha256 are printed and nothing is written; with it each is written unless it
+is already there byte for byte. A different existing file is never replaced (exit 2, neither written): there is no
+--force, and a new set is a new file version with its own DECISIONS entry (§4.2). Laptop only. Sound claims: none.
 """
 from __future__ import annotations
 
