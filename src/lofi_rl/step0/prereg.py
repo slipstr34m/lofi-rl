@@ -2,18 +2,20 @@
 run, docs/prereg/heldout_v1.json and docs/prereg/step0_v1.json (docs/design/step0_samples.md §4.4; D-023).
 
 - **heldout_v1.json** (`lofi-rl/heldout/1`), the file taste_pipeline.md:128 names: the run (job, node, GPU, stamps),
-  its render-code key, the settings with their shas and the rule; per tuple, its brief (id, cell, bpm, tonic, twins)
-  and the shown example's id, and per clip its k, draw seed, text_sha256 and canon_sha256, clip id, audio_sha256 (the
-  float32 render identity), LUFS, true peak, P_fix, near_copy, copy_jaccard and its verbatim A and B flags; the short
-  briefs; the texts' pin (completions.jsonl's path and sha256, each clip's text found there by its text_sha256); and
-  item 8's readouts beside D-008, reported and never gated, as numbers and flags (lofi_rl.step0.check.item8: each
-  tuple's pairwise J5 in junk's copy form and the K/D form, its verbatim-line sharing, and per pair whether the two
-  clips differ in A or B, the pairs "agreement on the pairs whose two clips differ in A or B" reads, DECISIONS.md:484).
+  its render-code key, the settings with their shas (render_cfg_sha8, the render config the clip ids hash, among them)
+  and the rule, in sentences built from the answers; per tuple, its brief (id, cell, bpm, tonic, twins) and the shown
+  example's id, and per clip its k, draw seed, text_sha256 and canon_sha256, clip id, audio_sha256 (the float32 render
+  identity), LUFS, true peak, P_fix, near_copy, copy_jaccard and its verbatim A and B flags; the short briefs, whose
+  clips are held-out data too; the texts' pin (completions.jsonl's path and sha256, each clip's text found there by
+  its text_sha256); and item 8's readouts beside D-008, reported and never gated, as numbers and flags
+  (lofi_rl.step0.check.item8: each tuple's pairwise J5 in junk's copy form and the K/D form, its verbatim-line
+  sharing, and per pair whether the two clips differ in A or B, the pairs "agreement on the pairs whose two clips
+  differ in A or B" reads, DECISIONS.md:484).
 - **step0_v1.json** (`lofi-rl/step0-run/1`): the run and a redo if any, with every summary file's path, size and
-  sha256; the counts per stream, the validity verdict, the probe and the replay; Ref_b per brief (k, draw seed,
-  text_sha256 and canon_sha256 of its 4, its spares' k in order); the pool's briefs and their picks; every train
-  draw's heldout_text flag, with the train rows that share each held-out clip's canon_sha256, counted per cell; the
-  short briefs; and heldout_v1.json's sha256.
+  sha256; the counts per stream, the validity verdict, the probe and the replay (its stop as a code, never a message);
+  Ref_b per brief (k, draw seed, text_sha256 and canon_sha256 of its 4, its spares' k in order); the pool's briefs and
+  their picks; every train draw's heldout_text flag, with the train rows, passing or not, that share each held-out
+  clip's canon_sha256, counted per cell; the short briefs; and heldout_v1.json's sha256.
 
 Neither holds a LoopScript text (§5): they hold hashes, and the texts stay in runs/ (KEEP and the laptop's runs/, never
 committed), pinned by completions.jsonl's sha256. Paths are written as make pull places a run (runs/<run>/summary/...),
@@ -124,10 +126,12 @@ def settings(run: C.Run) -> dict:
     prompt = g.get("prompt") or {}
     pal = g.get("palette") or {}
     con = g.get("constrained") or {}
+    cfgs = sorted({r.get("render_cfg_sha8") for r in run.records if r.get("ok") is True}, key=str)
     return {"model": g.get("model"),
             "prompt": {"version": prompt.get("version"), "template_sha256": prompt.get("template_sha256")},
             "palette": {"id": pal.get("id"), "sha256": pal.get("sha256"),
                         "label": f"{pal.get('id')}@{str(pal.get('sha256'))[:8]}"},
+            "render_cfg_sha8": cfgs[0] if len(cfgs) == 1 else cfgs,     # the clip ids' render config (one, by check)
             "regex_sha256": con.get("regex_sha256"), "backend": (con.get("backend") or {}).get("backend"),
             "sampling": g.get("sampling"), "per_request_seed": g.get("per_request_seed"),
             "engine_seed": (g.get("engine") or {}).get("seed"), "streams_file": g.get("streams_file"),
@@ -136,6 +140,19 @@ def settings(run: C.Run) -> dict:
 
 def rule_block() -> dict:
     return {"name": S.RULE, "mark": S.MARK, "m": dict(S.M), "answers": answers()}
+
+
+PASSING_WORDS = {"hard": "pass the hard gates", "hard_not_copy": "pass the hard gates and are not near-copies of the "
+                 "shown example", "hard_no_repair": "pass the hard gates without a repair"}       # Q3 (a), (b), (c)
+
+
+def heldout_rule() -> str:
+    """heldout_v1.json's sentence for the held-out rule, built from the answers the run was selected under (Q3's
+    PASSING, Q4's DISTINCT["heldout"]), so it never states a rule the tuples were not chosen by (finding R1-6)."""
+    passing = PASSING_WORDS.get(S.PASSING, f"pass by PASSING {S.PASSING!r}")
+    distinct = " and whose canonical texts differ (Q4)" if S.DISTINCT.get("heldout") is True else ", repeats kept (Q4)"
+    return (f"Each brief takes its first {S.M['heldout']} draws in k order that {passing} (Q3){distinct}; a short "
+            "brief is reported, never drawn again (Q8).")
 
 
 def _entry_head(e: Mapping) -> dict:
@@ -177,8 +194,9 @@ def heldout_doc(run: C.Run, report: Mapping, *, palette=None) -> dict:
             f"docs/DECISIONS.md D-023 (rule {S.RULE}): the RM held-out tuples of D-021 item 2 (taste_pipeline.md "
             "lines 126-129), fixed by the first valid run of lofi-step0, or valid pair (spec section 4.2).",
             f"Committed {S.COMMITTED_BEFORE} (Q7). Never trained on, selected on, or tuned on (taste_pipeline.md:129).",
-            f"Each brief takes its first {m} draws in k order that pass the hard gates (Q3) and whose canonical texts "
-            "differ (Q4); a short brief is reported, never drawn again (Q8)."],
+            heldout_rule(),
+            "A short brief's clips (`short`) are held-out data too, in no tuple: every rule for held-out clips holds "
+            "for them, the RM loader's Q5 rule included (spec section 5)."],
         "written_by": [
             "python -m lofi_rl.step0 prereg RUN [--redo REDO] --write; do not edit this file.",
             "No LoopScript text: each clip's text is in `texts`.file, found by its text_sha256 (spec section 5)."],
@@ -236,11 +254,12 @@ def _draw(t: Mapping) -> dict:
 
 def heldout_text_block(run: C.Run) -> dict:
     """Every train draw's heldout_text flag, by brief in k order; the train rows that share each held-out clip's
-    canon_sha256; and the per-cell counts step0.json reads out."""
+    canon_sha256, passing or not (a draw that parsed carries its canon_sha256 even when it then failed compile), as
+    the flags count them (finding R1-4); and the per-cell counts step0.json reads out."""
     flags: dict[str, list] = {}
     for d in run.sets["heldout_text"]:                         # train stream order, then k (select.select)
         flags.setdefault(d["brief_id"], []).append(d.get("heldout_text"))
-    train = [s for s in run.scored if s.get("stream") == brief_streams.TRAIN and s.get("ok") is True]
+    train = [s for s in run.scored if s.get("stream") == brief_streams.TRAIN and isinstance(s.get("canon_sha256"), str)]
     by_canon: dict[str, list] = {}
     for s in sorted(train, key=lambda s: s["i"]):
         by_canon.setdefault(s.get("canon_sha256"), []).append([s.get("brief_id"), s.get("k")])
@@ -251,6 +270,16 @@ def heldout_text_block(run: C.Run) -> dict:
             "draws": sum(1 for v in flags.values() for f in v if f is True),
             "flags": [{"brief_id": bid, "flags": v} for bid, v in flags.items()],
             "shared": shared}
+
+
+def replay_block(replay) -> dict | None:
+    """generate.json's replay readout with its `stopped` cut to its code (the text before its first colon: "deadline",
+    "running", "not run", "error"), so an exception message, the one free text a valid run's records carry, never
+    reaches a committed file (finding R3-10)."""
+    if not isinstance(replay, Mapping):
+        return None
+    stopped = replay.get("stopped")
+    return {**replay, "stopped": stopped.split(":", 1)[0] if isinstance(stopped, str) else stopped}
 
 
 def _short(entries: Sequence[Mapping]) -> list[dict]:
@@ -282,7 +311,7 @@ def run_doc(run: C.Run, report: Mapping, heldout_sha256: str) -> dict:
                      "of": report["validity"]["of"], "failed": report["validity"]["failed"]},
         "counts": counts_block(run),
         "probe": g.get("probe"),
-        "replay": g.get("replay"),
+        "replay": replay_block(g.get("replay")),
         "render": run.step0.get("render"),
         "render_code": run.render_code,
         "heldout": {"file": S.HELDOUT_FILE, "sha256": heldout_sha256},

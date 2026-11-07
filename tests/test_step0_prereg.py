@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -85,6 +86,13 @@ def test_heldout_v1_holds_what_section_4_4_lists(docs):
     assert st["palette"]["sha256"] == S.PALETTE_SHA256 and st["regex_sha256"] == S.REGEX_SHA256
     assert st["streams_file"]["sha256"] == S.STREAMS_SHA256 and st["sampling"] == dict(S.V0_SAMPLING)
     assert held["rule"]["answers"]["Q4"] == {"distinct": {"heldout": True, "refb": False}}
+    cfg8 = {r["render_cfg_sha8"] for r in run.records if r["ok"]}
+    assert st["render_cfg_sha8"] in cfg8 and len(cfg8) == 1, "the clip ids' render config (finding R3-6)"
+    c, t = held["tuples"][0]["clips"][0], held["tuples"][0]
+    brief = Brief(*t["cell"].split("/"), t["bpm"], t["tonic"])
+    assert C.clip_id(c["canon_sha256"], brief, st["palette"]["label"], st["render_cfg_sha8"]) == c["clip_id"], (
+        "a reader of this file alone recomputes a clip id")
+    assert held["registered"][2] == PR.heldout_rule() and "`short`" in held["registered"][3], "R1-6, R3-4"
     assert held["counts"] == {"briefs": 40, "tuples": 40, "clips": 160, "short": 0, "twins": 8}
     comp = run.files["completions.jsonl"]
     assert held["texts"]["sha256"] == hashlib.sha256(comp.read_bytes()).hexdigest()
@@ -165,6 +173,96 @@ def test_no_loopscript_text_in_either_file(docs):
         assert not [x for x in lines if x in body], rel
         for head in ("vamp: ", "keys: ", "kick: ", "A: ", "B: ", "drums: "):     # a text inside a JSON string
             assert f'"{head}' not in body and f"\\n{head}" not in body, (rel, head)
+
+
+@pytest.mark.parametrize("passing, distinct, words", [
+    ("hard", True, "that pass the hard gates (Q3) and whose canonical texts differ (Q4);"),
+    ("hard_not_copy", True, "that pass the hard gates and are not near-copies of the shown example (Q3) and whose "
+                            "canonical texts differ (Q4);"),
+    ("hard_no_repair", True, "that pass the hard gates without a repair (Q3) and whose canonical texts differ (Q4);"),
+    ("hard", False, "that pass the hard gates (Q3), repeats kept (Q4);")])
+def test_the_held_out_rule_is_stated_as_the_answers_set_it(monkeypatch, passing, distinct, words):
+    """Finding R1-6: heldout_v1.json's sentence follows Q3 and Q4, so under Q4(c) it never says the texts differ."""
+    monkeypatch.setattr(S, "PASSING", passing)
+    monkeypatch.setattr(S, "DISTINCT", {"heldout": distinct, "refb": False})
+    assert PR.heldout_rule() == f"Each brief takes its first 4 draws in k order {words} a short brief is reported, " \
+                                "never drawn again (Q8)."
+
+
+def test_shared_lists_every_train_row_with_a_held_out_clips_text(base, run_dir):
+    """Finding R1-4: a train draw that parsed as a held-out clip's text and then failed compile carries that text's
+    canon_sha256 and select flags it, so `shared` lists it too: the flags and the rows agree in the one file."""
+    summ = run_dir / "summary"
+    held = json.loads((summ / "sets.json").read_text())["heldout"][0]["taken"][0]["canon_sha256"]   # 5101:0 k0's
+
+    def fail_compile(rows: list[dict]) -> None:
+        next(r for r in rows if (r["brief_id"], r["k"]) == ("596:41", 5)).update(
+            canon_sha256=held, ok=False, gate="compile", detail="synthetic: it parsed, then failed compile")
+    L.edit_rows(summ / "scored.jsonl", fail_compile)
+    scored = [json.loads(x) for x in (summ / "scored.jsonl").read_text().splitlines()]
+    clips = json.loads((summ / "clips.json").read_text())
+    doc = X.sets_json(scored, clips["clips"], streams=H.streams(), render_code=clips["render_code"])
+    (summ / "sets.json").write_text(json.dumps(doc, indent=1))
+    L.edit_json(summ / "step0.json", lambda d: d.update(sets=X.readouts(doc, scored)))
+    block = PR.heldout_text_block(C.load_run(run_dir))
+    shared = [x["train"] for x in block["shared"] if x["canon_sha256"] == held]   # each held-out clip of that text
+    assert shared and shared == [[["596:41", 5]]] * len(shared) and block["draws"] == 1
+    assert block["draws"] == len({tuple(t) for x in block["shared"] for t in x["train"]}), "one count, both ways"
+
+
+HEADS = re.compile(r"(?:^|\n)\s*(?:vamp|keys|kick|A|B|sax|drums):\s")      # a LoopScript statement's head
+
+
+def _strings(v):
+    if isinstance(v, str):
+        yield v
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            yield k
+            yield from _strings(x)
+    elif isinstance(v, list):
+        for x in v:
+            yield from _strings(x)
+
+
+def text_problems(body: str) -> list[str]:
+    """What would put a step-0 text in a committed prereg file (spec §5; finding R3-10): bytes that are not ASCII or
+    not the writer's own layout (a hand edit), a string value holding a newline or a LoopScript statement head, or a
+    texts pin outside runs/, which git ignores."""
+    out = [] if body.isascii() else ["not ASCII"]
+    doc = json.loads(body)
+    if PR.text(doc) != body:
+        out.append("not prereg's own layout")
+    out += [f"a string holds a text: {x[:60]!r}" for x in _strings(doc) if "\n" in x or HEADS.search(x)]
+    pin = (doc.get("texts") or {}).get("file", "")
+    ignored = subprocess.run(["git", "-C", str(L.ROOT), "check-ignore", "-q", pin], capture_output=True).returncode == 0
+    if not (pin.startswith("runs/") and ignored):
+        out.append(f"the texts pin {pin!r} is not under the ignored runs/")
+    return out
+
+
+def test_neither_file_can_carry_a_text(docs, base, run_dir):
+    for rel, body in docs["texts"].items():
+        assert text_problems(body) == [], rel
+    bad = json.loads(docs["texts"][S.RUN_FILE])
+    bad["registered"].append("vamp: Im9 IV13 span 2")
+    assert text_problems(PR.text(bad)) == ["a string holds a text: 'vamp: Im9 IV13 span 2'"]
+    assert "not prereg's own layout" in text_problems(PR.text(bad).replace('\n  "run"', ' "run"'))
+    L.edit_json(run_dir / "summary" / "generate.json", lambda d: d["replay"].update(
+        stopped="error: RuntimeError: the engine quoted its prompt\nvamp: Im9 IV13 span 2"))
+    run = C.load_run(run_dir)
+    report = C.evaluate(run, repo=base[0])
+    assert report["validity"]["failed"] == [], "the replay is shown, never judged"
+    st = json.loads(PR.documents(run, report)[S.RUN_FILE])
+    assert st["replay"]["stopped"] == "error" and text_problems(PR.text(st)) == [], "its stop as a code"
+
+
+def test_the_committed_prereg_files_carry_no_text():
+    have = [rel for rel in FILES if (L.ROOT / rel).is_file()]
+    if not have:
+        pytest.skip("neither docs/prereg/heldout_v1.json nor step0_v1.json is committed yet (spec §4.4)")
+    for rel in have:
+        assert text_problems((L.ROOT / rel).read_text(encoding="ascii")) == [], rel
 
 
 # --------------------------------------------------------------------------------------------- writing them
