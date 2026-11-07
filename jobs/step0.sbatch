@@ -37,14 +37,15 @@
 #   960 + 90 = 1,050 s, timeout 1,080 s. score: 3,520 x 0.056 = 197.1 s, timeout 420 s. render: 160 x 2.08 = 332.8 s at
 #   the gate run's rate (about 720 s at job B's mean one-at-a-time render over 1.713, its 2 x 2 speedup); deadline
 #   900 s, 60 s under its 960 s timeout, as junk's render step. Timeouts and kill graces: generate 1,080 + 15 s,
-#   score 420 + 10 s, render 960 + 10 s, the two copies out (30 + 2) + (60 + 2) s and, after a copy that failed, the
-#   records once more from the EXIT trap (20 + 2) s come to 2,611 s, 89 s under the 45 min walltime, at least the
-#   minute spare junk keeps.
+#   score 420 + 10 s, render 960 + 10 s, the two copies out (30 + 2) + (60 + 2) s and, when the copy after the render
+#   failed, the records once more from the EXIT trap (20 + 2) s come to 2,611 s, 89 s under the 45 min walltime, at
+#   least the minute spare junk keeps.
 #   Expected: about 1,005 s, 16.7 min, about 301 SU (an estimate); at most 810 SU.
 # Files (D-022): the steps write on the node's own disk ($TMPDIR), and the run is copied to
 #   $REMOTE_KEEP/runs/step0-<job>/ once, after the render or from an EXIT trap if a step stops the script early or the
-#   job is killed (TERM: the time limit, scancel), records first and then the clips; a copy that fails is followed by
-#   one short copy of the records from the EXIT trap, and no more; the one-shot cache is on KEEP too.
+#   job is killed (TERM: the time limit, scancel), records first and then the clips. When the copy after the render
+#   fails, the EXIT trap copies the records once more under a short timeout, and no more; a copy the EXIT trap makes
+#   itself is not retried. The one-shot cache is on KEEP too.
 #   An OUT that exists and is not empty stops the job before its traps are set, so two attempts never merge under one
 #   job id. Scratch writes stalled the first gate launch (13783877; lofi-io-probe 13787408, D-022); only the Slurm log
 #   and job_env.sh's own folders stay on scratch, and the weights are read from the HF cache there.

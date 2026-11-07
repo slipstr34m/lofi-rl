@@ -2,8 +2,9 @@
 checks junk's job: its stated cost matches its resources and its registration covers it; it never requeues; its three
 steps run in the policy, policy and scorer envs, each under a timeout, with deadlines under the timeouts and the stack
 dump under generate's; the timeouts fit the walltime with a minute spare; the run is written on the node's disk and
-copied to KEEP once, records first, after the render and from an EXIT trap that TERM reaches; a used OUT is refused
-before the traps are set; OUT and the one-shot cache are on KEEP; nothing goes to the inbox; any argument is refused.
+copied to KEEP once, records first, after the render and from an EXIT trap that TERM reaches, the records once more
+only when the copy after the render fails; a used OUT is refused before the traps are set; OUT and the one-shot cache
+are on KEEP; nothing goes to the inbox; any argument is refused.
 
 The script also runs here, end to end, in bash, with stand-ins for scripts/job_env.sh, `timeout` and the three steps
 (each logs its env and arguments and writes a file of the run), so its argument check, its OUT check, its copies and
@@ -186,6 +187,7 @@ REMOTE_KEEP="$TEST_KEEP"
 PY="$TEST_BIN/fakepy"
 export STEP_MODE="${MODE:-scorer}"
 model_rev() { echo cdbee75f; }
+if [ -n "${FAKE_ENV_FAIL:-}" ] && [ "$FAKE_ENV_FAIL" = "${MODE:-}" ]; then return 1; fi   # set -e stops the script
 """
 FAKE_TIMEOUT = """#!/bin/bash
 # a stand-in for coreutils timeout: logs its limits, then runs the command in its place (or, for a command that names
@@ -293,6 +295,31 @@ def test_a_copy_that_fails_is_followed_by_one_short_copy_of_the_records(world, s
     assert _log(Path(f"{world.log}.timeouts"))[3:] == [f"timeout {c}" for c in copies], "after the three steps"
     assert _files(world.out) == files, "the records reach KEEP when only the clips stall"
     assert p.stderr.count(f"copying {world.run} to {world.out} failed") == failed
+
+
+@pytest.mark.parametrize("stop, rc", [({"FAKE_TERM": "score"}, 143), ({"FAKE_ENV_FAIL": "scorer"}, 1)],
+                         ids=["a TERM", "a step that stops the script early"])
+def test_a_copy_the_exit_trap_makes_itself_is_not_retried(world, stop, rc):
+    """Finding N10: only the copy after the render is followed by the records' retry. When a TERM, or a step that stops
+    the script early (here the scorer env's setup, under set -e), reaches the EXIT trap before that copy, the trap's
+    own copy is the first, and when it fails nothing follows. Spec sections 2.7, 2.8 and 10 and the job's comment say
+    so, where they said that any copy that fails is followed by the records once more."""
+    p = world(FAKE_COPY_FAIL="step0-4242/summary", **stop)
+    assert p.returncode == rc and "STEP0_OK" not in p.stdout, p.stderr
+    assert [line.split()[1] for line in _log(world.log)] == ["generate", "score"], "stopped before the render"
+    assert _log(Path(f"{world.log}.timeouts"))[2:] == ["timeout -k 2 30"], "one copy, the trap's own, and no retry"
+    assert p.stderr.count(f"copying {world.run} to {world.out} failed") == 1 and _files(world.out) == []
+    spec = (ROOT / "docs" / "design" / "step0_samples.md").read_text(encoding="utf-8")
+    texts = {"spec section 2.7": spec.split("### 2.7 ", 1)[1].split("\n### ", 1)[0],
+             "spec section 2.8": next(x for x in spec.splitlines() if x.startswith("| copy-out |")),
+             "spec section 10": next(x for x in spec.splitlines() if x.startswith("- **The copy-out**")),
+             "the job's comment": "\n".join(x[1:] for x in JOB.read_text().splitlines() if x.startswith("# "))}
+    for where, text in texts.items():
+        text = re.sub(r"\s+", " ", text)
+        assert "a copy that fails is followed by" not in text and "after a copy that fail" not in text, where
+        assert "after the render fail" in text, where
+        if where != "spec section 2.8":
+            assert "the EXIT trap makes itself" in text and "is not retried" in text, where
 
 
 def test_term_exits_143_through_the_exit_trap_which_copies_the_run_out(world):
