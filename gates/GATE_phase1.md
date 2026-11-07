@@ -67,13 +67,21 @@ A verbatim line is the A or B line of the example the loop's own prompt showed, 
 - **Among the clips he hears:** 40 of 50 (80.0 %); 39 carry both.
 - **His "fine" count by verbatim line:** in his ear check, below.
 
-## His ear check
+## His ear check: batch b1106-gate1
 
-- **Not tallied yet.** The batch is built from `runs/junk-13788483/summary/clips.json` (`python -m lofi_rl.gate1 batch`), one clip a round in triage mode, and counted with `python -m lofi_rl.gate1 tally` once he has voted. A run has one ear check: the batch its `summary/batch.json` records.
+The run's one ear check, the batch its `summary/batch.json` records. Triage mode: one clip a round, played through its seam; Toss, Fine, Good or Great (TASTE.md, Tiers). A clip counts as heard once 1 bar has played, over every attempt of its round (D-013 as amended).
+- **Counts:** 50 of 50 heard; 50 voted and heard. Great 8, Good 7, Fine 13, Toss 22.
+- **"Fine" (Fine, Good or Great):** 28. It needs at least 15 of 50: **met**.
+- **Split by verbatim line** (D-021):
+  - with a verbatim A or B line: "fine" 25 of 40 (Great 7, Good 6, Fine 12, Toss 15).
+  - with neither: "fine" 3 of 10 (Great 1, Good 1, Fine 1, Toss 7).
+- **Not heard (under 1 bar):** none.
+- **Not voted:** none.
+- **Audit file** (private): `data/votes/b1106-gate1.jsonl`.
 
 ## Where it stands
 
-- The first half is met. The second half waits on his ear check.
+- Both halves of the bar are met. The gate passes with his line under `## Approval`.
 
 ## How to approve
 Add one line of your own under `## Approval`, starting at its first character: APPROVED by Shresth Rana, then the day you approve as year-month-day digits, with nothing around the date and nothing after it. Approving on 2026-11-06, the line is:

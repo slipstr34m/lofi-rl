@@ -19,7 +19,25 @@ Newest entry first. Every number cites the file or command output it was read fr
     - two GRPO smokes (13632679 and 13657200, both `GRPO_SMOKE_OK`);
   - **jobs run from read-only code snapshots** (`scripts/snapshot.py`, 2026-11-01 21:40): a sync no longer changes the code of a queued or running job.
 - **The palette is frozen:** `palettes/lofi_rain_v1.yaml`, `frozen: '2026-11-04'` (sha256 `09f80a64…`), on Shresth's APPROVED line of 2026-11-04.
-- **The Phase-1 gate's second launch (13788483) is valid and meets the bar's first half** (477 of 500 passing non-copies; `gates/GATE_phase1.md`). Waiting on Shresth: his 50-clip ear check (`b1106-gate1`), then his APPROVED line.
+- **Both halves of the Phase-1 gate's bar are met** on its second launch (13788483): 477 of 500 passing non-copies (at least 300), and 28 of 50 clips Fine or better in his ear check `b1106-gate1` (at least 15; `gates/GATE_phase1.md`). Waiting on Shresth: his APPROVED line in `gates/GATE_phase1.md`.
+
+---
+
+## 2026-11-06 (17:45 PST): the Phase-1 gate's ear check passes: 28 of 50 Fine or better against 15; his APPROVED line is the one step left
+
+**What was done**
+- **His ear check** of `inbox/2026-11-06/b1106-gate1` (the run's one ear check: 50 triage rounds, every one of kind `none`, so no hidden repeats or anchors): 50 rounds voted and 50 heard (once 1 bar has played, over every attempt of a round; D-013 as amended). Two votes were taken back and answered again, and two attempts were abandoned (`pagehide`, `undo`).
+- **`python -m lofi_rl.gate1 tally inbox/2026-11-06/b1106-gate1 --votes data/votes/b1106-gate1.jsonl`:** `GATE1_TALLY complete, "fine" 28, bar met` (exit 0).
+  - Tiers: Great 8, Good 7, Fine 13, Toss 22. "Fine" (Fine, Good or Great): **28**, against at least 15 of 50: **met**.
+  - Split by verbatim line (D-021: reported, never gated): with a verbatim A or B line, "fine" 25 of 40 (Great 7, Good 6, Fine 12, Toss 15); with neither, 3 of 10 (Great 1, Good 1, Fine 1, Toss 7).
+  - The tally's JSON holds his per-round tiers, so it stays private: `data/votes/audit/b1106-gate1.gate1-tally.json`.
+- **Independent recount:** a stdlib script over the raw log and the batch's two manifests, importing none of `lofi_rl`, gives the same standing votes, heard count, tiers and split. Every standing vote is for its round's clip (opaque and real id), every line names the batch, and no line is torn.
+- **`gates/GATE_phase1.md`** rewritten by `gate1 gate --run runs/junk-13788483 --batch inbox/2026-11-06/b1106-gate1 --votes data/votes/b1106-gate1.jsonl`: his ear check's counts and split (counts only), and "Both halves of the bar are met." It holds no APPROVED line yet.
+- **Votes backed up** to the private votes repo (commit `a95a17b`, pushed). The copy to `$REMOTE_KEEP/votes/` failed: `discovery.usc.edu` did not resolve (NXDOMAIN, with the USC VPN off). The next `make backup-votes` on the VPN copies it.
+
+**SU spent:** 0.
+
+**Next:** his APPROVED line under `## Approval` in `gates/GATE_phase1.md`. Then Phase 2: the step-0 samples, the seed pool and its render job, and the triage and bws4 votes.
 
 ---
 
