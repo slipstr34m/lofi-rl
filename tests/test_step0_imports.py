@@ -37,7 +37,7 @@ JUNK_NAMES = {"SAMPLING", "STRUCTURED_BACKEND", "PROMPTS", "split_model", "load_
               "structured_outputs_params", "constrained_block", "backend_record", "prompt_record", "example_id",
               "brief_dict", "sha256_text", "read_jsonl", "Completion", "CopyCheck", "score_row", "summarize",
               "render_clip", "render_lanes", "in_order", "grams", "jaccard", "HANG_MARGIN_S", "DEFAULT_CHUNK",
-              "cell_brief", "RENDER_JOBS"}
+              "cell_brief", "RENDER_JOBS", "head_lines"}
 AUDIO_AT_TOP = ("numpy", "scipy", "soundfile", "pedalboard", "mido", "vllm", "torch", "lofi_rl.render",
                 "lofi_rl.scoring.features", "lofi_rl.scoring.render_pool", "lofi_rl.shootout")
 
@@ -148,3 +148,5 @@ def test_the_junk_names_step0_uses_hold_the_values_it_expects():
     assert J.constrained_block("x")["builder"] == "lofi_rl.grammar.loopscript_regex"
     assert J.cell_brief("low", "hopeful").bpm == J.CELL_BRIEF["bpm"]
     assert list(J.in_order(lambda i: i * 2, [3, 1, 2], 2)) == [6, 2, 4], "in the items' order"
+    assert J.head_lines("vamp: Im9 IV13 span 2\nA: q5 h3\nB: q1' h5") == {
+        "vamp": "vamp: Im9 IV13 span 2", "A": "A: q5 h3", "B": "B: q1' h5"}, "check's item 8 reads A and B by head"
