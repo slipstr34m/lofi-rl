@@ -122,8 +122,9 @@ def test_generate_score_and_render_run_in_policy_policy_and_scorer_under_timeout
         m = re.search(r"timeout -k (\d+) (\d+) cp -a ", line)
         assert m, "each copy out runs under a timeout"
         budget += int(m[1]) + int(m[2])
-    assert budget == 2589 and budget <= 60 * _minutes(_sbatch(s)["time"]) - 60, \
-        "the steps' timeouts fit the walltime with at least a minute spare (2,589 of 2,700 s)"
+    assert budget == 2611 and budget <= 60 * _minutes(_sbatch(s)["time"]) - 60, \
+        "the steps' timeouts and every copy, the trap's retry of the records too, fit the walltime with at least " \
+        "a minute spare (2,611 of 2,700 s; finding R2-5)"
 
 
 def test_the_steps_take_only_the_run_and_their_deadlines():
@@ -149,8 +150,9 @@ def test_the_run_is_copied_once_records_first_after_the_render_and_from_the_trap
     code = _code(JOB.read_text())
     steps = _steps(code)
     copies = [line for line in code if ' cp -a "$RUN/' in line]
-    assert len(copies) == 2 and '"$RUN/summary"' in copies[0] and '"$RUN/clips"' in copies[1], "records first"
+    assert len(copies) == 3 and '"$RUN/summary"' in copies[0] and '"$RUN/clips"' in copies[1], "records first"
     assert "timeout -k 2 30 cp -a" in copies[0] and "timeout -k 2 60 cp -a" in copies[1]
+    assert '"$RUN/summary"' in copies[2] and "timeout -k 2 20 cp -a" in copies[2], "the trap's retry: records only"
     calls = [i for i, line in enumerate(code) if line.startswith("copy_out ||")]
     assert len(calls) == 1 and calls[0] > steps[-1][0], "the copy out runs after the render"
     assert any(line.startswith('[ "$COPIED" = 1 ] && return 0') for line in map(str.strip, code)), "once"
@@ -186,8 +188,10 @@ export STEP_MODE="${MODE:-scorer}"
 model_rev() { echo cdbee75f; }
 """
 FAKE_TIMEOUT = """#!/bin/bash
-# a stand-in for coreutils timeout: logs its limits, then runs the command in its place
+# a stand-in for coreutils timeout: logs its limits, then runs the command in its place (or, for a command that names
+# $FAKE_COPY_FAIL, times out: KEEP stalled)
 echo "timeout $1 $2 $3" >> "$TEST_LOG.timeouts"
+if [ -n "${FAKE_COPY_FAIL:-}" ] && [[ "$*" == *"$FAKE_COPY_FAIL"* ]]; then exit 124; fi
 shift 3
 exec "$@"
 """
@@ -275,6 +279,20 @@ def test_a_failed_step_still_copies_the_records_out(world):
     assert p.returncode == 1 and "STEP0_FAILED" in p.stdout
     assert [line.split()[1] for line in _log(world.log)] == list(STEPS), "every step runs; each fails on its own"
     assert "summary/step0.json" in _files(world.out) and "clips/0000.flac" in _files(world.out)
+
+
+@pytest.mark.parametrize("stalls, copies, files, failed", [
+    ("step0-4242/clips", ["-k 2 30", "-k 2 60", "-k 2 20"],
+     ["summary/clips.json", "summary/generate.json", "summary/step0.json"], 1),
+    ("step0-4242/summary", ["-k 2 30", "-k 2 20"], [], 2)], ids=["the clips stall", "the records stall"])
+def test_a_copy_that_fails_is_followed_by_one_short_copy_of_the_records(world, stalls, copies, files, failed):
+    """Finding R2-5: when the copy after the render fails (KEEP stalls), the EXIT trap copies the records once more
+    under timeout -k 2 20, and no more: one extra copy, counted in the walltime's budget."""
+    p = world(FAKE_COPY_FAIL=stalls)
+    assert p.returncode == 1 and "STEP0_FAILED" in p.stdout
+    assert _log(Path(f"{world.log}.timeouts"))[3:] == [f"timeout {c}" for c in copies], "after the three steps"
+    assert _files(world.out) == files, "the records reach KEEP when only the clips stall"
+    assert p.stderr.count(f"copying {world.run} to {world.out} failed") == failed
 
 
 def test_term_exits_143_through_the_exit_trap_which_copies_the_run_out(world):

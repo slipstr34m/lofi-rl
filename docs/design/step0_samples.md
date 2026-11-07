@@ -332,9 +332,10 @@ Stopping at m would need at least 160 + 1,600 + 660 = 2,420 requests. The other 
 
   That is junk's pattern (`junk_rate.sbatch:84-96`; `DECISIONS.md:961`). Scratch writes took 2.209–132.108 s a round, and a 2.6 MB clip up to 171.923 s. KEEP took 0.006–0.008 s (`runs/io-probe-13787408/summary/io.json`; `DECISIONS.md:960`).
 - **A used OUT is refused.** Before its traps are set, the script stops with exit 2 if `$OUT` exists and is not empty. Junk makes OUT with `mkdir -p` and copies into it with `cp -a` (`junk_rate.sbatch:87-92`), which would merge two attempts under one job id.
-- **`copy_out`, once:**
+- **`copy_out`, once** (and, after a copy that fails, the records once more):
   - `timeout -k 2 30 cp -a "$RUN/summary" "$OUT/"`, then `timeout -k 2 60 cp -a "$RUN/clips" "$OUT/"`;
-  - after the render, and from an EXIT trap with `trap 'exit 143' TERM`.
+  - after the render, and from an EXIT trap with `trap 'exit 143' TERM`;
+  - a copy that fails is followed by one copy of the records only, from the EXIT trap, under `timeout -k 2 20`, and no more. §2.8 counts it.
 
   Junk's 10 s copies were sized for 50 clips. 410 MB at KEEP's 0.008 s per 2.6 MB clip is about 1.3 s of writes (estimate). The node disk's reads are unmeasured, hence 60 s.
 - **What stays on scratch:** only the Slurm log, plus job_env.sh's mkdirs (`scripts/job_env.sh:34`). Weights are read from `HF_HOME` on scratch (`kit.env:31`), as every junk run read them (the gate run loaded in 29.4 s). Scratch reads were never probed.
@@ -346,8 +347,8 @@ Stopping at m would need at least 160 + 1,600 + 660 = 2,420 requests. The other 
 | generate | `timeout -k 15 1080 … generate --deadline-s 960` (stack dump at 960 + 90 = 1,050) | 15 | 1,095 s |
 | score | `timeout -k 10 420 … score` | 10 | 430 s |
 | render | `timeout -k 10 960 … render --deadline-s 900` | 10 | 970 s |
-| copy-out | `timeout -k 2 30`, `timeout -k 2 60` | 2 + 2 | 94 s |
-| sum | | | 2,589 s: 111 s under 2,700 s (45 min) |
+| copy-out | `timeout -k 2 30`, `timeout -k 2 60`; after a copy that failed, `timeout -k 2 20` (the records, from the EXIT trap) | 2 + 2 + 2 | 116 s |
+| sum | | | 2,611 s: 89 s under 2,700 s (45 min) |
 
 - **Generate's margin (estimate).** Its draws may take about 2.3 times the gate run's time per request before the deadline refuses a chunk: (960 − 72.9 − 12) / (3,840 × 0.1002) = 875.1 / 384.8 = 2.27. Under Q6(b), 3.64. Throughput with per-request seeds is unmeasured.
 - **Render's deadline** sits 60 s under its timeout, as junk's does (`DECISIONS.md:879`).

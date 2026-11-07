@@ -37,12 +37,14 @@
 #   960 + 90 = 1,050 s, timeout 1,080 s. score: 3,520 x 0.056 = 197.1 s, timeout 420 s. render: 160 x 2.08 = 332.8 s at
 #   the gate run's rate (about 720 s at job B's mean one-at-a-time render over 1.713, its 2 x 2 speedup); deadline
 #   900 s, 60 s under its 960 s timeout, as junk's render step. Timeouts and kill graces: generate 1,080 + 15 s,
-#   score 420 + 10 s, render 960 + 10 s and the two copies out (30 + 2) + (60 + 2) s come to 2,589 s, 111 s under
-#   the 45 min walltime, at least the minute spare junk keeps.
+#   score 420 + 10 s, render 960 + 10 s, the two copies out (30 + 2) + (60 + 2) s and, after a copy that failed, the
+#   records once more from the EXIT trap (20 + 2) s come to 2,611 s, 89 s under the 45 min walltime, at least the
+#   minute spare junk keeps.
 #   Expected: about 1,005 s, 16.7 min, about 301 SU (an estimate); at most 810 SU.
 # Files (D-022): the steps write on the node's own disk ($TMPDIR), and the run is copied to
 #   $REMOTE_KEEP/runs/step0-<job>/ once, after the render or from an EXIT trap if a step stops the script early or the
-#   job is killed (TERM: the time limit, scancel), records first and then the clips; the one-shot cache is on KEEP too.
+#   job is killed (TERM: the time limit, scancel), records first and then the clips; a copy that fails is followed by
+#   one short copy of the records from the EXIT trap, and no more; the one-shot cache is on KEEP too.
 #   An OUT that exists and is not empty stops the job before its traps are set, so two attempts never merge under one
 #   job id. Scratch writes stalled the first gate launch (13783877; lofi-io-probe 13787408, D-022); only the Slurm log
 #   and job_env.sh's own folders stay on scratch, and the weights are read from the HF cache there.
@@ -64,10 +66,16 @@ if [ -e "$OUT" ] && { [ ! -d "$OUT" ] || [ -n "$(ls -A "$OUT")" ]; }; then
 fi
 mkdir -p "$RUN/summary" "$OUT"
 COPIED=0
+TRIED=0
 copy_out() {   # the run to KEEP, once: its records first, then the held-out clips
   [ "$COPIED" = 1 ] && return 0
-  timeout -k 2 30 cp -a "$RUN/summary" "$OUT/" || return 1
-  if [ -d "$RUN/clips" ]; then timeout -k 2 60 cp -a "$RUN/clips" "$OUT/" || return 1; fi
+  if [ "$TRIED" = 0 ]; then
+    TRIED=1
+    timeout -k 2 30 cp -a "$RUN/summary" "$OUT/" || return 1
+    if [ -d "$RUN/clips" ]; then timeout -k 2 60 cp -a "$RUN/clips" "$OUT/" || return 1; fi
+  else   # the EXIT trap after a copy that failed: the records once more, under a short timeout, and no more
+    timeout -k 2 20 cp -a "$RUN/summary" "$OUT/" || return 1
+  fi
   COPIED=1
 }
 trap 'copy_out || echo "step0: copying $RUN to $OUT failed" >&2' EXIT

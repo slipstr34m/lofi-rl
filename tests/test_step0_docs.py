@@ -123,7 +123,7 @@ def test_the_spec_states_the_deadlines_and_a_minute_spare():
     assert f"generate --deadline-s {S.GENERATE_DEADLINE_S:.0f}" in table
     assert f"render --deadline-s {S.RENDER_DEADLINE_S:.0f}" in table
     budgets = [int(x.replace(",", "")) for x in re.findall(r"\| ([\d,]+) s \|", table)]
-    assert budgets == [1095, 430, 970, 94]
+    assert budgets == [1095, 430, 970, 116], "the copy-out row counts the EXIT trap's retry of the records (R2-5)"
     total = sum(budgets)
     assert f"{total:,} s: {45 * 60 - total} s under {45 * 60:,} s (45 min)" in table and 45 * 60 - total >= 60
 
