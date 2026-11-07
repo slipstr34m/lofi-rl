@@ -27,8 +27,8 @@ first job's scores (each distinct input is scored for real once). The texts are 
 cell's shown example with its first kick grid set from a label) with a short sax phrase and answer, which
 junk.score_row scores in about 5 ms a row instead of 23 on the laptop (the sax expression's compile is most of it).
 
-One test is a strict xfail, in four cases: finding E1 (a run whose generate stopped before its first draw reads bad
-input, not invalid with the stop named). Sound claims: none.
+A run whose generate stopped before its first draw reads invalid with the stop named (finding E1, in four cases).
+Sound claims: none.
 """
 from __future__ import annotations
 
@@ -636,22 +636,23 @@ def test_a_run_stopped_before_its_first_draw_draws_nothing_and_decides_nothing(s
     assert drift["registration"]["found"] is True, "the mark is there; the path is not"
 
 
-@pytest.mark.xfail(strict=True, reason="finding E1: a run whose generate stopped before its first draw reads bad input "
-                   "(exit 2: completions.jsonl, scored.jsonl and step0.json are missing), never invalid with "
-                   "generate.stopped (or generate.probe.passed) named, so those conditions cannot fail for a real run")
 @pytest.mark.parametrize("why", STOPPED)
 def test_a_run_stopped_before_its_first_draw_reads_invalid_naming_why(stopped, why):
+    """Finding E1: generate.json alone, stopped with nothing drawn, is read with no rows, so check reads it invalid
+    with generate.stopped named (and generate.probe.passed for the probe), not bad input: §4.2's re-draw follows."""
     j, repo = stopped[why]
     rc, out, _ = laptop(repo, ["check", str(j.pulled)])
     assert rc == 3 and out.rstrip().splitlines()[-1] == "STEP0_CHECK invalid", out[-600:]
     rc, doc = check(repo, j.pulled)
-    assert "generate.stopped" in doc["validity"]["failed"]
-    if why == "the probe missed":
-        assert "generate.probe.passed" in doc["validity"]["failed"]
+    failed = doc["validity"]["failed"]
+    assert "generate.stopped" in failed and doc["validity"]["of"] == 74 and "requests.missing" in failed
+    assert cond(doc, "generate.stopped")["shows"] == j.doc("generate.json")["stopped"]
+    assert ("generate.probe.passed" in failed) is True, "a pre-check stop never ran the probe; the probe missed"
+    assert cond(doc, "generate.probe.passed")["shows"] == ("false" if why == "the probe missed" else "null")
 
 
 def test_draws_cut_by_generates_deadline_read_invalid_with_generate_stopped_named(world):
-    """Unlike a run stopped before its first draw (finding E1), a run with chunks drawn reads invalid, naming the stop.
+    """Like a run stopped before its first draw (finding E1), a run with chunks drawn reads invalid, naming the stop.
     Each request takes 0.5 s on generate's clock: the probe ends at 2 s, chunk k at 2 + 64k s, and the 15th, forecast
     to end at 898 + 1.25 x 64 = 978 s, is not started against the job's 960 s: 14 x 128 = 1,792 drawn."""
     clock = [0.0]

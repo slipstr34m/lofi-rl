@@ -55,7 +55,12 @@ read as the bare form, and "changed nothing" names no file; a named file the pat
 and clips.json may be absent: their conditions fail instead), a schema that is not the step's, or files that are not
 one run's own, as lofi_rl.gate1.load_run refuses them: scored.jsonl against completions.jsonl (the same rows, each
 text_sha256 its row's text's), step0.json's `n` against scored.jsonl, its `render` block against clips.json
-(select.render_block), and one render-code key in step0.json, sets.json and clips.json.
+(select.render_block), and one render-code key in step0.json, sets.json and clips.json. A scored.jsonl or step0.json
+missing beside generate's records is named as what it is, a scoring defect that §4.2 redoes from the records.
+
+**A run stopped before its first draw** (generate.json alone: `stopped` set, `generated` 0, no completions.jsonl, as a
+pre-check, the probe or the engine's load leaves it) is read with no rows, not as bad input: it reads invalid, naming
+generate.stopped (and generate.probe.passed when the probe missed), and §4.2 draws it again whole.
 
 **Shown, never judged** (§4.1): the backend (as D-020 treats it), the probe, the replay, the timings and the GPU,
 `render.errors_retried`, the per-set near-copy, repair and verbatim counts and the held-out-text counts, item 8's
@@ -307,9 +312,24 @@ def _sets_problems(sets: dict) -> list[str]:
     return problems
 
 
+def stopped_before_drawing(gen: dict | None, files: Mapping[str, Path]) -> bool:
+    """generate stopped before its first draw (a pre-check, the probe, the engine's load or its first call), as
+    generate leaves such a run: generate.json alone, `stopped` set and `generated` 0, and no completions.jsonl (opened
+    only when the draws start); score and render then refuse and write nothing."""
+    return (isinstance(gen, dict) and gen.get("schema") == S.GENERATE_SCHEMA and gen.get("stopped") is not None
+            and _int(gen.get("generated"), 0) and not files["completions.jsonl"].exists())
+
+
+SCORE_LEFT_NOTHING = ("score left no complete records (it writes scored.jsonl, then step0.json, at its end, so its "
+                      "timeout or a crash leaves them absent): with generate's records complete this is a scoring "
+                      "defect, D-020's 'a crash', redone from the run's records with score and render --from OUT "
+                      "--run REDO (spec section 4.2)")
+
+
 def load_run(run_dir: Path | str, redo_dir: Path | str | None = None) -> Run:
     """The run's summary files, or a redo pair's, cross-checked (module doc: bad input). Step0Error lists every
-    problem; none is a validity verdict."""
+    problem; none is a validity verdict. A run whose generate stopped before its first draw (stopped_before_drawing)
+    is read with no rows, so that its conditions say why it decides nothing (finding E1)."""
     out = Path(run_dir)
     redo = None if redo_dir is None else Path(redo_dir)
     problems = [f"{d / 'summary'} is not a folder: a run folder holds summary/ (make pull brings it)"
@@ -325,6 +345,13 @@ def load_run(run_dir: Path | str, redo_dir: Path | str | None = None) -> Run:
             here = redo
         files[name] = here / "summary" / name
     gen = _read_json(files["generate.json"], problems)
+    if not problems and stopped_before_drawing(gen, files):
+        extra = [str(files[name]) for name in S.SUMMARY_FILES if name != "generate.json" and files[name].exists()]
+        if extra:
+            raise Step0Error([f"{', '.join(extra)} beside a generate.json that drew nothing (stopped "
+                              f"{shown(gen.get('stopped'))[:120]}): not one run's files"])
+        return Run(dir=out, redo=redo, files=files, generate=gen, rows=[], unreadable=0, replay=None, scored=[],
+                   step0={}, sets=None, clips=None)
     comp = _read_rows(files["completions.jsonl"], problems, strict=False)
     rep = _read_rows(files["replay.jsonl"], problems, strict=False, need="replay.jsonl" not in MAY_BE_ABSENT)
     sco = _read_rows(files["scored.jsonl"], problems, strict=True)
@@ -334,6 +361,8 @@ def load_run(run_dir: Path | str, redo_dir: Path | str | None = None) -> Run:
     for name, doc in (("generate.json", gen), ("step0.json", step0), ("sets.json", sets), ("clips.json", clips)):
         if doc is not None and doc.get("schema") != S.SCHEMAS[name]:
             problems.append(f"{files[name]}: schema {doc.get('schema')!r}, not {S.SCHEMAS[name]!r}")
+    if comp is not None and not (files["scored.jsonl"].exists() and files["step0.json"].exists()):
+        problems.append(SCORE_LEFT_NOTHING)                   # finding R2-7: the route §4.2 gives it
     if problems:
         raise Step0Error(problems)
     rows, unreadable = comp

@@ -495,6 +495,47 @@ def test_files_that_are_not_one_runs_own_are_bad_input(run_dir, capsys, why, tam
     assert captured.out.rstrip().splitlines()[-1] == "STEP0_CHECK bad input"
 
 
+def _stopped(run_dir: Path, why: str) -> None:
+    """generate.json as generate leaves a run it stopped before its first draw, and nothing else in summary/."""
+    summ = run_dir / "summary"
+    gen = json.loads((summ / "generate.json").read_text())
+    gen.update(stopped=why, generated=0, partial=False, timing={**gen["timing"], "chunks": []},
+               replay={"n": 0, "same": 0, "differ": 0, "by_chunk": [], "stopped": "not run"})
+    if why == "seed probe":
+        gen["probe"]["passed"] = False
+    else:
+        gen.update(engine={}, probe={**gen["probe"], "texts_sha256": None, "distinct": None, "passed": None})
+    for p in summ.iterdir():
+        p.unlink()
+    (summ / "generate.json").write_text(json.dumps(gen, indent=1))
+
+
+@pytest.mark.parametrize("why", ["seed probe", "pre-check: docs/DECISIONS.md holds no 'D-023 mark:' line"])
+def test_a_run_stopped_before_its_first_draw_reads_invalid_not_bad_input(base, run_dir, capsys, why):
+    """Finding E1: generate.json alone, stopped with nothing drawn, reads invalid with the stop named; anything else
+    beside it is not one run's files."""
+    _stopped(run_dir, why)
+    doc = report(run_dir, base[0])
+    v = doc["validity"]
+    assert doc["exit"] == 3 and v["of"] == 74 and {"generate.stopped", "generate.probe.passed", "n",
+                                                   "requests.missing"} <= set(v["failed"])
+    assert cond(doc, "generate.stopped")["shows"] == why and "generate.partial" not in v["failed"]
+    assert C.format_text(doc).rstrip().endswith("STEP0_CHECK invalid")
+    (run_dir / "summary" / "step0.json").write_text("{}")
+    with pytest.raises(Step0Error, match="beside a generate.json that drew nothing"):
+        C.load_run(run_dir)
+
+
+def test_a_score_that_left_no_records_is_named_a_scoring_defect(run_dir):
+    """Finding R2-7: generate's records complete, score killed or crashed before its end (no scored.jsonl, no
+    step0.json): bad input, named as §4.2 routes it."""
+    for name in ("scored.jsonl", "step0.json", "sets.json", "clips.json"):
+        (run_dir / "summary" / name).unlink()
+    with pytest.raises(Step0Error) as err:
+        C.load_run(run_dir)
+    assert "scored.jsonl is missing" in str(err.value) and "a scoring defect, D-020's 'a crash'" in str(err.value)
+
+
 def test_a_redo_folder_must_be_another_folder(run_dir):
     with pytest.raises(Step0Error, match="is the run folder itself"):
         C.load_run(run_dir, run_dir)
