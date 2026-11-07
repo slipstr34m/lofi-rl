@@ -75,9 +75,13 @@ verbatim-line sharing, and per pair whether the two clips differ in A or B; `ite
 `--rescore` the differences between scored.jsonl and junk.score_row over completions.jsonl with this checkout's code
 (meaningful at the run's commit).
 
-**At the run's commit.** The laptop reproduces the run with its own code, so the command refuses (exit 2) a checkout
-whose files the reproduction runs (code_problems: select, requests, the answer constants, the DSL, junk, the streams
-file and the palette) differ from their blobs at the run's latest stamp; check out that commit to check it.
+**At the run's commit.** The laptop reproduces and judges the run with its own code, so the command refuses (exit 2) a
+checkout where a file that can change a verdict, or a byte prereg writes, differs from its blob at the run's latest
+stamp (code_problems): every module check and prereg import, by static analysis (select, requests, the answer
+constants, the DSL, junk, the features' SOURCE_GLOBS and the palette code among them), and the streams file and the
+palette (reproduction_files). Not the checker's own machinery, so a fix to it runs at any commit: check.py, prereg.py,
+path.py, cli.py and __main__.py (MACHINERY); nor docs/DECISIONS.md, which D-023's later lines change. Check out the
+run's commit to check it.
 
 Exit 0 valid, 3 invalid, 2 bad input; the last line printed is `STEP0_CHECK <verdict>` (`--json` prints the report
 alone, with its verdict). Laptop only: git reads the commits (CLAUDE.md §1). Sound claims: none.
@@ -116,10 +120,15 @@ GENERATE_FILES = ("generate.json", "completions.jsonl", "replay.jsonl")      # a
 LATER_FILES = ("scored.jsonl", "step0.json", "sets.json", "clips.json")      # ... and these from REDO, when it has them
 MAY_BE_ABSENT = ("replay.jsonl", "sets.json", "clips.json")     # their conditions fail, or their readouts are absent
 REGEX_GATES = ("G1", "G3", "G4", "G5", "crash")      # D-020: what the regex guarantees (DECISIONS.md:221)
-# what check reproduces a run with, and prereg writes item 8 with (code_problems): the closure of these modules, and
-# these files; check.py and prereg.py are not among them, so a laptop-side fix to the checker runs at any commit
-REPRODUCTION = ("lofi_rl.step0.select", "lofi_rl.step0.requests", "lofi_rl.dsl")
-REPRODUCTION_FILES = ("src/lofi_rl/rl/junk.py", S.STREAMS_FILE, S.PALETTE)
+# what check reproduces and judges a run with and prereg writes its files with (code_problems, findings R3-11, N3):
+# every module check and prereg import, by static analysis, and the data files they read from the checkout. Not the
+# checker's own machinery, so that a laptop-side fix to the checker runs at any commit: check.py and prereg.py,
+# path.py (it reads the path file and git's blobs, and computes this list) and the command line, cli.py and
+# __main__.py. Nor docs/DECISIONS.md, read with git at the stamps' commits and, for Q8(b)'s answer line, from the
+# checkout (prereg.ask_first): D-023 gains lines after the run
+CHECKER = ("lofi_rl.step0.check", "lofi_rl.step0.prereg")
+MACHINERY = tuple(f"src/lofi_rl/step0/{name}.py" for name in ("check", "prereg", "path", "cli", "__main__"))
+REPRODUCTION_DATA = (S.STREAMS_FILE, S.PALETTE)     # requests.load(), and the palette item 8 and rescore load
 STAMP_NAME = "generate.host.stamp = score_stamp = render_stamp"
 REDO_STAMP_NAME = "stamps of the redo pair"
 AMENDMENT = re.compile(r"D-023 redo amendment: run (step0-[\w-]+); changed ([^\n]*)")
@@ -447,18 +456,21 @@ def load_run(run_dir: Path | str, redo_dir: Path | str | None = None) -> Run:
 
 # --------------------------------------------------------------------------------------------- the run's code
 def reproduction_files(repo: Path) -> list[str]:
-    """The files the laptop reproduces a run with (module doc, Reproduced on the laptop; item 8): the import closure of
-    lofi_rl.step0.select and .requests (the rule, the answer constants, the requests) and of lofi_rl.dsl (item 8's
-    copy forms), junk.py (its grams and A and B lines), the streams file and the palette."""
-    return sorted(set(P.closure(repo, REPRODUCTION)) | set(REPRODUCTION_FILES))
+    """The files that can change a verdict of check or a byte prereg writes (module doc, At the run's commit): the
+    import closure of check and prereg in the checkout `repo` (path.closure, imports inside functions included: the
+    rule, the requests and the answer constants, the DSL, junk and what it reaches, the features' SOURCE_GLOBS and the
+    palette code), less MACHINERY, and REPRODUCTION_DATA. tests/test_step0_check.py traces what check and prereg
+    import and read, so the list cannot fall behind the code. Step0Error when the closure cannot be read."""
+    return sorted((set(P.closure(repo, CHECKER)) - set(MACHINERY)) | set(REPRODUCTION_DATA))
 
 
 def code_problems(run: Run, repo: Path) -> list[str]:
-    """Why check or prereg refuses to judge this run here (exit 2; finding R3-11): every file reproduction_files lists
-    must hold, in the checkout `repo`, its blob at the commit of the run's latest stamp (render's, else score's, else
-    generate's: the redo's for a redo pair), so the sets, the counts and item 8 are reproduced with the run's own code
-    and constants. Check and prereg run at the run's commit. A run with no scored rows has nothing to reproduce, and a
-    stamp git cannot resolve is the validity list's to report."""
+    """Why check or prereg refuses to judge this run here (exit 2; findings R3-11, N3): every file reproduction_files
+    lists must hold, in the checkout `repo`, its blob at the commit of the run's latest stamp (render's, else score's,
+    else generate's: the redo's for a redo pair), so the sets, the counts, the conditions and item 8 come from the
+    run's own code and constants. Check and prereg run at the run's commit. A run with no scored rows has nothing to
+    reproduce, and a stamp git cannot resolve is the validity list's to report; a closure that cannot be read, or a
+    commit git cannot list, is bad input (Step0Error), never a pass."""
     if not run.scored:
         return []
     stamp = next((p for p in map(stamp_fields, (run.step0.get("render_stamp"), run.step0.get("score_stamp"),
@@ -467,10 +479,10 @@ def code_problems(run: Run, repo: Path) -> list[str]:
         return []
     try:
         full = resolve(repo, stamp[0])
-        files = reproduction_files(repo)
-        at = P.commit_blobs(repo, full, files)
     except Step0Error:
         return []
+    files = reproduction_files(repo)
+    at = P.commit_blobs(repo, full, files)
     differ = []
     for rel in files:
         try:

@@ -653,6 +653,99 @@ def test_check_and_prereg_run_at_the_runs_commit(base, run_dir, repo_copy, monke
             "src/lofi_rl/dsl/canon.py"} <= set(C.reproduction_files(repo_copy))
 
 
+FEATURES = "src/lofi_rl/scoring/features.py"
+
+
+def test_a_later_commit_that_widens_source_globs_is_refused_not_read_invalid(base, run_dir, repo_copy, monkeypatch,
+                                                                            capsys):
+    """Finding N3: check hashes the render stamp's tree with the checkout's features.SOURCE_GLOBS for
+    render_code.source_sha8, so a later commit that widens them reads a valid run invalid; the guard refuses that
+    checkout instead (exit 2), naming features.py and the commit to check out, and prereg writes nothing."""
+    text = (repo_copy / FEATURES).read_text()
+    wider = text.replace('"src/lofi_rl/scoring/render_pool.py")',
+                         '"src/lofi_rl/scoring/render_pool.py", "src/lofi_rl/scoring/protocol.py")')
+    assert wider != text
+    L.commit(repo_copy, "Phase 2 widens SOURCE_GLOBS", {FEATURES: wider})
+    import lofi_rl.scoring.features as F
+    monkeypatch.setattr(F, "SOURCE_GLOBS", F.SOURCE_GLOBS + ("src/lofi_rl/scoring/protocol.py",))   # the checkout's
+    monkeypatch.setattr(C, "ROOT", repo_copy)
+    C._source_sha8_at.cache_clear()
+    try:
+        assert report(run_dir, repo_copy)["validity"]["failed"] == ["render_code.source_sha8"], "what it would read"
+        assert cli.main(["check", str(run_dir)]) == 2
+        err = capsys.readouterr().err
+        assert FEATURES in err and f"check out {base[1][:12]}" in err
+        rc, lines = PR.prereg(run_dir, write=True, repo=repo_copy)
+        assert rc == 2 and FEATURES in lines[0] and not (repo_copy / S.HELDOUT_FILE).exists()
+    finally:
+        C._source_sha8_at.cache_clear()
+
+
+def test_a_later_commit_of_the_palette_code_is_refused(base, run_dir, repo_copy, monkeypatch, capsys):
+    """Finding N3: item 8 loads the palette through palette.py, so a later edit of it is refused too (exit 2)."""
+    rel = "src/lofi_rl/palette.py"
+    L.commit(repo_copy, "a later edit of palette.py", {rel: (repo_copy / rel).read_text() + "# a later edit\n"})
+    monkeypatch.setattr(C, "ROOT", repo_copy)
+    assert cli.main(["check", str(run_dir)]) == 2 and rel in capsys.readouterr().err
+
+
+def test_a_checkout_whose_closure_cannot_be_read_is_bad_input(base, run_dir, repo_copy, monkeypatch, capsys):
+    """Finding N3: the guard's list is derived from the checkout's imports, so a checkout where it cannot be derived
+    (an import of a lofi_rl module with no file) is bad input (exit 2), never a guard that passes."""
+    rel = "src/lofi_rl/step0/select.py"
+    L.commit(repo_copy, "an import of no module", {
+        rel: (repo_copy / rel).read_text() + "\n\ndef _later():\n    import lofi_rl.no_such_module  # noqa: F401\n"})
+    monkeypatch.setattr(C, "ROOT", repo_copy)
+    assert cli.main(["check", str(run_dir)]) == 2
+    assert "lofi_rl.no_such_module is imported but has no file" in capsys.readouterr().err
+
+
+# a fresh interpreter whose lofi_rl is the checkout's (PYTHONPATH): every file opened for reading and every module
+# imported (sys.modules before and after) while `check RUN` judges a run and `prereg RUN --write` writes its files
+TRACER = r'''
+import builtins, io, json, os, sys
+read = set()
+_open = io.open
+
+
+def traced(file, mode="r", *args, **kwargs):
+    if isinstance(file, (str, bytes, os.PathLike)) and not set(str(mode)) & set("wax+"):
+        read.add(os.path.realpath(os.fsdecode(file)))
+    return _open(file, mode, *args, **kwargs)
+
+
+io.open = builtins.open = traced
+before = set(sys.modules)
+from lofi_rl.step0 import cli
+rcs = [cli.main(["check", sys.argv[1]]), cli.main(["prereg", sys.argv[1], "--write"])]
+modules = sorted({os.path.realpath(m.__file__) for name, m in list(sys.modules.items())
+                  if name not in before and getattr(m, "__file__", None)})
+with _open(sys.argv[2], "w") as f:
+    json.dump({"rcs": rcs, "modules": modules, "read": sorted(read)}, f)
+'''
+
+
+def test_the_guard_covers_every_repo_file_check_and_prereg_import_or_read(run_dir, repo_copy, tmp_path):
+    """Finding N3: check and prereg, run as the laptop runs them on a valid run (the checkout is the run's repo),
+    import and read only repo files that reproduction_files lists, but the checker's own machinery (MACHINERY) and
+    docs/DECISIONS.md, which D-023's later lines change; so the guard's list cannot fall behind the code."""
+    out = tmp_path / "trace.json"
+    p = subprocess.run([sys.executable, "-B", "-c", TRACER, str(run_dir), str(out)], capture_output=True, text=True,
+                       timeout=600, env={**os.environ, "PYTHONPATH": str(repo_copy / "src")}, cwd=repo_copy)
+    assert p.returncode == 0, (p.stdout + p.stderr)[-3000:]
+    trace = json.loads(out.read_text())
+    assert trace["rcs"] == [0, 0], "the run reads valid and prereg writes both files"
+    root = os.path.realpath(repo_copy) + os.sep
+    touched = {f[len(root):] for f in trace["modules"] + trace["read"] if f.startswith(root)}
+    assert {FEATURES, "src/lofi_rl/palette.py", "src/lofi_rl/rl/junk.py", "src/lofi_rl/step0/select.py",
+            "src/lofi_rl/step0/check.py", S.STREAMS_FILE, S.PALETTE} <= touched, "the trace sees imports and reads"
+    guarded = set(C.reproduction_files(repo_copy))
+    unguarded = touched - guarded - set(C.MACHINERY) - {S.DECISIONS}
+    assert not unguarded, sorted(unguarded)
+    assert set(C.MACHINERY) == {f"src/lofi_rl/step0/{m}.py" for m in ("check", "prereg", "path", "cli", "__main__")}
+    assert not guarded & set(C.MACHINERY) and S.DECISIONS not in guarded and S.PATH_FILE not in guarded
+
+
 def test_a_redo_folder_must_be_another_folder(run_dir):
     with pytest.raises(Step0Error, match="is the run folder itself"):
         C.load_run(run_dir, run_dir)
