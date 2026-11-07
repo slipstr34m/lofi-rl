@@ -24,19 +24,22 @@ line; the rest in lofi_rl.brief_streams' layout), and byte-identical when writte
 
 The run must pass `check` (lofi_rl.step0.check.evaluate, with git at its stamps' commits), at the run's commit
 (check.code_problems): an invalid run is refused (exit 3), and bad input is exit 2, nothing written either way. Under
-Q8's (b) (SHORT_RULE "ask") a short held-out or Ref_b brief is refused too (exit 2), naming the line to add, until the
-checkout's docs/DECISIONS.md holds Shresth's answer for the run as this one line, read as generate reads the mark
-(ask_first, finding N2):
+Q8's (b) (SHORT_RULE "ask") a short held-out or Ref_b brief is refused too (exit 2), naming the line to add, until
+D-023's entry in the checkout's docs/DECISIONS.md holds Shresth's answer for the run as this line (ask_first; findings
+N2, N7):
 
     D-023 short answer: run step0-<job>; as (a)
 
-DECISIONS.md is never compared with the run's commit, so the line, written after the run, needs no redo and no
-constant changed; the short briefs are then handled as Q8(a) handles them, and both files' rule.answers.Q8 records the
-line. Any other answer for the run keeps the refusal; under SHORT_RULE "report" nothing is read, and Q8 records the
-rule alone. Without --write the two files' sizes and sha256 are printed and nothing is written; with it each is
-written unless it is already there byte for byte. A different existing file is never replaced (exit 2, neither
-written): there is no --force, and a new set is a new file version with its own DECISIONS entry (§4.2). Laptop only.
-Sound claims: none.
+It is read only as a line of its own (short_answers): in D-023's entry, outside HTML comments, with nothing before its
+head but the indent, one list bullet and what wraps the line (backticks, bold, italics), and nothing after the answer
+but that wrap's close and a period; a fenced or indented line reads too. So a sentence, a note or prereg's own refusal
+that quotes the line, a blockquote, a table, a comment or another entry never answers for him. DECISIONS.md is never
+compared with the run's commit, so the line, written after the run, needs no redo and no constant changed; the short
+briefs are then handled as Q8(a) handles them, and both files' rule.answers.Q8 records the line. Any other answer for
+the run keeps the refusal; under SHORT_RULE "report" nothing is read, and Q8 records the rule alone. Without --write
+the two files' sizes and sha256 are printed and nothing is written; with it each is written unless it is already there
+byte for byte. A different existing file is never replaced (exit 2, neither written): there is no --force, and a new
+set is a new file version with its own DECISIONS entry (§4.2). Laptop only. Sound claims: none.
 """
 from __future__ import annotations
 
@@ -52,7 +55,6 @@ import lofi_rl.step0 as S
 from lofi_rl import brief_streams
 from lofi_rl.step0 import Step0Error, short
 from lofi_rl.step0 import check as C
-from lofi_rl.step0 import requests as R
 
 WIDTH = brief_streams.WIDTH             # a flat value that fits in WIDTH columns is written on one line
 CLIP_FIELDS = ("k", "i", "draw_seed", "text_sha256", "canon_sha256", "clip_id", "audio_sha256", "lufs",
@@ -60,7 +62,13 @@ CLIP_FIELDS = ("k", "i", "draw_seed", "text_sha256", "canon_sha256", "clip_id", 
 DRAW_FIELDS = ("k", "i", "draw_seed", "text_sha256", "canon_sha256")     # a Ref_b or pool draw (not rendered here)
 SHORT_HEAD = "D-023 short answer:"      # Q8(b): the line D-023 gains for a run whose short briefs Shresth answered
 SHORT_AS_A = "as (a)"                   # the one answer prereg applies: the short briefs handled as Q8(a) handles them
-SHORT = re.compile(r"D-023 short answer: run (step0-[\w-]+); (.*)")
+# his answer is a line of its own (short_answers, finding N7): after the indent, at most one list bullet and what wraps
+# the line (backticks, bold, italics), its head and `run <run>; ` come first, and the answer is the rest
+SHORT = re.compile(r"(?:(?:[-*+]|\d+[.)])\s+)?(?P<wrap>[`*_]*)" + re.escape(SHORT_HEAD)
+                   + r" run (?P<run>step0-[\w-]+); (?P<answer>.*)")
+D023 = "## D-023 ("                     # D-023's heading: its entry runs to the next heading of its level (HEADING)
+HEADING = re.compile(r"#{1,2} ")
+FENCE = re.compile(r"\s*(`{3,}|~{3,})")
 
 
 # --------------------------------------------------------------------------------------------- the layout
@@ -355,24 +363,57 @@ def short_line(run_name: str) -> str:
     return f"{SHORT_HEAD} run {run_name}; {SHORT_AS_A}"
 
 
+def d023_lines(decisions: str) -> list[str]:
+    """The lines of D-023's entry in a DECISIONS.md text that his answer may stand on (finding N7): from its heading
+    (D023) to the next heading of its level, less the lines inside HTML comments, as kit.gates leaves them out of an
+    approval. A fenced block's lines are read, since D-023 sets its verbatim lines in fences; a heading or a comment's
+    start inside one is its text."""
+    out, inside, fence, comment = [], False, None, False
+    for line in decisions.splitlines():
+        if comment:
+            comment = "-->" not in line
+            continue
+        m = FENCE.match(line)
+        if m:
+            mark = m.group(1)
+            if fence is None:
+                fence = mark
+            elif mark[0] == fence[0] and len(mark) >= len(fence) and line.strip() == mark:
+                fence = None
+            continue
+        if fence is None and "<!--" in line and "-->" not in line.split("<!--", 1)[1]:
+            comment = True
+        elif fence is None and HEADING.match(line):
+            inside = line.startswith(D023)
+        elif inside:
+            out.append(line)
+    return out
+
+
 def short_answers(decisions: str, run_name: str) -> list[str]:
-    """The answers D-023's short-answer lines give the run `run_name` in a DECISIONS.md text, in order. Each is read as
-    generate reads the mark (requests.find_marks): from its head to the next backtick or double quote, or its line's
-    end, less trailing spaces, periods, asterisks, underscores and quotes, so a line in backticks, in a fenced or
-    indented block or in bold, or with a closing period, reads as the bare form; then `run <run>; <answer>` must be the
-    rest, as the redo amendment's form is (check.AMENDMENT), so a bold head is no such line. A note after the answer
-    is part of it."""
-    found = (SHORT.fullmatch(body) for body in R.find_marks(decisions, SHORT_HEAD))
-    return [m.group(2) for m in found if m is not None and m.group(1) == run_name]
+    """The answers D-023's short-answer lines give the run `run_name` in a DECISIONS.md text, in order (findings N2,
+    N7). Each is a line of its own in D-023's entry (d023_lines): after the indent, at most one list bullet and what
+    wraps the line (backticks, bold or italics), it starts with the head and `run <run>; `, and its answer is the rest
+    less that wrap's close and a closing period. So the line in a fenced or indented block, wrapped, or with a closing
+    period reads as the bare form, and a note after the answer is part of it; a line that quotes it after other text
+    (a sentence, prereg's own refusal, a blockquote, a table), one in a comment or in another entry, and a bold head
+    (**D-023 short answer:**) are no answer, as kit.gates reads an approval only on a line of its own."""
+    out = []
+    for line in d023_lines(decisions):
+        m = SHORT.fullmatch(line.strip())
+        if m is not None and m.group("run") == run_name:
+            out.append(m.group("answer").removesuffix(".").removesuffix(m.group("wrap")[::-1]).removesuffix("."))
+    return out
 
 
 def ask_first(run: C.Run, repo: Path) -> tuple[str | None, str | None]:
-    """Q8's (b), SHORT_RULE "ask" (findings R1-2, N2): a short held-out or Ref_b brief waits for Shresth's answer,
-    which D-023 records as one line (short_line) in the checkout's docs/DECISIONS.md, read by short_answers. That file
-    is never compared with the run's commit (check.code_problems), so the line, written after the run, needs no redo
-    and no constant changed. (The refusal, naming the briefs and the line to add, or None; the line applied, or None.)
-    Only that line, with no other answer for the run, lifts the refusal: the short briefs are then handled as Q8(a)
-    handles them. A short pool brief is reported under either answer, and under "report" nothing is read."""
+    """Q8's (b), SHORT_RULE "ask" (findings R1-2, N2, N7): a short held-out or Ref_b brief waits for Shresth's answer,
+    which D-023 records as one line (short_line) of its entry in the checkout's docs/DECISIONS.md, read by
+    short_answers. That file is never compared with the run's commit (check.code_problems), so the line, written after
+    the run, needs no redo and no constant changed. (The refusal, naming the briefs and the line to add, or None; the
+    line applied, or None.) Only that line, with no other answer for the run, lifts the refusal: the short briefs are
+    then handled as Q8(a) handles them. A short pool brief is reported under either answer, and under "report"
+    nothing is read."""
     if S.SHORT_RULE != "ask":
         return None, None
     short = [f"{name} {e['brief_id']}" for name in ("heldout", "refb") for e in run.entries(name) if e.get("short")]
@@ -390,7 +431,8 @@ def ask_first(run: C.Run, repo: Path) -> tuple[str | None, str | None]:
     return (f"refused: SHORT_RULE is Q8's (b), ask: {len(short)} held-out or Ref_b briefs are short ("
             f"{', '.join(short[:5])}{', ...' if len(short) > 5 else ''}){heard}; Shresth's answer goes into D-023 "
             f"first: if he answers (a) for them (the held-out set holds fewer tuples, a short Ref_b brief leaves run "
-            f"1's [0, 400)), add the line `{line}` to {S.DECISIONS} and run prereg again: nothing written"), None
+            f"1's [0, 400)), add the line `{line}` to {S.DECISIONS}, alone on its line in D-023's entry, and run "
+            "prereg again: nothing written"), None
 
 
 # --------------------------------------------------------------------------------------------- the command

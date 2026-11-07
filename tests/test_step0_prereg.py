@@ -6,8 +6,9 @@ written again, and from a copy of the run elsewhere; an invalid run refused and 
 different existing file never replaced, neither file written; item 8's readouts, with the A/B-differ flags of every
 pair, on a run whose held-out tuple is hand-built; a redo pair recorded with its files; no LoopScript text in either
 file; and nothing written but the two files: no .ls file, nothing under data/ or inbox/. Under Q8(b), a short
-held-out or Ref_b brief refused until DECISIONS.md holds the run's short-answer line, read as the mark is read, and
-with it the files Q8(a) writes, the line recorded; under "report", the bytes the code wrote before that line existed.
+held-out or Ref_b brief refused until D-023's entry in DECISIONS.md holds the run's short-answer line on a line of its
+own (never a sentence, a comment or another entry that quotes it), and with it the files Q8(a) writes, the line
+recorded; under "report", the bytes the code wrote before that line existed.
 
 Synthetic runs come from tests/helpers_step0.py, stamped by tests/helpers_step0_laptop.py; nothing here reads a
 pulled run, renders or listens.
@@ -368,10 +369,10 @@ CASES = [
 
 @pytest.mark.parametrize("why, lines, writes", CASES, ids=[c[0] for c in CASES])
 def test_under_q8b_his_answer_line_lifts_the_refusal(short_run, repo, tmp_path, monkeypatch, why, lines, writes):
-    """Finding N2: under SHORT_RULE "ask", prereg reads Shresth's answer for this run from one line of the checkout's
-    docs/DECISIONS.md, read as generate reads the mark (requests.find_marks), at a later commit that changes nothing
-    check compares with the run's commit, so no redo. Only that run's line saying "as (a)", with no other answer for
-    it, writes the files; anything else refuses, naming the line to add, with nothing written."""
+    """Finding N2: under SHORT_RULE "ask", prereg reads Shresth's answer for this run from one line of D-023's entry in
+    the checkout's docs/DECISIONS.md (prereg.short_answers), at a later commit that changes nothing check compares
+    with the run's commit, so no redo. Only that run's line saying "as (a)", with no other answer for it, writes the
+    files; anything else refuses, naming the line to add, with nothing written."""
     monkeypatch.setattr(S, "SHORT_RULE", "ask")
     if lines:
         answered(repo, *lines)
@@ -390,6 +391,54 @@ def test_under_q8b_his_answer_line_lifts_the_refusal(short_run, repo, tmp_path, 
         assert tree_files(tmp_path) == before, "nothing written"
         if why in ("another answer", "two answers for the run"):
             assert f"{S.DECISIONS} answers {RUN} " in out[-1], "what D-023 says is named"
+
+
+QUOTED = [      # finding N7: text that quotes the line, or holds it where no answer stands
+    ("prereg's own refusal, pasted", None),         # the refusal itself, as a session records a pending block
+    ("a not-yet note", (f"- Not yet: Shresth has not answered. Once he does, add {ANSWER}",)),
+    ("a sentence declining it, in backticks", (f"- Shresth declined `{ANSWER}` for this run; he wants (b) again.",)),
+    ("a sentence, in double quotes", (f'- He said no to "{ANSWER}".',)),
+    ("an HTML comment block", ("<!--", ANSWER, "-->")),
+    ("a one-line HTML comment", (f"<!-- {ANSWER} -->",)),
+    ("a blockquote", (f"> {ANSWER}",)),
+    ("struck through", (f"- ~~{ANSWER}~~",)),
+    ("a table cell", ("| question | answer |", "|---|---|", f"| Q8 | {ANSWER} |")),
+    ("under the next entry's heading", ("## D-024 (synthetic): the next entry", "", f"- {ANSWER}")),
+]
+READ = [        # ... and the line of its own, as house style writes it, still reads
+    ("in italics", (f"_{ANSWER}_",)),
+    ("a numbered item", (f"1. {ANSWER}",)),
+    ("after a comment that closes", ("<!-- a note", "on two lines -->", f"- {ANSWER}")),
+    ("before the next entry", (f"- {ANSWER}", "", "## D-024 (synthetic): the next entry", "- something else")),
+    ("in a fence that holds a comment's start", ("  ```", "  <!--", f"  {ANSWER}", "  ```")),
+]
+
+
+@pytest.mark.parametrize("why, lines, writes", [(*c, False) for c in QUOTED] + [(*c, True) for c in READ],
+                         ids=[c[0] for c in QUOTED + READ])
+def test_under_q8b_his_answer_is_only_a_line_of_its_own_in_d023(short_run, repo, tmp_path, monkeypatch, why, lines,
+                                                                 writes):
+    """Finding N7: the answer is read only as a line of its own in D-023's entry, outside HTML comments, as kit.gates
+    reads an approval: a sentence, a note or prereg's own refusal that quotes the line, a comment, a blockquote, a
+    table or another entry is no answer at all (nothing is named as one, and the refusal still asks for the line),
+    so no text that only mentions the line writes the files before Shresth answered. A fenced line reads (D-023 fences
+    its verbatim lines), and so does the line in italics or as a numbered item."""
+    monkeypatch.setattr(S, "SHORT_RULE", "ask")
+    if lines is None:
+        rc, out = PR.prereg(short_run, repo=repo)
+        assert rc == 2 and f"`{ANSWER}`" in out[-1], out
+        lines = (f"- **Outcome (pending his answer to Q8(b)):** prereg said: {out[-1]}",)
+    answered(repo, *lines)
+    before = tree_files(tmp_path)
+    rc, out = PR.prereg(short_run, write=True, repo=repo)
+    if writes:
+        assert rc == 0 and out[-2] == f"wrote {S.HELDOUT_FILE}, {S.RUN_FILE}", out
+        for rel in FILES:
+            assert json.loads((repo / rel).read_text())["rule"]["answers"]["Q8"]["short_answer"] == ANSWER
+    else:
+        assert rc == 2 and out[-1].startswith(f"refused: SHORT_RULE is Q8's (b), ask: {ASKED}"), out
+        assert f"add the line `{ANSWER}` to {S.DECISIONS}" in out[-1] and f" answers {RUN} " not in out[-1], out
+        assert tree_files(tmp_path) == before, "nothing written"
 
 
 def test_under_q8b_his_answer_handles_the_short_briefs_as_q8a_does(short_run, base, repo, tmp_path, monkeypatch):
