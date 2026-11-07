@@ -51,10 +51,10 @@ SETS: tuple[str, ...] = ("heldout", "refb", "pool")
 SET_STREAM = MappingProxyType({"heldout": "rm_heldout", "refb": "train", "pool": "train"})
 RUN1 = (0, 400)                         # run 1's train briefs, 596:[0, 400) (DECISIONS.md:433): Ref_b's and the pool's
 POOL_N = 220                            # the seed pool's briefs (taste_pipeline.md:329, :349): 220 x 3 = 660
-PROBE_SEED = 1                          # the seed probe's seed (spec §2.3; not among the file's 6,800 draw seeds)
+PROBE_SEEDS = (1, 2)                    # the seed probe's seeds (spec §2.3; none among the file's 6,800 draw seeds)
 PROBE_CELL = ("low", "hopeful")         # its cell: no identical canonical text in 1,326 same-cell pairs of the gate run
-PROBE_N = 4                             # identical requests in one call
-PROBE_SAME = 2                          # it passes when at least this many of its texts are identical
+PROBE_N = 3                             # identical requests at each seed, all in one call
+PROBE_SAME = 2                          # it passes when, at each seed, this many are identical and the seeds differ
 ENGINE_SEED = 0                         # LLM(seed=...): the smoke's (smoke.py:296); every request carries its own
 GPU_MEM, MAX_MODEL_LEN = 0.85, 4096     # the gate run's engine settings (generate.json `engine`)
 CHUNK = 128                             # requests per engine call (junk.DEFAULT_CHUNK)
@@ -175,7 +175,7 @@ BLOCKS = MappingProxyType({
     "generate.json:path_file": ("sha256", "blobs_ok"),
     "generate.json:model": ("repo", "revision"),
     "generate.json:palette": ("id", "sha256", "path"),
-    "generate.json:probe": ("seed", "cell", "n", "texts_sha256", "distinct", "passed"),
+    "generate.json:probe": ("seeds", "cell", "n", "texts_sha256", "distinct", "passed"),
     "generate.json:replay": ("n", "same", "differ", "by_chunk", "stopped"),
     "generate.json:timing": ("load_s", "probe_s", "chunks", "gen_s", "tokens", "tok_per_s", "replay_s", "total_s"),
     "generate.json:host": ("node", "job", "stamp", "gpu"),

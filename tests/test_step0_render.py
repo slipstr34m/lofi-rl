@@ -498,8 +498,8 @@ def test_generate_score_and_render_on_fakes_give_the_synthetic_run(tmp_path, mon
 
     def text_of(cell, seed):
         r = by_seed.get(seed)
-        if r is None:                                   # the probe: the helper's probe texts
-            t = H.variant_text(cell, "a")
+        if r is None:                                   # the probe: the helper's probe text at each seed
+            t = H.variant_text(cell, H.PROBE_LABELS[S.PROBE_SEEDS.index(seed)])
             return t, "stop", H.n_tokens(t, "stop"), S.PROMPT_TOKENS[cell]
         return r["text"], r["finish_reason"], r["n_tokens"], r["prompt_tokens"]
     E.draw_only(monkeypatch, table)

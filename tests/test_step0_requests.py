@@ -140,15 +140,15 @@ def test_the_registered_values_are_what_the_code_and_files_make_today():
     assert dict(S.V0_SAMPLING) == junk.SAMPLING and list(S.V0_SAMPLING) == list(junk.SAMPLING)
     assert S.BACKEND == junk.STRUCTURED_BACKEND and S.CHUNK == junk.DEFAULT_CHUNK
     assert S.DRAWS == brief_streams.DRAWS and dict(S.M) == {"heldout": 4, "refb": 4, "pool": 3}
-    assert S.RULE == "step0-select/1" and S.ENGINE_SEED == 0 and S.PROBE_SEED == 1
+    assert S.RULE == "step0-select/1" and S.ENGINE_SEED == 0 and S.PROBE_SEEDS == (1, 2)
     assert "/".join(S.PROBE_CELL) in S.PROMPT_TOKENS and S.PROBE_SAME <= S.PROBE_N
     assert S.GENERATE_DEADLINE_S == 960 and S.RENDER_DEADLINE_S == 900 and S.REPLAY_CHUNK == 160
 
 
-def test_probe_seed_is_none_of_the_files_6800_draw_seeds():
+def test_the_probe_seeds_are_none_of_the_files_6800_draw_seeds():
     seeds = [s for st in R.load().values() for p in st.picks for s in p.draw_seeds]
     assert len(seeds) == len(set(seeds)) == 6800
-    assert S.PROBE_SEED not in set(seeds)
+    assert not set(S.PROBE_SEEDS) & set(seeds) and len(set(S.PROBE_SEEDS)) == len(S.PROBE_SEEDS) == 2
 
 
 def test_prompt_tokens_hold_one_count_per_cell():

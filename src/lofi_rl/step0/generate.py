@@ -16,7 +16,7 @@ lofi_rl.step0.requests lists for STREAMS, request i as row i of DIR/summary/comp
      requests.mark_line gives STREAMS and RULE, so nothing is drawn under rules or streams not registered first;
    - the path file: every file docs/prereg/D-023_step0_path.txt lists hashes to its blob in this tree
      (path.check_tree, no git);
-   - PROBE_SEED is none of the streams file's draw seeds.
+   - PROBE_SEEDS are distinct and none of them is one of the streams file's draw seeds.
 2. **The engine**: junk.load_engine(MODEL@MODEL_REVISION, seed=ENGINE_SEED, the gate run's gpu_mem and max_model_len,
    xgrammar pinned and read back), in bf16 and eager mode as junk loads it. vLLM's StructuredOutputsParams is imported
    first, so a vLLM without it fails before the model loads.
@@ -24,9 +24,11 @@ lofi_rl.step0.requests lists for STREAMS, request i as row i of DIR/summary/comp
    construction (VllmEngine.sampling), with one StructuredOutputsParams `so` built once and shared, as junk shared one
    SamplingParams across its requests. Each row records its draw_seed and sp_seed, read back from the object it was
    sent with.
-4. **The seed probe**, before any draw: one call of PROBE_N identical requests (the low/hopeful cell's messages, seed
-   PROBE_SEED, the registered sampling and grammar). It passes when at least PROBE_SAME of the texts are identical; a
-   miss stops generate (`stopped: "seed probe"`, exit 2) with nothing drawn. Only the texts' sha256 are kept.
+4. **The seed probe**, before any draw: one call of PROBE_N identical requests at each of PROBE_SEEDS (the low/hopeful
+   cell's messages, the registered sampling and grammar). It passes when, at each seed, at least PROBE_SAME of its
+   texts are identical and the seeds' most common texts all differ, so an engine that gives every request one
+   randomness, or every request the call's first SamplingParams, misses as one that ignores seeds does (finding
+   R2-3); a miss stops generate (`stopped: "seed probe"`, exit 2) with nothing drawn. Only the texts' sha256 are kept.
 5. **The draws**: the requests in order, in chunks of --chunk, one engine.chat(convs, [sp, ...]) call each, the
    outputs taken in input order and their count checked. Each chunk's rows are appended to completions.jsonl, flushed
    and fsynced, and generate.json is rewritten, so a kill keeps what was done. No chunk starts that junk's forecast
@@ -236,8 +238,10 @@ def prechecks(root: Path, meta: dict) -> tuple[Plan | None, list[str]]:
             reqs = R.requests(root / S.STREAMS_FILE, streams=streams)
         except Step0Error as err:
             problems += err.problems
-        if S.PROBE_SEED in {s for st in streams.values() for p in st.picks for s in p.draw_seeds}:
-            problems.append(f"PROBE_SEED {S.PROBE_SEED} is one of {S.STREAMS_FILE}'s draw seeds")
+        seeds = {s for st in streams.values() for p in st.picks for s in p.draw_seeds}
+        problems += [f"PROBE_SEEDS {s} is one of {S.STREAMS_FILE}'s draw seeds" for s in S.PROBE_SEEDS if s in seeds]
+        if len(set(S.PROBE_SEEDS)) != len(S.PROBE_SEEDS) or len(S.PROBE_SEEDS) < 2:
+            problems.append(f"PROBE_SEEDS {S.PROBE_SEEDS!r}: the probe needs two seeds or more, all distinct")
     if reqs is not None:
         meta["requested"], meta["streams"] = len(reqs), R.stream_counts(reqs)
     if pal is not None and not failed:
@@ -278,13 +282,22 @@ def _conv(plan: Plan, cell: str) -> list[dict]:
     return [dict(m) for m in plan.msgs[cell]]       # fresh dicts for every request, as build_messages gives them
 
 
+def probe_passed(shas: Sequence[str], n: int = S.PROBE_N) -> bool:
+    """The probe's verdict on its texts' sha256, PROBE_N a seed in PROBE_SEEDS' order: at each seed at least
+    PROBE_SAME identical, and the seeds' most common texts all different."""
+    groups = [shas[j:j + n] for j in range(0, len(shas), n)]
+    tops = [Counter(g).most_common(1)[0] for g in groups if g]
+    return (len(tops) == len(S.PROBE_SEEDS) and all(c >= S.PROBE_SAME for _, c in tops)
+            and len({t for t, _ in tops}) == len(tops))
+
+
 def probe(engine, so, plan: Plan) -> tuple[dict, float]:
     """Step 4 (module doc): generate.json's `probe` and its time."""
-    outs, dt = _chat(engine, [_conv(plan, PROBE) for _ in range(S.PROBE_N)],
-                     _sampling(engine, so, [S.PROBE_SEED] * S.PROBE_N))
+    seeds = [s for s in S.PROBE_SEEDS for _ in range(S.PROBE_N)]
+    outs, dt = _chat(engine, [_conv(plan, PROBE) for _ in seeds], _sampling(engine, so, seeds))
     shas = [J.sha256_text(c.text) for c in outs]
-    return ({"seed": S.PROBE_SEED, "cell": PROBE, "n": S.PROBE_N, "texts_sha256": shas, "distinct": len(set(shas)),
-             "passed": max(Counter(shas).values()) >= S.PROBE_SAME}, round(dt, 2))
+    return ({"seeds": list(S.PROBE_SEEDS), "cell": PROBE, "n": S.PROBE_N, "texts_sha256": shas,
+             "distinct": len(set(shas)), "passed": probe_passed(shas)}, round(dt, 2))
 
 
 def _row(plan: Plan, r, sp, c: J.Completion) -> dict:
@@ -376,7 +389,7 @@ def _finish(meta: dict, summ: Path, t0: float, rc: int, stopped: str | None = No
     word = {0: "OK", 2: "STOPPED"}.get(rc, "FAILED")
     pr, rp = meta["probe"], meta["replay"]
     probe_line = "not run" if pr["passed"] is None else (
-        f"{'passed' if pr['passed'] else 'missed'} ({pr['distinct']} distinct of {pr['n']})")
+        f"{'passed' if pr['passed'] else 'missed'} ({pr['distinct']} distinct of {len(pr['texts_sha256'])})")
     backend = ((meta.get("constrained") or {}).get("backend") or {}).get("backend")
     print(f"GENERATE_{word} {meta['generated']}/{meta['requested']} stopped={meta['stopped']} probe={probe_line} "
           f"replay={rp['same']}/{rp['n']} same (stopped={rp['stopped']}) tok/s={timing['tok_per_s']} backend={backend}",
@@ -393,8 +406,8 @@ def generate(a: argparse.Namespace, root: Path) -> int:
     meta.update(schema=S.GENERATE_SCHEMA, partial=True, generated=0,
                 model={"repo": S.MODEL, "revision": S.MODEL_REVISION}, sampling=dict(J.SAMPLING),
                 per_request_seed=True, engine={},
-                probe={"seed": S.PROBE_SEED, "cell": PROBE, "n": S.PROBE_N, "texts_sha256": None, "distinct": None,
-                       "passed": None},
+                probe={"seeds": list(S.PROBE_SEEDS), "cell": PROBE, "n": S.PROBE_N, "texts_sha256": None,
+                       "distinct": None, "passed": None},
                 replay={"n": 0, "same": 0, "differ": 0, "by_chunk": [], "stopped": "not run"},
                 timing={"load_s": None, "probe_s": None, "chunks": [], "gen_s": None, "tokens": None,
                         "tok_per_s": None, "replay_s": None, "total_s": None},

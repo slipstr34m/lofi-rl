@@ -135,14 +135,16 @@ def draw_text(r) -> tuple[str, str]:
 
 
 def answers(differ_on_replay=frozenset()):
-    """The fake engine's text_of(cell, key): a draw's text by its seed; the probe's seed (or, with seeds ignored, a
+    """The fake engine's text_of(cell, key): a draw's text by its seed; each probe seed (or, with seeds ignored, a
     running count) another passing text; a seed in `differ_on_replay` answers its second request with another text."""
     seen: Counter = Counter()
 
     def text_of(cell, key):
         r = DRAWS.get(key)
         if r is None:
-            t, finish = text(cell, "a" if key == S.PROBE_SEED else H.LABELS[key % len(H.LABELS)]), "stop"
+            t = text(cell, H.PROBE_LABELS[S.PROBE_SEEDS.index(key)] if key in S.PROBE_SEEDS else
+                     H.LABELS[key % len(H.LABELS)])
+            finish = "stop"
         else:
             assert cell == r.cell, "the engine got another cell's messages for this seed"
             seen[key] += 1
@@ -615,8 +617,8 @@ def test_a_run_stopped_before_its_first_draw_draws_nothing_and_decides_nothing(s
         assert j.steps["generate"][1].rstrip().splitlines()[-1].startswith("GENERATE_STOPPED 0/3520"), why
         if why == "the probe missed":
             assert gen["stopped"] == "seed probe" and len(j.loads) == 1, "the engine loads, the probe runs, no draw"
-            assert [len(c) for c, _ in j.engine.calls] == [S.PROBE_N]
-            assert gen["probe"]["passed"] is False and gen["probe"]["distinct"] == 4
+            assert [len(c) for c, _ in j.engine.calls] == [S.PROBE_N * len(S.PROBE_SEEDS)]
+            assert gen["probe"]["passed"] is False and gen["probe"]["distinct"] == 6
         else:
             assert j.loads == [] and gen["stopped"].startswith("pre-check: "), why
             assert gen["probe"]["passed"] is None and gen["engine"] == {}, why
@@ -653,8 +655,8 @@ def test_a_run_stopped_before_its_first_draw_reads_invalid_naming_why(stopped, w
 
 def test_draws_cut_by_generates_deadline_read_invalid_with_generate_stopped_named(world):
     """Like a run stopped before its first draw (finding E1), a run with chunks drawn reads invalid, naming the stop.
-    Each request takes 0.5 s on generate's clock: the probe ends at 2 s, chunk k at 2 + 64k s, and the 15th, forecast
-    to end at 898 + 1.25 x 64 = 978 s, is not started against the job's 960 s: 14 x 128 = 1,792 drawn."""
+    Each request takes 0.5 s on generate's clock: the probe's 6 end at 3 s, chunk k at 3 + 64k s, and the 15th,
+    forecast to end at 899 + 1.25 x 64 = 979 s, is not started against the job's 960 s: 14 x 128 = 1,792 drawn."""
     clock = [0.0]
     engine = E.FakeEngine(answers(), clock=clock, per_request_s=0.5, info=H.ENGINE_INFO)
     j = job(world.base / "deadline", "13800004", world.snap, engine=engine, gen_clock=clock)

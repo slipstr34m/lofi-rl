@@ -62,6 +62,7 @@ PATH_FILE_SHA256 = hashlib.sha256(b"synthetic docs/prereg/D-023_step0_path.txt")
 LABELS = (tuple(f"h{k}" for k in range(8)) + tuple(f"t{k}" for k in range(8)) + tuple("abcdefghijklmnopqrstuvwxyz")
           + tuple(f"u{k}" for k in range(8)) + tuple(f"v{k}" for k in range(8)))     # 58 labels: 6 kick bits hold 64
 TRAIN_LABELS = ("t", "u", "v")              # a train brief's default labels, by its rank among its twins
+PROBE_LABELS = ("a", "b")                   # the probe's text at each of PROBE_SEEDS, as an engine honouring seeds
 GATES = ("G2", "G6")                        # the gate failures the writer makes for real
 RENDERS = ("", "G7", "E", "EE", "S")        # a held-out draw's render: ok, G7, error once, error twice, deadline skip
 KICK_CELLS = (2, 5, 8, 11, 13, 14)          # the kick hits a label's number sets, beside the downbeat
@@ -339,9 +340,9 @@ def make_run(root: Path, table: Mapping[str, str | Sequence[str]] | None = None,
             "SamplingParams(n=1, presence_penalty=0.0, frequency_penalty=0.0, repetition_penalty=1.0, temperature=1.0, "
             f"top_p=1.0, top_k=0, min_p=0.0, seed={rows[0]['draw_seed']}, max_tokens=512, "
             "structured_outputs=StructuredOutputsParams(regex=...))"),
-        "probe": {"seed": S.PROBE_SEED, "cell": "/".join(S.PROBE_CELL), "n": S.PROBE_N,
-                  "texts_sha256": [sha(variant_text("/".join(S.PROBE_CELL), "a"))] * S.PROBE_N, "distinct": 1,
-                  "passed": True},
+        "probe": {"seeds": list(S.PROBE_SEEDS), "cell": "/".join(S.PROBE_CELL), "n": S.PROBE_N,
+                  "texts_sha256": [sha(variant_text("/".join(S.PROBE_CELL), label)) for label in PROBE_LABELS
+                                   for _ in range(S.PROBE_N)], "distinct": len(PROBE_LABELS), "passed": True},
         "replay": {"n": len(replay), "same": len(replay), "differ": 0,
                    "by_chunk": [{"start": s, "count": len(replay[s:s + S.REPLAY_CHUNK]),
                                  "same": len(replay[s:s + S.REPLAY_CHUNK])}

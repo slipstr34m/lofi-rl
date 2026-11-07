@@ -9,7 +9,7 @@ writes them. The tree is only read: the code that runs is this checkout's.
 What these tests pin (§6.1): one SamplingParams per request, n 1, its seed, one list per call, with one shared
 StructuredOutputsParams; the chunks, their fsync and the deadline (`stopped: deadline`, a partial run); the probe
 passing with seeds honoured and stopping with seeds ignored (exit 2, nothing drawn); each pre-check refusing before the
-engine loads (a mark that differs, a path-file blob that differs, PROBE_SEED among the draw seeds, and the rest); the
+engine loads (a mark that differs, a path-file blob that differs, a probe seed among the draw seeds, and the rest); the
 replay in replay.jsonl only, in reverse order, with its counts; generate.json's fields; the watchdog.
 """
 from __future__ import annotations
@@ -174,13 +174,13 @@ def test_each_chunk_is_fsynced_and_generate_json_rewritten(monkeypatch, tree, tm
 
 
 def test_a_chunk_the_forecast_puts_past_the_deadline_is_not_started(monkeypatch, tree, tmp_path, subset):
-    """The probe's 4 requests take 4 s and each chunk of 8 takes 8 s. Against a 30-s deadline, chunks start at 4, 12
-    and 20 s (20 + 1.25 x 8 = 30 is not past it) and the fourth, at 28 s, is not started: 24 of 32 drawn."""
+    """The probe's 6 requests take 6 s and each chunk of 8 takes 8 s. Against a 32-s deadline, chunks start at 6, 14
+    and 22 s (22 + 1.25 x 8 = 32 is not past it) and the fourth, at 30 s, is not started: 24 of 32 drawn."""
     clock = [0.0]
     monkeypatch.setattr(G, "_now", lambda: clock[0])
     engine = FakeEngine(clock=clock, per_request_s=1.0)
     rc, meta, _, engine = run_generate(monkeypatch, tree, tmp_path / "run", engine,
-                                       args=("--chunk", "8", "--deadline-s", "30"))
+                                       args=("--chunk", "8", "--deadline-s", "32"))
     assert rc == 1 and meta["stopped"] == "deadline" and meta["partial"] is False
     assert (meta["generated"], meta["requested"]) == (24, 32) and len(engine.calls) == 1 + 3
     assert meta["replay"]["stopped"] == "not run: the draws are not complete" and meta["replay"]["n"] == 0
@@ -212,11 +212,12 @@ def test_the_probe_passes_with_seeds_honoured(monkeypatch, tree, tmp_path, subse
     assert rc == 0
     convs, sps = engine.calls[0]
     want = prompt_v2.build_messages(J.cell_brief("low", "hopeful"), H.palette())
-    assert len(convs) == S.PROBE_N == 4 and all(c == want for c in convs), "the low/hopeful cell's messages"
-    assert [sp.seed for sp in sps] == [S.PROBE_SEED] * 4 and len({id(sp) for sp in sps}) == 4
-    text = f"loop low/hopeful {S.PROBE_SEED}\n"
-    assert meta["probe"] == {"seed": 1, "cell": "low/hopeful", "n": 4, "texts_sha256": [sha(text)] * 4,
-                             "distinct": 1, "passed": True}
+    assert S.PROBE_SEEDS == (1, 2) and S.PROBE_N == 3, "3 requests at each of 2 seeds, in one call (finding R2-3)"
+    assert len(convs) == 6 and all(c == want for c in convs), "the low/hopeful cell's messages"
+    assert [sp.seed for sp in sps] == [1, 1, 1, 2, 2, 2] and len({id(sp) for sp in sps}) == 6
+    shas = [sha(f"loop low/hopeful {seed}\n") for seed in (1, 1, 1, 2, 2, 2)]
+    assert meta["probe"] == {"seeds": [1, 2], "cell": "low/hopeful", "n": 3, "texts_sha256": shas,
+                             "distinct": 2, "passed": True}
     assert meta["timing"]["probe_s"] is not None
 
 
@@ -224,7 +225,7 @@ def test_the_probe_stops_generate_when_seeds_are_ignored(monkeypatch, tree, tmp_
     rc, meta, loads, engine = run_generate(monkeypatch, tree, tmp_path / "run", FakeEngine(honour_seeds=False))
     assert rc == 2 and meta["stopped"] == "seed probe" and meta["generated"] == 0 and len(loads) == 1
     assert len(engine.calls) == 1, "nothing is drawn after a missed probe"
-    assert meta["probe"]["distinct"] == 4 and meta["probe"]["passed"] is False
+    assert meta["probe"]["distinct"] == 6 and meta["probe"]["passed"] is False
     assert not (tmp_path / "run" / "summary" / "completions.jsonl").exists()
     assert not (tmp_path / "run" / "summary" / "replay.jsonl").exists()
 
@@ -242,13 +243,47 @@ def test_an_engine_that_refuses_a_list_of_sampling_params_stops_at_the_probe(mon
     assert "TypeError" in meta["trace"] and not (tmp_path / "run" / "summary" / "completions.jsonl").exists()
 
 
-def test_the_probe_passes_with_two_texts_of_four_identical(monkeypatch, tree, tmp_path, subset):
-    texts = iter(["x\n", "y\n", "x\n", "z\n"])
+def test_the_probe_passes_with_two_texts_of_three_identical_at_each_seed(monkeypatch, tree, tmp_path, subset):
+    texts = iter(["x\n", "y\n", "x\n", "z\n", "z\n", "w\n"])
 
     def text_of(cell, key):
-        return (next(texts) if key == S.PROBE_SEED else f"loop {key}\n"), "stop", 10, S.PROMPT_TOKENS[cell]
+        return (next(texts) if key in S.PROBE_SEEDS else f"loop {key}\n"), "stop", 10, S.PROMPT_TOKENS[cell]
     rc, meta, *_ = run_generate(monkeypatch, tree, tmp_path / "run", FakeEngine(text_of))
-    assert rc == 0 and (meta["probe"]["distinct"], meta["probe"]["passed"]) == (3, True), "PROBE_SAME is 2"
+    assert rc == 0 and (meta["probe"]["distinct"], meta["probe"]["passed"]) == (4, True), "PROBE_SAME is 2"
+
+
+class OneNoise(FakeEngine):
+    """An engine that gives every request of a call one randomness: each text is the call's first request's."""
+
+    def chat(self, convs, sps):
+        out = super().chat(convs, sps)
+        return [out[0]] * len(out)
+
+
+class FirstParams(FakeEngine):
+    """An engine that samples every request of a call with the call's first SamplingParams."""
+
+    def chat(self, convs, sps):
+        return super().chat(convs, [sps[0]] * len(sps))
+
+
+@pytest.mark.parametrize("engine", [OneNoise, FirstParams], ids=["one randomness a call", "the first params"])
+def test_the_probe_stops_an_engine_that_does_not_use_each_requests_own_seed(monkeypatch, tree, tmp_path, subset,
+                                                                            engine):
+    """Finding R2-3: such an engine gives one text at both probe seeds, which the probe at one seed took for seeds
+    honoured; at two seeds it misses (exit 2, nothing drawn), so no chunk's draws collapse to one text."""
+    rc, meta, loads, e = run_generate(monkeypatch, tree, tmp_path / "run", engine())
+    assert rc == 2 and meta["stopped"] == "seed probe" and meta["generated"] == 0 and len(e.calls) == 1
+    assert meta["probe"]["distinct"] == 1 and meta["probe"]["passed"] is False
+    assert not (tmp_path / "run" / "summary" / "completions.jsonl").exists()
+
+
+def test_the_probes_verdict():
+    a, b, c = "a" * 64, "b" * 64, "c" * 64
+    assert G.probe_passed([a, a, a, b, b, b]) and G.probe_passed([a, c, a, b, b, c])
+    assert not G.probe_passed([a, a, a, a, a, a]), "one text at both seeds: the seeds were not used"
+    assert not G.probe_passed([a, b, c, a, a, a]) and not G.probe_passed([a, a, a, b, c, a]), "a seed without 2"
+    assert not G.probe_passed([a, a, a]), "a seed's texts missing"
 
 
 # --------------------------------------------------------------------------------------------- the pre-checks
@@ -311,9 +346,11 @@ def test_a_path_file_blob_that_differs_is_refused(monkeypatch, own_tree, tmp_pat
     assert meta["path_file"] == {"sha256": None, "blobs_ok": False}
 
 
-def test_probe_seed_among_the_draw_seeds_is_refused(monkeypatch, tree, tmp_path):
-    monkeypatch.setattr(S, "PROBE_SEED", 379233320)     # 596:0 k0's draw seed (brief_streams_v1.json)
-    refused(monkeypatch, tree, tmp_path / "run", "PROBE_SEED 379233320 is one of docs/prereg/brief_streams_v1.json's")
+def test_a_probe_seed_among_the_draw_seeds_is_refused(monkeypatch, tree, tmp_path):
+    monkeypatch.setattr(S, "PROBE_SEEDS", (1, 379233320))  # 596:0 k0's draw seed (brief_streams_v1.json)
+    refused(monkeypatch, tree, tmp_path / "run", "PROBE_SEEDS 379233320 is one of docs/prereg/brief_streams_v1.json's")
+    monkeypatch.setattr(S, "PROBE_SEEDS", (1, 1))
+    refused(monkeypatch, tree, tmp_path / "run2", "the probe needs two seeds or more, all distinct")
 
 
 def test_an_edited_streams_file_is_refused(monkeypatch, own_tree, tmp_path):
@@ -386,7 +423,7 @@ def test_replay_counts_texts_that_differ(monkeypatch, tree, tmp_path, subset):
 
     def text_of(cell, key):
         seen[key] += 1
-        return f"loop {key} take {seen[key] if key != S.PROBE_SEED else 1}\n", "stop", 10, S.PROMPT_TOKENS[cell]
+        return f"loop {key} take {seen[key] if key not in S.PROBE_SEEDS else 1}\n", "stop", 10, S.PROMPT_TOKENS[cell]
     rc, meta, *_ = run_generate(monkeypatch, tree, tmp_path / "run", FakeEngine(text_of))
     assert rc == 0 and (meta["replay"]["n"], meta["replay"]["same"], meta["replay"]["differ"]) == (16, 0, 16)
     rows = rows_of(tmp_path / "run" / "summary" / "replay.jsonl")
@@ -397,7 +434,7 @@ def test_a_replay_cut_by_the_deadline_or_an_error_leaves_the_draws_complete(monk
     clock = [0.0]
     monkeypatch.setattr(G, "_now", lambda: clock[0])
     engine = FakeEngine(clock=clock, per_request_s=1.0)
-    # the probe ends at 4 s and the one chunk of 32 at 36 s; the replay's 16 are forecast at 1.25 x 32 = 40 s: past 70
+    # the probe ends at 6 s and the one chunk of 32 at 38 s; the replay's 16 are forecast at 1.25 x 32 = 40 s: past 70
     rc, meta, *_ = run_generate(monkeypatch, tree, tmp_path / "run", engine, args=("--deadline-s", "70"))
     assert rc == 0 and meta["stopped"] is None and meta["generated"] == 32
     assert meta["replay"]["stopped"] == "deadline" and meta["replay"]["n"] == 0

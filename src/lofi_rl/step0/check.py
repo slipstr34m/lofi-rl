@@ -1069,8 +1069,8 @@ def format_text(doc: dict) -> str:
     lines += ["shown, never judged:",
               f"  backend {shown(b.get('backend', MISSING))} (pin {shown(b.get('pin_accepted', MISSING))}, applied "
               f"{shown(b.get('applied', MISSING))}); engine {shown(sh.get('engine') or MISSING)}",
-              f"  probe: seed {shown(pr.get('seed', MISSING))}, {shown(pr.get('cell', MISSING))}, "
-              f"{shown(pr.get('n', MISSING))} requests, {shown(pr.get('distinct', MISSING))} distinct text(s)",
+              f"  probe: seeds {shown(pr.get('seeds', MISSING))}, {shown(pr.get('cell', MISSING))}, "
+              f"{shown(pr.get('n', MISSING))} requests a seed, {shown(pr.get('distinct', MISSING))} distinct text(s)",
               f"  replay: {_counts(rp, ('n', 'same', 'differ', 'stopped'))}; replay.jsonl "
               f"{_counts(sh.get('replay_file'), ('rows', 'same'))}",
               "  timing: " + ", ".join(f"{k} {shown(t.get(k))}" for k in TIMINGS) + f"; GPU {h.get('gpu')}",
