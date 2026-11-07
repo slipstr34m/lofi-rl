@@ -311,6 +311,27 @@ def test_the_pool_skips_texts_the_final_held_out_set_holds(tmp_path, stubbed):
     assert readout == {"draws": 3, "refb": 0, "pool": 0}
 
 
+@pytest.mark.parametrize("rule, rc", [("report", 0), ("ask", 1)])
+def test_short_briefs_are_reported_or_asked_about_as_q8_says(tmp_path, stubbed, monkeypatch, capsys, rule, rc):
+    """5101:0 has three distinct passing texts, so its tuple is short: Q8(a) reports it (exit 0), Q8(b) asks (exit 1).
+    Either way sets.json records it."""
+    table = {"5101:0": "a a a b b c G2 G6"}
+    run = make(tmp_path, table)
+    stubbed(Stub(run.scored))
+    monkeypatch.setattr(S, "SHORT_RULE", rule)
+    assert render(run.dir) == rc
+    assert one(doc_of(run.summary / "sets.json"), "heldout", "5101:0")["short"] is True
+    assert ("ask Shresth" in capsys.readouterr().err) is (rule == "ask")
+
+
+def test_a_short_rule_that_is_no_answer_is_refused(tmp_path, stubbed, monkeypatch, capsys):
+    run = make(tmp_path, {"5101:0": "a b c d e f g h"})
+    stub = stubbed(Stub(run.scored))
+    monkeypatch.setattr(S, "SHORT_RULE", "ignore")
+    assert render(run.dir) == 2 and "is not one of ('report', 'ask') (Q8)" in capsys.readouterr().err
+    assert stub.calls == [] and not (run.dir / "clips").exists()
+
+
 def test_render_code_is_the_steps_stamp_and_source_sha8(tmp_path, monkeypatch):
     """Unstubbed key: this checkout's .sync-stamp (none in a worktree) and lofi_rl.scoring.features.source_sha8()."""
     from lofi_rl.scoring.features import source_sha8

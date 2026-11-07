@@ -32,9 +32,14 @@
 step0.json) from REDO when a score recovery wrote them there, else from OUT, copying scored.jsonl into REDO unchanged,
 so REDO holds score's and render's records together (check reads both from REDO). It never writes under OUT.
 
-Exit 0: the held-out set is decided. 1: a held-out brief is undetermined, or a render failed a gate other than G7 (a
-draw that passed score's G1-G6 and compile but not the render's: a defect between the two). 2: bad input, a partial
-run, or --run and --from that overlap, with nothing rendered or written. The audio code (junk.render_clip's, the
+**Short briefs (Q8).** The sets record `short` under either answer (select). Under SHORT_RULE "report" (a) a short
+brief is reported and its set holds one brief fewer; under "ask" (b) the step also exits 1 naming them, so the job
+stops for Shresth's answer before any set is used.
+
+Exit 0: the held-out set is decided. 1: a held-out brief is undetermined, a render failed a gate other than G7 (a
+draw that passed score's G1-G6 and compile but not the render's: a defect between the two), or, under Q8 "ask", a
+brief of any set is short. 2: bad input, a partial run, a SHORT_RULE that is no answer of Q8, or --run and --from
+that overlap, with nothing rendered or written. The audio code (junk.render_clip's, the
 render pool's config, source_sha8) is imported inside functions, since the policy env's build imports every lofi_rl
 module outside its scorer-side list (jobs/env_policy.sbatch). No claim about sound: clips are only measured (length,
 loudness, hashes).
@@ -62,6 +67,7 @@ from lofi_rl.step0.score import read_json, separate, sync_stamp, write_json
 
 SKIPPED = "render deadline"             # a skipped record's reason, as junk's render step writes it
 READ = ("generate.json", "completions.jsonl", "scored.jsonl", "step0.json")
+SHORT_RULES = ("report", "ask")         # Q8 (a), (b)
 
 
 def _now() -> float:
@@ -190,6 +196,8 @@ def main(a: argparse.Namespace) -> int:
     run = Path(a.run)
     out = None if a.from_ is None else Path(a.from_)
     problems = [] if out is None else separate(out, run)
+    if S.SHORT_RULE not in SHORT_RULES:
+        problems.append(f"SHORT_RULE {S.SHORT_RULE!r} is not one of {SHORT_RULES} (Q8)")
     gen_dir, score_dir = sources(run, out)
     files = {name: (gen_dir if name in READ[:2] else score_dir) / name for name in READ}
     problems += [f"{p} is missing" for p in files.values() if not p.is_file()]
@@ -246,4 +254,9 @@ def main(a: argparse.Namespace) -> int:
     if undetermined:
         print(f"render: {len(undetermined)} held-out briefs are undetermined (first {undetermined[0]}): the held-out "
               "set is not decided (§4.2)", file=sys.stderr)
-    return 1 if undetermined or blk["other_gates"] else 0
+    short = [f"{name} {e['brief_id']}" for name in S.SETS for e in sets[name] if e["short"]]
+    ask = S.SHORT_RULE == "ask" and bool(short)
+    if ask:
+        print(f"render: {len(short)} briefs are short (first {short[0]}); SHORT_RULE is Q8's (b): ask Shresth before "
+              "these sets are used", file=sys.stderr)
+    return 1 if undetermined or blk["other_gates"] or ask else 0
